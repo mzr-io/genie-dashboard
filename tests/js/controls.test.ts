@@ -172,6 +172,7 @@ describe('buttons', () => {
             document.querySelector('[data-test="blocked-ran"]')!.textContent,
         ).toBe('0');
         expect(document.activeElement).toBe(byLabel(galleryLabels.name));
+        await pause();
         expect(document.querySelector('[data-announcer]')!.textContent).toBe(
             galleryLabels.blockedReason,
         );

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Head, Link } from '@inertiajs/vue3';
+import SkipLink from '@/components/SkipLink.vue';
 import { dashboard, login } from '@/routes';
 </script>
 
@@ -11,6 +12,7 @@ import { dashboard, login } from '@/routes';
     <div
         class="flex min-h-screen flex-col items-center bg-[#FDFDFC] p-6 text-[#1b1b18] lg:justify-center lg:p-8"
     >
+        <SkipLink />
         <header
             class="mb-6 w-full max-w-[335px] text-sm not-has-[nav]:hidden lg:max-w-4xl"
         >
@@ -36,6 +38,8 @@ import { dashboard, login } from '@/routes';
             class="flex w-full items-center justify-center opacity-100 transition-opacity duration-750 lg:grow starting:opacity-0"
         >
             <main
+                id="main-content"
+                tabindex="-1"
                 class="flex w-full max-w-[335px] flex-col-reverse overflow-hidden rounded-lg lg:max-w-4xl lg:flex-row"
             >
                 <div

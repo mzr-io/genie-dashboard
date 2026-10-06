@@ -13,7 +13,7 @@ defineProps<{
     <div
         class="flex min-h-svh flex-col items-center justify-center gap-6 bg-background p-6 md:p-10"
     >
-        <div class="w-full max-w-sm">
+        <main id="main-content" tabindex="-1" class="w-full max-w-sm">
             <div class="flex flex-col gap-8">
                 <div class="flex flex-col items-center gap-4">
                     <Link
@@ -36,6 +36,6 @@ defineProps<{
                 </div>
                 <slot />
             </div>
-        </div>
+        </main>
     </div>
 </template>

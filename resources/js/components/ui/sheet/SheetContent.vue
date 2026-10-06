@@ -10,6 +10,8 @@ import {
   useForwardPropsEmits,
 } from "reka-ui"
 import { cn } from "@/lib/utils"
+import { overlayLabels } from "@/locales/labels"
+import ToastRegion from "@/components/ToastRegion.vue"
 import SheetOverlay from "./SheetOverlay.vue"
 
 interface SheetContentProps extends DialogContentProps {
@@ -37,25 +39,28 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
     <DialogContent
       data-slot="sheet-content"
       :class="cn(
-        'bg-background data-[state=open]:animate-in data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-lg transition ease-in-out data-[state=closed]:duration-300 data-[state=open]:duration-500',
+        'bg-surface-card text-text-primary motion-safe:data-[state=open]:animate-in motion-safe:data-[state=closed]:animate-out fixed z-50 flex flex-col gap-4 shadow-[0_12px_40px_color-mix(in_srgb,var(--df-shadow-color)_12%,transparent)] motion-safe:transition ease-in-out motion-safe:data-[state=closed]:duration-300 motion-safe:data-[state=open]:duration-500',
         side === 'right'
-          && 'data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right inset-y-0 right-0 h-full w-3/4 border-l sm:max-w-sm',
+          && 'motion-safe:data-[state=closed]:slide-out-to-right motion-safe:data-[state=open]:slide-in-from-right inset-y-0 right-0 h-full w-3/4 rounded-s-[var(--df-radius-sheet)] border-l border-border-default sm:max-w-sm',
         side === 'left'
-          && 'data-[state=closed]:slide-out-to-left data-[state=open]:slide-in-from-left inset-y-0 left-0 h-full w-3/4 border-r sm:max-w-sm',
+          && 'motion-safe:data-[state=closed]:slide-out-to-left motion-safe:data-[state=open]:slide-in-from-left inset-y-0 left-0 h-full w-3/4 rounded-e-[var(--df-radius-sheet)] border-r border-border-default sm:max-w-sm',
         side === 'top'
-          && 'data-[state=closed]:slide-out-to-top data-[state=open]:slide-in-from-top inset-x-0 top-0 h-auto border-b',
+          && 'motion-safe:data-[state=closed]:slide-out-to-top motion-safe:data-[state=open]:slide-in-from-top inset-x-0 top-0 h-auto border-b',
         side === 'bottom'
-          && 'data-[state=closed]:slide-out-to-bottom data-[state=open]:slide-in-from-bottom inset-x-0 bottom-0 h-auto border-t',
+          && 'motion-safe:data-[state=closed]:slide-out-to-bottom motion-safe:data-[state=open]:slide-in-from-bottom inset-x-0 bottom-0 h-auto border-t',
         props.class)"
       v-bind="{ ...$attrs, ...forwarded }"
     >
       <slot />
+      <!-- The footer is order-last, so the stack shows above it (UX-DR-70). -->
+      <ToastRegion placement="sheet" />
 
       <DialogClose
-        class="data-[state=open]:bg-secondary absolute top-4 right-4 rounded-xs opacity-70 transition-opacity hover:opacity-100 disabled:pointer-events-none"
+        data-slot="sheet-close"
+        class="absolute top-2 right-2 inline-flex size-(--df-target-touch) items-center justify-center rounded-md text-text-secondary hover:bg-surface-sunken disabled:pointer-events-none"
       >
-        <X class="size-4" />
-        <span class="sr-only">Close</span>
+        <X class="size-5" aria-hidden="true" />
+        <span class="sr-only">{{ overlayLabels.close }}</span>
       </DialogClose>
     </DialogContent>
   </DialogPortal>

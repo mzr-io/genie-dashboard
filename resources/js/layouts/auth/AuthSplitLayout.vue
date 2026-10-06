@@ -28,7 +28,7 @@ defineProps<{
                 {{ name }}
             </Link>
         </div>
-        <div class="lg:p-8">
+        <main id="main-content" tabindex="-1" class="lg:p-8">
             <div
                 class="mx-auto flex w-full flex-col justify-center space-y-6 sm:w-[350px]"
             >
@@ -42,6 +42,6 @@ defineProps<{
                 </div>
                 <slot />
             </div>
-        </div>
+        </main>
     </div>
 </template>

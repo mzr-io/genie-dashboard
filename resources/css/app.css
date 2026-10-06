@@ -380,6 +380,30 @@
         outline: 2px solid var(--df-focus-ring);
         outline-offset: -2px;
     }
+    /* Popover list options (UX-DR-75, 144): active (keyboard) and selected (chosen) differ */
+    .listbox-option-active,
+    [role='option'][data-highlighted],
+    [role='menuitem'][data-highlighted] {
+        background: var(--df-accent-soft);
+        outline: 2px solid var(--df-focus-ring);
+        outline-offset: -2px;
+    }
+    .listbox-option-selected {
+        position: relative;
+    }
+    .listbox-option-selected::before {
+        content: '\2713';
+        color: var(--df-accent-ink-strong);
+        font-weight: 700;
+    }
+    [data-tree='true'].listbox-option-selected::before {
+        content: '';
+        position: absolute;
+        inset-block: 0;
+        inset-inline-start: 0;
+        width: 3px;
+        background: var(--df-accent-ink-strong);
+    }
 }
 
 /* Hit areas (UX-DR-33, 278): small controls keep their drawn size and grow an invisible target
@@ -444,5 +468,35 @@
     .skeleton[data-shimmer='true'] {
         animation: none;
         background-image: none;
+    }
+}
+
+/* Toasts slide in from the right; under reduced motion they just appear (UX-DR-277). */
+.toast-enter-active,
+.toast-leave-active {
+    transition:
+        transform 200ms ease,
+        opacity 200ms ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+    opacity: 0;
+    transform: translateX(1rem);
+}
+
+/* Reduced motion: toasts do not slide; dialogs and sheets do not animate (UX-DR-277). */
+@media (prefers-reduced-motion: reduce) {
+    .toast-enter-active,
+    .toast-leave-active {
+        transition: none;
+    }
+    [data-slot='dialog-content'],
+    [data-slot='dialog-overlay'],
+    [data-slot='alert-dialog-content'],
+    [data-slot='alert-dialog-overlay'],
+    [data-slot='sheet-content'],
+    [data-slot='sheet-overlay'] {
+        animation: none !important;
+        transition: none !important;
     }
 }

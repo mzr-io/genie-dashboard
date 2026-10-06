@@ -28,3 +28,28 @@ export const controlLabels = {
     locked: 'Locked',
     lockedAnnounce: 'required by your admin and cannot be removed',
 } as const;
+
+// Labels of dialogs, toasts, banners and landmarks (Story 1.9). Buttons repeat across screens,
+// so they live here once.
+export const overlayLabels = {
+    cancel: 'Cancel',
+    save: 'Save',
+    discardChanges: 'Discard changes',
+    keepEditing: 'Keep editing',
+    dismiss: 'Dismiss',
+    dismissNotification: 'Dismiss notification',
+    undo: 'Undo',
+    showMe: 'Show me',
+    close: 'Close',
+    notifications: 'Notifications',
+    skipLinks: 'Skip links',
+    skipToContent: 'Skip to content',
+    goToNotifications: 'Go to notifications',
+    bannerInfo: 'Info',
+    bannerWarning: 'Warning',
+    bannerError: 'Error',
+    errorToast: 'Error',
+    successToast: 'Success',
+    unsavedTitle: 'Unsaved changes',
+    deleteAction: (object: string) => `Delete ${object}`,
+} as const;

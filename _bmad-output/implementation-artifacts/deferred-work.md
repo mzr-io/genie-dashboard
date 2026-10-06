@@ -71,3 +71,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-8-build-the-shared-form-controls-and-status-components.md`
   summary: Verify Space on the switch and arrow-key behaviour of radio groups, segmented control and chips in a real browser (for example Playwright with axe).
   evidence: happy-dom does not turn Space into a click on a native button, so the tests toggle with `click()`; keyboard semantics rely on reka-ui and were not checked in a browser.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-9-build-dialogs-toasts-banners-popovers-and-live-regions.md`
+  summary: Verify reduced-motion behaviour, focus trap, Esc handling and live-region speech for dialogs, sheets and toasts in a real browser (for example Playwright with axe).
+  evidence: happy-dom does not evaluate `prefers-reduced-motion` or real focus trapping; the reduced-motion test only reads CSS text, so removing a `motion-safe:` class or overriding a rule would pass.

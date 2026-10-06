@@ -1,4 +1,5 @@
 import { createInertiaApp } from '@inertiajs/vue3';
+import { createPinia } from 'pinia';
 import AppLayout from '@/layouts/AppLayout.vue';
 import AuthLayout from '@/layouts/AuthLayout.vue';
 import SettingsLayout from '@/layouts/settings/Layout.vue';
@@ -22,6 +23,7 @@ void createInertiaApp({
         }
     },
     withApp: (app) => {
+        app.use(createPinia());
         app.use(createCatalogue());
         app.directive('focus', {
             mounted: (el: HTMLElement, shouldFocus) => {

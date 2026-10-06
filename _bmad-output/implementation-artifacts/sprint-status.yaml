@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-06-2026 11:46
-last_updated: 10-06-2026 23:30
+last_updated: 10-06-2026 18:52
 project: rmg-dashboard-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -44,7 +44,7 @@ development_status:
   1-6-apply-the-dashflow-design-tokens-and-brand-seam: done
   1-7-serve-all-product-copy-from-the-canonical-message-catalogue: review
   1-8-build-the-shared-form-controls-and-status-components: review
-  1-9-build-dialogs-toasts-banners-popovers-and-live-regions: backlog
+  1-9-build-dialogs-toasts-banners-popovers-and-live-regions: review
   1-10-isolate-each-workspace-with-row-level-security: backlog
   1-11-record-audit-events-and-publish-outbox-events-in-the-same-tr: backlog
   1-12-provision-a-workspace-and-let-its-first-admin-accept-an-invi: backlog

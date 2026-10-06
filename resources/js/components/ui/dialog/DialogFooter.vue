@@ -2,6 +2,7 @@
 import type { HTMLAttributes } from "vue"
 import { DialogClose } from "reka-ui"
 import { cn } from "@/lib/utils"
+import { overlayLabels } from "@/locales/labels"
 import { Button } from '@/components/ui/button'
 
 const props = withDefaults(defineProps<{
@@ -20,7 +21,7 @@ const props = withDefaults(defineProps<{
     <slot />
     <DialogClose v-if="showCloseButton" as-child>
       <Button variant="secondary">
-        Close
+        {{ overlayLabels.close }}
       </Button>
     </DialogClose>
   </div>
