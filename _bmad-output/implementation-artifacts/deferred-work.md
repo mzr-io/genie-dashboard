@@ -59,3 +59,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-4-observe-every-request-with-opentelemetry-and-scrubbed-logs.md`
   summary: Replace span `url.path` with the route template so path-embedded tokens never reach exported spans.
   evidence: Auto-instrumented server spans carry the raw path, such as `/reset-password/{token}`; the log line is patched in Story 1.4 but spans are not.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-7-serve-all-product-copy-from-the-canonical-message-catalogue.md`
+  summary: Add a DOM test environment and mounted tests for `TechnicalDetails` (disclosure toggle, Copy request ID success and failure states).
+  evidence: Story 1.7 tests render with `vue/server-renderer`, which never runs click handlers, so a regression in `copy()` or the toggle would pass; the spec ruled out a new dev dependency, so add happy-dom or jsdom with the first Admin error screen.
