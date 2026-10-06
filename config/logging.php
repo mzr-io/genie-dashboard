@@ -1,5 +1,7 @@
 <?php
 
+use App\Support\Observability\JsonLogFormatter;
+use App\Support\Observability\ObservabilityLogTap;
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
@@ -60,6 +62,7 @@ return [
 
         'single' => [
             'driver' => 'single',
+            'tap' => [ObservabilityLogTap::class],
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
@@ -67,6 +70,7 @@ return [
 
         'daily' => [
             'driver' => 'daily',
+            'tap' => [ObservabilityLogTap::class],
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
             'max_files' => env('LOG_DAILY_DAYS', 14),
@@ -111,6 +115,20 @@ return [
             ],
             'formatter' => env('LOG_STDERR_FORMATTER'),
             'processors' => [PsrLogMessageProcessor::class],
+            'tap' => [ObservabilityLogTap::class],
+        ],
+
+        // One JSON object per line on stdout, with request_id, trace_id and workspace_id when known.
+        'stdout' => [
+            'driver' => 'monolog',
+            'level' => env('LOG_LEVEL', 'debug'),
+            'handler' => StreamHandler::class,
+            'handler_with' => [
+                'stream' => 'php://stdout',
+            ],
+            'formatter' => JsonLogFormatter::class,
+            'processors' => [PsrLogMessageProcessor::class],
+            'tap' => [ObservabilityLogTap::class],
         ],
 
         'syslog' => [

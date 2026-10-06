@@ -54,6 +54,23 @@ Compose refuses to start if `APP_KEY` is missing. Health:
 
 Key purposes (AR-50) are mounted as placeholder files from `docker/dev-keys/` under `/run/secrets`: `web` gets `data` and `digest`; `worker-connector` gets `cred`, `token` and `data`; `worker-compute` gets `data`; `realtime` and `scheduler` get none. `tests/Architecture/ComposeKeysTest.php` enforces the mapping. Every scheduled task must use `onOneServer()`.
 
+## Observability
+
+Every request gets a `request_id`: a valid incoming `X-Request-Id` (`[A-Za-z0-9._-]{8,64}`) is kept, anything else is replaced by a generated ULID, and the response always carries it. Queued jobs carry it in the payload and restore it before running, so job logs and spans share the originating request's id.
+
+Logs are one JSON object per line on stdout (`LOG_CHANNEL=stdout`, set by the Compose stack) with `timestamp`, `level`, `channel`, `message`, and `request_id`, `trace_id`, `workspace_id` when known. Read them with `docker compose logs web` (or `docker compose logs -f web | jq .`) and match the `request_id` to the response header, for example `curl -si localhost:8080/up | grep -i x-request-id`. Request bodies are never logged.
+
+Scrubbing is always on and not configurable. Query strings, fragments and userinfo are removed from every URL in logs, spans and metric labels; only the headers `content-type`, `accept`, `user-agent`, `x-request-id` and `content-length` are kept; span attributes outside an allowlist are dropped. The code is `app/Support/Observability/Scrubber.php`, shared by the log processor and the span processor.
+
+| Variable                                                                | Effect                                                                                         |
+| ----------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` (or `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT`) | Collector URL. Unset: the app runs, nothing is exported and one warning is logged per process. |
+| `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_HEADERS`             | Standard OTLP settings (default `http/protobuf`).                                              |
+| `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`                         | Service identity (`dashflow` in Compose).                                                      |
+| `LOG_CHANNEL`, `LOG_LEVEL`                                              | `stdout` for JSON lines; the other channels get the same ids and scrubbing.                    |
+
+OTEL variables must be real process environment variables (as in Compose) for the first request's root span to be exported; values only in `.env` start export after the framework boots. Metric names must match `dashflow.<module>.<measure>`; build them with `App\Support\Observability\MetricName`. API errors use `{"error":{"code","message","request_id","details"}}`; `details` is emitted only when a request is marked `area=admin` (request attribute set by future Admin middleware), so today it is always absent.
+
 ## Quality gates
 
 `bin/tools composer ci:check` runs every gate below in order and stops at the first failure; each failing gate exits non-zero and names the offending file. No CI pipeline runs `ci:check` yet; it is run by hand.

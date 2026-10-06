@@ -2,11 +2,17 @@
 
 use App\Http\Middleware\HandleAppearance;
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Support\Observability\ApiErrorRenderer;
+use App\Support\Observability\OtelBootstrap;
+use App\Support\Observability\RequestContextMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
+
+// Register the tracer before the framework starts so the request's root span is exported too.
+OtelBootstrap::boot();
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -17,6 +23,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->prepend(RequestContextMiddleware::class);
+
         $middleware->statefulApi();
 
         $middleware->encryptCookies(except: ['appearance', 'sidebar_state']);
@@ -28,6 +36,8 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->render(ApiErrorRenderer::render(...));
+
         $exceptions->shouldRenderJsonWhen(
             fn (Request $request) => $request->is('api/*') || $request->expectsJson(),
         );

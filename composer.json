@@ -21,6 +21,7 @@
         "laravel/sanctum": "^4.0",
         "laravel/tinker": "^3.0",
         "laravel/wayfinder": "^0.1.14",
+        "open-telemetry/exporter-otlp": "^1.4",
         "open-telemetry/opentelemetry-auto-laravel": "^1.9",
         "open-telemetry/sdk": "^1.15",
         "opis/json-schema": "^2.6"

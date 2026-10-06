@@ -10,7 +10,7 @@ x-app-env: &app-env
     APP_DEBUG: ${DASHFLOW_DEBUG:-false}
     APP_KEY: '${APP_KEY:?APP_KEY is required - run bin/tools php artisan key:generate --show, then export it or add it to .env}'
     APP_URL: ${DASHFLOW_APP_URL:-http://localhost:8080}
-    LOG_CHANNEL: stderr
+    LOG_CHANNEL: stdout
     LOG_LEVEL: ${LOG_LEVEL:-info}
     DB_CONNECTION: pgsql
     DB_HOST: postgres
@@ -35,6 +35,12 @@ x-app-env: &app-env
     REVERB_SERVER_PORT: '8081'
     REVERB_SCALING_ENABLED: 'true'
     MAIL_MAILER: log
+    # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
+    OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+    OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+    OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
 
 x-app: &app
     image: ${DASHFLOW_IMAGE:-dashflow-app:local}

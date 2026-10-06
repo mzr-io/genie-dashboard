@@ -2,6 +2,9 @@
 
 namespace App\Providers;
 
+use App\Support\Observability\OtelBootstrap;
+use App\Support\Observability\QueueContext;
+use App\Support\Observability\RequestContext;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +18,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->singleton(RequestContext::class);
     }
 
     /**
@@ -24,6 +27,9 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        QueueContext::register($this->app->make(RequestContext::class), $this->app->make('events'));
+        OtelBootstrap::warnIfUnconfigured();
     }
 
     /**
