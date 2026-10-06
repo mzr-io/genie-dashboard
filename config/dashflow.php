@@ -92,7 +92,11 @@ return [
         'sessions' => [
             'idle_admin' => $tunable('DASHFLOW_SESSION_IDLE_ADMIN'),
             'idle_user' => $tunable('DASHFLOW_SESSION_IDLE_USER'),
+            // Whole minutes a Remember-me cookie may last (Laravel's unit). Unset: Remember me adds nothing.
             'remember_me_duration' => $tunable('DASHFLOW_REMEMBER_ME_DURATION'),
+            // Sign-in throttle per email and IP. Unset: Fortify's shipped 5 attempts per minute applies.
+            'sign_in_max_attempts' => $tunable('DASHFLOW_SIGN_IN_MAX_ATTEMPTS'),
+            'sign_in_decay_seconds' => $tunable('DASHFLOW_SIGN_IN_DECAY_SECONDS'),
         ],
 
         'users' => [

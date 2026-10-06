@@ -6,9 +6,11 @@ use App\Modules\Access\Contracts\MembershipLookup;
 use App\Modules\Access\Infrastructure\AccessAuditSerializer;
 use App\Modules\Access\Infrastructure\AdminMembershipGranter;
 use App\Modules\Access\Infrastructure\SecurityDefinerMembershipLookup;
+use App\Modules\Access\Infrastructure\SignInMembershipsAdapter;
 use App\Modules\Identity\Application\IssueInvitation;
 use App\Modules\Identity\Contracts\InvitationIssuer;
 use App\Modules\Identity\Contracts\InvitedMembershipGranter;
+use App\Modules\Identity\Contracts\SignInMemberships;
 use App\Modules\Identity\Infrastructure\IdentityAuditSerializer;
 use App\Platform\Audit\AuditHasher;
 use App\Platform\Audit\AuditSerializers;
@@ -49,6 +51,7 @@ class AppServiceProvider extends ServiceProvider
         // Identity declares these ports (it cannot call Access); the modules that implement them are bound here.
         $this->app->bind(InvitedMembershipGranter::class, AdminMembershipGranter::class);
         $this->app->bind(InvitationIssuer::class, IssueInvitation::class);
+        $this->app->bind(SignInMemberships::class, SignInMembershipsAdapter::class);
         $this->app->bind(TenantCache::class, fn ($app) => new TenantCache($app['cache']->store()));
         $this->app->singleton(JobSigner::class, fn ($app) => new JobSigner((string) $app['config']->get('app.key')));
 

@@ -18,6 +18,7 @@ const AR57_TUNABLES = [
     'numbers.decimal_scale',
     'audit.retention_floor', 'audit.retention_default',
     'sessions.idle_admin', 'sessions.idle_user', 'sessions.remember_me_duration',
+    'sessions.sign_in_max_attempts', 'sessions.sign_in_decay_seconds',
     'users.invitation_lifetime',
     'targets.rpo', 'targets.rto', 'targets.uptime', 'targets.live_freshness',
     'targets.nfr2_latency', 'targets.preview_latency',

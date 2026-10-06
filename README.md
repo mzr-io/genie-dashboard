@@ -140,6 +140,24 @@ Every refusal (unknown, tampered, used or expired link, a different email, an un
 
 `app` reads `invitations` (email, token hash and Workspace are readable by it, because the accept flow looks a link up by hash) but may update only `used_at` and `updated_at`.
 
+## Signing in
+
+`/login` is a split-screen page: the dark hero on the left (about 55% above 1024 px, hidden below it) and the form on the right, with User and Admin role cards that relabel the single button "Sign in as User" or "Sign in as Admin". There is no SSO and no registration.
+
+The server flow (`app/Modules/Identity`) replaces Fortify's login pipeline: it checks the email (case-insensitive) and password with Fortify's hashing, takes the active Workspace (the usable membership with the latest `last_active_at`, else the first by name, read through the Access `SECURITY DEFINER` lookup), checks the chosen area against the role in that Workspace, rotates the session ID and stores `workspace_id` and `area` (`user` or `admin`) in it, and stamps `last_active_at`. User lands on `overview` (the former `dashboard` page; `dashboard` stays as a route-name alias that redirects there), Admin on `admin.overview`. Admin without the `admin` role gets `signin-role-denied` (HTTP 422, no session) and the User card is selected; an unknown email, a wrong password and a user with no usable membership all get the same `signin-failed` (HTTP 422). The endpoint answers with catalogue keys, never wording.
+
+Every outcome is a security event (`identity.signin.succeeded`, `identity.signin.failed`, `identity.area.denied`, `identity.signin.throttled`) in the person's active Workspace. With no Workspace to hold it (unknown email, no usable membership) a structured log line with the reason only is written. No password, raw email or token is recorded.
+
+Throttling is per email and IP and answers HTTP 429 with `throttled`. The limits are `pending_input` tunables; while unset, Fortify's shipped 5 attempts per minute applies and Remember me adds nothing beyond the normal session lifetime:
+
+| Variable                         | Tunable                          | Unit          |
+| -------------------------------- | -------------------------------- | ------------- |
+| `DASHFLOW_SIGN_IN_MAX_ATTEMPTS`  | `sessions.sign_in_max_attempts`  | attempts      |
+| `DASHFLOW_SIGN_IN_DECAY_SECONDS` | `sessions.sign_in_decay_seconds` | seconds       |
+| `DASHFLOW_REMEMBER_ME_DURATION`  | `sessions.remember_me_duration`  | whole minutes |
+
+The admin overview (`/admin`) and Help & support (`/help`) are placeholders until Stories 1.16, 1.18 and 1.19.
+
 ## Observability
 
 Every request gets a `request_id`: a valid incoming `X-Request-Id` (`[A-Za-z0-9._-]{8,64}`) is kept, anything else is replaced by a generated ULID, and the response always carries it. Queued jobs carry it in the payload and restore it before running, so job logs and spans share the originating request's id.

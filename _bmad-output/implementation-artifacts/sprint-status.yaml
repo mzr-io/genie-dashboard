@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-06-2026 11:46
-last_updated: 10-06-2026 20:12
+last_updated: 10-06-2026 21:42
 project: rmg-dashboard-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -48,7 +48,7 @@ development_status:
   1-10-isolate-each-workspace-with-row-level-security: review
   1-11-record-audit-events-and-publish-outbox-events-in-the-same-tr: review
   1-12-provision-a-workspace-and-let-its-first-admin-accept-an-invi: review
-  1-13-sign-in-as-user-or-admin: backlog
+  1-13-sign-in-as-user-or-admin: review
   1-14-reset-a-forgotten-password: backlog
   1-15-warn-before-session-expiry-and-keep-forms-safe: backlog
   1-16-navigate-the-two-area-shell-with-sign-out-and-profile-menu: backlog

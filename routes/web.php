@@ -30,8 +30,17 @@ Route::middleware([InvitationResponseHeaders::class, 'throttle:30,1'])->prefix('
         Route::post('{token}', [InvitationController::class, 'store'])->name('invitations.accept');
     });
 
+// Help & support is open to guests: the sign-in page links to it. Placeholder until Story 1.18.
+Route::inertia('help', 'auth/Help')->name('help');
+
 Route::middleware(['auth'])->group(function () {
-    Route::inertia('dashboard', 'Dashboard')->name('dashboard');
+    // The User Overview (Story 1.13): the existing dashboard page under its new name. The old route name
+    // `dashboard` is kept as an alias that sends visitors to it (a route name cannot point at the same URI twice).
+    Route::inertia('dashboard', 'Dashboard')->name('overview');
+    Route::redirect('overview', '/dashboard')->name('dashboard');
+
+    // Placeholders until Stories 1.16 (shell) and 1.19 (Admin gating) replace them.
+    Route::inertia('admin', 'admin/Overview')->name('admin.overview');
 });
 
 require __DIR__.'/settings.php';

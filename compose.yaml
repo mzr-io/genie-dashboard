@@ -46,6 +46,10 @@ x-app-env: &app-env
     DB_SECURITY_HOST: postgres
     DB_SECURITY_PORT: '5432'
     MAIL_MAILER: log
+    # Sign-in tunables (pending_input; empty = unset, so Fortify's 5 attempts per minute applies and Remember me adds nothing).
+    DASHFLOW_SIGN_IN_MAX_ATTEMPTS: ${DASHFLOW_SIGN_IN_MAX_ATTEMPTS:-}
+    DASHFLOW_SIGN_IN_DECAY_SECONDS: ${DASHFLOW_SIGN_IN_DECAY_SECONDS:-}
+    DASHFLOW_REMEMBER_ME_DURATION: ${DASHFLOW_REMEMBER_ME_DURATION:-}
     # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
     OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}

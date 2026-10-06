@@ -3,13 +3,15 @@
 namespace App\Providers;
 
 use App\Actions\Fortify\ResetUserPassword;
-use Illuminate\Cache\RateLimiting\Limit;
+use App\Modules\Identity\Http\SignInPipe;
+use App\Modules\Identity\Http\SignInResponse;
+use App\Modules\Identity\Http\SignInThrottle;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
+use Laravel\Fortify\Contracts\LoginResponse;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
 
@@ -20,7 +22,8 @@ class FortifyServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        // Where a successful sign-in lands: the Overview of the chosen area (Story 1.13).
+        $this->app->singleton(LoginResponse::class, SignInResponse::class);
     }
 
     /**
@@ -39,6 +42,9 @@ class FortifyServiceProvider extends ServiceProvider
     private function configureActions(): void
     {
         Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
+
+        // Role-aware sign-in replaces Fortify's login pipeline: credentials, area check, rotated session.
+        Fortify::authenticateThrough(fn () => [SignInPipe::class]);
     }
 
     /**
@@ -65,16 +71,11 @@ class FortifyServiceProvider extends ServiceProvider
     }
 
     /**
-     * Configure rate limiting.
+     * Configure rate limiting. The `login` limiter is the one Fortify's route applies; its limits come
+     * from the `pending_input` tunables, with Fortify's shipped 5 per minute while they are unset.
      */
     private function configureRateLimiting(): void
     {
-
-        RateLimiter::for('login', function (Request $request) {
-            $throttleKey = Str::transliterate(Str::lower($request->input(Fortify::username())).'|'.$request->ip());
-
-            return Limit::perMinute(5)->by($throttleKey);
-        });
-
+        RateLimiter::for('login', fn (Request $request) => $this->app->make(SignInThrottle::class)->limit($request));
     }
 }

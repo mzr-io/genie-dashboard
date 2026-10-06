@@ -74,3 +74,43 @@ export const invitationLabels = {
     submitFailed:
         "We couldn't submit this. Check your connection, reload the page and try again.",
 } as const;
+
+// Labels of the sign-in page and its hero (Story 1.13; UX-DR-90, 91, 212). Messages shown after a
+// failed attempt (`signin-failed`, `signin-role-denied`, `throttled`) come from the catalogue.
+export const signInLabels = {
+    product: 'Dashflow',
+    productDescriptor: 'Dashboard Management System',
+    tagline: 'One workspace. Every insight.',
+    headline: 'Turn complex work into clear decisions.',
+    heroBody:
+        'Bring your data together, build blocks and share dashboards with your team.',
+    trustSecurity: 'Enterprise-grade security',
+    trustLive: 'Live data updates',
+    footer: '© 2026 Dashflow. All rights reserved.',
+    heroIllustration: 'Illustration of a dashboard',
+    eyebrow: 'WELCOME BACK',
+    title: 'Sign in to your workspace',
+    roleGroup: 'Sign in as',
+    roleUser: 'User',
+    roleUserHint: 'Personal workspace',
+    roleAdmin: 'Admin',
+    roleAdminHint: 'System management',
+    email: 'Email',
+    emailPlaceholder: 'name@company.com',
+    password: 'Password',
+    passwordRequired: 'Enter your password.',
+    remember: 'Remember me',
+    forgot: 'Forgot password?',
+    submit: (role: string) => `Sign in as ${role}`,
+    divider: 'Secure workspace access',
+    help: 'Contact your workspace administrator',
+    summaryRole: 'Role',
+    submitFailed:
+        "We couldn't sign you in. Check your connection, reload the page and try again.",
+} as const;
+
+// Labels of the placeholder pages that Stories 1.16, 1.18 and 1.19 replace.
+export const placeholderLabels = {
+    adminOverview: 'Admin overview',
+    help: 'Help & support',
+} as const;
