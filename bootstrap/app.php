@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Platform\Tenancy\WorkspaceTransaction;
 use App\Support\Observability\ApiErrorRenderer;
 use App\Support\Observability\OtelBootstrap;
 use App\Support\Observability\RequestContextMiddleware;
@@ -31,7 +32,11 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
+            // After the session starts: opens the request transaction and sets the Workspace context.
+            WorkspaceTransaction::class,
         ]);
+
+        $middleware->api(append: [WorkspaceTransaction::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(ApiErrorRenderer::render(...));

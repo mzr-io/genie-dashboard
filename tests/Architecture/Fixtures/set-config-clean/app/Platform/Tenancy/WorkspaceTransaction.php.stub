@@ -1,0 +1,11 @@
+<?php
+
+namespace App\Platform\Tenancy;
+
+final class WorkspaceTransaction
+{
+    public function open(): string
+    {
+        return 'select set_config(?, ?, true)';
+    }
+}

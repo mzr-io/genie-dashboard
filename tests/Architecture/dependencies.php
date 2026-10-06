@@ -66,6 +66,8 @@ return [
     'global_tables' => [
         'users', 'sessions', 'password_reset_tokens', 'invitations',
         'service_health_samples', 'operator_audit', 'personal_access_tokens',
+        // Has no workspace_id: rows are reachable only through the Access SECURITY DEFINER function.
+        'workspaces',
         // Framework job and cache tables.
         'jobs', 'job_batches', 'failed_jobs', 'cache', 'cache_locks',
     ],

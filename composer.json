@@ -73,6 +73,7 @@
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
             "@test",
+            "@test:database",
             "npm run check",
             "npm run types:check",
             "npm test",
@@ -92,6 +93,10 @@
             "@lint:check",
             "@types:check",
             "@php artisan test"
+        ],
+        "test:database": [
+            "@php artisan config:clear --ansi",
+            "pest --configuration=phpunit.database.xml"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",

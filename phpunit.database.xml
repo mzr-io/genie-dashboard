@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    The `Database` suite (Story 1.10): PostgreSQL 18 and PgBouncer started by bin/test-db.
+    Run it with `bin/tools composer test:database` (ci:check runs it too). It never skips:
+    when PostgreSQL or PgBouncer is unreachable the suite fails.
+    The SQLite suites and phpunit.xml are unchanged.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
+         colors="true"
+>
+    <testsuites>
+        <testsuite name="Database">
+            <directory>tests/Database</directory>
+        </testsuite>
+    </testsuites>
+    <source>
+        <include>
+            <directory>app</directory>
+        </include>
+    </source>
+    <php>
+        <env name="APP_ENV" value="testing"/>
+        <env name="APP_KEY" value="base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="/>
+        <env name="APP_MAINTENANCE_DRIVER" value="file"/>
+        <env name="BCRYPT_ROUNDS" value="4"/>
+        <env name="BROADCAST_CONNECTION" value="null"/>
+        <env name="CACHE_STORE" value="array"/>
+        <env name="MAIL_MAILER" value="array"/>
+        <env name="QUEUE_CONNECTION" value="sync"/>
+        <env name="SESSION_DRIVER" value="array"/>
+        <env name="PULSE_ENABLED" value="false"/>
+        <env name="TELESCOPE_ENABLED" value="false"/>
+        <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- The application connects as role `app` through PgBouncer (transaction mode). -->
+        <env name="DB_CONNECTION" value="pgsql" force="true"/>
+        <env name="DB_URL" value="" force="true"/>
+        <env name="DB_HOST" value="127.0.0.1" force="true"/>
+        <env name="DB_PORT" value="56432" force="true"/>
+        <env name="DB_DATABASE" value="dashflow_test" force="true"/>
+        <env name="DB_USERNAME" value="app" force="true"/>
+        <env name="DB_PASSWORD" value="dashflow-test-app" force="true"/>
+        <!-- Migrations run as role `migrator` straight against PostgreSQL. -->
+        <env name="DB_MIGRATOR_HOST" value="127.0.0.1" force="true"/>
+        <env name="DB_MIGRATOR_PORT" value="55432" force="true"/>
+        <env name="DB_MIGRATOR_USERNAME" value="migrator" force="true"/>
+        <env name="DB_MIGRATOR_PASSWORD" value="dashflow-test-migrator" force="true"/>
+        <!-- Test-only access used to seed data and to inspect roles (bootstrap superuser). -->
+        <env name="DASHFLOW_TEST_PG_PORT" value="55432" force="true"/>
+        <env name="DASHFLOW_TEST_PGBOUNCER_PORT" value="56432" force="true"/>
+        <env name="DASHFLOW_TEST_SUPERUSER_PASSWORD" value="dashflow-test-postgres" force="true"/>
+        <env name="DASHFLOW_TEST_MAINTENANCE_PASSWORD" value="dashflow-test-maintenance" force="true"/>
+        <env name="DASHFLOW_TEST_PGBOUNCER_ADMIN_PASSWORD" value="dashflow-test-admin" force="true"/>
+    </php>
+</phpunit>

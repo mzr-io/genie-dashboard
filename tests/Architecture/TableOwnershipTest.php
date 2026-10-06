@@ -35,3 +35,29 @@ it('fails raw SQL on another module\'s table and names the file', function () us
         ->and($violations[0])->toContain('RawSql.php.stub')
         ->and($violations[0])->toContain('table blocks owned by Blocks');
 });
+
+it('lets only WorkspaceTransaction set the Workspace context in the real tree', function () {
+    expect((new Scanner)->workspaceContextViolations(dirname(__DIR__, 2).'/app'))->toBe([]);
+
+    $transaction = (string) file_get_contents(dirname(__DIR__, 2).'/app/Platform/Tenancy/WorkspaceTransaction.php');
+    expect($transaction)->toContain('set_config(?, ?, true)');
+});
+
+it('fails set_config outside WorkspaceTransaction and names the file', function () use ($fixtures) {
+    $violations = (new Scanner)->workspaceContextViolations("{$fixtures}/set-config/app");
+
+    expect($violations)->not->toBeEmpty()
+        ->and($violations[0])->toContain('RogueContext.php.stub')
+        ->and($violations[0])->toContain('only WorkspaceTransaction may');
+});
+
+it('allows set_config inside WorkspaceTransaction', function () use ($fixtures) {
+    expect((new Scanner)->workspaceContextViolations("{$fixtures}/set-config-clean/app"))->toBe([]);
+});
+
+it('exempts only app/Platform/Tenancy/WorkspaceTransaction.php, not a look-alike path', function () use ($fixtures) {
+    $violations = (new Scanner)->workspaceContextViolations("{$fixtures}/set-config-lookalike/app");
+
+    expect($violations)->not->toBeEmpty()
+        ->and($violations[0])->toContain('Modules/Dashboards/Platform/Tenancy/WorkspaceTransaction.php.stub');
+});

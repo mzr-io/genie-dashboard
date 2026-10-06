@@ -34,7 +34,7 @@ If your host already has PHP 8.5 with the extensions above, you can run the same
 
 ## Docker Compose stack
 
-One image runs five process roles, chosen by command: `web` (nginx and php-fpm), `realtime` (Reverb), `scheduler` (`schedule:run` each minute), `worker-connector` (Horizon on `fetch-interactive`, `fetch-scheduled`) and `worker-compute` (Horizon on `compute`, `outbox`, `notifications`, `maintenance`). PostgreSQL 18 and two Valkey 9 instances (`valkey-queue`, `valkey-cache`) back them, and a one-shot `migrator` runs `migrate --force` before any role starts.
+One image runs five process roles, chosen by command: `web` (nginx and php-fpm), `realtime` (Reverb), `scheduler` (`schedule:run` each minute), `worker-connector` (Horizon on `fetch-interactive`, `fetch-scheduled`) and `worker-compute` (Horizon on `compute`, `outbox`, `notifications`, `maintenance`). PostgreSQL 18 and two Valkey 9 instances (`valkey-queue`, `valkey-cache`) back them, and a one-shot `migrator` runs `migrate --force --database=migrator` before any role starts.
 
 ```sh
 export APP_KEY="$(bin/tools php artisan key:generate --show)"   # or keep APP_KEY in .env
@@ -49,7 +49,7 @@ docker compose ps
 
 Compose refuses to start if `APP_KEY` is missing. Health:
 
-- `GET /health/live` is always 200; `GET /health/ready` is 200 `{"status":"ok"}` or 503 naming the failing check (PostgreSQL, Valkey queue or Valkey cache).
+- `GET /health/live` is always 200; `GET /health/ready` is 200 `{"status":"ok"}` or 503 naming the failing check (PostgreSQL, PostgreSQL role, Valkey queue or Valkey cache).
 - Each role: `docker compose exec <role> php artisan dashflow:health <role>` exits non-zero and names the failing check on stderr. Every role checks PostgreSQL and both Valkey stores, each over its own connection as that role's ACL user; workers also check their Horizon master, the scheduler its heartbeat, web and realtime their listening port.
 
 Key purposes (AR-50) are mounted as placeholder files from `docker/dev-keys/` under `/run/secrets`: `web` gets `data` and `digest`; `worker-connector` gets `cred`, `token` and `data`; `worker-compute` gets `data`; `realtime` and `scheduler` get none. `tests/Architecture/ComposeKeysTest.php` enforces the mapping. Every scheduled task must use `onOneServer()`.
@@ -84,7 +84,43 @@ Rotating `APP_KEY` invalidates the signatures of jobs that are already queued: d
 
 ### Tunables and PgBouncer
 
-Every tunable of AR-57 is a named setting under `dashflow.tunables.<area>.<name>` in `config/dashflow.php`, read from a `DASHFLOW_*` environment variable and flagged `pending_input`: its `value` stays `null` until the environment supplies one. Only `dispatch_tick` (proposed 5 s) and `require_https` (off) have a value. `DB_PGBOUNCER=true` switches the PostgreSQL connection to transaction-mode pooling settings (`PDO::ATTR_EMULATE_PREPARES`); off leaves it unchanged. There is no PgBouncer service yet and tenant isolation under pooling is verified with row-level security in Story 1.10.
+Every tunable of AR-57 is a named setting under `dashflow.tunables.<area>.<name>` in `config/dashflow.php`, read from a `DASHFLOW_*` environment variable and flagged `pending_input`: its `value` stays `null` until the environment supplies one. Only `dispatch_tick` (proposed 5 s) and `require_https` (off) have a value. `DB_PGBOUNCER=true` switches the PostgreSQL connection to transaction-mode pooling settings (`PDO::ATTR_EMULATE_PREPARES`); off leaves it unchanged. The Compose stack has no PgBouncer service; tenant isolation under pooling is verified by the `Database` suite (see Workspace isolation).
+
+## Workspace isolation (row-level security)
+
+One shared schema. Every tenant table has a non-null `workspace_id`, `ENABLE` and `FORCE ROW LEVEL SECURITY` and the policy `workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid`, so with no Workspace context a query returns zero rows. (`nullif` is needed because PostgreSQL leaves an empty string, not NULL, in the setting after a transaction that used `set_config(..., true)`.) `workspaces` and `workspace_memberships` are the first tables; `workspaces` has no `workspace_id`, is a global table and is reachable only through the Access-owned `SECURITY DEFINER` function `access_user_memberships(user_id)`, the one cross-Workspace lookup (`App\Modules\Access\Contracts\MembershipLookup`).
+
+`App\Platform\Tenancy\WorkspaceTransaction` is the only opener of the request or job transaction and the only caller of `set_config(..., true)`; an architecture test fails naming any other file. It is middleware on the `web` and `api` groups (the active Workspace comes from the `workspace_id` session key, set by the sign-in and switcher stories) and job middleware for jobs that implement `WorkspaceScopedJob` and use `RunsInWorkspace`. Such a job carries `workspaceId` as a property of its serialised command, so the job signature covers it. Before it runs it re-reads the IDs it was given (`referencedIds()`) under row-level security; a missing ID fails the job without retry and logs `security.tenancy.workspace_mismatch` (IDs only). Cache keys, locks, queue names, object keys and channel names come from `TenantKey` and start with the Workspace ID; `TenantCache` discards a hit whose stored `workspace_id` differs.
+
+Database roles (created by `docker/postgres/initdb.sh` on the first start of an empty data directory; development passwords live in `compose.yaml`, override them with `POSTGRES_<ROLE>_PASSWORD`):
+
+| Role          | Use                                                                                                                                                                                                                                                                                                                                                         |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `migrator`    | owns every table; runs `migrate --database=migrator`; only the `migrator` service holds its password                                                                                                                                                                                                                                                        |
+| `app`         | runtime login of every other service; SELECT, INSERT, UPDATE on tenant tables, never DELETE there; DELETE only on the framework's global tables (`sessions`, `password_reset_tokens`, `personal_access_tokens`, `cache`, `cache_locks`, `jobs`, `job_batches`, `failed_jobs`) so logout, session GC and token revocation work; no privilege on `workspaces` |
+| `maintenance` | the only role with DELETE (retention sweeps); not used at runtime yet                                                                                                                                                                                                                                                                                       |
+| `system`      | dispatcher and outbox relay; no grants until the tables of later stories                                                                                                                                                                                                                                                                                    |
+| `operator`    | operator commands; no grants until the tables of later stories                                                                                                                                                                                                                                                                                              |
+
+No role except the bootstrap superuser (`POSTGRES_USER`) has BYPASSRLS, and `dashflow:health` reports `PostgreSQL role` as failed if the runtime role could bypass it. The migrations fail with a message naming any missing role. An existing `postgres-data` volume keeps its old roles: run `docker compose down -v` once to re-create it.
+
+Rules for code that runs in a Workspace:
+
+- A request whose response status is 400 or above is rolled back (writes made before a 403 or 422 are not kept).
+- The Workspace context is cleared before the transaction commits, so after-commit hooks run without a context and must re-enter one.
+- Jobs must not rely on `SerializesModels` for tenant models: they are restored before the Workspace context is set, so under RLS they are not found. Pass IDs and re-read them (`referencedIds()`). A job with a malformed Workspace ID is a mismatch too.
+- Key parts given to `TenantKey` cannot contain control characters, a `..` segment or a leading delimiter.
+
+Residual risk: row-level security guards against application bugs, not against hostile SQL. The `app` role can call `set_config` itself and can execute `access_user_memberships`, so against SQL injection or compromised application code isolation still relies on application-layer discipline.
+
+### Database suite
+
+The `Database` Pest suite (`tests/Database`, `phpunit.database.xml`) runs against a throwaway PostgreSQL 18 and PgBouncer 1.26 (`compose.test.yaml`: transaction pooling, one server connection, loopback ports 55432 and 56432). It covers roles and grants, per-table RLS and leak tests, `WorkspaceTransaction`, job re-entry and interleaved clients on one pooled server connection. Because the tools container has no Docker socket, `bin/tools` starts the containers on the host through `bin/test-db` around `composer ci:check` and `composer test:database`, then removes them (`DASHFLOW_KEEP_TEST_DB=1` keeps them). If they cannot start, the command fails; nothing is skipped. The suite refuses to run (it migrates fresh and truncates) unless it targets database `dashflow_test` on the test ports; `phpunit.database.xml` forces those values over any shell `DB_*`.
+
+```sh
+bin/tools composer test:database     # only the Database suite
+bin/test-db up                       # or start the containers yourself, then run composer test:database inside bin/tools
+```
 
 ## Observability
 
@@ -111,7 +147,8 @@ OTEL variables must be real process environment variables (as in Compose) for th
 | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
 | Pint (code style)                                                                            | `bin/tools composer lint:check`                               |
 | Larastan level 7                                                                             | `bin/tools composer types:check`                              |
-| Pest: unit, feature and architecture suites                                                  | `bin/tools vendor/bin/pest`                                   |
+| Pest: unit, feature and architecture suites (SQLite)                                         | `bin/tools vendor/bin/pest`                                   |
+| Pest: `Database` suite (PostgreSQL 18 and PgBouncer, started by `bin/test-db`)               | `bin/tools composer test:database`                            |
 | Architecture rules only                                                                      | `bin/tools vendor/bin/pest --testsuite=Architecture`          |
 | Lint, format and type check (Vue, TypeScript)                                                | `bin/tools npm run check` and `bin/tools npm run types:check` |
 | Vitest                                                                                       | `bin/tools npm test`                                          |

@@ -124,6 +124,35 @@ final class Scanner
     }
 
     /**
+     * Any file under `$appRoot` (not only modules and the kernel) that sets the Workspace context,
+     * other than WorkspaceTransaction: `set_config` calls and the `app.workspace_id` setting.
+     *
+     * @return list<string>
+     */
+    public function workspaceContextViolations(string $appRoot): array
+    {
+        $violations = [];
+
+        foreach ($this->files($appRoot) as $file) {
+            $relative = substr($file, strlen(rtrim($appRoot, '/')) + 1);
+
+            if (in_array($relative, ['Platform/Tenancy/WorkspaceTransaction.php', 'Platform/Tenancy/WorkspaceTransaction.php.stub'], true)) {
+                continue;
+            }
+
+            $code = $this->stripComments((string) file_get_contents($file));
+
+            if (preg_match_all('/set_config\b|app\.workspace_id/i', $code, $matches, PREG_OFFSET_CAPTURE)) {
+                foreach ($matches[0] as [$text, $offset]) {
+                    $violations[] = "{$file}:{$this->lineAt($code, $offset)} sets the Workspace context with {$text}; only WorkspaceTransaction may";
+                }
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
      * Migrations creating a non-global table without `workspace_id`.
      *
      * @return list<string>

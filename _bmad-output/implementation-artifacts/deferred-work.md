@@ -75,3 +75,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-9-build-dialogs-toasts-banners-popovers-and-live-regions.md`
   summary: Verify reduced-motion behaviour, focus trap, Esc handling and live-region speech for dialogs, sheets and toasts in a real browser (for example Playwright with axe).
   evidence: happy-dom does not evaluate `prefers-reduced-motion` or real focus trapping; the reduced-motion test only reads CSS text, so removing a `motion-safe:` class or overriding a rule would pass.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-10-isolate-each-workspace-with-row-level-security.md`
+  summary: Convert `users.id` and every dependent from bigint to UUIDv7 (AR-14): `sessions.user_id`, `workspace_memberships.user_id`, the `access_user_memberships(bigint)` function signature, the `::bigint` cast in the `membership_lookup` policy, `MembershipLookup::forUser(int)` and the `WorkspaceMembership` `user_id` property.
+  evidence: Story 1.10 keeps the starter kit's bigint `users.id` so it does not rewrite authentication; AR-14 requires every platform key to be a UUIDv7 with no sequential ID exposed, so the identity stories must convert it.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-10-isolate-each-workspace-with-row-level-security.md`
+  summary: Replace the default privileges in `docker/postgres/initdb.sh` with default-deny plus explicit per-table grants, and add a Database test that every global table has its expected grant list.
+  evidence: Default privileges give `app` INSERT and UPDATE (and `maintenance` SELECT) on every table `migrator` creates, including `migrations` and `users`, so a future migration must remember to REVOKE and no test enforces it.

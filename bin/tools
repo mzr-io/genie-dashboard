@@ -16,7 +16,20 @@ mkdir -p "$CACHE/composer" "$CACHE/npm"
 TTY=()
 [[ -t 0 && -t 1 ]] && TTY=(-t)
 
-exec docker run --rm -i "${TTY[@]}" \
+# `composer ci:check` and `composer test:database` need PostgreSQL 18 and PgBouncer. The tools container has
+# no Docker socket, so the host starts them first (bin/test-db) and tears them down afterwards.
+# If they cannot start, the command fails: there is no skip. DASHFLOW_KEEP_TEST_DB=1 leaves them running.
+WITH_DB=0
+if [[ "${1:-}" == "composer" && ( "${2:-}" == "ci:check" || "${2:-}" == "test:database" ) ]]; then
+    WITH_DB=1
+    # Registered before `up`, so a partial start is torn down too.
+    if [[ -z "${DASHFLOW_KEEP_TEST_DB:-}" ]]; then
+        trap '"$ROOT/bin/test-db" down >/dev/null 2>&1 || true' EXIT
+    fi
+    "$ROOT/bin/test-db" up
+fi
+
+RUN=(docker run --rm -i "${TTY[@]}" \
     --user "$(id -u):$(id -g)" \
     --network host \
     -e HOME=/tmp \
@@ -26,4 +39,10 @@ exec docker run --rm -i "${TTY[@]}" \
     -v "$ROOT:/app" \
     -v "$CACHE:/cache" \
     -w /app \
-    "$IMAGE" "$@"
+    "$IMAGE" "$@")
+
+if [[ "$WITH_DB" == 1 ]]; then
+    "${RUN[@]}"
+else
+    exec "${RUN[@]}"
+fi

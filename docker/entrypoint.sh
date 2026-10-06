@@ -45,7 +45,7 @@ case "$role" in
     exec php artisan horizon
     ;;
   migrate)
-    exec php artisan migrate --force
+    exec php artisan migrate --force --database=migrator
     ;;
   *)
     exec "$role" "$@"

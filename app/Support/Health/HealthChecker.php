@@ -20,6 +20,8 @@ final class HealthChecker
 {
     public const POSTGRESQL = 'PostgreSQL';
 
+    public const DATABASE_ROLE = 'PostgreSQL role';
+
     public const VALKEY_QUEUE = 'Valkey queue';
 
     public const VALKEY_CACHE = 'Valkey cache';
@@ -49,6 +51,22 @@ final class HealthChecker
         $checks = [
             self::POSTGRESQL => function (): void {
                 DB::connection(config('dashflow.health.connection'))->select('select 1');
+            },
+            // The runtime role must never be able to bypass row-level security (Story 1.10).
+            self::DATABASE_ROLE => function (): void {
+                $connection = DB::connection(config('dashflow.health.connection'));
+
+                if ($connection->getDriverName() !== 'pgsql') {
+                    return;
+                }
+
+                $role = $connection->selectOne(
+                    'select rolname, rolsuper, rolbypassrls from pg_roles where rolname = current_user',
+                );
+
+                if ($role === null || $role->rolsuper || $role->rolbypassrls) {
+                    throw new \RuntimeException('database role can bypass row-level security');
+                }
             },
         ];
 

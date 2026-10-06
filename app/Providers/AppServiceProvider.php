@@ -2,6 +2,10 @@
 
 namespace App\Providers;
 
+use App\Modules\Access\Contracts\MembershipLookup;
+use App\Modules\Access\Infrastructure\SecurityDefinerMembershipLookup;
+use App\Platform\Tenancy\TenantCache;
+use App\Platform\Tenancy\WorkspaceContext;
 use App\Support\Observability\OtelBootstrap;
 use App\Support\Observability\QueueContext;
 use App\Support\Observability\RequestContext;
@@ -27,6 +31,9 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(RequestContext::class);
+        $this->app->singleton(WorkspaceContext::class);
+        $this->app->bind(MembershipLookup::class, SecurityDefinerMembershipLookup::class);
+        $this->app->bind(TenantCache::class, fn ($app) => new TenantCache($app['cache']->store()));
         $this->app->singleton(JobSigner::class, fn ($app) => new JobSigner((string) $app['config']->get('app.key')));
 
         // Registered after Horizon's own, so this connector wins: every Redis queue signs its payloads.

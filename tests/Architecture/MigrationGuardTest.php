@@ -9,7 +9,7 @@ it('limits global tables to the agreed list', function () {
 
     expect($global)->toEqualCanonicalizing([
         'users', 'sessions', 'password_reset_tokens', 'invitations',
-        'service_health_samples', 'operator_audit', 'personal_access_tokens',
+        'service_health_samples', 'operator_audit', 'personal_access_tokens', 'workspaces',
         'jobs', 'job_batches', 'failed_jobs', 'cache', 'cache_locks',
     ]);
 });

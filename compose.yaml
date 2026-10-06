@@ -16,8 +16,9 @@ x-app-env: &app-env
     DB_HOST: postgres
     DB_PORT: '5432'
     DB_DATABASE: ${POSTGRES_DB:-dashflow}
-    DB_USERNAME: ${POSTGRES_USER:-dashflow}
-    DB_PASSWORD: ${POSTGRES_PASSWORD:-dashflow}
+    # Every service connects as the least-privilege `app` role (no BYPASSRLS, no DELETE).
+    DB_USERNAME: app
+    DB_PASSWORD: ${POSTGRES_APP_PASSWORD:-dashflow-dev-app}
     REDIS_CLIENT: phpredis
     # Valkey: two instances over TLS. Each role adds its own VALKEY_USERNAME / VALKEY_PASSWORD.
     VALKEY_QUEUE_HOST: valkey-queue
@@ -109,13 +110,20 @@ services:
             POSTGRES_DB: ${POSTGRES_DB:-dashflow}
             POSTGRES_USER: ${POSTGRES_USER:-dashflow}
             POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dashflow}
+            # Role passwords for docker/postgres/initdb.sh (development values; set real ones in the environment).
+            POSTGRES_MIGRATOR_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:-dashflow-dev-migrator}
+            POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-dashflow-dev-app}
+            POSTGRES_MAINTENANCE_PASSWORD: ${POSTGRES_MAINTENANCE_PASSWORD:-dashflow-dev-maintenance}
+            POSTGRES_SYSTEM_PASSWORD: ${POSTGRES_SYSTEM_PASSWORD:-dashflow-dev-system}
+            POSTGRES_OPERATOR_PASSWORD: ${POSTGRES_OPERATOR_PASSWORD:-dashflow-dev-operator}
         volumes:
             - postgres-data:/var/lib/postgresql
+            - ./docker/postgres/initdb.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
         healthcheck:
             test:
                 [
                     'CMD-SHELL',
-                    'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}',
+                    'pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}',
                 ]
             interval: 5s
             timeout: 5s
@@ -162,7 +170,11 @@ services:
         <<: *app
         command: ['migrate']
         restart: 'no'
-        environment: *app-env
+        # Only this service holds the `migrator` credentials; it runs `migrate --database=migrator`.
+        environment:
+            <<: *app-env
+            DB_MIGRATOR_USERNAME: migrator
+            DB_MIGRATOR_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:-dashflow-dev-migrator}
         # migrate needs PostgreSQL only; it holds no Valkey credentials.
         depends_on:
             postgres:

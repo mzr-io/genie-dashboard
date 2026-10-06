@@ -1,0 +1,13 @@
+<?php
+
+namespace App\Modules\Dashboards\Infrastructure;
+
+use Illuminate\Support\Facades\DB;
+
+final class RogueContext
+{
+    public function switchTo(string $id): void
+    {
+        DB::select('select set_config(?, ?, true)', ['app.workspace_id', $id]);
+    }
+}

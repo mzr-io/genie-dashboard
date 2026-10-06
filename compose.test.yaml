@@ -1,0 +1,51 @@
+# Throwaway PostgreSQL 18 and PgBouncer for the `Database` Pest suite (Story 1.10).
+# Started on the host by bin/test-db, because the tools container has no Docker socket.
+# Test-only passwords; the ports bind to loopback only.
+
+name: dashflow-test
+
+services:
+    postgres:
+        image: postgres:18-alpine
+        environment:
+            POSTGRES_DB: dashflow_test
+            POSTGRES_USER: postgres
+            POSTGRES_PASSWORD: dashflow-test-postgres
+            POSTGRES_MIGRATOR_PASSWORD: dashflow-test-migrator
+            POSTGRES_APP_PASSWORD: dashflow-test-app
+            POSTGRES_MAINTENANCE_PASSWORD: dashflow-test-maintenance
+            POSTGRES_SYSTEM_PASSWORD: dashflow-test-system
+            POSTGRES_OPERATOR_PASSWORD: dashflow-test-operator
+        volumes:
+            - ./docker/postgres/initdb.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+        ports:
+            - '127.0.0.1:${DASHFLOW_TEST_PG_PORT:-55432}:5432'
+        tmpfs:
+            - /var/lib/postgresql
+        healthcheck:
+            test:
+                [
+                    'CMD-SHELL',
+                    'pg_isready -h 127.0.0.1 -U postgres -d dashflow_test',
+                ]
+            interval: 2s
+            timeout: 3s
+            retries: 30
+
+    pgbouncer:
+        # Pinned: transaction mode with protocol-level prepared statements needs 1.21 or later.
+        image: edoburu/pgbouncer:v1.26.0-p0
+        entrypoint: ['/usr/bin/pgbouncer', '/etc/pgbouncer/pgbouncer.ini']
+        volumes:
+            - ./docker/test/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+            - ./docker/test/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+        ports:
+            - '127.0.0.1:${DASHFLOW_TEST_PGBOUNCER_PORT:-56432}:6432'
+        depends_on:
+            postgres:
+                condition: service_healthy
+        healthcheck:
+            test: ['CMD-SHELL', 'nc -z 127.0.0.1 6432']
+            interval: 2s
+            timeout: 3s
+            retries: 30
