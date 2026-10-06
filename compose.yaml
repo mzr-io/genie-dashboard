@@ -1,0 +1,168 @@
+# Local, demo and production-like stack: one image, five process roles.
+#   docker compose up --build
+# APP_KEY is required (generate one with: bin/tools php artisan key:generate --show).
+
+name: dashflow
+
+x-app-env: &app-env
+    APP_NAME: Dashflow
+    APP_ENV: ${DASHFLOW_ENV:-production}
+    APP_DEBUG: ${DASHFLOW_DEBUG:-false}
+    APP_KEY: '${APP_KEY:?APP_KEY is required - run bin/tools php artisan key:generate --show, then export it or add it to .env}'
+    APP_URL: ${DASHFLOW_APP_URL:-http://localhost:8080}
+    LOG_CHANNEL: stderr
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    DB_CONNECTION: pgsql
+    DB_HOST: postgres
+    DB_PORT: '5432'
+    DB_DATABASE: ${POSTGRES_DB:-dashflow}
+    DB_USERNAME: ${POSTGRES_USER:-dashflow}
+    DB_PASSWORD: ${POSTGRES_PASSWORD:-dashflow}
+    REDIS_CLIENT: phpredis
+    REDIS_HOST: valkey
+    REDIS_PORT: '6379'
+    QUEUE_CONNECTION: redis
+    CACHE_STORE: redis
+    SESSION_DRIVER: database
+    BROADCAST_CONNECTION: reverb
+    REVERB_APP_ID: ${REVERB_APP_ID:-dashflow-dev}
+    REVERB_APP_KEY: ${REVERB_APP_KEY:-dashflow-dev-key}
+    REVERB_APP_SECRET: ${REVERB_APP_SECRET:-dashflow-dev-secret}
+    REVERB_HOST: ${REVERB_HOST:-localhost}
+    REVERB_PORT: ${REVERB_PORT:-8081}
+    REVERB_SCHEME: ${REVERB_SCHEME:-http}
+    REVERB_SERVER_HOST: 0.0.0.0
+    REVERB_SERVER_PORT: '8081'
+    REVERB_SCALING_ENABLED: 'true'
+    MAIL_MAILER: log
+
+x-app: &app
+    image: ${DASHFLOW_IMAGE:-dashflow-app:local}
+    build:
+        context: .
+        dockerfile: docker/Dockerfile
+    init: true
+    restart: unless-stopped
+    environment: *app-env
+    depends_on:
+        postgres:
+            condition: service_healthy
+        valkey:
+            condition: service_healthy
+        migrator:
+            condition: service_completed_successfully
+
+services:
+    postgres:
+        image: postgres:18-alpine
+        environment:
+            POSTGRES_DB: ${POSTGRES_DB:-dashflow}
+            POSTGRES_USER: ${POSTGRES_USER:-dashflow}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dashflow}
+        volumes:
+            - postgres-data:/var/lib/postgresql
+        healthcheck:
+            test:
+                [
+                    'CMD-SHELL',
+                    'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}',
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 20
+
+    valkey:
+        image: valkey/valkey:9-alpine
+        healthcheck:
+            test: ['CMD', 'valkey-cli', 'ping']
+            interval: 5s
+            timeout: 3s
+            retries: 20
+
+    migrator:
+        <<: *app
+        command: ['migrate']
+        restart: 'no'
+        depends_on:
+            postgres:
+                condition: service_healthy
+            valkey:
+                condition: service_healthy
+
+    web:
+        <<: *app
+        command: ['web']
+        ports:
+            - '127.0.0.1:${DASHFLOW_WEB_HOST_PORT:-8080}:8080'
+        secrets:
+            - key-data
+            - key-digest
+        healthcheck:
+            test: ['CMD', 'php', 'artisan', 'dashflow:health', 'web']
+            interval: 15s
+            timeout: 10s
+            retries: 3
+            start_period: 20s
+
+    realtime:
+        <<: *app
+        command: ['realtime']
+        ports:
+            - '127.0.0.1:${DASHFLOW_REALTIME_HOST_PORT:-8081}:8081'
+        healthcheck:
+            test: ['CMD', 'php', 'artisan', 'dashflow:health', 'realtime']
+            interval: 15s
+            timeout: 10s
+            retries: 3
+            start_period: 20s
+
+    scheduler:
+        <<: *app
+        command: ['scheduler']
+        healthcheck:
+            test: ['CMD', 'php', 'artisan', 'dashflow:health', 'scheduler']
+            interval: 15s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+
+    worker-connector:
+        <<: *app
+        command: ['worker-connector']
+        secrets:
+            - key-cred
+            - key-token
+            - key-data
+        healthcheck:
+            test:
+                ['CMD', 'php', 'artisan', 'dashflow:health', 'worker-connector']
+            interval: 15s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+
+    worker-compute:
+        <<: *app
+        command: ['worker-compute']
+        secrets:
+            - key-data
+        healthcheck:
+            test: ['CMD', 'php', 'artisan', 'dashflow:health', 'worker-compute']
+            interval: 15s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+
+# Key purposes (AR-50) as placeholder files only; real keys never enter the repo.
+secrets:
+    key-data:
+        file: ./docker/dev-keys/data.placeholder
+    key-digest:
+        file: ./docker/dev-keys/digest.placeholder
+    key-cred:
+        file: ./docker/dev-keys/cred.placeholder
+    key-token:
+        file: ./docker/dev-keys/token.placeholder
+
+volumes:
+    postgres-data:

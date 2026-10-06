@@ -37,3 +37,9 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-2-enforce-architecture-and-quality-gates-in-ci.md`
   summary: When Story 1.10 creates the `workspaces` tenant-root table, add it to the global-table list (or give the migration guard a tenant-root exemption).
   evidence: `workspaces` has no `workspace_id` column and is not in the agreed list, so the guard would fail that migration; Story 1.10 already says `workspaces` is handled as a global table.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-run-all-five-process-roles-locally-with-docker-compose.md`
+  summary: Production hardening of the Compose stack and health probes: image digests; throttle/cache on `/health/ready`; statement and Redis read timeouts for probes; per-host scheduler heartbeat and start-time check; refuse default `POSTGRES_PASSWORD`/`REVERB_APP_SECRET` when `APP_ENV=production`; Reverb `allowed_origins` from env; `APP_KEY` not required for `compose down/ps`.
+  evidence: Raised by the three reviewers; none breaks the local or demo stack, all matter before Epic 9 production hardening.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-3-run-all-five-process-roles-locally-with-docker-compose.md`
+  summary: Jobs and broadcasts sent to the `default` queue have no consumer; decide the queue for Reverb broadcasts and notifications (Story 1.5 queue design) and add tests for the heartbeat schedule, the connector/compute queue split and entrypoint behaviour.
+  evidence: `config/horizon.php` supervisors list only the named queues from the spec.
