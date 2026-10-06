@@ -94,6 +94,9 @@
             "@types:check",
             "@php artisan test"
         ],
+        "error-codes": [
+            "@php artisan dashflow:error-codes"
+        ],
         "test:database": [
             "@php artisan config:clear --ansi",
             "pest --configuration=phpunit.database.xml"

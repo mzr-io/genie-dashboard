@@ -2,6 +2,7 @@
 
 namespace App\Support\Observability;
 
+use App\Platform\Contracts\ErrorCode;
 use Illuminate\Auth\AuthenticationException;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
@@ -15,9 +16,9 @@ use Throwable;
 final class ApiErrorRenderer
 {
     private const CODES = [
-        401 => 'unauthenticated', 403 => 'forbidden', 404 => 'not_found', 405 => 'method_not_allowed',
-        419 => 'csrf_token_mismatch', 422 => 'validation_failed', 429 => 'too_many_requests',
-        500 => 'server_error',
+        401 => ErrorCode::Unauthenticated, 403 => ErrorCode::Forbidden, 404 => ErrorCode::NotFound,
+        405 => ErrorCode::MethodNotAllowed, 419 => ErrorCode::CsrfTokenMismatch, 422 => ErrorCode::ValidationFailed,
+        429 => ErrorCode::TooManyRequests, 500 => ErrorCode::ServerError,
     ];
 
     public static function render(Throwable $e, Request $request): ?JsonResponse
@@ -46,7 +47,7 @@ final class ApiErrorRenderer
         }
 
         $error = [
-            'code' => 'platform.'.(self::CODES[$status] ?? 'http_'.$status),
+            'code' => (self::CODES[$status] ?? ErrorCode::HttpError)->value,
             'message' => Response::$statusTexts[$status] ?? 'Error',
             'request_id' => $request->attributes->get('request_id')
                 ?? app(RequestContext::class)->requestId(),

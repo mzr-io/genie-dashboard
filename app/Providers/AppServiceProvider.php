@@ -3,7 +3,12 @@
 namespace App\Providers;
 
 use App\Modules\Access\Contracts\MembershipLookup;
+use App\Modules\Access\Infrastructure\AccessAuditSerializer;
 use App\Modules\Access\Infrastructure\SecurityDefinerMembershipLookup;
+use App\Modules\Identity\Infrastructure\IdentityAuditSerializer;
+use App\Platform\Audit\AuditHasher;
+use App\Platform\Audit\AuditSerializers;
+use App\Platform\Outbox\OutboxConsumers;
 use App\Platform\Tenancy\TenantCache;
 use App\Platform\Tenancy\WorkspaceContext;
 use App\Support\Observability\OtelBootstrap;
@@ -32,6 +37,9 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(RequestContext::class);
         $this->app->singleton(WorkspaceContext::class);
+        $this->app->singleton(AuditHasher::class, fn ($app) => new AuditHasher((string) $app['config']->get('app.key')));
+        $this->app->singleton(AuditSerializers::class);
+        $this->app->singleton(OutboxConsumers::class);
         $this->app->bind(MembershipLookup::class, SecurityDefinerMembershipLookup::class);
         $this->app->bind(TenantCache::class, fn ($app) => new TenantCache($app['cache']->store()));
         $this->app->singleton(JobSigner::class, fn ($app) => new JobSigner((string) $app['config']->get('app.key')));
@@ -51,6 +59,11 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        // Each module registers its audit allowlist with the kernel (the kernel calls no module).
+        $serializers = $this->app->make(AuditSerializers::class);
+        $serializers->register(new AccessAuditSerializer);
+        $serializers->register(new IdentityAuditSerializer);
 
         QueueContext::register($this->app->make(RequestContext::class), $this->app->make('events'));
         JobSignatureGuard::register($this->app, $this->app->make('events'));

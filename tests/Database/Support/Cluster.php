@@ -92,6 +92,12 @@ final class Cluster
         return self::connect('app', (string) env('DB_PASSWORD'), self::postgresPort());
     }
 
+    /** Role `system` straight to PostgreSQL. */
+    public static function system(): PDO
+    {
+        return self::connect('system', 'dashflow-test-system', self::postgresPort());
+    }
+
     public static function maintenance(): PDO
     {
         return self::connect('maintenance', (string) env('DASHFLOW_TEST_MAINTENANCE_PASSWORD'), self::postgresPort());
@@ -204,8 +210,38 @@ final class Cluster
     {
         return match ($table) {
             'workspace_memberships' => self::seedMembership($workspaceId),
+            'audit_events' => self::seedAudit($workspaceId),
+            'outbox_events' => self::seedOutbox($workspaceId),
+            'outbox_consumptions' => self::seedConsumption($workspaceId),
             default => null,
         };
+    }
+
+    private static function seedAudit(string $workspaceId): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO audit_events (id, workspace_id, action, occurred_at) VALUES (?, ?, 'access.role.changed', now())")
+            ->execute([$id, $workspaceId]);
+
+        return $id;
+    }
+
+    public static function seedOutbox(string $workspaceId, ?string $subject = null, int $seq = 1): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO outbox_events (id, workspace_id, type, v, subject, subject_seq, occurred_at, data) VALUES (?, ?, 'access.role.changed', 1, ?, ?, now(), '{}')")
+            ->execute([$id, $workspaceId, $subject ?? 'membership:'.Str::uuid7(), $seq]);
+
+        return $id;
+    }
+
+    private static function seedConsumption(string $workspaceId): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO outbox_consumptions (id, workspace_id, consumer, event_id, subject, subject_seq, applied, consumed_at) VALUES (?, ?, 'test.consumer', ?, 'membership:1', 1, true, now())")
+            ->execute([$id, $workspaceId, (string) Str::uuid7()]);
+
+        return $id;
     }
 
     private static function seedMembership(string $workspaceId): string

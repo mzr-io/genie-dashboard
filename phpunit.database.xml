@@ -41,6 +41,12 @@
         <env name="DB_DATABASE" value="dashflow_test" force="true"/>
         <env name="DB_USERNAME" value="app" force="true"/>
         <env name="DB_PASSWORD" value="dashflow-test-app" force="true"/>
+        <!-- Security audit events and the outbox relay hold their own connections, straight to PostgreSQL. -->
+        <env name="DB_SECURITY_PORT" value="55432" force="true"/>
+        <env name="DB_SYSTEM_HOST" value="127.0.0.1" force="true"/>
+        <env name="DB_SYSTEM_PORT" value="55432" force="true"/>
+        <env name="DB_SYSTEM_USERNAME" value="system" force="true"/>
+        <env name="DB_SYSTEM_PASSWORD" value="dashflow-test-system" force="true"/>
         <!-- Migrations run as role `migrator` straight against PostgreSQL. -->
         <env name="DB_MIGRATOR_HOST" value="127.0.0.1" force="true"/>
         <env name="DB_MIGRATOR_PORT" value="55432" force="true"/>

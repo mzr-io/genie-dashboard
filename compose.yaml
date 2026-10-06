@@ -42,6 +42,9 @@ x-app-env: &app-env
     REVERB_SERVER_PORT: '8081'
     REVERB_SCALING_ENABLED: 'true'
     DB_PGBOUNCER: ${DB_PGBOUNCER:-false}
+    # Security audit events use their own `app` connection, straight to PostgreSQL (not through a pooler).
+    DB_SECURITY_HOST: postgres
+    DB_SECURITY_PORT: '5432'
     MAIL_MAILER: log
     # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
     OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
@@ -257,6 +260,11 @@ services:
             <<: *app-env
             VALKEY_USERNAME: worker-compute
             VALKEY_PASSWORD: ${VALKEY_PASSWORD_WORKER_COMPUTE:-dashflow-dev-worker-compute}
+            # Only this service holds the `system` credentials: the outbox relay runs as that role.
+            DB_SYSTEM_HOST: postgres
+            DB_SYSTEM_PORT: '5432'
+            DB_SYSTEM_USERNAME: system
+            DB_SYSTEM_PASSWORD: ${POSTGRES_SYSTEM_PASSWORD:-dashflow-dev-system}
         secrets:
             - key-data
         healthcheck:

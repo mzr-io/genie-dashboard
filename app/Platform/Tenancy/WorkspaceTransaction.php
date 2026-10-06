@@ -132,7 +132,7 @@ final class WorkspaceTransaction
         }
 
         return $connection->transaction(function () use ($connection, $workspaceId, $callback): mixed {
-            $connection->select('select set_config(?, ?, true)', ['app.workspace_id', $workspaceId]);
+            $this->setContext($connection, $workspaceId);
             $this->context->swap($workspaceId);
 
             try {
@@ -141,6 +141,44 @@ final class WorkspaceTransaction
                 $this->context->swap(null);
             }
         });
+    }
+
+    /**
+     * Runs `$callback` in its own transaction on a second, named connection that sets its own Workspace
+     * context. PostgreSQL has no autonomous transactions: what the callback writes commits on its own
+     * connection, whatever later happens to the caller's transaction (used for security events).
+     * The Workspace context holder is untouched, since the caller's transaction still owns it.
+     *
+     * @template T
+     *
+     * @param  Closure(Connection): T  $callback
+     * @return T
+     */
+    public function runIsolated(string $connectionName, string $workspaceId, Closure $callback): mixed
+    {
+        $workspaceId = TenantKey::workspace($workspaceId);
+
+        /** @var Connection $connection */
+        $connection = $this->db->connection($connectionName);
+
+        if ($connection->getDriverName() !== 'pgsql') {
+            throw new RuntimeException('Workspace context requires PostgreSQL.');
+        }
+
+        if ($connection === $this->db->connection()) {
+            throw new LogicException('An isolated transaction needs a connection other than the default one.');
+        }
+
+        return $connection->transaction(function () use ($connection, $workspaceId, $callback): mixed {
+            $this->setContext($connection, $workspaceId);
+
+            return $callback($connection);
+        });
+    }
+
+    private function setContext(Connection $connection, string $workspaceId): void
+    {
+        $connection->select('select set_config(?, ?, true)', ['app.workspace_id', $workspaceId]);
     }
 
     private function requestWorkspace(Request $request): ?string

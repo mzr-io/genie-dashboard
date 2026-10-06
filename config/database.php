@@ -159,6 +159,53 @@ return [
             ],
         ],
 
+        /*
+        | Second connection of the `app` role, used only by Audit::recordSecurityEvent: PostgreSQL has no
+        | autonomous transactions, so a security event commits here whatever happens to the caller's
+        | transaction. Behind PgBouncer give it a pool of its own (DB_SECURITY_*), or the caller's server
+        | connection would be waited on.
+        */
+        'security_audit' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_SECURITY_URL'),
+            'host' => env('DB_SECURITY_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('DB_SECURITY_PORT', env('DB_PORT', '5432')),
+            'database' => env('DB_SECURITY_DATABASE', env('DB_DATABASE', 'laravel')),
+            'username' => env('DB_SECURITY_USERNAME', env('DB_USERNAME', 'root')),
+            'password' => env('DB_SECURITY_PASSWORD', env('DB_PASSWORD', '')),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'options' => [
+                PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT', 5),
+            ] + ($pgbouncer ? [PDO::ATTR_EMULATE_PREPARES => true] : []),
+        ],
+
+        /*
+        | The outbox relay's role (`system`): column-limited access to outbox_events, never BYPASSRLS.
+        | Only the worker-compute service is given DB_SYSTEM_*. It connects straight to PostgreSQL: the relay
+        | holds row locks while it delivers, so it must not share a pooled server connection with `app`.
+        */
+        'system' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_SYSTEM_URL'),
+            'host' => env('DB_SYSTEM_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('DB_SYSTEM_PORT', env('DB_PORT', '5432')),
+            'database' => env('DB_SYSTEM_DATABASE', env('DB_DATABASE', 'laravel')),
+            'username' => env('DB_SYSTEM_USERNAME', 'system'),
+            'password' => env('DB_SYSTEM_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'options' => [
+                PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT', 5),
+            ],
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),

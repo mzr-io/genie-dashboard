@@ -5,7 +5,7 @@
 #   migrator     owns every object, runs migrations; no BYPASSRLS
 #   app          the runtime login of every service; SELECT, INSERT, UPDATE only; no BYPASSRLS
 #   maintenance  the only role with DELETE (retention sweeps); no BYPASSRLS
-#   system       dispatcher and outbox relay; column grants arrive with the tables of later stories
+#   system       dispatcher and outbox relay; its column grants and policy come with the tables (migrations)
 #   operator     operator commands; grants arrive with the tables of later stories
 #
 # No role except the bootstrap superuser has BYPASSRLS. Passwords come from the environment;
