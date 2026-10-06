@@ -8,17 +8,21 @@ use App\Modules\Identity\Application\ResetPassword;
 use App\Modules\Identity\Http\NewPasswordController;
 use App\Modules\Identity\Http\PasswordResetLinkController;
 use App\Modules\Identity\Http\ResetRequestThrottle;
+use App\Modules\Identity\Http\SignedOutResponse;
 use App\Modules\Identity\Http\SignInPipe;
 use App\Modules\Identity\Http\SignInResponse;
 use App\Modules\Identity\Http\SignInThrottle;
+use App\Modules\Identity\Http\SignOutController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Laravel\Fortify\Contracts\LoginResponse;
+use Laravel\Fortify\Contracts\LogoutResponse;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
+use Laravel\Fortify\Http\Controllers\AuthenticatedSessionController as FortifyAuthenticatedSessionController;
 use Laravel\Fortify\Http\Controllers\NewPasswordController as FortifyNewPasswordController;
 use Laravel\Fortify\Http\Controllers\PasswordResetLinkController as FortifyPasswordResetLinkController;
 
@@ -31,6 +35,10 @@ class FortifyServiceProvider extends ServiceProvider
     {
         // Where a successful sign-in lands: the Overview of the chosen area (Story 1.13).
         $this->app->singleton(LoginResponse::class, SignInResponse::class);
+
+        // Sign out is audited, rotates then destroys the session and lands on the sign-in page (Story 1.16).
+        $this->app->bind(FortifyAuthenticatedSessionController::class, SignOutController::class);
+        $this->app->singleton(LogoutResponse::class, SignedOutResponse::class);
 
         // The reset request and reset steps keep Fortify's routes, broker and views but answer without
         // revealing whether an account exists (Story 1.14).

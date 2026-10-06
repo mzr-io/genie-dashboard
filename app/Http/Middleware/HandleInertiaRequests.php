@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Http\Navigation\ShellNavigation;
 use Illuminate\Http\Request;
 use Inertia\Middleware;
 
@@ -41,7 +42,8 @@ class HandleInertiaRequests extends Middleware
             'auth' => [
                 'user' => $request->user(),
             ],
-            'sidebarOpen' => ! $request->hasCookie('sidebar_state') || $request->cookie('sidebar_state') === 'true',
+            // The two-area shell's navigation model; lazy, so it is built inside the request's Workspace transaction.
+            'shell' => fn () => $request->user() === null ? null : app(ShellNavigation::class)->for($request),
         ];
     }
 }

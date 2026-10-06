@@ -19,7 +19,8 @@ const emits = defineEmits<{
   "update:open": [open: boolean]
 }>()
 
-const isMobile = useMediaQuery("(max-width: 768px)")
+// Below 640px the sidebar is the overlay sheet (reflow-stack-below); wider, it is the sidebar or the icon rail.
+const isMobile = useMediaQuery("(max-width: 639px)")
 const openMobile = ref(false)
 
 const open = useVModel(props, "open", emits, {

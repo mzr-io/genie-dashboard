@@ -8,13 +8,14 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { shellPages } from '@/locales/labels';
 import { edit } from '@/routes/profile';
 
 defineOptions({
     layout: {
         breadcrumbs: [
             {
-                title: 'Profile settings',
+                title: shellPages.profile.title,
                 href: edit(),
             },
         ],
@@ -26,9 +27,9 @@ const user = computed(() => page.props.auth.user);
 </script>
 
 <template>
-    <Head title="Profile settings" />
+    <Head :title="shellPages.profile.title" />
 
-    <h1 class="sr-only">Profile settings</h1>
+    <h1 class="sr-only">{{ shellPages.profile.title }}</h1>
 
     <div class="flex flex-col space-y-6">
         <Heading

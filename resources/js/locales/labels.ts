@@ -134,10 +134,132 @@ export const passwordResetLabels = {
         "We couldn't submit this. Check your connection, reload the page and try again.",
 } as const;
 
-// Labels of the placeholder pages that Stories 1.16, 1.18 and 1.19 replace.
+// Label of the guest Help & support placeholder that Story 1.18 replaces.
 export const placeholderLabels = {
-    adminOverview: 'Admin overview',
     help: 'Help & support',
+} as const;
+
+// The pages of the two-area shell (Story 1.16): the navigation title, what the page lists and the action
+// that fills it. `msg:list-empty` is "No {items} yet. {action} to start."; the Overview and Admin overview
+// subtitles come from `msg:page-subtitles`. Titles are shared by the sidebar, the breadcrumb and the page.
+export const shellPages = {
+    overview: {
+        title: 'Overview',
+        items: 'dashboards',
+        action: 'Create a dashboard',
+    },
+    'my-dashboards': {
+        title: 'My dashboards',
+        items: 'dashboards',
+        action: 'Create a dashboard',
+    },
+    templates: {
+        title: 'Templates',
+        items: 'templates',
+        action: 'Use a template',
+    },
+    profile: {
+        title: 'Profile & settings',
+        items: 'settings',
+        action: 'Update your profile',
+    },
+    help: {
+        title: 'Help & support',
+        items: 'help topics',
+        action: 'Ask your workspace admin',
+    },
+    'admin-overview': {
+        title: 'Admin overview',
+        items: 'activity',
+        action: 'Create a block',
+    },
+    'block-management': {
+        title: 'Block management',
+        items: 'blocks',
+        action: 'Create a block',
+    },
+    'create-block': {
+        title: 'Create block',
+        items: 'blocks',
+        action: 'Start a block',
+    },
+    'draft-blocks': {
+        title: 'Draft blocks',
+        items: 'draft blocks',
+        action: 'Create a block',
+    },
+    'published-blocks': {
+        title: 'Published blocks',
+        items: 'published blocks',
+        action: 'Publish a block',
+    },
+    'block-categories': {
+        title: 'Block categories',
+        items: 'block categories',
+        action: 'Add a category',
+    },
+    'dashboard-templates': {
+        title: 'Dashboard templates',
+        items: 'dashboard templates',
+        action: 'Create a template',
+    },
+    'data-sources': {
+        title: 'Data sources',
+        items: 'data sources',
+        action: 'Register a data source',
+    },
+    'user-configuration': {
+        title: 'User configuration',
+        items: 'users',
+        action: 'Invite a user',
+    },
+    'system-settings': {
+        title: 'System settings',
+        items: 'settings',
+        action: 'Change a setting',
+    },
+    'audit-log': {
+        title: 'Audit log',
+        items: 'audit events',
+        action: 'Make a change',
+    },
+} as const;
+
+export type ShellPageKey = keyof typeof shellPages;
+
+// Labels of the shell: sidebar, icon rail, top bar and profile menu (Story 1.16; UX-DR-79..86, 160, 270).
+export const shellLabels = {
+    product: 'Dashflow',
+    sectionUser: 'WORKSPACE',
+    sectionAdmin: 'ADMINISTRATION',
+    navigation: 'Main navigation',
+    workspace: 'Workspace',
+    signOut: 'Sign out',
+    signOutFailed: "We couldn't sign you out. Try again.",
+    help: 'Help & support',
+    profileMenu: (name: string) => `Account menu for ${name}`,
+    profileSettings: 'Profile & settings',
+    securitySettings: 'Security settings',
+    roleAdmin: 'Admin',
+    roleUser: 'User',
+    roleIn: (role: string, workspace: string) => `${role} in ${workspace}`,
+    openNavigation: 'Open navigation',
+    closeNavigation: 'Close navigation',
+    sidebarSheetTitle: 'Navigation',
+    sidebarSheetDescription: 'Pages of your workspace.',
+    settings: 'Settings',
+    back: 'Back',
+    breadcrumb: 'Breadcrumb',
+    search: 'Search',
+    searchShortcut: '⌘K',
+    searchReason: 'Search is not available yet.',
+    notifications: 'Notifications',
+    notificationsReason: 'Notifications are not available yet.',
+    createBlock: '+ Create block',
+    pageContent: 'Page content',
+    retry: 'Retry',
+    loadFailed: (items: string) => `We couldn't load ${items}. Try again.`,
+    loadingItems: (items: string) => `Loading ${items}`,
 } as const;
 
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after

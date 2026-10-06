@@ -10,6 +10,14 @@ class DashboardTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // Page components are resolved from the Vite manifest, which a build may not have refreshed.
+        $this->withoutVite();
+    }
+
     public function test_guests_are_redirected_to_the_login_page()
     {
         $response = $this->get(route('overview'));

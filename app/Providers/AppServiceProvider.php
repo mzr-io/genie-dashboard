@@ -3,8 +3,10 @@
 namespace App\Providers;
 
 use App\Modules\Access\Contracts\MembershipLookup;
+use App\Modules\Access\Contracts\MembershipPermissions;
 use App\Modules\Access\Infrastructure\AccessAuditSerializer;
 use App\Modules\Access\Infrastructure\AdminMembershipGranter;
+use App\Modules\Access\Infrastructure\EloquentMembershipPermissions;
 use App\Modules\Access\Infrastructure\SecurityDefinerMembershipLookup;
 use App\Modules\Access\Infrastructure\SignInMembershipsAdapter;
 use App\Modules\Identity\Application\IssueInvitation;
@@ -48,6 +50,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(AuditSerializers::class);
         $this->app->singleton(OutboxConsumers::class);
         $this->app->bind(MembershipLookup::class, SecurityDefinerMembershipLookup::class);
+        $this->app->bind(MembershipPermissions::class, EloquentMembershipPermissions::class);
         // Identity declares these ports (it cannot call Access); the modules that implement them are bound here.
         $this->app->bind(InvitedMembershipGranter::class, AdminMembershipGranter::class);
         $this->app->bind(InvitationIssuer::class, IssueInvitation::class);

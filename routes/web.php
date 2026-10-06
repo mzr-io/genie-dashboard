@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\HelpController;
 use App\Modules\Identity\Http\InvitationController;
 use App\Modules\Identity\Http\InvitationResponseHeaders;
 use App\Platform\Tenancy\WorkspaceTransaction;
@@ -30,17 +31,33 @@ Route::middleware([InvitationResponseHeaders::class, 'throttle:30,1'])->prefix('
         Route::post('{token}', [InvitationController::class, 'store'])->name('invitations.accept');
     });
 
-// Help & support is open to guests: the sign-in page links to it. Placeholder until Story 1.18.
-Route::inertia('help', 'auth/Help')->name('help');
+// Help & support is open to guests: the sign-in page links to it. Signed-in people get it inside the shell
+// as a placeholder until Story 1.18.
+Route::get('help', HelpController::class)->name('help');
 
+// Every navigation target of the two-area shell is a named placeholder page (Story 1.16). Admin pages are not
+// gated here: Story 1.19 enforces the area and permission checks.
 Route::middleware(['auth'])->group(function () {
-    // The User Overview (Story 1.13): the existing dashboard page under its new name. The old route name
-    // `dashboard` is kept as an alias that sends visitors to it (a route name cannot point at the same URI twice).
-    Route::inertia('dashboard', 'Dashboard')->name('overview');
+    // The User Overview (Story 1.13). The old route name `dashboard` is kept as an alias that sends visitors
+    // to it (a route name cannot point at the same URI twice).
+    Route::inertia('dashboard', 'Placeholder', ['page' => 'overview'])->name('overview');
     Route::redirect('overview', '/dashboard')->name('dashboard');
+    Route::inertia('dashboards', 'Placeholder', ['page' => 'my-dashboards'])->name('dashboards.index');
+    Route::inertia('templates', 'Placeholder', ['page' => 'templates'])->name('templates.index');
 
-    // Placeholders until Stories 1.16 (shell) and 1.19 (Admin gating) replace them.
-    Route::inertia('admin', 'admin/Overview')->name('admin.overview');
+    Route::prefix('admin')->group(function () {
+        Route::inertia('/', 'Placeholder', ['page' => 'admin-overview'])->name('admin.overview');
+        Route::inertia('blocks', 'Placeholder', ['page' => 'block-management'])->name('admin.blocks.index');
+        Route::inertia('blocks/create', 'Placeholder', ['page' => 'create-block'])->name('admin.blocks.create');
+        Route::inertia('blocks/drafts', 'Placeholder', ['page' => 'draft-blocks'])->name('admin.blocks.drafts');
+        Route::inertia('blocks/published', 'Placeholder', ['page' => 'published-blocks'])->name('admin.blocks.published');
+        Route::inertia('categories', 'Placeholder', ['page' => 'block-categories'])->name('admin.categories.index');
+        Route::inertia('templates', 'Placeholder', ['page' => 'dashboard-templates'])->name('admin.templates.index');
+        Route::inertia('data-sources', 'Placeholder', ['page' => 'data-sources'])->name('admin.data-sources.index');
+        Route::inertia('users', 'Placeholder', ['page' => 'user-configuration'])->name('admin.users.index');
+        Route::inertia('settings', 'Placeholder', ['page' => 'system-settings'])->name('admin.settings.index');
+        Route::inertia('audit', 'Placeholder', ['page' => 'audit-log'])->name('admin.audit.index');
+    });
 });
 
 require __DIR__.'/settings.php';

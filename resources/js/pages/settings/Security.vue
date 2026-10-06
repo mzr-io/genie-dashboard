@@ -6,6 +6,8 @@ import InputError from '@/components/InputError.vue';
 import PasswordInput from '@/components/PasswordInput.vue';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { shellLabels, shellPages } from '@/locales/labels';
+import { edit as editProfile } from '@/routes/profile';
 import { edit } from '@/routes/security';
 
 // oxfmt-ignore
@@ -19,7 +21,11 @@ defineOptions({
     layout: {
         breadcrumbs: [
             {
-                title: 'Security settings',
+                title: shellPages.profile.title,
+                href: editProfile(),
+            },
+            {
+                title: shellLabels.securitySettings,
                 href: edit(),
             },
         ],
@@ -28,9 +34,9 @@ defineOptions({
 </script>
 
 <template>
-    <Head title="Security settings" />
+    <Head :title="shellLabels.securitySettings" />
 
-    <h1 class="sr-only">Security settings</h1>
+    <h1 class="sr-only">{{ shellLabels.securitySettings }}</h1>
 
     <div class="space-y-6">
         <Heading

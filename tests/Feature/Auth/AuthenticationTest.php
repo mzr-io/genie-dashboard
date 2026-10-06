@@ -51,7 +51,8 @@ class AuthenticationTest extends TestCase
 
         $response = $this->actingAs($user)->post(route('logout'));
 
-        $response->assertRedirect(route('home'));
+        // Sign-out lands on the sign-in page (Story 1.16).
+        $response->assertRedirect(route('login'));
 
         $this->assertGuest();
     }

@@ -156,7 +156,19 @@ Throttling is per email and IP and answers HTTP 429 with `throttled`. The limits
 | `DASHFLOW_SIGN_IN_DECAY_SECONDS` | `sessions.sign_in_decay_seconds` | seconds       |
 | `DASHFLOW_REMEMBER_ME_DURATION`  | `sessions.remember_me_duration`  | whole minutes |
 
-The admin overview (`/admin`) and Help & support (`/help`) are placeholders until Stories 1.16, 1.18 and 1.19.
+The admin overview (`/admin`) and Help & support (`/help`) are placeholder pages inside the shell until Stories 1.18 and 1.19.
+
+## The two-area shell
+
+Every signed-in page renders one shell (Story 1.16): the sidebar, a 64px top bar (`banner`), the page (`main`, labelled with the page name) and a "Skip to content" link as the first focusable element. The session area (`user` or `admin`, set at sign-in) selects the navigation. The server builds the model (`App\Http\Navigation\ShellNavigation`) and shares it with every Inertia page as the `shell` prop: the area, the active Workspace and role, the items (key, path, permission, `allowed`), and the Help, profile and sign-out paths. The client owns titles and icons (`resources/js/lib/shell.ts`, `locales/labels.ts`).
+
+- **User area** ("WORKSPACE"): Overview, My dashboards, Templates, Profile & settings, Help & support.
+- **Admin area** ("ADMINISTRATION"): Admin overview, Block management, Create block, Draft blocks, Published blocks, Block categories, Dashboard templates, Data sources, User configuration, System settings, Audit log.
+- **Permissions:** `ShellNavigation::ADMIN_ITEMS` is the one mapping from an Admin item to a `Permission` (Admin overview: none; the five block items: `blocks.edit`; Dashboard templates: `templates.manage`; Data sources: `data_sources.manage`; User configuration: `users.manage`; System settings: `settings.manage`; Audit log: `audit.view`). The permissions are read per request from `membership_permissions` through `Access\Contracts\MembershipPermissions`. An item the Admin lacks is shown `aria-disabled`, focusable, with `perm-denied` as its description; it is never hidden and its page still answers, because Story 1.19 enforces access.
+- **Pages:** every item routes to a named placeholder page (title, `page-subtitles` text for Overview and Admin overview, the `list-empty` state) under `auth`. `ListStates` holds the generic loading (five skeleton rows), load-failure (with Retry) and empty states.
+- **Reflow:** the full 232px sidebar from 1280px, the 64px icon rail (tooltips on hover and focus) from 640px, and an overlay sheet below 640px, opened from the top bar. The top bar holds the back button and breadcrumb, the ⌘K search and notifications bell as disabled-with-reason placeholders (Epic 8) and the settings gear (Profile & settings, or System settings in the Admin area). There is no Appearance control.
+- **Profile menu:** the user row opens a menu with name, role in the active Workspace, Profile & settings and Sign out; Esc closes it and focus returns to the row.
+- **Sign out** is `POST /logout`: the session ID is regenerated, the person is signed out and the session invalidated, the form-draft store is cleared by the client, the person lands on sign-in and `identity.signout.completed` is recorded in the active Workspace (a log line when none). A failed request resumes the shell with an error toast.
 
 ## Session expiry and form drafts
 
