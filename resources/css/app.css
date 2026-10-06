@@ -358,6 +358,7 @@
         font-weight: 600;
     }
     .cue-chip[aria-pressed='true'],
+    .cue-chip[aria-checked='true'],
     .cue-chip[data-selected='true'] {
         background: var(--df-accent-soft);
         color: var(--df-accent-ink-strong);
@@ -365,6 +366,7 @@
         font-weight: 700;
     }
     .cue-chip[aria-pressed='true']::before,
+    .cue-chip[aria-checked='true']::before,
     .cue-chip[data-selected='true']::before,
     .cue-check[aria-selected='true']::before,
     .cue-check[data-selected='true']::before {
@@ -377,5 +379,70 @@
         background: var(--df-accent-soft);
         outline: 2px solid var(--df-focus-ring);
         outline-offset: -2px;
+    }
+}
+
+/* Hit areas (UX-DR-33, 278): small controls keep their drawn size and grow an invisible target
+   of at least 24px, 44px on touch layouts. */
+.hit-area {
+    position: relative;
+}
+.hit-area::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, var(--df-target-min));
+    height: max(100%, var(--df-target-min));
+    transform: translate(-50%, -50%);
+}
+
+/* Touch layouts: 44px targets (UX-DR-278). */
+@media (pointer: coarse) {
+    .hit-area::after {
+        width: max(100%, var(--df-target-touch));
+        height: max(100%, var(--df-target-touch));
+    }
+
+    [data-slot='button']:not([data-variant='link']),
+    [data-slot='input'],
+    [data-slot='textarea'],
+    [data-slot='select-trigger'],
+    [data-slot='chip'],
+    [data-slot='segmented-item'] {
+        min-height: var(--df-target-touch);
+    }
+
+    [data-slot='button'][data-size='icon'],
+    [data-slot='button'][data-size='icon-sm'],
+    [data-slot='button'][data-size='icon-lg'] {
+        min-width: var(--df-target-touch);
+    }
+}
+
+/* Skeleton shimmer: a surface-sunken sweep that stops after 5 s (set by the component) and
+   is static under reduced motion (UX-DR-36). */
+@keyframes df-shimmer {
+    from {
+        background-position: 200% 0;
+    }
+    to {
+        background-position: -200% 0;
+    }
+}
+.skeleton[data-shimmer='true'] {
+    background-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--df-surface-sunken) 50%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: df-shimmer 1.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .skeleton[data-shimmer='true'] {
+        animation: none;
+        background-image: none;
     }
 }

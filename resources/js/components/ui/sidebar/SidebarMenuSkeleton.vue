@@ -23,11 +23,13 @@ const width = computed(() => {
     <Skeleton
       v-if="showIcon"
       class="size-4 rounded-md"
+      :caption="false"
       data-sidebar="menu-skeleton-icon"
     />
 
     <Skeleton
       class="h-4 max-w-(--skeleton-width) flex-1"
+      :caption="false"
       data-sidebar="menu-skeleton-text"
       :style="{ '--skeleton-width': width }"
     />

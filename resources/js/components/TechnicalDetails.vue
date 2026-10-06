@@ -78,7 +78,7 @@ async function copy(requestId: string): Promise<void> {
             <div v-if="hasRequestId" class="mt-2 flex items-center gap-3">
                 <Button
                     type="button"
-                    variant="outline"
+                    variant="secondary"
                     size="sm"
                     @click="copy(requestId as string)"
                 >

@@ -63,3 +63,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-7-serve-all-product-copy-from-the-canonical-message-catalogue.md`
   summary: Add a DOM test environment and mounted tests for `TechnicalDetails` (disclosure toggle, Copy request ID success and failure states).
   evidence: Story 1.7 tests render with `vue/server-renderer`, which never runs click handlers, so a regression in `copy()` or the toggle would pass; the spec ruled out a new dev dependency, so add happy-dom or jsdom with the first Admin error screen.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-8-build-the-shared-form-controls-and-status-components.md`
+  summary: Create the polite live region before the first announcement (and set its text on a later tick) in `lib/announce.ts`, as part of the Story 1.9 live-region work.
+  evidence: The region is created and filled in the same tick on first use, and many screen readers skip content present at insertion, so the first blocked-action reason may not be spoken.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-8-build-the-shared-form-controls-and-status-components.md`
+  summary: Verify Space on the switch and arrow-key behaviour of radio groups, segmented control and chips in a real browser (for example Playwright with axe).
+  evidence: happy-dom does not turn Space into a click on a native button, so the tests toggle with `click()`; keyboard semantics rely on reka-ui and were not checked in a browser.

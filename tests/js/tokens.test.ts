@@ -349,8 +349,8 @@ describe('component focus and link colour', () => {
             'utf8',
         );
 
-        expect(button).toMatch(/link: "text-accent-ink /);
-        expect(button).not.toMatch(/text-primary(?!-foreground)/);
+        expect(button).toMatch(/"link":\s*"[^"]*\btext-accent-ink\b/);
+        expect(button).not.toMatch(/(?<![\w-])text-primary(?!-foreground)/);
     });
 
     it('uses no Tailwind palette utilities in app components', () => {

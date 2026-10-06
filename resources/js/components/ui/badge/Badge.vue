@@ -1,26 +1,30 @@
 <script setup lang="ts">
-import type { PrimitiveProps } from "reka-ui"
 import type { HTMLAttributes } from "vue"
 import type { BadgeVariants } from "."
-import { reactiveOmit } from "@vueuse/core"
-import { Primitive } from "reka-ui"
 import { cn } from "@/lib/utils"
 import { badgeVariants } from "."
 
-const props = defineProps<PrimitiveProps & {
+// A plain span: no `as`, no click handling, no focus. The word is the slot; `dot` adds the
+// decorative status dot that precedes it (UX-DR-40, 43).
+const props = defineProps<{
   variant?: BadgeVariants["variant"]
+  dot?: boolean
   class?: HTMLAttributes["class"]
 }>()
-
-const delegatedProps = reactiveOmit(props, "class")
 </script>
 
 <template>
-  <Primitive
+  <span
     data-slot="badge"
+    :data-variant="variant ?? 'neutral'"
     :class="cn(badgeVariants({ variant }), props.class)"
-    v-bind="delegatedProps"
   >
+    <span
+      v-if="dot"
+      aria-hidden="true"
+      data-slot="status-dot"
+      class="size-1.5 shrink-0 rounded-full bg-current"
+    />
     <slot />
-  </Primitive>
+  </span>
 </template>

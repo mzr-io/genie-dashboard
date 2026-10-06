@@ -2,13 +2,15 @@
 import type { TooltipContentEmits, TooltipContentProps } from "reka-ui"
 import type { HTMLAttributes } from "vue"
 import { reactiveOmit } from "@vueuse/core"
-import { TooltipArrow, TooltipContent, TooltipPortal, useForwardPropsEmits } from "reka-ui"
+import { TooltipContent, TooltipPortal, useForwardPropsEmits } from "reka-ui"
 import { cn } from "@/lib/utils"
 
 defineOptions({
   inheritAttrs: false,
 })
 
+// Hover and focus open it, Esc closes it without moving focus, and it stays open while the
+// pointer is over it (UX-DR-35, WCAG 1.4.13). It never carries the only copy of information.
 const props = withDefaults(defineProps<TooltipContentProps & { class?: HTMLAttributes["class"] }>(), {
   sideOffset: 4,
 })
@@ -24,11 +26,9 @@ const forwarded = useForwardPropsEmits(delegatedProps, emits)
     <TooltipContent
       data-slot="tooltip-content"
       v-bind="{ ...forwarded, ...$attrs }"
-      :class="cn('bg-foreground text-background animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-fit rounded-md px-3 py-1.5 text-xs text-balance', props.class)"
+      :class="cn('type-caption bg-surface-inverse text-text-inverse z-50 w-fit max-w-[280px] rounded-sm px-2 py-1 text-balance', props.class)"
     >
       <slot />
-
-      <TooltipArrow class="bg-foreground fill-foreground z-50 size-2.5 translate-y-[calc(-50%_-_2px)] rotate-45 rounded-[2px]" />
     </TooltipContent>
   </TooltipPortal>
 </template>
