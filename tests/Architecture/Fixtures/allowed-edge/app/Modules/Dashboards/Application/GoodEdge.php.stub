@@ -1,0 +1,11 @@
+<?php
+
+namespace App\Modules\Dashboards\Application;
+
+use App\Modules\Results\Contracts\ResultsFor;
+use App\Platform\Audit\Audit;
+
+final class GoodEdge
+{
+    public function __construct(private ResultsFor $results, private Audit $audit) {}
+}

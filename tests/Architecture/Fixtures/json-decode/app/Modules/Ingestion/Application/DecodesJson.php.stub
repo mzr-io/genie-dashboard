@@ -1,0 +1,12 @@
+<?php
+
+namespace App\Modules\Ingestion\Application;
+
+final class DecodesJson
+{
+    public function parse(string $body): mixed
+    {
+        // json_decode in a comment is fine; the call below is not.
+        return json_decode($body, true);
+    }
+}

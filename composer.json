@@ -70,12 +70,20 @@
         ],
         "ci:check": [
             "Composer\\Config::disableProcessTimeout",
+            "@test",
             "npm run check",
             "npm run types:check",
-            "@test"
+            "npm test",
+            "npm run lint:colors",
+            "@audit:php",
+            "npm run audit:deps",
+            "npm run audit:licenses"
+        ],
+        "audit:php": [
+            "@composer audit --abandoned=ignore --ignore-severity=low --ignore-severity=medium"
         ],
         "types:check": [
-            "phpstan analyse"
+            "phpstan analyse --memory-limit=1G"
         ],
         "test": [
             "@php artisan config:clear --ansi",

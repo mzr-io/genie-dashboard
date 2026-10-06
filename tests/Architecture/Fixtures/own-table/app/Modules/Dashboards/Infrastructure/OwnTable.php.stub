@@ -1,0 +1,13 @@
+<?php
+
+namespace App\Modules\Dashboards\Infrastructure;
+
+use Illuminate\Support\Facades\DB;
+
+final class OwnTable
+{
+    public function items(): array
+    {
+        return DB::table('dashboard_items')->get()->all();
+    }
+}

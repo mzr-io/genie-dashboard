@@ -1,0 +1,10 @@
+<?php
+
+namespace App\Modules\Dashboards\Application;
+
+use App\Modules\Results\ContractsInternal\Secret;
+
+final class LookAlike
+{
+    public function __construct(private Secret $secret) {}
+}

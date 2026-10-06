@@ -32,6 +32,25 @@ bin/tools php artisan serve --host=0.0.0.0   # http://localhost:8000
 
 If your host already has PHP 8.5 with the extensions above, you can run the same commands without the `bin/tools` prefix.
 
+## Quality gates
+
+`bin/tools composer ci:check` runs every gate below in order and stops at the first failure; each failing gate exits non-zero and names the offending file. No CI pipeline runs `ci:check` yet; it is run by hand.
+
+| Gate                                                                                         | Command                                                       |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| Pint (code style)                                                                            | `bin/tools composer lint:check`                               |
+| Larastan level 7                                                                             | `bin/tools composer types:check`                              |
+| Pest: unit, feature and architecture suites                                                  | `bin/tools vendor/bin/pest`                                   |
+| Architecture rules only                                                                      | `bin/tools vendor/bin/pest --testsuite=Architecture`          |
+| Lint, format and type check (Vue, TypeScript)                                                | `bin/tools npm run check` and `bin/tools npm run types:check` |
+| Vitest                                                                                       | `bin/tools npm test`                                          |
+| Colour lint (no raw hex or `rgba()` outside the token file; banned brand colours everywhere) | `bin/tools node scripts/lint-colors.mjs`                      |
+| Composer advisories (high severity and above)                                                | `bin/tools composer audit:php`                                |
+| npm advisories (high severity and above)                                                     | `bin/tools npm run audit:deps`                                |
+| Licence deny-list (AGPL, SSPL, BSL) for Composer and npm                                     | `bin/tools node scripts/license-audit.mjs`                    |
+
+The advisory audits need network access. Architecture rules live in `tests/Architecture`: allowed module edges, table ownership and the global-table list are in `tests/Architecture/dependencies.php` (the only place to change them), and each rule has a fixture under `tests/Architecture/Fixtures` proving it fails when broken. `resources/js/pages/Welcome.vue` and `resources/js/app.ts` are temporarily allowlisted in the colour lint (Stories 1.6 and 1.16). The table-ownership and migration checks are regex-based: they do not read Eloquent `$table` properties or variable table names.
+
 ## Notes
 
 - Public registration, email verification, two-factor and passkeys are not part of the product; `/register` returns 404.

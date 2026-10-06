@@ -19,3 +19,21 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-1-initialise-the-project-from-the-laravel-vue-starter-kit.md`
   summary: Base images in the dev tools Dockerfile are unpinned (`php:8.5-cli`, `composer:2`, `node:22`).
   evidence: A rebuild can change PHP or Node minors; Story 1.3 builds the pinned production image and supersedes the tools image.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-enforce-architecture-and-quality-gates-in-ci.md`
+  summary: Add the Playwright end-to-end gate (Chromium, Firefox, WebKit, mobile emulation; sample page at desktop, tablet and mobile widths; browserslist latest two versions) and the axe WCAG 2.1 AA gate on every routed page to CI.
+  evidence: Split from Story 1.2 by product-owner choice to keep the story within scope; still required by NFR-8, NFR-9 and UX-DR-264. Needs its own story (for example a new Story 1.26 in epics.md), best placed once Stories 1.6 and 1.16 replace the kit's UI, which may fail axe today.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-enforce-architecture-and-quality-gates-in-ci.md`
+  summary: Add the CI workflow that runs `composer ci:check` on every pull request and blocks merges (platform to be chosen: GitHub Actions on the current remote, or GitLab CI as AR-51 states).
+  evidence: Skipped from Story 1.2 by product-owner decision. Until it exists, the gates run only when someone runs `bin/tools composer ci:check`, so nothing stops a violating change from merging.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-enforce-architecture-and-quality-gates-in-ci.md`
+  summary: Extend the `json_decode` ban to other lossy decoders (`->json()` on HTTP responses, the Http client) in Ingestion, RawStore, Mapping and Results once those modules exist.
+  evidence: The architecture test only matches the literal `json_decode`; `$response->json()` decodes decimals as floats through another door. Revisit with the lossless-decoder story in Epic 2.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-enforce-architecture-and-quality-gates-in-ci.md`
+  summary: Extend the module-boundary and table-ownership rules to code under `app/` outside `Modules` and `Platform` (controllers, providers, jobs) and to Eloquent `$table` properties.
+  evidence: The scanner only owns `app/Modules/*` and `app/Platform`; add the outside-code rule with the first module controllers (Story 1.12) and re-check table ownership when the first module models land.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-enforce-architecture-and-quality-gates-in-ci.md`
+  summary: Licence audit gaps: packages with `UNLICENSED`, no licence field or `SEE LICENSE IN`, and nested `node_modules` copies pass silently.
+  evidence: Reviewers showed the deny-list only matches declared top-level licences; decide a policy for unlicensed packages before Epic 9 supply-chain gates.
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-2-enforce-architecture-and-quality-gates-in-ci.md`
+  summary: When Story 1.10 creates the `workspaces` tenant-root table, add it to the global-table list (or give the migration guard a tenant-root exemption).
+  evidence: `workspaces` has no `workspace_id` column and is not in the agreed list, so the guard would fail that migration; Story 1.10 already says `workspaces` is handled as a global table.

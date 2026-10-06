@@ -1,0 +1,8 @@
+<?php
+
+namespace App\Modules\Dashboards\Application;
+
+final class Doubled
+{
+    public string $class = 'App\\Modules\\Identity\\Contracts\\UserLookup';
+}
