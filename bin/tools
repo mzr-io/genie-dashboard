@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# Run PHP, Composer and Node inside the Dashflow tools image (PHP 8.5, Node 22).
+# Usage: bin/tools <command...>   e.g. bin/tools composer install
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+IMAGE="${DASHFLOW_TOOLS_IMAGE:-dashflow-tools:php8.5-node22}"
+CACHE="${DASHFLOW_TOOLS_CACHE:-$HOME/.cache/dashflow-tools}"
+
+if [[ -z "$(docker images -q "$IMAGE" 2>/dev/null)" ]]; then
+    docker build -t "$IMAGE" "$ROOT/docker/tools"
+fi
+
+mkdir -p "$CACHE/composer" "$CACHE/npm"
+
+TTY=()
+[[ -t 0 && -t 1 ]] && TTY=(-t)
+
+exec docker run --rm -i "${TTY[@]}" \
+    --user "$(id -u):$(id -g)" \
+    --network host \
+    -e HOME=/tmp \
+    -e COMPOSER_HOME=/cache/composer \
+    -e COMPOSER_CACHE_DIR=/cache/composer/cache \
+    -e npm_config_cache=/cache/npm \
+    -v "$ROOT:/app" \
+    -v "$CACHE:/cache" \
+    -w /app \
+    "$IMAGE" "$@"
