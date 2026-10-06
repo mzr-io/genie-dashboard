@@ -3,6 +3,7 @@
 namespace App\Support\Observability;
 
 use Illuminate\Auth\AuthenticationException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
@@ -22,6 +23,10 @@ final class ApiErrorRenderer
     public static function render(Throwable $e, Request $request): ?JsonResponse
     {
         if (! $request->is('api/*')) {
+            return null;
+        }
+
+        if ($e instanceof HttpResponseException) {
             return null;
         }
 

@@ -134,7 +134,7 @@ final class Scrubber
     {
         $out = [];
         foreach ($attributes as $key => $value) {
-            if (! self::spanAttributeAllowed($key)) {
+            if (! self::spanAttributeAllowed($key) || preg_match(self::SENSITIVE_KEY, $key) === 1) {
                 continue;
             }
             if (is_string($value)) {

@@ -90,15 +90,26 @@ final class OtelBootstrap
 
     public static function warnOnce(string $message): void
     {
-        if (self::$warned) {
+        if (self::$warned || is_file(self::warnedMarker())) {
             return;
         }
         self::$warned = true;
+        try {
+            @file_put_contents(self::warnedMarker(), '1');
+        } catch (Throwable) {
+            // Best effort only.
+        }
         try {
             Log::warning($message);
         } catch (Throwable) {
             // Observability must never break the app.
         }
+    }
+
+    /** Per-process marker so php-fpm workers warn once, not once per request. */
+    private static function warnedMarker(): string
+    {
+        return sys_get_temp_dir().'/dashflow-otel-warned-'.getmypid();
     }
 
     /** For tests. */
@@ -108,5 +119,6 @@ final class OtelBootstrap
         self::$scope = null;
         self::$registered = false;
         self::$warned = false;
+        @unlink(self::warnedMarker());
     }
 }

@@ -2,7 +2,7 @@
 title: 'Observe every request with OpenTelemetry and scrubbed logs'
 type: 'feature'
 created: '2026-10-06'
-status: 'in-review'
+status: 'done'
 baseline_commit: '1397d614ad20471be077379b92aa3035acfd07d6'
 route: 'dispatch'
 review_loop_iteration: 0
@@ -52,13 +52,13 @@ context:
 ## Tasks & Acceptance
 
 **Execution:**
-- [ ] `app/Support/Observability/*`, `bootstrap/app.php` -- request context, middleware, response header, log processor adding ids, shared scrubber
-- [ ] `config/logging.php`, `compose.yaml`, `.env.example` -- JSON stdout channel and `OTEL_*` env, one startup warning when no endpoint
-- [ ] `app/Providers/AppServiceProvider.php` -- request id in job payload and restored on processing
+- [x] `app/Support/Observability/*`, `bootstrap/app.php` -- request context, middleware, response header, log processor adding ids, shared scrubber
+- [x] `config/logging.php`, `compose.yaml`, `.env.example` -- JSON stdout channel and `OTEL_*` env, one startup warning when no endpoint
+- [x] `app/Providers/AppServiceProvider.php` -- request id in job payload and restored on processing
 - [ ] span scrubbing via an SDK span processor and attribute allowlist; metric-name helper
 - [ ] error envelope renderer for `api/*` with `details` stripping
-- [ ] `tests/Feature/ObservabilityTest.php`, `tests/Unit/*` -- every matrix row, with canary secrets across logs, spans (in-memory exporter) and metrics
-- [ ] `README.md` -- variables and how to read the logs
+- [x] `tests/Feature/ObservabilityTest.php`, `tests/Unit/*` -- every matrix row, with canary secrets across logs, spans (in-memory exporter) and metrics
+- [x] `README.md` -- variables and how to read the logs
 
 **Acceptance Criteria:**
 - Given the Compose stack, when a request is made, then stdout holds JSON lines whose `request_id` equals the response header.
@@ -69,6 +69,24 @@ context:
 ## Spec Change Log
 
 ## Review Triage Log
+
+| Finding | Verdict | Route | Evidence |
+|---|---|---|---|
+| Scrubbing tap only on `single`, `daily`, `stderr`, `stdout` | high | patch | `config/logging.php` has no tap on `monthly`, `slack`, `papertrail`, `syslog`, `errorlog`, `null`, `emergency`; selecting one bypasses scrubbing, against "not switchable by config". |
+| `http.request` logs the raw path, which carries tokens such as `/reset-password/{token}` | medium | patch | `RequestContextMiddleware` logs `getPathInfo()`; Fortify's reset route holds the token in the path. |
+| No-collector warning repeats on every request under php-fpm | medium | patch | `OtelBootstrap::$warned` is a static; three curls against the running stack gave repeated warnings in `docker compose logs web`. |
+| `HttpResponseException` on `api/*` becomes a 500 envelope | medium | patch | `ApiErrorRenderer` falls into its `else` branch; Laravel runs render callbacks before returning the exception's own response. |
+| Failed-job exception report loses `request_id` | medium | patch | `QueueContext` leaves the context on `JobExceptionOccurred`; the worker reports the exception afterwards. |
+| `dashflow.*` span attributes skip the sensitive-key check | low | patch | `Scrubber::spanAttributes` lets the prefix through with URL scrubbing only. |
+| nginx access log records `/index.php` for every request | medium | patch | `log_format` uses `$uri`, which `try_files` has rewritten; seen in the Compose logs as `"GET /index.php"`. |
+| `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` not passed by Compose | low | patch | Code and README accept it; `compose.yaml` forwards only the generic endpoint. |
+| Production tracer wiring and non-stdout channels unverified by tests | medium | patch | Tests build their own `TracerProvider` and only read the `stdout` channel; removing the wrapper or a tap keeps tests green. |
+| Exception messages can carry SQL bindings and personal data | medium | defer | Laravel's own `QueryException` text; outside this spec's canary scope. |
+| Span `url.path` can carry path-embedded tokens | low | defer | Needs a span-side path template; log line is patched here. |
+| `OTEL_SDK_DISABLED`/`none` ignored, BatchSpanProcessor in workers, per-role `OTEL_SERVICE_NAME`, resource-attribute allowlist, `workspace_id` never set | low | rejected | Spec is silent or the value is not yet known; fixes add branches for unlikely cases. |
+| Userinfo with a literal `@`, `preg` returns null, headers under other keys, null `request_id` before middleware | low | rejected | Invalid or unreachable input; null `preg` result empties the text (safe side). |
+| Public API hides validation details outside Admin | false | rejected | Frozen decision in the spec (UX-DR-162). |
+| `package:discover` and artisan commands print the warning | low | rejected | Cosmetic; stdout channel only inside containers. |
 
 ## Design Notes
 

@@ -7,7 +7,7 @@ use Monolog\Handler\StreamHandler;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
 
-return [
+$config = [
 
     /*
     |--------------------------------------------------------------------------
@@ -156,3 +156,16 @@ return [
     ],
 
 ];
+
+// Scrubbing is mandatory: every channel that writes gets the tap, including channels added later.
+foreach ($config['channels'] as $name => $channel) {
+    if (($channel['driver'] ?? null) === 'stack') {
+        continue;
+    }
+    $config['channels'][$name]['tap'] = array_values(array_unique([
+        ...($channel['tap'] ?? []),
+        ObservabilityLogTap::class,
+    ]));
+}
+
+return $config;

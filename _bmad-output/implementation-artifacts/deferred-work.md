@@ -51,3 +51,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-6-apply-the-dashflow-design-tokens-and-brand-seam.md`
   summary: Remove the third-party Inter stylesheet request (`https://rsms.me/inter/inter.css`) from `Welcome.vue`.
   evidence: Pre-existing starter kit code on the lint allowlist; the request bypasses any CSP and contradicts serving fonts from the app origin. Resolve when `Welcome.vue` is migrated in Story 1.16.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-observe-every-request-with-opentelemetry-and-scrubbed-logs.md`
+  summary: Scrub SQL bindings and personal data out of exception messages (for example `QueryException`) before they reach logs and spans.
+  evidence: Laravel embeds bound values in `QueryException` text, and the scrubber only removes URLs, query strings and headers; epic 1 requires that personal data never appears in logs.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-4-observe-every-request-with-opentelemetry-and-scrubbed-logs.md`
+  summary: Replace span `url.path` with the route template so path-embedded tokens never reach exported spans.
+  evidence: Auto-instrumented server spans carry the raw path, such as `/reset-password/{token}`; the log line is patched in Story 1.4 but spans are not.

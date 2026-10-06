@@ -4,6 +4,7 @@ namespace App\Support\Observability;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Routing\Route;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -27,11 +28,13 @@ final class RequestContextMiddleware
 
     public function terminate(Request $request, Response $response): void
     {
+        $route = $request->route();
+        $path = $route instanceof Route ? '/'.ltrim($route->uri(), '/') : $request->getPathInfo();
         $started = $request->attributes->get('observability.started_at');
 
         Log::info('http.request', [
             'method' => $request->getMethod(),
-            'url' => Scrubber::url($request->getPathInfo()),
+            'url' => Scrubber::url($path),
             'status' => $response->getStatusCode(),
             'duration_ms' => is_int($started) ? round((hrtime(true) - $started) / 1e6, 2) : null,
         ]);
