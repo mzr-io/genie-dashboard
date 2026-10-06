@@ -2,7 +2,12 @@
 
 namespace App\Providers;
 
-use App\Actions\Fortify\ResetUserPassword;
+use App\Modules\Identity\Application\ResetLimits;
+use App\Modules\Identity\Application\ResetLinks;
+use App\Modules\Identity\Application\ResetPassword;
+use App\Modules\Identity\Http\NewPasswordController;
+use App\Modules\Identity\Http\PasswordResetLinkController;
+use App\Modules\Identity\Http\ResetRequestThrottle;
 use App\Modules\Identity\Http\SignInPipe;
 use App\Modules\Identity\Http\SignInResponse;
 use App\Modules\Identity\Http\SignInThrottle;
@@ -14,6 +19,8 @@ use Inertia\Inertia;
 use Laravel\Fortify\Contracts\LoginResponse;
 use Laravel\Fortify\Features;
 use Laravel\Fortify\Fortify;
+use Laravel\Fortify\Http\Controllers\NewPasswordController as FortifyNewPasswordController;
+use Laravel\Fortify\Http\Controllers\PasswordResetLinkController as FortifyPasswordResetLinkController;
 
 class FortifyServiceProvider extends ServiceProvider
 {
@@ -24,6 +31,11 @@ class FortifyServiceProvider extends ServiceProvider
     {
         // Where a successful sign-in lands: the Overview of the chosen area (Story 1.13).
         $this->app->singleton(LoginResponse::class, SignInResponse::class);
+
+        // The reset request and reset steps keep Fortify's routes, broker and views but answer without
+        // revealing whether an account exists (Story 1.14).
+        $this->app->bind(FortifyPasswordResetLinkController::class, PasswordResetLinkController::class);
+        $this->app->bind(FortifyNewPasswordController::class, NewPasswordController::class);
     }
 
     /**
@@ -34,6 +46,9 @@ class FortifyServiceProvider extends ServiceProvider
         $this->configureActions();
         $this->configureViews();
         $this->configureRateLimiting();
+
+        // The reset-link lifetime tunable (the starter kit's 60 minutes while unset).
+        ResetLimits::applyLifetime();
     }
 
     /**
@@ -41,7 +56,7 @@ class FortifyServiceProvider extends ServiceProvider
      */
     private function configureActions(): void
     {
-        Fortify::resetUserPasswordsUsing(ResetUserPassword::class);
+        Fortify::resetUserPasswordsUsing(ResetPassword::class);
 
         // Role-aware sign-in replaces Fortify's login pipeline: credentials, area check, rotated session.
         Fortify::authenticateThrough(fn () => [SignInPipe::class]);
@@ -57,11 +72,18 @@ class FortifyServiceProvider extends ServiceProvider
             'status' => $request->session()->get('status'),
         ]));
 
-        Fortify::resetPasswordView(fn (Request $request) => Inertia::render('auth/ResetPassword', [
-            'email' => $request->email,
-            'token' => $request->route('token'),
-            'passwordRules' => Password::defaults()->toPasswordRulesString(),
-        ]));
+        // An expired, used or tampered link, or one for another email, is one answer: the expired state.
+        Fortify::resetPasswordView(function (Request $request) {
+            $email = $request->query('email');
+            $usable = is_string($email) && $this->app->make(ResetLinks::class)->usable($email, (string) $request->route('token'));
+
+            return Inertia::render('auth/ResetPassword', [
+                'email' => $usable ? $email : null,
+                'token' => $usable ? $request->route('token') : null,
+                'expired' => ! $usable,
+                'passwordRules' => Password::defaults()->toPasswordRulesString(),
+            ]);
+        });
 
         Fortify::requestPasswordResetLinkView(fn (Request $request) => Inertia::render('auth/ForgotPassword', [
             'status' => $request->session()->get('status'),
@@ -72,10 +94,12 @@ class FortifyServiceProvider extends ServiceProvider
 
     /**
      * Configure rate limiting. The `login` limiter is the one Fortify's route applies; its limits come
-     * from the `pending_input` tunables, with Fortify's shipped 5 per minute while they are unset.
+     * from the `pending_input` tunables, with Fortify's shipped 5 per minute while they are unset. The
+     * `password-reset` limiter does the same for reset-link requests.
      */
     private function configureRateLimiting(): void
     {
         RateLimiter::for('login', fn (Request $request) => $this->app->make(SignInThrottle::class)->limit($request));
+        RateLimiter::for(ResetRequestThrottle::NAME, fn (Request $request) => $this->app->make(ResetRequestThrottle::class)->limit($request));
     }
 }

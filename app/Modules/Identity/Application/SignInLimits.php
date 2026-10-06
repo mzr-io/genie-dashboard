@@ -30,7 +30,7 @@ final class SignInLimits
         return self::positive('dashflow.tunables.sessions.remember_me_duration.value');
     }
 
-    private static function positive(string $key): ?int
+    public static function positive(string $key): ?int
     {
         $value = config($key);
 

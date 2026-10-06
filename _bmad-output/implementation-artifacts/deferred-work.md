@@ -87,3 +87,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-12-provision-a-workspace-and-let-its-first-admin-accept-an-invitation.md`
   summary: Add an idempotent repair path to `dashflow:workspace:create` (for example `--repair {workspace-id}`) that re-mirrors the Workspace audit event, and move the invitation email after commit with a retry.
   evidence: The audit mirror runs after the operator transaction commits, so a failure leaves a Workspace and a sent link without the Workspace audit event, and a rerun would create a duplicate Workspace; the email is sent before commit, so a failed commit leaves a link to nothing.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-14-reset-a-forgotten-password.md`
+  summary: Add a per-IP-only throttle bucket (a new `pending_input` limit) to the password-reset and sign-in requests, and send a "your password was changed" notice email after a reset.
+  evidence: The throttle keys on email plus IP, so one IP rotating target emails is never limited (mail-bombing, probing), and a completed reset sends no confirmation, which account-takeover detection normally needs.

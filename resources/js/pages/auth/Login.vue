@@ -179,11 +179,12 @@ async function submit(): Promise<void> {
         </header>
 
         <p
-            v-if="props.status"
+            v-if="props.status === 'password-changed'"
+            role="status"
             class="type-body-sm text-success-text"
             data-test="signin-status"
         >
-            {{ props.status }}
+            {{ t('password-changed') }}
         </p>
 
         <form

@@ -109,6 +109,31 @@ export const signInLabels = {
         "We couldn't sign you in. Check your connection, reload the page and try again.",
 } as const;
 
+// Labels of the Forgot password and Reset password pages (Story 1.14). Their messages
+// (`reset-requested`, `reset-expired`, `field-error`, `throttled`) come from the catalogue.
+export const passwordResetLabels = {
+    forgotTitle: 'Forgot password?',
+    forgotDescription:
+        "Enter your email and we'll send you a link to reset it.",
+    email: 'Email',
+    emailPlaceholder: 'name@company.com',
+    sendLink: 'Send reset link',
+    backToSignIn: 'Back to sign in',
+    resetTitle: 'Reset password',
+    resetDescription: 'Choose a new password for your account.',
+    expiredTitle: 'Link unavailable',
+    expiredDescription: 'This reset link cannot be used.',
+    requestNew: 'Request a new link',
+    password: 'New password',
+    passwordConfirmation: 'Confirm new password',
+    passwordRequired: 'Enter a new password.',
+    passwordMismatch: 'The two passwords must match.',
+    submit: 'Reset password',
+    summaryTitle: 'Fix these fields to continue',
+    submitFailed:
+        "We couldn't submit this. Check your connection, reload the page and try again.",
+} as const;
+
 // Labels of the placeholder pages that Stories 1.16, 1.18 and 1.19 replace.
 export const placeholderLabels = {
     adminOverview: 'Admin overview',

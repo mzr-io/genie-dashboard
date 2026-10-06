@@ -97,6 +97,11 @@ return [
             // Sign-in throttle per email and IP. Unset: Fortify's shipped 5 attempts per minute applies.
             'sign_in_max_attempts' => $tunable('DASHFLOW_SIGN_IN_MAX_ATTEMPTS'),
             'sign_in_decay_seconds' => $tunable('DASHFLOW_SIGN_IN_DECAY_SECONDS'),
+            // Whole minutes a password-reset link stays valid. Unset: the starter kit's 60 minutes (config/auth.php).
+            'reset_link_lifetime' => $tunable('DASHFLOW_RESET_LINK_LIFETIME'),
+            // Reset-link request throttle per email and IP. Unset: 5 requests per 60 seconds.
+            'reset_request_max_attempts' => $tunable('DASHFLOW_RESET_REQUEST_MAX_ATTEMPTS'),
+            'reset_request_decay_seconds' => $tunable('DASHFLOW_RESET_REQUEST_DECAY_SECONDS'),
         ],
 
         'users' => [

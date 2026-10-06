@@ -158,6 +158,22 @@ Throttling is per email and IP and answers HTTP 429 with `throttled`. The limits
 
 The admin overview (`/admin`) and Help & support (`/help`) are placeholders until Stories 1.16, 1.18 and 1.19.
 
+## Resetting a forgotten password
+
+Fortify's reset broker, routes (`password.request`, `password.email`, `password.reset`, `password.update`) and views are kept; `app/Modules/Identity` wraps the request and reset steps.
+
+- **Request.** Any well-formed email gets the same `reset-requested` answer (HTTP 200, same body) whether or not an account exists, and a reset email is sent only if it does. A malformed email answers `field-error` (422); the page also shows it inline on blur. A mail failure still shows `reset-requested`; it is logged as `identity.password_reset.mail_failed` with the exception class only, never the address. Requests are throttled per email and IP: over the limit is HTTP 429 with `throttled`.
+- **Link.** An expired, used or tampered token, an unknown email and a token for another email are one outcome: the Reset password page shows `reset-expired` with a "Request a new link" link, and nothing changes.
+- **Reset.** The password changes through the Fortify action under `Password::defaults()`; a weak password gives field errors and leaves the link valid. On success every other session of the user is deleted from `sessions` (the current one, if any, is regenerated), the sign-in page shows `password-changed`, and `identity.password.reset` is recorded as a security event in the user's active Workspace (a log line with the reason only when there is none). No log, audit row or span holds the email, token or password.
+
+The link lifetime and the throttle are `pending_input` tunables. While unset, the starter kit's behaviour applies: a 60 minute link (`config/auth.php`) and 5 requests per 60 seconds. These are the starter kit's shipped values, not Dashflow's choices.
+
+| Variable                               | Tunable                                | Unit          |
+| -------------------------------------- | -------------------------------------- | ------------- |
+| `DASHFLOW_RESET_LINK_LIFETIME`         | `sessions.reset_link_lifetime`         | whole minutes |
+| `DASHFLOW_RESET_REQUEST_MAX_ATTEMPTS`  | `sessions.reset_request_max_attempts`  | attempts      |
+| `DASHFLOW_RESET_REQUEST_DECAY_SECONDS` | `sessions.reset_request_decay_seconds` | seconds       |
+
 ## Observability
 
 Every request gets a `request_id`: a valid incoming `X-Request-Id` (`[A-Za-z0-9._-]{8,64}`) is kept, anything else is replaced by a generated ULID, and the response always carries it. Queued jobs carry it in the payload and restore it before running, so job logs and spans share the originating request's id.
