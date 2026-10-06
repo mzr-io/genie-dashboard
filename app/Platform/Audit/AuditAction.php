@@ -25,6 +25,7 @@ enum AuditAction: string
     case IdentityPasswordChanged = 'identity.password.changed';
     case IdentityWorkspaceSwitched = 'identity.workspace.switched';
     case IdentityAreaDenied = 'identity.area.denied';
+    case IdentitySessionExtended = 'identity.session.extended';
 
     // Access: memberships, roles, permissions, groups, attributes and denials.
     case AccessAdminDenied = 'access.admin.denied';

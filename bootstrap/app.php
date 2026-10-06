@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Modules\Identity\Http\IdleTimeout;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use App\Support\Observability\ApiErrorRenderer;
 use App\Support\Observability\OtelBootstrap;
@@ -32,11 +33,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->web(append: [
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,
-            // After the session starts: opens the request transaction and sets the Workspace context.
+            // After the session starts: signs out an idle session, then opens the request transaction and sets the Workspace context.
+            IdleTimeout::class,
             WorkspaceTransaction::class,
         ]);
 
-        $middleware->api(append: [WorkspaceTransaction::class]);
+        $middleware->api(append: [IdleTimeout::class, WorkspaceTransaction::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(ApiErrorRenderer::render(...));

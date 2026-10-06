@@ -113,6 +113,7 @@ final class SignIn
             $session->regenerate();
             $session->put(WorkspaceTransaction::SESSION_KEY, $membership->workspaceId);
             $session->put('area', $area->value);
+            SessionClock::touch($session);
         } catch (Throwable $e) {
             $this->guard->logout();
             $request->session()->invalidate();

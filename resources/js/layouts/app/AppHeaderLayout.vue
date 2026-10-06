@@ -3,6 +3,7 @@ import AppContent from '@/components/AppContent.vue';
 import AppHeader from '@/components/AppHeader.vue';
 import AppShell from '@/components/AppShell.vue';
 import ConnectionBanner from '@/components/ConnectionBanner.vue';
+import SessionExpiryDialog from '@/components/SessionExpiryDialog.vue';
 import SkipLink from '@/components/SkipLink.vue';
 import ToastRegion from '@/components/ToastRegion.vue';
 import { initAnnouncer } from '@/lib/announce';
@@ -28,5 +29,6 @@ initAnnouncer();
             <slot />
         </AppContent>
         <ToastRegion />
+        <SessionExpiryDialog />
     </AppShell>
 </template>

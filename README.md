@@ -158,6 +158,21 @@ Throttling is per email and IP and answers HTTP 429 with `throttled`. The limits
 
 The admin overview (`/admin`) and Help & support (`/help`) are placeholders until Stories 1.16, 1.18 and 1.19.
 
+## Session expiry and form drafts
+
+A signed-in session has an idle limit per area, from the `pending_input` tunables below (whole minutes, the unit of Laravel's `session.lifetime`). While a tunable is unset, `session.lifetime` (the starter kit's 120 minutes, not a Dashflow value) applies. The effective limit is also capped at `session.lifetime`: Laravel ends the session there, so a longer idle limit would expire it with no warning.
+
+| Variable                      | Tunable               | Unit          |
+| ----------------------------- | --------------------- | ------------- |
+| `DASHFLOW_SESSION_IDLE_USER`  | `sessions.idle_user`  | whole minutes |
+| `DASHFLOW_SESSION_IDLE_ADMIN` | `sessions.idle_admin` | whole minutes |
+
+- **Idle clock.** Laravel rewrites the session's `last_activity` on every request, so the idle limit has its own session key, `last_user_activity`, written by the `IdleTimeout` middleware (web and api groups, before the Workspace transaction) for user-initiated requests only. A request with the header `X-Background: 1` never writes it, nor does `GET /api/v1/session`; any client polling (including Inertia's `usePoll`) must send that header or it keeps the session alive.
+- **Expiry.** Past the limit the next request signs the person out. JSON, API and Inertia requests get `401` (`platform.unauthenticated`); page loads are redirected to sign-in. The page they were on is stored as the intended URL (this page for an HTML or Inertia GET that is not a prefetch; otherwise the same-origin Referer; sign-in, sign-out and `/api` URLs, another scheme, host or port never qualify, and the Overview is the fallback), and after sign-in it is used only when it belongs to the area just opened (`/admin` pages for Admin, the rest for User); signing in returns there, with the `session-expired` toast; with no intended URL the area Overview is the default.
+- **Endpoints** (Identity, `auth`, CSRF-protected for POST). `GET /api/v1/session` returns `{remaining_seconds, area}` without extending. `POST /api/v1/session/extend` (throttled to 30 per minute) extends and returns the same shape; it records `identity.session.extended` as a security event in the session's Workspace (none for status calls).
+- **Warning.** `SessionExpiryDialog` (mounted in both app layouts) polls the status endpoint once a minute and when the tab becomes visible, opens `session-warning` with a live countdown two minutes before expiry (announced at 2:00, 1:00 and 0:30), focuses "Stay signed in" and returns focus to the previous element after extending. At zero it asks the server once more, then ends the session.
+- **Form drafts.** A page that wants its unsaved fields back registers with `registerFormDraft({id, snapshot, restore})` from `resources/js/lib/formDrafts.ts`. On expiry the snapshots are stored in `sessionStorage` under the fixed key `dashflow:form-drafts` (no user or Workspace in it); the next registration with the same id calls `restore` once and removes the draft. `formValues(form)` skips password inputs, `data-secret` fields and fields named like a secret, and snapshots are scrubbed of such keys. Forms that do not register are not restored; the Create-block wizard keeps its own autosave (Epic 3).
+
 ## Resetting a forgotten password
 
 Fortify's reset broker, routes (`password.request`, `password.email`, `password.reset`, `password.update`) and views are kept; `app/Modules/Identity` wraps the request and reset steps.

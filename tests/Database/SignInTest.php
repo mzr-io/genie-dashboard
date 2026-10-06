@@ -322,3 +322,68 @@ it('has the functional lower(email) index on users', function () {
 
     expect($rows)->toHaveCount(1)->and($rows[0]['indexdef'])->toContain('lower');
 });
+
+// Story 1.15: the idle clock against the real PostgreSQL and its Workspace transaction.
+it('extends through the endpoint inside the Workspace and records identity.session.extended as a security event', function () {
+    $workspace = Cluster::workspace('Acme');
+    $user = signinUser('idle@example.test');
+    $membership = signinMember($workspace, $user);
+    config()->set('dashflow.tunables.sessions.idle_user.value', 10);
+
+    signinPost('idle@example.test')->assertOk();
+    $this->travel(9)->minutes();
+
+    $remaining = $this->getJson('/api/v1/session', ['Referer' => 'http://localhost:8000'])
+        ->assertOk()->json('remaining_seconds');
+    expect($remaining)->toBeLessThanOrEqual(60)->and(signinAudit('identity.session.extended'))->toBeEmpty();
+
+    $this->postJson('/api/v1/session/extend', [], ['Referer' => 'http://localhost:8000'])
+        ->assertOk()->assertJson(['remaining_seconds' => 600, 'area' => 'user']);
+
+    $events = signinAudit('identity.session.extended');
+    expect($events)->toHaveCount(1)
+        ->and($events[0]['workspace_id'])->toBe($workspace)
+        ->and($events[0]['security'])->toBeTrue()
+        ->and(json_decode($events[0]['after_state'], true))->toEqualCanonicalizing(['user_id' => $user, 'area' => 'user']);
+});
+
+it('signs out an idle session on the next request and returns to the page after sign-in', function () {
+    $workspace = Cluster::workspace('Acme');
+    $user = signinUser('gone@example.test');
+    signinMember($workspace, $user);
+    config()->set('dashflow.tunables.sessions.idle_user.value', 10);
+
+    signinPost('gone@example.test')->assertOk();
+    $this->travel(11)->minutes();
+
+    $this->getJson('/api/v1/session', ['Referer' => 'http://localhost:8000/dashboard'])->assertUnauthorized();
+    $this->assertGuest();
+    expect(session('url.intended'))->toBe('http://localhost:8000/dashboard');
+
+    $this->post('/login', ['email' => 'gone@example.test', 'password' => SIGNIN_PASSWORD, 'role' => 'user'])
+        ->assertRedirect('http://localhost:8000/dashboard');
+    $this->assertAuthenticated();
+});
+
+it('still extends and answers 200 when the audit write fails', function () {
+    $workspace = Cluster::workspace('Acme');
+    $user = signinUser('audit-down@example.test');
+    signinMember($workspace, $user);
+    config()->set('dashflow.tunables.sessions.idle_user.value', 10);
+
+    signinPost('audit-down@example.test')->assertOk();
+
+    $pdo = Cluster::superuser();
+    $pdo->exec("CREATE FUNCTION fail_session_audit() RETURNS trigger LANGUAGE plpgsql AS \$\$ BEGIN IF NEW.action = 'identity.session.extended' THEN RAISE EXCEPTION 'audit down'; END IF; RETURN NEW; END \$\$");
+    $pdo->exec('CREATE TRIGGER fail_session_audit BEFORE INSERT ON audit_events FOR EACH ROW EXECUTE FUNCTION fail_session_audit()');
+
+    try {
+        $this->travel(5)->minutes();
+        $this->postJson('/api/v1/session/extend', [], ['Referer' => 'http://localhost:8000'])
+            ->assertOk()->assertJson(['remaining_seconds' => 600]);
+        expect(signinAudit('identity.session.extended'))->toBeEmpty();
+    } finally {
+        $pdo->exec('DROP TRIGGER IF EXISTS fail_session_audit ON audit_events');
+        $pdo->exec('DROP FUNCTION IF EXISTS fail_session_audit()');
+    }
+});

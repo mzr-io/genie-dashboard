@@ -139,3 +139,12 @@ export const placeholderLabels = {
     adminOverview: 'Admin overview',
     help: 'Help & support',
 } as const;
+
+// Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after
+// signing back in (`session-expired`) come from the catalogue.
+export const sessionLabels = {
+    title: 'Your session is about to end',
+    stay: 'Stay signed in',
+    signOut: 'Sign out',
+    extendFailed: "We couldn't keep you signed in. Try again.",
+} as const;

@@ -91,3 +91,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-14-reset-a-forgotten-password.md`
   summary: Add a per-IP-only throttle bucket (a new `pending_input` limit) to the password-reset and sign-in requests, and send a "your password was changed" notice email after a reset.
   evidence: The throttle keys on email plus IP, so one IP rotating target emails is never limited (mail-bombing, probing), and a completed reset sends no confirmation, which account-takeover detection normally needs.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-15-warn-before-session-expiry-and-keep-forms-safe.md`
+  summary: Decide whether sessions need an absolute maximum lifetime (a new `pending_input` tunable) on top of the idle timeout, and add a Story 1.9 dialog-refusal test for the session warning.
+  evidence: Extending resets the idle clock every time, so a session can live indefinitely; the spec defines only an idle limit. The warning dialog's refusal path when another dialog is open is untested.
