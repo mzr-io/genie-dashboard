@@ -100,7 +100,7 @@ Database roles (created by `docker/postgres/initdb.sh` on the first start of an 
 | `app`         | runtime login of every other service; SELECT, INSERT, UPDATE on tenant tables, never DELETE there; DELETE only on the framework's global tables (`sessions`, `password_reset_tokens`, `personal_access_tokens`, `cache`, `cache_locks`, `jobs`, `job_batches`, `failed_jobs`) so logout, session GC and token revocation work; no privilege on `workspaces` |
 | `maintenance` | the only role with DELETE (retention sweeps); not used at runtime yet                                                                                                                                                                                                                                                                                       |
 | `system`      | the outbox relay: column grants on `outbox_events` (relay columns, UPDATE on `sent_at`) and role-limited policies; given only to `worker-compute` (`DB_SYSTEM_*`)                                                                                                                                                                                           |
-| `operator`    | operator commands; no grants until the tables of later stories                                                                                                                                                                                                                                                                                              |
+| `operator`    | the operator command only: INSERT on `workspaces`, `invitations` and `operator_audit`; given only to the one-off `operator` Compose service (`DB_OPERATOR_*`)                                                                                                                                                                                               |
 
 No role except the bootstrap superuser (`POSTGRES_USER`) has BYPASSRLS, and `dashflow:health` reports `PostgreSQL role` as failed if the runtime role could bypass it. The migrations fail with a message naming any missing role. An existing `postgres-data` volume keeps its old roles: run `docker compose down -v` once to re-create it.
 
@@ -121,6 +121,24 @@ The `Database` Pest suite (`tests/Database`, `phpunit.database.xml`) runs agains
 bin/tools composer test:database     # only the Database suite
 bin/test-db up                       # or start the containers yourself, then run composer test:database inside bin/tools
 ```
+
+## Provisioning a Workspace and the first Admin
+
+Public registration is off and no screen, route or API creates a Workspace (such requests return 404). The only way is the operator command, which runs on the `operator` database connection (`DB_OPERATOR_*`) and is never available to web or worker services:
+
+```bash
+docker compose run --rm operator php artisan dashflow:workspace:create "Acme Corp" acme admin@acme.example
+```
+
+In one operator transaction it creates the Workspace, a single-use invitation (256-bit token; only its SHA-256 hash is stored; bound to the email) and an `operator_audit` row (email as a keyed hash), and emails the link (`MAIL_MAILER=log` writes it to the log locally; the link is the only secret and is never stored or logged elsewhere). The email is sent before the transaction commits, so a failed send creates nothing. The action is then mirrored into the Workspace audit log (`platform.workspace.created`).
+
+The command refuses to run while `DASHFLOW_INVITATION_LIFETIME` (tunable `users.invitation_lifetime`, `pending_input`) is unset. The value is a whole number of hours between 1 and 8760; there is no default. The name must not contain control characters, the label must be a unique lower-case slug (`acme-corp`), and the actor recorded in `operator_audit`, the invitation and the mirrored Workspace event is `operator:<OS user>` (`operator:unknown` when it cannot be told).
+
+The invitee opens `/invitations/{token}` (also when signed in), enters the invited email, a name and a password (rules from `Password::defaults()`), and becomes `admin` of the Workspace with every permission of the closed `Permission` enum (`membership_permissions`; enforcement arrives with Story 1.19). For an email that already has a user (matched case-insensitively), only the membership is added: name and password stay as they are. An active member is promoted to Admin; a suspended or removed membership is never revived and is refused. The `identity.invitation.accepted` audit event says whether the membership was `created`, `promoted` or `unchanged`.
+
+Every refusal (unknown, tampered, used or expired link, a different email, an unsupported role, an inactive membership) returns the same neutral page with HTTP 410 (`reset-expired`); responses are neutral, but latency is not guaranteed equal across refusal paths. A refusal for a known invitation records `identity.invitation.rejected` (reason only, never the token) as a security event. An unknown or malformed token names no Workspace, so there is nothing to attach an audit row to: it is logged with the reason only. Invitation responses carry `Referrer-Policy: no-referrer` and `Cache-Control: no-store`, and nginx logs the path as `/invitations/[token]`.
+
+`app` reads `invitations` (email, token hash and Workspace are readable by it, because the accept flow looks a link up by hash) but may update only `used_at` and `updated_at`.
 
 ## Observability
 

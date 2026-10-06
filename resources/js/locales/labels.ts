@@ -53,3 +53,24 @@ export const overlayLabels = {
     unsavedTitle: 'Unsaved changes',
     deleteAction: (object: string) => `Delete ${object}`,
 } as const;
+
+// Labels of the invitation-accept page (Story 1.12). Its errors come from the catalogue
+// (`field-error`, `reset-expired`) or from the server's validation messages.
+export const invitationLabels = {
+    title: 'Set up your account',
+    description: 'Choose your name and password to join as Admin.',
+    name: 'Full name',
+    email: 'Email',
+    emailHelper: 'The address this invitation was sent to.',
+    password: 'Password',
+    passwordConfirmation: 'Confirm password',
+    submit: 'Create account',
+    expiredTitle: 'Link unavailable',
+    expiredDescription: 'This invitation link cannot be used.',
+    goToSignIn: 'Go to sign in',
+    nameRequired: 'Enter your full name.',
+    passwordRequired: 'Enter a password.',
+    passwordMismatch: 'The two passwords must match.',
+    submitFailed:
+        "We couldn't submit this. Check your connection, reload the page and try again.",
+} as const;

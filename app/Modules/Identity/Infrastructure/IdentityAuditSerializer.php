@@ -23,6 +23,7 @@ final class IdentityAuditSerializer implements AuditSerializer
             'to_workspace_id' => AuditField::Id,
             'area' => AuditField::Enum,
             'reason' => AuditField::Enum,
+            'membership' => AuditField::Enum,
             'email' => AuditField::Hashed,
             'username' => AuditField::Hashed,
         ];

@@ -47,6 +47,11 @@
         <env name="DB_SYSTEM_PORT" value="55432" force="true"/>
         <env name="DB_SYSTEM_USERNAME" value="system" force="true"/>
         <env name="DB_SYSTEM_PASSWORD" value="dashflow-test-system" force="true"/>
+        <!-- The operator command runs as role `operator`, straight against PostgreSQL. -->
+        <env name="DB_OPERATOR_HOST" value="127.0.0.1" force="true"/>
+        <env name="DB_OPERATOR_PORT" value="55432" force="true"/>
+        <env name="DB_OPERATOR_USERNAME" value="operator" force="true"/>
+        <env name="DB_OPERATOR_PASSWORD" value="dashflow-test-operator" force="true"/>
         <!-- Migrations run as role `migrator` straight against PostgreSQL. -->
         <env name="DB_MIGRATOR_HOST" value="127.0.0.1" force="true"/>
         <env name="DB_MIGRATOR_PORT" value="55432" force="true"/>

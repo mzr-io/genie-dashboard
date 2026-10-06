@@ -7,6 +7,7 @@ export enum ErrorCode {
     AccessPermissionNotHeld = 'access.permission_not_held',
     AccessSelfChangeForbidden = 'access.self_change_forbidden',
     AccessWorkspaceForbidden = 'access.workspace_forbidden',
+    IdentityInvitationInvalid = 'identity.invitation_invalid',
     PlatformCsrfTokenMismatch = 'platform.csrf_token_mismatch',
     PlatformForbidden = 'platform.forbidden',
     PlatformHttpError = 'platform.http_error',

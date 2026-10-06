@@ -83,3 +83,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-10-isolate-each-workspace-with-row-level-security.md`
   summary: Replace the default privileges in `docker/postgres/initdb.sh` with default-deny plus explicit per-table grants, and add a Database test that every global table has its expected grant list.
   evidence: Default privileges give `app` INSERT and UPDATE (and `maintenance` SELECT) on every table `migrator` creates, including `migrations` and `users`, so a future migration must remember to REVOKE and no test enforces it.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-12-provision-a-workspace-and-let-its-first-admin-accept-an-invitation.md`
+  summary: Add an idempotent repair path to `dashflow:workspace:create` (for example `--repair {workspace-id}`) that re-mirrors the Workspace audit event, and move the invitation email after commit with a retry.
+  evidence: The audit mirror runs after the operator transaction commits, so a failure leaves a Workspace and a sent link without the Workspace audit event, and a rerun would create a duplicate Workspace; the email is sent before commit, so a failed commit leaves a link to nothing.

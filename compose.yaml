@@ -274,6 +274,31 @@ services:
             retries: 3
             start_period: 30s
 
+    # One-off operator commands, not started by `docker compose up` (profile `operator`). The only service
+    # holding the `operator` database credentials. Create a Workspace and invite its first Admin with:
+    #   docker compose run --rm operator php artisan dashflow:workspace:create "Name" label admin@example.com
+    operator:
+        <<: *app
+        profiles: ['operator']
+        restart: 'no'
+        command: ['php', 'artisan', 'dashflow:workspace:create', '--help']
+        environment:
+            <<: *app-env
+            # The command touches PostgreSQL and the mailer only.
+            CACHE_STORE: array
+            QUEUE_CONNECTION: sync
+            BROADCAST_CONNECTION: 'null'
+            DB_OPERATOR_HOST: postgres
+            DB_OPERATOR_PORT: '5432'
+            DB_OPERATOR_USERNAME: operator
+            DB_OPERATOR_PASSWORD: ${POSTGRES_OPERATOR_PASSWORD:-dashflow-dev-operator}
+            DASHFLOW_INVITATION_LIFETIME: ${DASHFLOW_INVITATION_LIFETIME:-}
+        depends_on:
+            postgres:
+                condition: service_healthy
+            migrator:
+                condition: service_completed_successfully
+
 # Key purposes (AR-50) as placeholder files only; real keys never enter the repo.
 secrets:
     key-data:

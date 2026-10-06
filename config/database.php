@@ -206,6 +206,29 @@ return [
             ],
         ],
 
+        /*
+        | The operator command's role (`operator`): INSERT-only grants on workspaces, invitations and
+        | operator_audit. Only the one-off `operator` Compose service is given DB_OPERATOR_*; the web
+        | and worker services never hold these credentials.
+        */
+        'operator' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_OPERATOR_URL'),
+            'host' => env('DB_OPERATOR_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('DB_OPERATOR_PORT', env('DB_PORT', '5432')),
+            'database' => env('DB_OPERATOR_DATABASE', env('DB_DATABASE', 'laravel')),
+            'username' => env('DB_OPERATOR_USERNAME', 'operator'),
+            'password' => env('DB_OPERATOR_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'options' => [
+                PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT', 5),
+            ],
+        ],
+
         'sqlsrv' => [
             'driver' => 'sqlsrv',
             'url' => env('DB_URL'),

@@ -14,6 +14,8 @@ final class EventData
 {
     public const SLUG = '/\A[a-z][a-z0-9_.-]{0,47}\z/D';
 
+    public const OPERATOR_ACTOR = '/\Aoperator:[a-z0-9_.-]{1,40}\z/D';
+
     public const KEY = '/\A[a-z][a-z0-9_]{0,47}\z/D';
 
     /** `{noun}:{id}`, where the ID is a UUID or an integer: `membership:018f...`. */
@@ -71,8 +73,9 @@ final class EventData
             return strtolower($actor);
         }
 
-        if (preg_match(self::SLUG, $actor) !== 1) {
-            throw new InvalidArgumentException('An actor must be a UUID or a short slug.');
+        // `operator:<os user>`: who ran an operator command.
+        if (preg_match(self::SLUG, $actor) !== 1 && preg_match(self::OPERATOR_ACTOR, $actor) !== 1) {
+            throw new InvalidArgumentException('An actor must be a UUID, a short slug or operator:<user>.');
         }
 
         return $actor;

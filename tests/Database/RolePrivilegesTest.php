@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Str;
 use Tests\Database\Support\Cluster;
 
 const APP_DELETABLE = [
@@ -99,13 +100,82 @@ it('does not let app bypass or change row-level security', function () {
     expect(Cluster::rows($app, "select rolbypassrls from pg_roles where rolname = 'app'")[0]['rolbypassrls'])->toBeFalse();
 });
 
-it('gives system and operator no table privileges yet', function () {
+it('gives system no table-level privileges and operator INSERT on workspaces, invitations and operator_audit only', function () {
+    $operatorInsert = ['workspaces', 'invitations', 'operator_audit'];
+
     foreach (['system', 'operator'] as $role) {
         foreach (Cluster::allTables() as $table) {
             foreach (['SELECT', 'INSERT', 'UPDATE', 'DELETE'] as $privilege) {
+                $expected = $role === 'operator' && $privilege === 'INSERT' && in_array($table, $operatorInsert, true);
+
                 expect(Cluster::rows(Cluster::superuser(), 'select has_table_privilege(?, ?, ?) as p', [$role, "public.{$table}", $privilege])[0]['p'])
-                    ->toBeFalse("{$role} {$privilege} on {$table}");
+                    ->toBe($expected, "{$role} {$privilege} on {$table}");
             }
         }
     }
+});
+
+it('gives app SELECT and UPDATE of used_at and updated_at only on invitations, and nothing on operator_audit or workspaces', function () {
+    $has = fn (string $table, string $privilege): bool => Cluster::rows(Cluster::superuser(), 'select has_table_privilege(?, ?, ?) as p', ['app', "public.{$table}", $privilege])[0]['p'];
+    $column = fn (string $name): bool => Cluster::rows(Cluster::superuser(), "select has_column_privilege('app', 'public.invitations', ?, 'UPDATE') as p", [$name])[0]['p'];
+
+    expect($has('invitations', 'SELECT'))->toBeTrue()
+        ->and($has('invitations', 'UPDATE'))->toBeFalse()
+        ->and($has('invitations', 'INSERT'))->toBeFalse()
+        ->and($has('invitations', 'DELETE'))->toBeFalse()
+        ->and($column('used_at'))->toBeTrue()->and($column('updated_at'))->toBeTrue();
+
+    foreach (['token_hash', 'expires_at', 'email', 'workspace_id', 'role'] as $name) {
+        expect($column($name))->toBeFalse("app UPDATE on invitations.{$name}");
+    }
+
+    foreach (['operator_audit', 'workspaces'] as $table) {
+        foreach (['SELECT', 'INSERT', 'UPDATE', 'DELETE'] as $privilege) {
+            expect($has($table, $privilege))->toBeFalse("app {$privilege} on {$table}");
+        }
+    }
+});
+
+it('denies operator UPDATE and DELETE on operator_audit and invitations, SELECT on invitations, and any column of workspaces but label', function () {
+    $operator = Cluster::operator();
+
+    foreach ([
+        'update operator_audit set actor = \'x\'',
+        'delete from operator_audit',
+        'update invitations set used_at = now()',
+        'update invitations set token_hash = \'x\', expires_at = now()',
+        'delete from invitations',
+        'select * from invitations',
+        'select name from workspaces',
+        'update workspaces set label = \'x\'',
+        'delete from workspaces',
+    ] as $statement) {
+        expect(fn () => $operator->query($statement))->toThrow(PDOException::class, 'permission denied');
+    }
+
+    expect(fn () => $operator->query('select label from workspaces'))->not->toThrow(PDOException::class);
+});
+
+it('lets app update used_at on an invitation but not its hash, expiry, email or Workspace', function () {
+    $w = Cluster::workspace('A');
+    $id = (string) Str::uuid7();
+    Cluster::superuser()->prepare("insert into invitations (id, workspace_id, email, token_hash, role, expires_at, created_at, updated_at) values (?, ?, 'a@example.test', ?, 'admin', now() + interval '1 day', now(), now())")
+        ->execute([$id, $w, str_repeat('a', 64)]);
+
+    foreach ([Cluster::directApp(), Cluster::pooledApp()] as $app) {
+        expect($app->exec("update invitations set used_at = now(), updated_at = now() where id = '{$id}'"))->toBe(1);
+
+        foreach (['token_hash' => "'x'", 'expires_at' => 'now()', 'email' => "'b@example.test'", 'workspace_id' => "'{$w}'"] as $column => $value) {
+            expect(fn () => $app->exec("update invitations set {$column} = {$value} where id = '{$id}'"))->toThrow(PDOException::class, 'permission denied');
+        }
+    }
+});
+
+it('refuses app an INSERT into workspaces, directly and through the pool', function () {
+    foreach ([Cluster::directApp(), Cluster::pooledApp()] as $app) {
+        expect(fn () => $app->exec("insert into workspaces (id, name, status, created_at, updated_at) values ('".(string) Str::uuid7()."', 'X', 'active', now(), now())"))
+            ->toThrow(PDOException::class, 'permission denied');
+    }
+
+    expect((int) Cluster::rows(Cluster::superuser(), 'select count(*) as n from workspaces')[0]['n'])->toBe(0);
 });

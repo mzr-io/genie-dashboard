@@ -16,6 +16,7 @@ enum AuditAction: string
 
     // Identity: sign-in outcomes, sessions, passwords, invitations.
     case IdentityInvitationAccepted = 'identity.invitation.accepted';
+    case IdentityInvitationRejected = 'identity.invitation.rejected';
     case IdentitySigninSucceeded = 'identity.signin.succeeded';
     case IdentitySigninFailed = 'identity.signin.failed';
     case IdentitySigninThrottled = 'identity.signin.throttled';
@@ -37,6 +38,9 @@ enum AuditAction: string
     case AccessGroupChanged = 'access.group.changed';
     case AccessAttributeChanged = 'access.attribute.changed';
     case AccessAttributeKeyCreated = 'access.attribute_key.created';
+
+    // Platform: operator actions mirrored into the Workspace audit log.
+    case PlatformWorkspaceCreated = 'platform.workspace.created';
 
     /** The case for `$action`, or an exception: an unknown string never reaches storage. */
     public static function fromString(string $action): self

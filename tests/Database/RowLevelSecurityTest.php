@@ -58,9 +58,12 @@ it('never returns another Workspace\'s rows from any tenant table', function () 
         $asA = Cluster::inWorkspace(Cluster::pooledApp(), $a, fn ($pdo) => Cluster::rows($pdo, "select id, workspace_id from {$table}"));
         $asB = Cluster::inWorkspace(Cluster::pooledApp(), $b, fn ($pdo) => Cluster::rows($pdo, "select id, workspace_id from {$table}"));
 
-        expect(array_column($asA, 'id'))->toBe([$rowA], "{$table} leaked across Workspaces")
+        // A table's seeder may also seed a parent row of another tenant table (a permission needs a membership),
+        // so assert membership of the result, not equality.
+        expect(array_column($asA, 'id'))->toContain($rowA)->not->toContain($rowB)
             ->and(array_column($asA, 'workspace_id'))->each->toBe($a)
-            ->and(array_column($asB, 'id'))->toBe([$rowB], "{$table} leaked across Workspaces");
+            ->and(array_column($asB, 'id'))->toContain($rowB)->not->toContain($rowA)
+            ->and(array_column($asB, 'workspace_id'))->each->toBe($b);
 
         // Reaching for the other Workspace's row by ID returns nothing.
         $byId = Cluster::inWorkspace(Cluster::pooledApp(), $a, fn ($pdo) => Cluster::rows($pdo, "select id from {$table} where id = ?", [$rowB]));

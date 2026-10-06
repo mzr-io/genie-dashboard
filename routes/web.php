@@ -1,5 +1,8 @@
 <?php
 
+use App\Modules\Identity\Http\InvitationController;
+use App\Modules\Identity\Http\InvitationResponseHeaders;
+use App\Platform\Tenancy\WorkspaceTransaction;
 use App\Support\Health\HealthChecker;
 use App\Support\Health\Role;
 use Illuminate\Support\Facades\Route;
@@ -15,6 +18,17 @@ Route::withoutMiddleware('web')->group(function () {
 });
 
 Route::inertia('/', 'Welcome')->name('home');
+
+// Invitation links (Story 1.12). Public registration stays off and no route creates a Workspace:
+// Workspaces are created only by `php artisan dashflow:workspace:create` (operator).
+// No `guest` middleware: a signed-in user (an existing member of another Workspace) can accept too.
+Route::middleware([InvitationResponseHeaders::class, 'throttle:30,1'])->prefix('invitations')
+    // The accept flow opens the invited Workspace's own transaction; a signed-in user's session Workspace must not wrap it.
+    ->withoutMiddleware([WorkspaceTransaction::class])->group(function () {
+        Route::get('expired', [InvitationController::class, 'expired'])->name('invitations.expired');
+        Route::get('{token}', [InvitationController::class, 'show'])->name('invitations.show');
+        Route::post('{token}', [InvitationController::class, 'store'])->name('invitations.accept');
+    });
 
 Route::middleware(['auth'])->group(function () {
     Route::inertia('dashboard', 'Dashboard')->name('dashboard');

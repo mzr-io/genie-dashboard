@@ -41,7 +41,7 @@ return [
         ],
         'Identity' => ['users', 'sessions', 'password_reset_tokens', 'invitations'],
         'Access' => [
-            'workspace_memberships', 'permissions', 'groups', 'group_members',
+            'workspace_memberships', 'membership_permissions', 'permissions', 'groups', 'group_members',
             'user_attribute_keys', 'user_attributes', 'access_subjects', 'access_grants',
         ],
         'Connector' => [

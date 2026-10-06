@@ -95,6 +95,12 @@ return [
             'remember_me_duration' => $tunable('DASHFLOW_REMEMBER_ME_DURATION'),
         ],
 
+        'users' => [
+            // Whole hours an invitation link stays valid. No default: `dashflow:workspace:create`
+            // refuses to run until the environment sets it.
+            'invitation_lifetime' => $tunable('DASHFLOW_INVITATION_LIFETIME'),
+        ],
+
         'targets' => [
             'rpo' => $tunable('DASHFLOW_TARGET_RPO'),
             'rto' => $tunable('DASHFLOW_TARGET_RTO'),

@@ -98,6 +98,12 @@ final class Cluster
         return self::connect('system', 'dashflow-test-system', self::postgresPort());
     }
 
+    /** Role `operator` straight to PostgreSQL. */
+    public static function operator(): PDO
+    {
+        return self::connect('operator', 'dashflow-test-operator', self::postgresPort());
+    }
+
     public static function maintenance(): PDO
     {
         return self::connect('maintenance', (string) env('DASHFLOW_TEST_MAINTENANCE_PASSWORD'), self::postgresPort());
@@ -151,7 +157,8 @@ final class Cluster
     }
 
     /**
-     * Tables in `public` that carry a `workspace_id` column.
+     * Tables in `public` that carry a `workspace_id` column and are not listed as global
+     * (`invitations` names the Workspace an invitee joins but is a global table).
      *
      * @return list<string>
      */
@@ -165,7 +172,9 @@ final class Cluster
             ORDER BY c.relname
             SQL);
 
-        return array_column($rows, 'relname');
+        $global = (require dirname(__DIR__, 2).'/Architecture/dependencies.php')['global_tables'];
+
+        return array_values(array_diff(array_column($rows, 'relname'), $global));
     }
 
     /**
@@ -213,6 +222,7 @@ final class Cluster
             'audit_events' => self::seedAudit($workspaceId),
             'outbox_events' => self::seedOutbox($workspaceId),
             'outbox_consumptions' => self::seedConsumption($workspaceId),
+            'membership_permissions' => self::seedPermission($workspaceId),
             default => null,
         };
     }
@@ -240,6 +250,15 @@ final class Cluster
         $id = (string) Str::uuid7();
         self::superuser()->prepare("INSERT INTO outbox_consumptions (id, workspace_id, consumer, event_id, subject, subject_seq, applied, consumed_at) VALUES (?, ?, 'test.consumer', ?, 'membership:1', 1, true, now())")
             ->execute([$id, $workspaceId, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    private static function seedPermission(string $workspaceId): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO membership_permissions (id, workspace_id, membership_id, permission, created_at, updated_at) VALUES (?, ?, ?, 'users.manage', now(), now())")
+            ->execute([$id, $workspaceId, self::seedMembership($workspaceId)]);
 
         return $id;
     }
