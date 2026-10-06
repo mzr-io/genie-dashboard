@@ -47,3 +47,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-5-split-valkey-into-queue-and-cache-stores-with-signed-jobs.md`
   summary: Run an executed ACL test in CI that connects to both Valkey stores with another role's credentials and expects WRONGPASS/NOPERM.
   evidence: Pest only parses the ACL and Compose files because the CI image has no Valkey; the refusal was verified by hand on the rebuilt stack, so an ACL swap between roles could pass `ci:check`.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-6-apply-the-dashflow-design-tokens-and-brand-seam.md`
+  summary: Remove the third-party Inter stylesheet request (`https://rsms.me/inter/inter.css`) from `Welcome.vue`.
+  evidence: Pre-existing starter kit code on the lint allowlist; the request bypasses any CSP and contradicts serving fonts from the app origin. Resolve when `Welcome.vue` is migrated in Story 1.16.

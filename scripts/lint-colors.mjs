@@ -9,16 +9,16 @@ import { fileURLToPath } from 'node:url';
 export const TOKEN_FILE = 'resources/css/tokens.css';
 
 // Temporary allowlist for raw colours (banned values still fail). Remove each entry when the
-// file moves to design tokens: Welcome.vue in Stories 1.6 and 1.16, app.ts (progress bar) in 1.6.
-export const ALLOWLIST = [
-    'resources/js/pages/Welcome.vue',
-    'resources/js/app.ts',
-];
+// file moves to design tokens: Welcome.vue in Story 1.16.
+export const ALLOWLIST = ['resources/js/pages/Welcome.vue'];
 
 const BANNED = ['#00D987', '#FF004A', '#FFDD1D', '#CA8A04'];
 const RAW_HEX =
     /(?<![\w&])#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3,4})(?![\w-])/gi;
 const RAW_RGBA = /\brgba\s*\(/gi;
+// Tailwind palette utilities (bg-red-500, text-neutral-600/50) and bare black/white bypass the tokens.
+const PALETTE_UTILITY =
+    /(?<![\w-])(?:bg|text|border|ring|stroke|fill|from|to|via|divide|outline|decoration|shadow|placeholder|caret|accent)-(?:(?:red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose|slate|gray|zinc|neutral|stone)-\d+|black|white)(?![\w-])/g;
 const EXTENSIONS = /\.(vue|css|scss|ts|tsx|js|mjs|html|php)$/;
 const SKIP = [
     'resources/js/actions',
@@ -51,6 +51,13 @@ export function findViolations(text, file) {
             if (!BANNED.includes(match[0].toUpperCase())) {
                 found.push({ line, message: `raw hex colour ${match[0]}` });
             }
+        }
+
+        for (const match of content.matchAll(PALETTE_UTILITY)) {
+            found.push({
+                line,
+                message: `Tailwind palette colour ${match[0]}`,
+            });
         }
 
         if (RAW_RGBA.test(content)) {

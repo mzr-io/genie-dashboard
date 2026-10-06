@@ -1,21 +1,20 @@
-@import 'tailwindcss';
+@import 'tailwindcss' source('../');
 
 @import 'tw-animate-css';
 
-@source '../../vendor/laravel/framework/src/Illuminate/Pagination/resources/views/*.blade.php';
-@source '../../storage/framework/views/*.php';
+@import './tokens.css';
 
-@custom-variant dark (&:is(.dark *));
+@source '../views';
 
 @theme inline {
-    --font-sans:
-        Instrument Sans, ui-sans-serif, system-ui, sans-serif,
-        'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-        'Noto Color Emoji';
+    --font-sans: var(--df-font-sans);
+    --font-mono: var(--df-font-mono);
 
-    --radius-lg: var(--radius);
-    --radius-md: calc(var(--radius) - 2px);
-    --radius-sm: calc(var(--radius) - 4px);
+    --radius-xs: var(--df-radius-xs);
+    --radius-sm: var(--df-radius-sm);
+    --radius-md: var(--df-radius-md);
+    --radius-lg: var(--df-radius-lg);
+    --radius-xl: var(--df-radius-xl);
 
     --color-background: var(--background);
     --color-foreground: var(--foreground);
@@ -45,12 +44,6 @@
     --color-input: var(--input);
     --color-ring: var(--ring);
 
-    --color-chart-1: var(--chart-1);
-    --color-chart-2: var(--chart-2);
-    --color-chart-3: var(--chart-3);
-    --color-chart-4: var(--chart-4);
-    --color-chart-5: var(--chart-5);
-
     --color-sidebar: var(--sidebar-background);
     --color-sidebar-foreground: var(--sidebar-foreground);
     --color-sidebar-primary: var(--sidebar-primary);
@@ -59,114 +52,330 @@
     --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
     --color-sidebar-border: var(--sidebar-border);
     --color-sidebar-ring: var(--sidebar-ring);
+
+    /* Dashflow tokens as utilities (bg-surface-card, text-text-muted, border-border-default ...).
+       The shadcn --color-accent above is the hover surface; the brand accent is bg-brand. */
+    --color-brand: var(--df-accent);
+    --color-accent-strong: var(--df-accent-strong);
+    --color-accent-border: var(--df-accent-border);
+    --color-accent-soft: var(--df-accent-soft);
+    --color-accent-wash: var(--df-accent-wash);
+    --color-accent-ink: var(--df-accent-ink);
+    --color-accent-ink-strong: var(--df-accent-ink-strong);
+    --color-accent-ink-inverse: var(--df-accent-ink-inverse);
+    --color-on-accent: var(--df-on-accent);
+    --color-logo-tile: var(--df-logo-tile);
+    --color-logo-mark: var(--df-logo-mark);
+    --color-surface-canvas: var(--df-surface-canvas);
+    --color-surface-card: var(--df-surface-card);
+    --color-surface-sunken: var(--df-surface-sunken);
+    --color-surface-muted: var(--df-surface-muted);
+    --color-border-default: var(--df-border-default);
+    --color-border-strong: var(--df-border-strong);
+    --color-border-control: var(--df-border-control);
+    --color-text-primary: var(--df-text-primary);
+    --color-text-secondary: var(--df-text-secondary);
+    --color-text-muted: var(--df-text-muted);
+    --color-text-subtle: var(--df-text-subtle);
+    --color-text-inverse: var(--df-text-inverse);
+    --color-surface-inverse: var(--df-surface-inverse);
+    --color-scrim: var(--df-scrim);
+    --color-shadow-color: var(--df-shadow-color);
+    --color-focus-ring: var(--df-focus-ring);
+    --color-on-status: var(--df-on-status);
+    --color-success: var(--df-success);
+    --color-success-text: var(--df-success-text);
+    --color-success-soft: var(--df-success-soft);
+    --color-success-wash: var(--df-success-wash);
+    --color-success-border: var(--df-success-border);
+    --color-error: var(--df-error);
+    --color-error-text: var(--df-error-text);
+    --color-error-soft: var(--df-error-soft);
+    --color-error-border: var(--df-error-border);
+    --color-warning: var(--df-warning);
+    --color-warning-bar: var(--df-warning-bar);
+    --color-warning-soft: var(--df-warning-soft);
+    --color-warning-border: var(--df-warning-border);
+    --color-info: var(--df-info);
+    --color-info-strong: var(--df-info-strong);
+    --color-info-soft: var(--df-info-soft);
+    --color-hero-surface: var(--df-hero-surface);
+    --color-hero-surface-raised: var(--df-hero-surface-raised);
+    --color-hero-card: var(--df-hero-card);
+    --color-hero-border: var(--df-hero-border);
+    --color-hero-text: var(--df-hero-text);
+    --color-hero-text-muted: var(--df-hero-text-muted);
+    --color-hero-chip: var(--df-hero-chip);
+    --color-role-label-text: var(--df-role-label-text);
+    --color-role-label-fill: var(--df-role-label-fill);
+    --color-role-label-border: var(--df-role-label-border);
+    --color-role-value-text: var(--df-role-value-text);
+    --color-role-value-fill: var(--df-role-value-fill);
+    --color-role-value-border: var(--df-role-value-border);
+    --color-role-dimension-text: var(--df-role-dimension-text);
+    --color-role-dimension-fill: var(--df-role-dimension-fill);
+    --color-role-dimension-border: var(--df-role-dimension-border);
+    --color-role-measure-text: var(--df-role-measure-text);
+    --color-role-measure-fill: var(--df-role-measure-fill);
+    --color-role-measure-border: var(--df-role-measure-border);
+    --color-role-time-text: var(--df-role-time-text);
+    --color-role-time-fill: var(--df-role-time-fill);
+    --color-role-time-border: var(--df-role-time-border);
+    --color-role-filter-text: var(--df-role-filter-text);
+    --color-role-filter-fill: var(--df-role-filter-fill);
+    --color-role-filter-border: var(--df-role-filter-border);
+    --color-chart-1: var(--df-chart-1);
+    --color-chart-1-stroke: var(--df-chart-1-stroke);
+    --color-chart-1-fill: var(--df-chart-1-fill);
+    --color-chart-2: var(--df-chart-2);
+    --color-chart-3: var(--df-chart-3);
+    --color-chart-4: var(--df-chart-4);
+    --color-chart-5: var(--df-chart-5);
+    --color-chart-6: var(--df-chart-6);
+    --color-chart-grid: var(--df-chart-grid);
 }
 
 /*
-  The default border color has changed to `currentColor` in Tailwind CSS v4,
-  so we've added these compatibility styles to make sure everything still
-  looks the same as it did with Tailwind CSS v3.
-
-  If we ever want to remove these styles, we need to add an explicit border
-  color utility to any element that depends on these defaults.
+  shadcn-vue variables bound to the Dashflow tokens (UX-DR-287). They are declared on
+  :root and on [data-workspace] so a brand override recomputes them inside its scope.
 */
-@layer base {
-    *,
-    ::after,
-    ::before,
-    ::backdrop,
-    ::file-selector-button {
-        border-color: var(--color-gray-200, currentColor);
-    }
-}
-
-@layer utilities {
-    body,
-    html {
-        --font-sans:
-            'Instrument Sans', ui-sans-serif, system-ui, sans-serif,
-            'Apple Color Emoji', 'Segoe UI Emoji', 'Segoe UI Symbol',
-            'Noto Color Emoji';
-    }
-}
-
-:root {
-    --background: hsl(0 0% 100%);
-    --foreground: hsl(0 0% 3.9%);
-    --card: hsl(0 0% 100%);
-    --card-foreground: hsl(0 0% 3.9%);
-    --popover: hsl(0 0% 100%);
-    --popover-foreground: hsl(0 0% 3.9%);
-    --primary: hsl(0 0% 9%);
-    --primary-foreground: hsl(0 0% 98%);
-    --secondary: hsl(0 0% 92.1%);
-    --secondary-foreground: hsl(0 0% 9%);
-    --muted: hsl(0 0% 96.1%);
-    --muted-foreground: hsl(0 0% 45.1%);
-    --accent: hsl(0 0% 96.1%);
-    --accent-foreground: hsl(0 0% 9%);
-    --destructive: hsl(0 84.2% 60.2%);
-    --destructive-foreground: hsl(0 0% 98%);
-    --border: hsl(0 0% 92.8%);
-    --input: hsl(0 0% 89.8%);
-    --ring: hsl(0 0% 3.9%);
-    --chart-1: hsl(12 76% 61%);
-    --chart-2: hsl(173 58% 39%);
-    --chart-3: hsl(197 37% 24%);
-    --chart-4: hsl(43 74% 66%);
-    --chart-5: hsl(27 87% 67%);
-    --radius: 0.5rem;
-    --sidebar-background: hsl(0 0% 98%);
-    --sidebar-foreground: hsl(240 5.3% 26.1%);
-    --sidebar-primary: hsl(0 0% 10%);
-    --sidebar-primary-foreground: hsl(0 0% 98%);
-    --sidebar-accent: hsl(0 0% 94%);
-    --sidebar-accent-foreground: hsl(0 0% 30%);
-    --sidebar-border: hsl(0 0% 91%);
-    --sidebar-ring: hsl(217.2 91.2% 59.8%);
-    --sidebar: hsl(0 0% 98%);
-}
-
-.dark {
-    --background: hsl(0 0% 3.9%);
-    --foreground: hsl(0 0% 98%);
-    --card: hsl(0 0% 3.9%);
-    --card-foreground: hsl(0 0% 98%);
-    --popover: hsl(0 0% 3.9%);
-    --popover-foreground: hsl(0 0% 98%);
-    --primary: hsl(0 0% 98%);
-    --primary-foreground: hsl(0 0% 9%);
-    --secondary: hsl(0 0% 14.9%);
-    --secondary-foreground: hsl(0 0% 98%);
-    --muted: hsl(0 0% 16.08%);
-    --muted-foreground: hsl(0 0% 63.9%);
-    --accent: hsl(0 0% 14.9%);
-    --accent-foreground: hsl(0 0% 98%);
-    --destructive: hsl(0 84% 60%);
-    --destructive-foreground: hsl(0 0% 98%);
-    --border: hsl(0 0% 14.9%);
-    --input: hsl(0 0% 14.9%);
-    --ring: hsl(0 0% 83.1%);
-    --chart-1: hsl(220 70% 50%);
-    --chart-2: hsl(160 60% 45%);
-    --chart-3: hsl(30 80% 55%);
-    --chart-4: hsl(280 65% 60%);
-    --chart-5: hsl(340 75% 55%);
-    --sidebar-background: hsl(0 0% 7%);
-    --sidebar-foreground: hsl(0 0% 95.9%);
-    --sidebar-primary: hsl(360, 100%, 100%);
-    --sidebar-primary-foreground: hsl(0 0% 100%);
-    --sidebar-accent: hsl(0 0% 15.9%);
-    --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
-    --sidebar-border: hsl(0 0% 15.9%);
-    --sidebar-ring: hsl(217.2 91.2% 59.8%);
-    --sidebar: hsl(240 5.9% 10%);
+:root,
+[data-workspace] {
+    --background: var(--df-surface-canvas);
+    --foreground: var(--df-text-primary);
+    --card: var(--df-surface-card);
+    --card-foreground: var(--df-text-primary);
+    --popover: var(--df-surface-card);
+    --popover-foreground: var(--df-text-primary);
+    --primary: var(--df-accent);
+    --primary-foreground: var(--df-on-accent);
+    --secondary: var(--df-surface-muted);
+    --secondary-foreground: var(--df-text-primary);
+    --muted: var(--df-surface-muted);
+    --muted-foreground: var(--df-text-muted);
+    --accent: var(--df-accent-soft);
+    --accent-foreground: var(--df-text-primary);
+    --destructive: var(--df-error);
+    --destructive-foreground: var(--df-on-status);
+    --border: var(--df-border-default);
+    --input: var(--df-border-control);
+    --ring: var(--df-focus-ring);
+    --chart-1: var(--df-chart-1);
+    --chart-2: var(--df-chart-2);
+    --chart-3: var(--df-chart-3);
+    --chart-4: var(--df-chart-4);
+    --chart-5: var(--df-chart-5);
+    --chart-6: var(--df-chart-6);
+    --radius: var(--df-radius-md);
+    --sidebar-background: var(--df-surface-card);
+    --sidebar: var(--df-surface-card);
+    --sidebar-foreground: var(--df-text-secondary);
+    --sidebar-primary: var(--df-accent);
+    --sidebar-primary-foreground: var(--df-on-accent);
+    --sidebar-accent: var(--df-accent-soft);
+    --sidebar-accent-foreground: var(--df-text-primary);
+    --sidebar-border: var(--df-border-default);
+    --sidebar-ring: var(--df-focus-ring);
 }
 
 @layer base {
     * {
-        @apply border-border outline-ring/50;
+        @apply border-border;
     }
+
+    html {
+        /* Sticky topbar plus a gap, so a focused element is never hidden (UX-DR-268). */
+        scroll-padding-top: calc(var(--df-topbar-height) + var(--df-space-4));
+        scroll-padding-bottom: var(--df-space-4);
+        scroll-padding-left: var(--df-sidebar-width);
+    }
+
     body {
         @apply bg-background text-foreground;
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-body-md-size);
+        line-height: var(--df-type-body-md-leading);
+    }
+
+    /* Figures line up in columns (UX-DR-7). */
+    table,
+    time,
+    output,
+    [data-figure] {
+        font-variant-numeric: tabular-nums;
+    }
+
+    code,
+    kbd,
+    samp,
+    pre {
+        font-family: var(--df-font-mono);
+    }
+}
+
+/* Focus (UX-DR-12): 3px solid focus-ring, 2px offset, on every interactive element.
+   Unlayered so it wins over component utilities. Never yellow. */
+:focus-visible {
+    outline: var(--df-focus-width) solid var(--df-focus-ring);
+    outline-offset: var(--df-focus-offset);
+}
+
+/* Typography scale (UX-DR-7, UX-DR-8) */
+@layer components {
+    .type-display-hero {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-display-hero-size);
+        font-weight: var(--df-type-display-hero-weight);
+        line-height: var(--df-type-display-hero-leading);
+        letter-spacing: var(--df-type-display-hero-tracking);
+    }
+    .type-headline-lg {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-headline-lg-size);
+        font-weight: var(--df-type-headline-lg-weight);
+        line-height: var(--df-type-headline-lg-leading);
+        letter-spacing: var(--df-type-headline-lg-tracking);
+    }
+    .type-headline-md {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-headline-md-size);
+        font-weight: var(--df-type-headline-md-weight);
+        line-height: var(--df-type-headline-md-leading);
+        letter-spacing: var(--df-type-headline-md-tracking);
+    }
+    .type-title-md {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-title-md-size);
+        font-weight: var(--df-type-title-md-weight);
+        line-height: var(--df-type-title-md-leading);
+        letter-spacing: var(--df-type-title-md-tracking);
+    }
+    .type-title-sm {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-title-sm-size);
+        font-weight: var(--df-type-title-sm-weight);
+        line-height: var(--df-type-title-sm-leading);
+        letter-spacing: var(--df-type-title-sm-tracking);
+    }
+    .type-body-md {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-body-md-size);
+        font-weight: var(--df-type-body-md-weight);
+        line-height: var(--df-type-body-md-leading);
+        letter-spacing: var(--df-type-body-md-tracking);
+    }
+    .type-body-sm {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-body-sm-size);
+        font-weight: var(--df-type-body-sm-weight);
+        line-height: var(--df-type-body-sm-leading);
+        letter-spacing: var(--df-type-body-sm-tracking);
+    }
+    .type-caption {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-caption-size);
+        font-weight: var(--df-type-caption-weight);
+        line-height: var(--df-type-caption-leading);
+        letter-spacing: var(--df-type-caption-tracking);
+    }
+    .type-label-caps {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-label-caps-size);
+        font-weight: var(--df-type-label-caps-weight);
+        line-height: var(--df-type-label-caps-leading);
+        letter-spacing: var(--df-type-label-caps-tracking);
+    }
+    .type-kpi-headline {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-kpi-headline-size);
+        font-weight: var(--df-type-kpi-headline-weight);
+        line-height: var(--df-type-kpi-headline-leading);
+        letter-spacing: var(--df-type-kpi-headline-tracking);
+    }
+    .type-kpi-card {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-kpi-card-size);
+        font-weight: var(--df-type-kpi-card-weight);
+        line-height: var(--df-type-kpi-card-leading);
+        letter-spacing: var(--df-type-kpi-card-tracking);
+    }
+    .type-mono {
+        font-family: var(--df-font-mono);
+        font-size: var(--df-type-mono-size);
+        font-weight: var(--df-type-mono-weight);
+        line-height: var(--df-type-mono-leading);
+        letter-spacing: var(--df-type-mono-tracking);
+    }
+    .type-label-caps {
+        text-transform: uppercase;
+    }
+
+    .tabular,
+    .type-kpi-headline,
+    .type-kpi-card {
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Resting cards: 1px border, no shadow (UX-DR-11) */
+    .surface-card {
+        background: var(--df-surface-card);
+        border: 1px solid var(--df-border-default);
+        border-radius: var(--df-radius-lg);
+        box-shadow: var(--df-shadow-card);
+    }
+
+    /* Selected-state cues that never rely on fill alone (UX-DR-14) */
+    .cue-bar {
+        position: relative;
+    }
+    .cue-bar[data-active='true']::before,
+    .cue-bar[aria-selected='true']::before,
+    .cue-bar[aria-current='page']::before {
+        content: '';
+        position: absolute;
+        inset-block: var(--df-space-1);
+        inset-inline-start: 0;
+        width: 3px;
+        border-radius: var(--df-radius-full);
+        background: var(--df-accent-ink-strong);
+    }
+    .cue-border[aria-checked='true'],
+    .cue-border[data-state='checked'],
+    .cue-border[data-selected='true'] {
+        border: 2px solid var(--df-accent-ink-strong);
+        background: var(--df-accent-soft);
+    }
+    .cue-segmented {
+        background: var(--df-surface-sunken);
+        border: 1px solid var(--df-border-control);
+        border-radius: var(--df-radius-md);
+    }
+    .cue-segmented [aria-checked='true'],
+    .cue-segmented [data-state='on'],
+    .cue-segmented [data-state='active'] {
+        background: var(--df-surface-card);
+        border: 1px solid var(--df-border-control);
+        font-weight: 600;
+    }
+    .cue-chip[aria-pressed='true'],
+    .cue-chip[data-selected='true'] {
+        background: var(--df-accent-soft);
+        color: var(--df-accent-ink-strong);
+        border: 1px solid var(--df-accent-ink-strong);
+        font-weight: 700;
+    }
+    .cue-chip[aria-pressed='true']::before,
+    .cue-chip[data-selected='true']::before,
+    .cue-check[aria-selected='true']::before,
+    .cue-check[data-selected='true']::before {
+        content: '\2713';
+        margin-inline-end: var(--df-space-1);
+        color: var(--df-accent-ink-strong);
+    }
+    .cue-option-active[data-highlighted],
+    .cue-option-active[data-active='true'] {
+        background: var(--df-accent-soft);
+        outline: 2px solid var(--df-focus-ring);
+        outline-offset: -2px;
     }
 }

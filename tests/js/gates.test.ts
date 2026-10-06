@@ -36,6 +36,35 @@ describe('colour lint', () => {
         ).toHaveLength(1);
     });
 
+    it('fails Tailwind palette utilities and bare black/white, naming the line', () => {
+        const found = findViolations(
+            'a\n<p class="text-neutral-600 bg-black/80 hover:text-white">',
+            'resources/js/components/X.vue',
+        );
+
+        expect(found.map((f) => f.message)).toEqual([
+            'Tailwind palette colour text-neutral-600',
+            'Tailwind palette colour bg-black',
+            'Tailwind palette colour text-white',
+        ]);
+        expect(found.every((f) => f.line === 2)).toBe(true);
+    });
+
+    it('allows token utilities and palette utilities in the allowlisted Welcome page', () => {
+        expect(
+            findViolations(
+                'class="text-text-primary bg-surface-card text-error-text border-red"',
+                'resources/js/components/X.vue',
+            ),
+        ).toEqual([]);
+        expect(
+            findViolations(
+                'class="bg-red-500"',
+                'resources/js/pages/Welcome.vue',
+            ),
+        ).toEqual([]);
+    });
+
     it('ignores HTML entities and non-colour hashes', () => {
         expect(
             findViolations('&#123; #app #section-1', 'resources/js/x.ts'),

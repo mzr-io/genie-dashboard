@@ -1,0 +1,217 @@
+/*
+ * Dashflow design tokens, generated from DESIGN.md (frontmatter colors, typography, rounded, spacing).
+ * Light theme only. Every token is a custom property on :root with a --df- prefix.
+ * A second theme is additive: scope a new block (for example [data-theme='...']) and redefine
+ * the same names. No -dark values exist and none are defined here.
+ * Brand tokens are the only ones a [data-workspace] scope may override (see resources/js/lib/brand.ts);
+ * system tokens are fixed.
+ */
+:root {
+    /* BRAND tokens (overridable per Workspace) */
+    --df-accent: #facc15;
+    --df-accent-strong: #eab308;
+    --df-accent-border: #fde047;
+    --df-accent-soft: #fef9c3;
+    --df-accent-wash: #fffbeb;
+    --df-accent-ink: #a16207;
+    --df-accent-ink-strong: #854d0e;
+    --df-accent-ink-inverse: #fde047;
+    --df-on-accent: #111827;
+    --df-logo-tile: #facc15;
+    --df-logo-mark: #111827;
+    /* SYSTEM tokens (never overridden by a Workspace) */
+    --df-surface-canvas: #f7f8fa;
+    --df-surface-card: #ffffff;
+    --df-surface-sunken: #f9fafb;
+    --df-surface-muted: #f3f4f6;
+    --df-border-default: #e5e7eb;
+    --df-border-strong: #d1d5db;
+    --df-border-control: #80868f;
+    --df-text-primary: #111827;
+    --df-text-secondary: #374151;
+    --df-text-muted: #6b7280;
+    --df-text-subtle: #9ca3af;
+    --df-text-inverse: #f9fafb;
+    --df-surface-inverse: #111827;
+    --df-scrim: #111827;
+    --df-shadow-color: #111827;
+    --df-focus-ring: #2563eb;
+    --df-on-status: #ffffff;
+    /* STATUS */
+    --df-success: #16a34a;
+    --df-success-text: #15803d;
+    --df-success-soft: #dcfce7;
+    --df-success-wash: #f0fdf4;
+    --df-success-border: #bbf7d0;
+    --df-error: #dc2626;
+    --df-error-text: #b91c1c;
+    --df-error-soft: #fef2f2;
+    --df-error-border: #fca5a5;
+    --df-warning: #c2410c;
+    --df-warning-bar: #f97316;
+    --df-warning-soft: #ffedd5;
+    --df-warning-border: #fed7aa;
+    --df-info: #1d4ed8;
+    --df-info-strong: #1e40af;
+    --df-info-soft: #dbeafe;
+    /* SIGN-IN HERO (dark surfaces exist only here) */
+    --df-hero-surface: #0a0e11;
+    --df-hero-surface-raised: #11161a;
+    --df-hero-card: #181920;
+    --df-hero-border: #1d2229;
+    --df-hero-text: #ffffff;
+    --df-hero-text-muted: #9099a6;
+    --df-hero-chip: #1c1c13;
+    /* DATA-MAPPING ROLE CHIPS */
+    --df-role-label-text: #374151;
+    --df-role-label-fill: #f3f4f6;
+    --df-role-label-border: #e5e7eb;
+    --df-role-value-text: #854d0e;
+    --df-role-value-fill: #fef08a;
+    --df-role-value-border: #fde047;
+    --df-role-dimension-text: #0f766e;
+    --df-role-dimension-fill: #ccfbf1;
+    --df-role-dimension-border: #99f6e4;
+    --df-role-measure-text: #1d4ed8;
+    --df-role-measure-fill: #dbeafe;
+    --df-role-measure-border: #bfdbfe;
+    --df-role-time-text: #6d28d9;
+    --df-role-time-fill: #ede9fe;
+    --df-role-time-border: #ddd6fe;
+    --df-role-filter-text: #c2410c;
+    --df-role-filter-fill: #ffedd5;
+    --df-role-filter-border: #fed7aa;
+    /* CHART PALETTE (max 6 series; chart-1 follows accent, chart-1-stroke follows accent-ink) */
+    --df-chart-1: var(--df-accent);
+    --df-chart-1-stroke: var(--df-accent-ink);
+    --df-chart-1-fill: #fef9c3;
+    --df-chart-2: #4c6eb1;
+    --df-chart-3: #0f766e;
+    --df-chart-4: #db2777;
+    --df-chart-5: #ea580c;
+    --df-chart-6: #6b7280;
+    --df-chart-grid: #f3f4f6;
+    --df-progress-bar: var(--df-accent-ink-strong);
+    /* TYPOGRAPHY: Inter with the system fallback stack */
+    --df-font-sans:
+        Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+        'Helvetica Neue', Arial, sans-serif;
+    --df-font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --df-type-display-hero-size: 56px;
+    --df-type-display-hero-weight: 500;
+    --df-type-display-hero-leading: 1.08;
+    --df-type-display-hero-tracking: -0.02em;
+    --df-type-headline-lg-size: 28px;
+    --df-type-headline-lg-weight: 500;
+    --df-type-headline-lg-leading: 1.25;
+    --df-type-headline-lg-tracking: -0.01em;
+    --df-type-headline-md-size: 20px;
+    --df-type-headline-md-weight: 700;
+    --df-type-headline-md-leading: 1.3;
+    --df-type-headline-md-tracking: 0;
+    --df-type-title-md-size: 15px;
+    --df-type-title-md-weight: 600;
+    --df-type-title-md-leading: 1.35;
+    --df-type-title-md-tracking: 0;
+    --df-type-title-sm-size: 13px;
+    --df-type-title-sm-weight: 600;
+    --df-type-title-sm-leading: 1.35;
+    --df-type-title-sm-tracking: 0;
+    --df-type-body-md-size: 14px;
+    --df-type-body-md-weight: 400;
+    --df-type-body-md-leading: 1.5;
+    --df-type-body-md-tracking: 0;
+    --df-type-body-sm-size: 13px;
+    --df-type-body-sm-weight: 400;
+    --df-type-body-sm-leading: 1.45;
+    --df-type-body-sm-tracking: 0;
+    --df-type-caption-size: 12px;
+    --df-type-caption-weight: 400;
+    --df-type-caption-leading: 1.4;
+    --df-type-caption-tracking: 0;
+    --df-type-label-caps-size: 11px;
+    --df-type-label-caps-weight: 600;
+    --df-type-label-caps-leading: 1.4;
+    --df-type-label-caps-tracking: 0.08em;
+    --df-type-kpi-headline-size: 26px;
+    --df-type-kpi-headline-weight: 700;
+    --df-type-kpi-headline-leading: 1.15;
+    --df-type-kpi-headline-tracking: -0.01em;
+    --df-type-kpi-card-size: 20px;
+    --df-type-kpi-card-weight: 700;
+    --df-type-kpi-card-leading: 1.2;
+    --df-type-kpi-card-tracking: -0.01em;
+    --df-type-mono-size: 12px;
+    --df-type-mono-weight: 400;
+    --df-type-mono-leading: 1.45;
+    --df-type-mono-tracking: 0;
+    /* RADIUS */
+    --df-radius-xs: 4px;
+    --df-radius-sm: 6px;
+    --df-radius-md: 8px;
+    --df-radius-lg: 10px;
+    --df-radius-xl: 12px;
+    --df-radius-sheet: 16px;
+    --df-radius-full: 9999px;
+    /* SPACING AND SIZING */
+    --df-space-1: 4px;
+    --df-space-2: 8px;
+    --df-space-3: 12px;
+    --df-space-4: 16px;
+    --df-space-5: 20px;
+    --df-space-6: 24px;
+    --df-space-7: 28px;
+    --df-space-8: 32px;
+    --df-space-10: 40px;
+    --df-page-gutter: 28px;
+    --df-page-gutter-mobile: 16px;
+    --df-grid-gap: 14px;
+    --df-grid-columns: 12;
+    --df-grid-row-unit: 60px;
+    --df-block-height-small: 120px;
+    --df-block-height-medium: 360px;
+    --df-block-height-large: 540px;
+    --df-sidebar-width: 232px;
+    --df-icon-rail-width: 64px;
+    --df-topbar-height: 64px;
+    --df-drawer-width: 392px;
+    --df-drawer-dim-strip-mobile: 28px;
+    --df-preview-pane-width: 384px;
+    --df-popover-width-palette: 560px;
+    --df-popover-width-notifications: 360px;
+    --df-popover-width-picker: 320px;
+    --df-stepper-numeral: 22px;
+    --df-stepper-connector: 56px;
+    --df-target-min: 24px;
+    --df-target-chrome: 28px;
+    --df-target-touch: 44px;
+    --df-reflow-stack-below: 640px;
+    --df-slot-row-wrap-below: 760px;
+    /* ELEVATION: resting cards have a 1px border and no shadow */
+    --df-shadow-card: none;
+    --df-shadow-toast: 0 10px 30px
+        color-mix(in srgb, var(--df-shadow-color) 25%, transparent);
+    --df-shadow-dialog: 0 12px 40px
+        color-mix(in srgb, var(--df-shadow-color) 12%, transparent);
+    --df-shadow-sheet: var(--df-shadow-dialog);
+    --df-shadow-drawer-row: 0 4px 16px
+        color-mix(in srgb, var(--df-shadow-color) 6%, transparent);
+    --df-shadow-float: var(--df-shadow-dialog);
+    --df-scrim-fill: color-mix(in srgb, var(--df-scrim) 45%, transparent);
+    --df-halo-accent: color-mix(in srgb, var(--df-accent) 18%, transparent);
+    /* FOCUS */
+    --df-focus-width: 3px;
+    --df-focus-offset: 2px;
+}
+
+/*
+ * Brand seam: a [data-workspace] scope may redefine only the BRAND tokens above
+ * (and chart-1 / chart-1-stroke, which follow them). Values come from resolveBrand().
+ * The MVP ships the Dashflow defaults and no overrides.
+ */
+[data-workspace] {
+    --df-chart-1: var(--df-accent);
+    --df-chart-1-stroke: var(--df-accent-ink);
+    --df-halo-accent: color-mix(in srgb, var(--df-accent) 18%, transparent);
+    --df-progress-bar: var(--df-accent-ink-strong);
+}
