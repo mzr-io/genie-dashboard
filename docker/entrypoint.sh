@@ -25,7 +25,8 @@ case "$role" in
     exit 1
     ;;
   realtime)
-    exec php artisan reverb:start --host="${REVERB_SERVER_HOST:-0.0.0.0}" --port="${REVERB_SERVER_PORT:-8081}"
+    # Reverb's own async Valkey client verifies TLS against PHP's CA file: point it at the Valkey CA.
+    exec php ${VALKEY_TLS_CA:+-d "openssl.cafile=$VALKEY_TLS_CA"} artisan reverb:start --host="${REVERB_SERVER_HOST:-0.0.0.0}" --port="${REVERB_SERVER_PORT:-8081}"
     ;;
   scheduler)
     # Run schedule:run, then sleep to the start of the next minute.

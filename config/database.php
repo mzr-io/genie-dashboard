@@ -3,6 +3,41 @@
 use Illuminate\Support\Str;
 use Pdo\Mysql;
 
+/*
+| Valkey connection for one store (AR-24). The role's own ACL user comes from
+| VALKEY_USERNAME / VALKEY_PASSWORD; a store may override them. With the `tls`
+| scheme the server certificate is verified against VALKEY_TLS_CA.
+*/
+$valkey = function (string $store) {
+    $prefix = 'VALKEY_'.strtoupper($store).'_';
+    $scheme = env($prefix.'SCHEME', 'tcp');
+
+    return [
+        'scheme' => $scheme,
+        'host' => env($prefix.'HOST', '127.0.0.1'),
+        'port' => env($prefix.'PORT', '6379'),
+        'username' => env($prefix.'USERNAME', env('VALKEY_USERNAME')),
+        'password' => env($prefix.'PASSWORD', env('VALKEY_PASSWORD')),
+        'database' => 0,
+        'context' => $scheme === 'tls' ? ['stream' => array_filter([
+            'cafile' => env('VALKEY_TLS_CA'),
+            'verify_peer' => filter_var(env('VALKEY_TLS_VERIFY', true), FILTER_VALIDATE_BOOL),
+            'verify_peer_name' => filter_var(env('VALKEY_TLS_VERIFY', true), FILTER_VALIDATE_BOOL),
+        ], fn ($value) => $value !== null)] : [],
+        'max_retries' => env('REDIS_MAX_RETRIES', 3),
+        'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
+        'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
+        'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
+    ];
+};
+
+/*
+| Optional PgBouncer transaction-mode switch (DB_PGBOUNCER). Off leaves the
+| connection exactly as configured; on turns server-side prepared statements
+| off, which transaction pooling does not support.
+*/
+$pgbouncer = filter_var(env('DB_PGBOUNCER', false), FILTER_VALIDATE_BOOL);
+
 return [
 
     /*
@@ -99,7 +134,7 @@ return [
             'sslmode' => env('DB_SSLMODE', 'prefer'),
             'options' => [
                 PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT', 5),
-            ],
+            ] + ($pgbouncer ? [PDO::ATTR_EMULATE_PREPARES => true] : []),
         ],
 
         'sqlsrv' => [
@@ -137,12 +172,11 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Redis Databases
+    | Valkey Stores
     |--------------------------------------------------------------------------
     |
-    | Redis is an open source, fast, and advanced key-value store that also
-    | provides a richer body of commands than a typical key-value system
-    | such as Memcached. You may define your connection settings here.
+    | Two stores on two instances (eviction policy is per instance): `queue`
+    | and `cache`. There is no `default` connection on purpose.
     |
     */
 
@@ -156,31 +190,11 @@ return [
             'persistent' => env('REDIS_PERSISTENT', false),
         ],
 
-        'default' => [
-            'url' => env('REDIS_URL'),
-            'host' => env('REDIS_HOST', '127.0.0.1'),
-            'username' => env('REDIS_USERNAME'),
-            'password' => env('REDIS_PASSWORD'),
-            'port' => env('REDIS_PORT', '6379'),
-            'database' => env('REDIS_DB', '0'),
-            'max_retries' => env('REDIS_MAX_RETRIES', 3),
-            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
-            'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
-            'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
-        ],
+        // Queues, locks, rate limits, Reverb fan-out and Horizon. Instance runs `noeviction`.
+        'queue' => $valkey('queue'),
 
-        'cache' => [
-            'url' => env('REDIS_URL'),
-            'host' => env('REDIS_HOST', '127.0.0.1'),
-            'username' => env('REDIS_USERNAME'),
-            'password' => env('REDIS_PASSWORD'),
-            'port' => env('REDIS_PORT', '6379'),
-            'database' => env('REDIS_CACHE_DB', '1'),
-            'max_retries' => env('REDIS_MAX_RETRIES', 3),
-            'backoff_algorithm' => env('REDIS_BACKOFF_ALGORITHM', 'decorrelated_jitter'),
-            'backoff_base' => env('REDIS_BACKOFF_BASE', 100),
-            'backoff_cap' => env('REDIS_BACKOFF_CAP', 1000),
-        ],
+        // Results and tokens. Instance runs `allkeys-lru`; every key set has a TTL.
+        'cache' => $valkey('cache'),
 
     ],
 

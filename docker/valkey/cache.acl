@@ -1,0 +1,11 @@
+user default off
+# Application roles. Cache store: results and tokens (LRU, TTL on every key).
+# +flushdb lets cache:clear work here (it stays denied on the queue store).
+user web on >__PASSWORD_WEB__ ~* &* +@all -@admin -@dangerous +flushdb
+user scheduler on >__PASSWORD_SCHEDULER__ ~* &* +@all -@admin -@dangerous +flushdb
+user worker-connector on >__PASSWORD_WORKER_CONNECTOR__ ~* &* +@all -@admin -@dangerous +flushdb
+user worker-compute on >__PASSWORD_WORKER_COMPUTE__ ~* &* +@all -@admin -@dangerous +flushdb
+# realtime only reads (the Reverb restart signal); it cannot write the cache.
+user realtime on >__PASSWORD_REALTIME__ ~* resetchannels -@all +@read +@connection
+# Health checks and INFO for operators: no key access.
+user health on >__PASSWORD_HEALTH__ resetkeys -@all +ping +info +@connection

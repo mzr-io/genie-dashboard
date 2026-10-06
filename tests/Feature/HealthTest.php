@@ -8,13 +8,19 @@ use Illuminate\Support\Facades\Redis;
 use Laravel\Horizon\Contracts\MasterSupervisorRepository;
 use Laravel\Horizon\MasterSupervisor;
 
-function fakeValkey(bool $up = true): void
+/** @param  list<string>  $down  stores whose ping fails (defaults to both when $up is false) */
+function fakeValkey(bool $up = true, array $down = []): void
 {
-    $connection = Mockery::mock();
-    $up
-        ? $connection->shouldReceive('ping')->andReturn(true)
-        : $connection->shouldReceive('ping')->andThrow(new RuntimeException('Connection refused'));
-    Redis::shouldReceive('connection')->andReturn($connection);
+    $down = $up ? $down : ['queue', 'cache'];
+
+    Redis::shouldReceive('connection')->andReturnUsing(function (string $store) use ($down) {
+        $connection = Mockery::mock();
+        in_array($store, $down, true)
+            ? $connection->shouldReceive('ping')->andThrow(new RuntimeException('Connection refused'))
+            : $connection->shouldReceive('ping')->andReturn(true);
+
+        return $connection;
+    });
 }
 
 function breakPostgres(): void
@@ -45,15 +51,16 @@ it('answers 503 naming PostgreSQL when it is down', function () {
         ->assertJsonPath('failed.0.check', 'PostgreSQL');
 });
 
-it('answers 503 naming Valkey when it is down', function () {
-    fakeValkey(up: false);
+it('answers 503 naming each Valkey store when it is down', function (string $store, string $check) {
+    fakeValkey(down: [$store]);
 
     $this->getJson('/health/ready')
         ->assertStatus(503)
-        ->assertJsonPath('failed.0.check', 'Valkey')
+        ->assertJsonCount(1, 'failed')
+        ->assertJsonPath('failed.0.check', $check)
         ->assertJsonPath('failed.0.reason', 'RuntimeException')
         ->assertDontSee('Connection refused');
-});
+})->with([['queue', 'Valkey queue'], ['cache', 'Valkey cache']]);
 
 it('keeps liveness at 200 while PostgreSQL is down', function () {
     breakPostgres();
@@ -71,11 +78,20 @@ it('names PostgreSQL for every role when it is down', function (Role $role) {
         ->and($report->failures)->toHaveKey('PostgreSQL');
 })->with(Role::cases());
 
-it('names Valkey for every role when it is down', function (Role $role) {
+it('names both Valkey stores for every role when they are down', function (Role $role) {
     fakeValkey(up: false);
 
-    expect(app(HealthChecker::class)->check($role)->failures)->toHaveKey('Valkey');
+    expect(app(HealthChecker::class)->check($role)->failures)
+        ->toHaveKeys(['Valkey queue', 'Valkey cache']);
 })->with(Role::cases());
+
+it('names the Valkey store a role is refused on', function () {
+    fakeValkey(down: ['cache']);
+
+    $failures = app(HealthChecker::class)->check(Role::Realtime)->failures;
+
+    expect($failures)->toHaveKey('Valkey cache')->not->toHaveKey('Valkey queue');
+});
 
 it('health command exits non-zero when the role is unhealthy', function () {
     fakeValkey();

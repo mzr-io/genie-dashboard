@@ -29,7 +29,7 @@ return [
 
     'path' => env('HORIZON_PATH', 'horizon'),
 
-    'use' => 'default',
+    'use' => 'queue',
 
     'prefix' => env(
         'HORIZON_PREFIX',

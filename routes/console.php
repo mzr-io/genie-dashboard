@@ -10,3 +10,6 @@ Artisan::command('inspire', function () {
 
 // Every scheduled task uses onOneServer() so several schedulers run each task once.
 Schedule::command('dashflow:heartbeat')->everyMinute()->onOneServer();
+
+// Schedule mutexes are locks: with Valkey they live on the noeviction `queue` store, not the LRU cache.
+Schedule::useCache(config('cache.schedule_store'));

@@ -34,7 +34,7 @@ If your host already has PHP 8.5 with the extensions above, you can run the same
 
 ## Docker Compose stack
 
-One image runs five process roles, chosen by command: `web` (nginx and php-fpm), `realtime` (Reverb), `scheduler` (`schedule:run` each minute), `worker-connector` (Horizon on `fetch-interactive`, `fetch-scheduled`) and `worker-compute` (Horizon on `compute`, `outbox`, `notifications`, `maintenance`). PostgreSQL 18 and Valkey 9 back them, and a one-shot `migrator` runs `migrate --force` before any role starts.
+One image runs five process roles, chosen by command: `web` (nginx and php-fpm), `realtime` (Reverb), `scheduler` (`schedule:run` each minute), `worker-connector` (Horizon on `fetch-interactive`, `fetch-scheduled`) and `worker-compute` (Horizon on `compute`, `outbox`, `notifications`, `maintenance`). PostgreSQL 18 and two Valkey 9 instances (`valkey-queue`, `valkey-cache`) back them, and a one-shot `migrator` runs `migrate --force` before any role starts.
 
 ```sh
 export APP_KEY="$(bin/tools php artisan key:generate --show)"   # or keep APP_KEY in .env
@@ -49,10 +49,42 @@ docker compose ps
 
 Compose refuses to start if `APP_KEY` is missing. Health:
 
-- `GET /health/live` is always 200; `GET /health/ready` is 200 `{"status":"ok"}` or 503 naming the failing check (PostgreSQL or Valkey).
-- Each role: `docker compose exec <role> php artisan dashflow:health <role>` exits non-zero and names the failing check on stderr. Every role checks PostgreSQL and Valkey; workers also check their Horizon master, the scheduler its heartbeat, web and realtime their listening port.
+- `GET /health/live` is always 200; `GET /health/ready` is 200 `{"status":"ok"}` or 503 naming the failing check (PostgreSQL, Valkey queue or Valkey cache).
+- Each role: `docker compose exec <role> php artisan dashflow:health <role>` exits non-zero and names the failing check on stderr. Every role checks PostgreSQL and both Valkey stores, each over its own connection as that role's ACL user; workers also check their Horizon master, the scheduler its heartbeat, web and realtime their listening port.
 
 Key purposes (AR-50) are mounted as placeholder files from `docker/dev-keys/` under `/run/secrets`: `web` gets `data` and `digest`; `worker-connector` gets `cred`, `token` and `data`; `worker-compute` gets `data`; `realtime` and `scheduler` get none. `tests/Architecture/ComposeKeysTest.php` enforces the mapping. Every scheduled task must use `onOneServer()`.
+
+## Valkey: queue and cache stores
+
+Eviction policy is per Valkey instance, so Compose runs two: `valkey-queue` (`noeviction`) and `valkey-cache` (`allkeys-lru`, `VALKEY_CACHE_MAXMEMORY`, a development value of 256mb). Both serve TLS only (a one-shot `valkey-tls` service creates a throwaway CA and certificate for development; use your own PKI elsewhere), keep no persistence and are never backed up. PostgreSQL is the system of record, and sessions use the `database` driver.
+
+| Laravel connection | Holds                                                        | Used by                                                                   |
+| ------------------ | ------------------------------------------------------------ | ------------------------------------------------------------------------- |
+| `queue`            | queues, locks, rate limits, schedule mutexes, Reverb fan-out | queue store `redis`, cache store `queue`, Horizon (`horizon.use`), Reverb |
+| `cache`            | results and tokens (cache store `redis`)                     | `Cache::store('redis')`: every write must carry a TTL                     |
+
+The `redis` cache store is wrapped by `App\Support\Queue\TtlEnforcingStore`: the store rejects writes without a TTL: `forever`, `put` with a null TTL, and `increment`/`decrement` of a missing key throw `TtlRequiredException` and store nothing (a zero or negative TTL passed to `Cache::put` is treated by Laravel as a delete before the store is reached). Rate limits and schedule mutexes use the `queue` cache store (selected automatically when `CACHE_STORE=redis`).
+
+Each process role connects as its own ACL user (`VALKEY_USERNAME`, `VALKEY_PASSWORD`); the ACL templates are `docker/valkey/queue.acl` and `docker/valkey/cache.acl`, filled from `VALKEY_PASSWORD_<ROLE>` variables (`WEB`, `REALTIME`, `SCHEDULER`, `WORKER_CONNECTOR`, `WORKER_COMPUTE`, `HEALTH`; development defaults in `compose.yaml`, letters, digits and `._~-` only). The default user is off, apart from one exception: Reverb's async Valkey client can only `AUTH` with a password, so on the queue store the `realtime` role is the `default` user. `realtime` can only publish and subscribe on the queue store and only read on the cache store. The `migrator` has no Valkey credentials. A role using another role's credentials gets `WRONGPASS`, and the health check names the store (`Valkey queue` or `Valkey cache`). Realtime starts with `-d openssl.cafile=$VALKEY_TLS_CA` so Reverb trusts the Valkey CA.
+
+Read the stores (the `health` user may only `PING` and `INFO`):
+
+```sh
+docker compose exec valkey-queue valkey-cli --tls --cacert /tls-ca/ca.crt --user health --pass dashflow-dev-health --no-auth-warning INFO | grep maxmemory_policy   # noeviction
+docker compose exec valkey-cache valkey-cli --tls --cacert /tls-ca/ca.crt --user health --pass dashflow-dev-health --no-auth-warning INFO | grep maxmemory_policy   # allkeys-lru
+```
+
+### Signed jobs
+
+Job payloads carry IDs only. Every payload pushed to the Redis queue gets a `signature`: HMAC-SHA256 over `job`, `uuid`, `data.commandName` and `data.command` with a key derived from `APP_KEY` (`HMAC-SHA256(APP_KEY, "dashflow.queue.job-signature.v1")`; the raw `APP_KEY` never signs). The worker checks it with `hash_equals` on `JobProcessing`, before the command is unserialized. A missing or wrong signature logs the security event `security.queue.job_signature_invalid` (reason, connection, queue and job UUID only, never payload content), deletes the job, records it as failed and never retries it. Code: `app/Support/Queue/` (`JobSigner`, `SignedRedisQueue`, `JobSignatureGuard`).
+
+On the first deploy of signing, drain the queues first: jobs queued before the upgrade have no signature, so they are rejected and recorded as failed.
+
+Rotating `APP_KEY` invalidates the signatures of jobs that are already queued: drain the queues first, or accept that those jobs are rejected and recorded as failed.
+
+### Tunables and PgBouncer
+
+Every tunable of AR-57 is a named setting under `dashflow.tunables.<area>.<name>` in `config/dashflow.php`, read from a `DASHFLOW_*` environment variable and flagged `pending_input`: its `value` stays `null` until the environment supplies one. Only `dispatch_tick` (proposed 5 s) and `require_https` (off) have a value. `DB_PGBOUNCER=true` switches the PostgreSQL connection to transaction-mode pooling settings (`PDO::ATTR_EMULATE_PREPARES`); off leaves it unchanged. There is no PgBouncer service yet and tenant isolation under pooling is verified with row-level security in Story 1.10.
 
 ## Observability
 

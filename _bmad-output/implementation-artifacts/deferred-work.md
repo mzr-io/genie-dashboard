@@ -43,3 +43,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-3-run-all-five-process-roles-locally-with-docker-compose.md`
   summary: Jobs and broadcasts sent to the `default` queue have no consumer; decide the queue for Reverb broadcasts and notifications (Story 1.5 queue design) and add tests for the heartbeat schedule, the connector/compute queue split and entrypoint behaviour.
   evidence: `config/horizon.php` supervisors list only the named queues from the spec.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-5-split-valkey-into-queue-and-cache-stores-with-signed-jobs.md`
+  summary: Run an executed ACL test in CI that connects to both Valkey stores with another role's credentials and expects WRONGPASS/NOPERM.
+  evidence: Pest only parses the ACL and Compose files because the CI image has no Valkey; the refusal was verified by hand on the rebuilt stack, so an ACL swap between roles could pass `ci:check`.

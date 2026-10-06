@@ -12,7 +12,7 @@ use Throwable;
 /**
  * Reports a role's health from the dependencies that role needs.
  *
- * Every role needs PostgreSQL and Valkey. Each role adds its own check:
+ * Every role needs PostgreSQL and both Valkey stores (queue and cache). Each role adds its own check:
  * workers a running Horizon master, the scheduler a fresh heartbeat, and
  * (with $local) web and realtime their own listening port.
  */
@@ -20,7 +20,9 @@ final class HealthChecker
 {
     public const POSTGRESQL = 'PostgreSQL';
 
-    public const VALKEY = 'Valkey';
+    public const VALKEY_QUEUE = 'Valkey queue';
+
+    public const VALKEY_CACHE = 'Valkey cache';
 
     public function check(Role $role, bool $local = false): HealthReport
     {
@@ -48,10 +50,15 @@ final class HealthChecker
             self::POSTGRESQL => function (): void {
                 DB::connection(config('dashflow.health.connection'))->select('select 1');
             },
-            self::VALKEY => function (): void {
-                Redis::connection()->ping();
-            },
         ];
+
+        // Each store is probed over its own connection, which authenticates as this role's ACL user.
+        $checks[self::VALKEY_QUEUE] = function (): void {
+            Redis::connection('queue')->ping();
+        };
+        $checks[self::VALKEY_CACHE] = function (): void {
+            Redis::connection('cache')->ping();
+        };
 
         switch ($role) {
             case Role::Web:

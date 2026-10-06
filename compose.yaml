@@ -19,8 +19,14 @@ x-app-env: &app-env
     DB_USERNAME: ${POSTGRES_USER:-dashflow}
     DB_PASSWORD: ${POSTGRES_PASSWORD:-dashflow}
     REDIS_CLIENT: phpredis
-    REDIS_HOST: valkey
-    REDIS_PORT: '6379'
+    # Valkey: two instances over TLS. Each role adds its own VALKEY_USERNAME / VALKEY_PASSWORD.
+    VALKEY_QUEUE_HOST: valkey-queue
+    VALKEY_QUEUE_PORT: '6379'
+    VALKEY_QUEUE_SCHEME: tls
+    VALKEY_CACHE_HOST: valkey-cache
+    VALKEY_CACHE_PORT: '6379'
+    VALKEY_CACHE_SCHEME: tls
+    VALKEY_TLS_CA: /run/valkey-tls/ca.crt
     QUEUE_CONNECTION: redis
     CACHE_STORE: redis
     SESSION_DRIVER: database
@@ -34,6 +40,7 @@ x-app-env: &app-env
     REVERB_SERVER_HOST: 0.0.0.0
     REVERB_SERVER_PORT: '8081'
     REVERB_SCALING_ENABLED: 'true'
+    DB_PGBOUNCER: ${DB_PGBOUNCER:-false}
     MAIL_MAILER: log
     # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
     OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
@@ -42,6 +49,39 @@ x-app-env: &app-env
     OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
     OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
 
+x-valkey: &valkey
+    image: valkey/valkey:9-alpine
+    entrypoint: ['/bin/sh', '/entrypoint.sh']
+    init: true
+    restart: unless-stopped
+    user: '999:1000'
+    read_only: true
+    tmpfs:
+        - /tmp
+    cap_drop:
+        - ALL
+    depends_on:
+        valkey-tls:
+            condition: service_completed_successfully
+    healthcheck:
+        test:
+            [
+                'CMD-SHELL',
+                'valkey-cli --tls --cacert /tls-ca/ca.crt --user health --pass "$$VALKEY_PASSWORD_HEALTH" --no-auth-warning ping | grep -q PONG',
+            ]
+        interval: 5s
+        timeout: 3s
+        retries: 20
+
+# Per-role Valkey passwords (development defaults; set real ones in the environment).
+x-valkey-passwords: &valkey-passwords
+    VALKEY_PASSWORD_WEB: ${VALKEY_PASSWORD_WEB:-dashflow-dev-web}
+    VALKEY_PASSWORD_REALTIME: ${VALKEY_PASSWORD_REALTIME:-dashflow-dev-realtime}
+    VALKEY_PASSWORD_SCHEDULER: ${VALKEY_PASSWORD_SCHEDULER:-dashflow-dev-scheduler}
+    VALKEY_PASSWORD_WORKER_CONNECTOR: ${VALKEY_PASSWORD_WORKER_CONNECTOR:-dashflow-dev-worker-connector}
+    VALKEY_PASSWORD_WORKER_COMPUTE: ${VALKEY_PASSWORD_WORKER_COMPUTE:-dashflow-dev-worker-compute}
+    VALKEY_PASSWORD_HEALTH: ${VALKEY_PASSWORD_HEALTH:-dashflow-dev-health}
+
 x-app: &app
     image: ${DASHFLOW_IMAGE:-dashflow-app:local}
     build:
@@ -49,11 +89,14 @@ x-app: &app
         dockerfile: docker/Dockerfile
     init: true
     restart: unless-stopped
-    environment: *app-env
+    volumes:
+        - valkey-ca:/run/valkey-tls:ro
     depends_on:
         postgres:
             condition: service_healthy
-        valkey:
+        valkey-queue:
+            condition: service_healthy
+        valkey-cache:
             condition: service_healthy
         migrator:
             condition: service_completed_successfully
@@ -77,27 +120,60 @@ services:
             timeout: 5s
             retries: 20
 
-    valkey:
-        image: valkey/valkey:9-alpine
-        healthcheck:
-            test: ['CMD', 'valkey-cli', 'ping']
-            interval: 5s
-            timeout: 3s
-            retries: 20
+    # One-shot: throwaway CA and server certificate for both Valkey instances (development only).
+    valkey-tls:
+        image: alpine/openssl
+        entrypoint: ['/bin/sh', '/tls.sh']
+        restart: 'no'
+        volumes:
+            - ./docker/valkey/tls.sh:/tls.sh:ro
+            - valkey-server-tls:/tls-server
+            - valkey-ca:/tls-ca
+
+    # maxmemory-policy is per instance, hence two instances. Neither persists data.
+    valkey-queue:
+        <<: *valkey
+        command: ['queue']
+        environment:
+            <<: *valkey-passwords
+            VALKEY_MAXMEMORY_POLICY: noeviction
+            VALKEY_MAXMEMORY: ${VALKEY_QUEUE_MAXMEMORY:-}
+        volumes:
+            - ./docker/valkey/entrypoint.sh:/entrypoint.sh:ro
+            - ./docker/valkey/queue.acl:/etc/valkey/queue.acl:ro
+            - valkey-server-tls:/tls:ro
+            - valkey-ca:/tls-ca:ro
+
+    valkey-cache:
+        <<: *valkey
+        command: ['cache']
+        environment:
+            <<: *valkey-passwords
+            VALKEY_MAXMEMORY_POLICY: allkeys-lru
+            VALKEY_MAXMEMORY: ${VALKEY_CACHE_MAXMEMORY:-256mb}
+        volumes:
+            - ./docker/valkey/entrypoint.sh:/entrypoint.sh:ro
+            - ./docker/valkey/cache.acl:/etc/valkey/cache.acl:ro
+            - valkey-server-tls:/tls:ro
+            - valkey-ca:/tls-ca:ro
 
     migrator:
         <<: *app
         command: ['migrate']
         restart: 'no'
+        environment: *app-env
+        # migrate needs PostgreSQL only; it holds no Valkey credentials.
         depends_on:
             postgres:
-                condition: service_healthy
-            valkey:
                 condition: service_healthy
 
     web:
         <<: *app
         command: ['web']
+        environment:
+            <<: *app-env
+            VALKEY_USERNAME: web
+            VALKEY_PASSWORD: ${VALKEY_PASSWORD_WEB:-dashflow-dev-web}
         ports:
             - '127.0.0.1:${DASHFLOW_WEB_HOST_PORT:-8080}:8080'
         secrets:
@@ -113,6 +189,12 @@ services:
     realtime:
         <<: *app
         command: ['realtime']
+        environment:
+            <<: *app-env
+            VALKEY_USERNAME: realtime
+            # Reverb's Valkey client cannot send a username: on the queue store this role is `default`.
+            VALKEY_QUEUE_USERNAME: default
+            VALKEY_PASSWORD: ${VALKEY_PASSWORD_REALTIME:-dashflow-dev-realtime}
         ports:
             - '127.0.0.1:${DASHFLOW_REALTIME_HOST_PORT:-8081}:8081'
         healthcheck:
@@ -125,6 +207,10 @@ services:
     scheduler:
         <<: *app
         command: ['scheduler']
+        environment:
+            <<: *app-env
+            VALKEY_USERNAME: scheduler
+            VALKEY_PASSWORD: ${VALKEY_PASSWORD_SCHEDULER:-dashflow-dev-scheduler}
         healthcheck:
             test: ['CMD', 'php', 'artisan', 'dashflow:health', 'scheduler']
             interval: 15s
@@ -135,6 +221,10 @@ services:
     worker-connector:
         <<: *app
         command: ['worker-connector']
+        environment:
+            <<: *app-env
+            VALKEY_USERNAME: worker-connector
+            VALKEY_PASSWORD: ${VALKEY_PASSWORD_WORKER_CONNECTOR:-dashflow-dev-worker-connector}
         secrets:
             - key-cred
             - key-token
@@ -150,6 +240,10 @@ services:
     worker-compute:
         <<: *app
         command: ['worker-compute']
+        environment:
+            <<: *app-env
+            VALKEY_USERNAME: worker-compute
+            VALKEY_PASSWORD: ${VALKEY_PASSWORD_WORKER_COMPUTE:-dashflow-dev-worker-compute}
         secrets:
             - key-data
         healthcheck:
@@ -172,3 +266,5 @@ secrets:
 
 volumes:
     postgres-data:
+    valkey-server-tls:
+    valkey-ca:

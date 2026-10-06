@@ -78,10 +78,18 @@ return [
             ],
         ],
 
+        // Valkey `cache` store: LRU instance, every write must carry a TTL (enforced by the wrapper).
         'redis' => [
+            'driver' => 'valkey-cache',
+            'connection' => 'cache',
+            'lock_connection' => 'queue',
+        ],
+
+        // Valkey `queue` store (noeviction): rate limits and schedule mutexes. Not for cached data.
+        'queue' => [
             'driver' => 'redis',
-            'connection' => env('REDIS_CACHE_CONNECTION', 'cache'),
-            'lock_connection' => env('REDIS_CACHE_LOCK_CONNECTION', 'default'),
+            'connection' => 'queue',
+            'lock_connection' => 'queue',
         ],
 
         'dynamodb' => [
@@ -106,6 +114,30 @@ return [
         ],
 
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Rate Limiter Store
+    |--------------------------------------------------------------------------
+    |
+    | With the Valkey cache store, rate limits live on the noeviction `queue`
+    | store, never on the LRU cache; otherwise the default store is used.
+    |
+    */
+
+    'limiter' => env('CACHE_LIMITER_STORE', env('CACHE_STORE') === 'redis' ? 'queue' : null),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Schedule Mutex Store
+    |--------------------------------------------------------------------------
+    |
+    | With the Valkey cache store the onOneServer() mutexes move to the
+    | noeviction `queue` store; otherwise the default store is used.
+    |
+    */
+
+    'schedule_store' => env('SCHEDULE_CACHE_STORE', env('CACHE_STORE') === 'redis' ? 'queue' : null),
 
     /*
     |--------------------------------------------------------------------------
