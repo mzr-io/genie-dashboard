@@ -1,0 +1,535 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Map data · Hybrid</title>
+<style>
+/* ==========================================================
+   Dashflow — palette (same tokens as mapdata-C-semantic-table.html
+   and imports/04-create-block-basic-data.png)
+   --bg            #F7F8FA  app background
+   --surface       #FFFFFF  cards / panes
+   --surface-2     #F9FAFB  inset wells, table headers
+   --border        #E5E7EB  1px card borders
+   --border-strong #D1D5DB  inputs, dashed outlines
+   --text          #111827  primary text
+   --text-2        #374151  secondary strong text
+   --muted         #6B7280  secondary text
+   --subtle        #9CA3AF  hints, axis labels
+   --accent        #FACC15  yellow accent (primary button, active step, annotation dots)
+   --accent-2      #FDE047  lighter yellow (chart stroke, hotspot hover)
+   --accent-fill   #FEF9C3  pale yellow fill for active items
+   --accent-wash   #FFFBEB  very pale yellow (callouts, suggestion rows)
+   --accent-ink    #A16207  yellow-family text on pale fill
+   --green         #16A34A  success text / positive delta
+   --green-2       #22C55E  success icon (completed step check)
+   --green-fill    #DCFCE7  success chip fill
+   --red           #DC2626  required-missing / errors
+   --red-border    #FCA5A5  soft error outline
+   --red-fill      #FEF2F2  error fill
+   --blue-ink      #1E40AF  "manually set" status text  (on #DBEAFE)
+   Type chips: number #1D4ED8/#DBEAFE · text #374151/#F3F4F6 · date #6D28D9/#EDE9FE · array #C2410C/#FFEDD5
+   Role chips (text / fill / border):
+     Label     #374151 / #F3F4F6 / #E5E7EB
+     Value     #854D0E / #FEF08A / #FDE047
+     Dimension #0F766E / #CCFBF1 / #99F6E4
+     Measure   #1D4ED8 / #DBEAFE / #BFDBFE
+     Time      #6D28D9 / #EDE9FE / #DDD6FE
+     Filter-Category #C2410C / #FFEDD5 / #FED7AA
+   Annotation callouts: dot #FACC15 with #111827 numeral; note #111827 bg, #F9FAFB text
+   Font: system sans-serif stack · radius 10px cards, 8px inputs
+   ========================================================== */
+:root{
+  --bg:#F7F8FA;--surface:#FFFFFF;--surface-2:#F9FAFB;--border:#E5E7EB;--border-strong:#D1D5DB;
+  --text:#111827;--text-2:#374151;--muted:#6B7280;--subtle:#9CA3AF;
+  --accent:#FACC15;--accent-2:#FDE047;--accent-fill:#FEF9C3;--accent-wash:#FFFBEB;--accent-ink:#A16207;
+  --green:#16A34A;--green-2:#22C55E;--green-fill:#DCFCE7;
+  --red:#DC2626;--red-border:#FCA5A5;--red-fill:#FEF2F2;
+  --t-num:#1D4ED8;--t-num-bg:#DBEAFE;--t-txt:#374151;--t-txt-bg:#F3F4F6;--t-date:#6D28D9;--t-date-bg:#EDE9FE;--t-arr:#C2410C;--t-arr-bg:#FFEDD5;
+  --r:10px;--r-sm:8px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:13px;line-height:1.45;min-width:1440px}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+a{color:inherit}
+/* exploration note */
+.note{background:#111827;color:#F9FAFB;padding:14px 28px;display:flex;gap:28px;align-items:flex-start}
+.note .tag{background:var(--accent);color:#111827;font-weight:700;border-radius:6px;padding:3px 8px;font-size:12px;white-space:nowrap}
+.note h1{font-size:15px;margin:0 0 4px}
+.note p{margin:0 0 4px;color:#D1D5DB;max-width:1150px}
+.note .tradeoff{color:#FDE047}
+/* shell */
+.app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+.side{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.brand{height:64px;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--border);font-weight:700;font-size:16px}
+.logo{width:24px;height:24px;border-radius:6px;background:var(--accent);display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:4px}
+.logo i{background:#111827;border-radius:2px}
+.ws{margin:14px 12px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface-2);padding:10px;display:flex;gap:10px;align-items:center}
+.ws .av{width:30px;height:30px;border-radius:7px;background:var(--accent);font-weight:700;font-size:11px;display:grid;place-items:center}
+.ws b{display:block;font-size:12.5px}.ws span{color:var(--muted);font-size:11.5px}
+.navh{color:var(--muted);font-size:11px;letter-spacing:.08em;font-weight:600;padding:10px 20px 6px}
+.nav a{display:flex;gap:10px;align-items:center;margin:2px 10px;padding:8px 10px;border-radius:8px;text-decoration:none;color:var(--text-2);font-weight:500}
+.nav a .ic{width:16px;color:var(--muted);text-align:center}
+.nav a.on{background:var(--accent-fill);color:var(--text);font-weight:600}
+.side .foot{margin-top:auto;border-top:1px solid var(--border);padding:10px 0}
+.user{display:flex;gap:10px;align-items:center;padding:10px 20px}
+.user .av{width:30px;height:30px;border-radius:50%;background:var(--accent);font-weight:700;font-size:11px;display:grid;place-items:center}
+.user b{display:block;font-size:12.5px}.user span{color:var(--muted);font-size:11.5px}
+.top{height:64px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:flex-end;gap:14px;padding:0 24px}
+.search{width:230px;height:34px;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;padding:0 10px;color:var(--subtle);justify-content:space-between}
+.kbd{border:1px solid var(--border);border-radius:4px;font-size:10px;padding:0 4px}
+.iconbtn{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--muted)}
+.crumb{padding:12px 28px;color:var(--muted);font-size:12px;border-bottom:1px solid var(--border);background:var(--bg)}
+.crumb b{color:var(--text);font-weight:500}
+.main{padding:20px 28px 40px}
+.phead{display:flex;align-items:center;justify-content:space-between}
+.phead .l{display:flex;gap:14px;align-items:center}
+.back{width:30px;height:30px;border:1px solid var(--border);border-radius:8px;background:var(--surface);display:grid;place-items:center}
+.phead small{color:var(--muted);font-size:12px;display:block}
+.phead h2{margin:2px 0 0;font-size:20px}
+.draft{color:var(--accent-ink);background:var(--accent-fill);border-radius:6px;padding:2px 8px;font-size:11.5px;font-weight:600;margin-left:8px;vertical-align:middle}
+.btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);font-weight:600;font-size:13px;color:var(--text);white-space:nowrap}
+.btn.pri{background:var(--accent);border-color:var(--accent)}
+.btn.sm{height:28px;padding:0 10px;font-size:12px}
+.btn.xs{height:24px;padding:0 8px;font-size:11.5px;border-radius:6px}
+.btn.dis{opacity:.45;cursor:not-allowed}
+.link{color:var(--accent-ink);font-weight:600;text-decoration:none;font-size:12px}
+/* 5-step wizard */
+.stepper{display:flex;justify-content:center;align-items:center;gap:12px;margin:18px 0 18px;font-size:12.5px;font-weight:600}
+.step{display:flex;gap:8px;align-items:center;color:var(--subtle)}
+.step .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#F3F4F6;color:var(--muted);font-size:11px}
+.step.done{color:var(--text-2)}.step.done .n{background:var(--green-2);color:#fff}
+.step.on{color:#CA8A04;background:var(--accent-fill);padding:4px 10px 4px 4px;border-radius:999px}.step.on .n{background:var(--accent);color:#111827}
+.step-line{width:56px;height:1px;background:var(--border-strong)}
+.step-line.done{background:var(--green-2)}
+/* cards */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r)}
+.sec-ic{width:30px;height:30px;border-radius:8px;background:var(--accent-fill);display:grid;place-items:center;color:var(--accent-ink);font-size:14px;flex:none}
+.collapsed{display:flex;align-items:center;gap:12px;padding:10px 16px}
+.collapsed h3{margin:0;font-size:13.5px;display:flex;gap:8px;align-items:center}
+.collapsed .sum{color:var(--muted);font-size:12px;display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.collapsed .r{margin-left:auto;display:flex;gap:10px;align-items:center}
+.donechk{width:18px;height:18px;border-radius:50%;background:var(--green-2);color:#fff;display:inline-grid;place-items:center;font-size:10px}
+.get{color:var(--green);background:var(--green-fill);font-weight:700;font-size:10.5px;padding:1px 6px;border-radius:4px}
+.dot{color:var(--subtle)}
+.ok{color:var(--green);font-weight:600}
+/* chips */
+.ty{display:inline-block;font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:5px;line-height:16px}
+.ty.num{color:var(--t-num);background:var(--t-num-bg)}
+.ty.txt{color:var(--t-txt);background:var(--t-txt-bg)}
+.ty.date{color:var(--t-date);background:var(--t-date-bg)}
+.ty.arr{color:var(--t-arr);background:var(--t-arr-bg)}
+.ty.obj{color:var(--muted);background:#F3F4F6}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;border-radius:999px;padding:2px 8px;white-space:nowrap}
+.pill.ok{background:var(--green-fill);color:var(--green)}
+.pill.req{background:var(--red-fill);color:var(--red);border:1px solid var(--red-border)}
+.pill.opt{background:#F3F4F6;color:var(--muted)}
+.pill.y{background:var(--accent-fill);color:var(--accent-ink)}
+.pill.man{background:#DBEAFE;color:#1E40AF}
+.pill.lo{background:var(--accent-fill);color:var(--accent-ink);border:1px solid var(--accent)}
+.star{color:var(--red);font-weight:700}
+/* sample badge */
+.sample-badge{display:inline-flex;align-items:center;gap:6px;background:var(--accent-fill);border:1px solid var(--accent);color:#854D0E;font-weight:700;font-size:11.5px;border-radius:999px;padding:3px 10px;white-space:nowrap}
+.sample-badge i{font-style:normal;width:14px;height:14px;border-radius:50%;background:var(--accent);color:#111827;display:inline-grid;place-items:center;font-size:9px}
+/* inputs */
+.sel,.inp{height:30px;border:1px solid var(--border-strong);border-radius:var(--r-sm);background:var(--surface);display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-weight:500;font-size:12.5px}
+.sel::after{content:"⌄";color:var(--muted);margin-left:8px;position:relative;top:-3px}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface-2);padding:2px;gap:2px}
+.seg span{white-space:nowrap;padding:4px 9px;border-radius:6px;font-size:11.5px;font-weight:600;color:var(--muted)}
+.seg span.on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08);border:1px solid var(--border)}
+.seg.y span.on{background:var(--accent-fill);border-color:var(--accent)}
+.flabel{display:block;font-weight:600;font-size:11.5px;margin-bottom:4px;color:var(--text-2)}
+/* status bar */
+.statusbar{display:flex;align-items:center;gap:14px;padding:12px 16px;margin:12px 0 14px;position:relative}
+.statusbar .meter{display:flex;gap:3px}
+.statusbar .meter i{width:16px;height:6px;border-radius:3px;background:var(--green-2)}
+.statusbar .meter i.m{background:#3B82F6}
+.statusbar .meter i.x{background:var(--red)}
+.statusbar .txt{font-size:13.5px;font-weight:600;white-space:nowrap}
+.statusbar .subt{color:var(--muted);font-size:12px;white-space:nowrap}
+.statusbar .txt .miss{color:var(--red)}
+.statusbar .r{margin-left:auto;display:flex;gap:10px;align-items:center;position:relative}
+.tip{position:absolute;right:0;top:42px;background:#111827;color:#F9FAFB;font-size:11.5px;border-radius:8px;padding:7px 10px;width:270px;z-index:3;box-shadow:0 4px 12px rgba(0,0,0,.15)}
+.tip::before{content:"";position:absolute;right:46px;top:-5px;width:10px;height:10px;background:#111827;transform:rotate(45deg)}
+/* annotations */
+.ann{display:flex;gap:10px;align-items:flex-start;background:#111827;color:#F9FAFB;border-radius:var(--r);padding:9px 12px;font-size:12px;line-height:1.4}
+.ann b{color:#FDE047}
+.adot{flex:none;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#111827;font-weight:800;font-size:12px;display:inline-grid;place-items:center;box-shadow:0 0 0 3px #fff,0 0 0 4px var(--accent)}
+.adot.sm{width:18px;height:18px;font-size:10.5px}
+/* layout */
+.grid{display:grid;grid-template-columns:1fr 384px;gap:16px;align-items:start}
+.stepcard{border:1px solid var(--border);border-radius:var(--r);background:#fff;margin-bottom:14px}
+.stepcard-h{display:flex;gap:10px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border)}
+.stepcard-h .n{width:22px;height:22px;border-radius:50%;background:#111827;color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center;flex:none}
+.stepcard-h b{font-size:14px}
+.stepcard-h small{color:var(--muted);font-size:12px;display:block}
+/* roles */
+.role{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;border-radius:7px;padding:3px 8px;border:1px solid transparent;white-space:nowrap}
+.role.dd::after{content:"⌄";font-weight:600;position:relative;top:-2px;opacity:.7}
+.r-label{color:#374151;background:#F3F4F6;border-color:#E5E7EB}
+.r-value{color:#854D0E;background:#FEF08A;border-color:#FDE047}
+.r-dim{color:#0F766E;background:#CCFBF1;border-color:#99F6E4}
+.r-meas{color:#1D4ED8;background:#DBEAFE;border-color:#BFDBFE}
+.r-time{color:#6D28D9;background:#EDE9FE;border-color:#DDD6FE}
+.r-filt{color:#C2410C;background:#FFEDD5;border-color:#FED7AA}
+.r-none{color:var(--muted);background:#fff;border:1px dashed var(--border-strong)}
+.jsonok{display:flex;gap:10px;align-items:center;padding:10px 14px;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap}
+.recpath{display:flex;gap:10px;align-items:center;padding:10px 14px 0;font-size:12.5px}
+.scal-h{padding:12px 14px 6px;font-size:10.5px;letter-spacing:.08em;font-weight:700;color:var(--muted)}
+.scalars{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:0 14px}
+.sc{border:1px solid var(--border);border-radius:var(--r-sm);padding:8px 10px;background:var(--surface-2)}
+.sc .k{font-family:ui-monospace,Menlo,monospace;font-weight:600;font-size:12px}
+.sc .v{font-family:ui-monospace,Menlo,monospace;color:var(--muted);font-size:11.5px;margin:3px 0 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc .q{color:var(--muted);font-size:10.5px;margin-left:4px}
+table.sample{width:calc(100% - 28px);margin:0 14px;border-collapse:separate;border-spacing:0;border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;font-size:12.5px}
+table.sample th{background:var(--surface-2);text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;font-weight:600}
+table.sample th .rr{margin-bottom:7px;display:block}
+table.sample th code{font-weight:700}
+table.sample td{padding:6px 10px;border-bottom:1px solid #F3F4F6;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+table.sample tr:last-child td{border-bottom:0}
+table.sample .n{text-align:right}
+table.sample th.bad{background:var(--red-fill);box-shadow:inset 0 0 0 1.5px var(--red)}
+table.sample td.bad{background:#FFF7F7}
+.suggest{margin:10px 14px 0;display:flex;gap:10px;align-items:center;background:var(--accent-wash);border:1px solid #FDE68A;border-radius:var(--r-sm);padding:8px 12px;font-size:12.5px}
+.rlegend{display:flex;flex-wrap:wrap;gap:12px;padding:10px 14px 12px;color:var(--muted);font-size:11.5px}
+.rlegend span{display:inline-flex;gap:5px;align-items:center}
+/* slot checklist */
+.sumrow{display:flex;gap:10px;align-items:center;padding:9px 14px;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:12px;flex-wrap:wrap}
+.grp{padding:10px 14px 4px;font-size:10.5px;letter-spacing:.08em;font-weight:700;color:var(--muted)}
+.slot{display:grid;grid-template-columns:18px 140px 168px 1fr 126px 96px;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid #F3F4F6}
+.slot .st{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:800}
+.st.a{background:var(--green-fill);color:var(--green)}
+.st.m{background:#DBEAFE;color:#1E40AF}
+.st.o{background:#fff;border:1.5px dashed var(--border-strong)}
+.st.x{background:var(--red);color:#fff}
+.slot .nm b{font-size:12.5px;display:block}
+.slot .nm span{color:var(--muted);font-size:11px}
+.slot .fld{display:flex;gap:5px;align-items:center;flex-wrap:wrap;font-size:12px}
+.slot .fld code{font-weight:600}
+.slot .fmt{color:var(--muted);font-size:11.5px}
+.slot .fmt b{color:var(--text-2);font-weight:600}
+.slot .chg{font-size:11.5px;font-weight:600;color:var(--accent-ink);text-align:right;white-space:nowrap}
+.slot.missing{background:var(--red-fill);border-left:3px solid var(--red);padding-left:11px}
+.slot.missing .nm b{color:var(--red)}
+.slot.exp{background:var(--accent-wash);border-left:3px solid var(--accent);padding-left:11px;border-bottom:0}
+.expand{background:var(--accent-wash);border-left:3px solid var(--accent);padding:4px 14px 14px 42px;border-bottom:1px solid var(--border);display:grid;grid-template-columns:1.1fr 1.5fr 1.1fr;gap:14px}
+.conf{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:700;border-radius:999px;padding:2px 7px;white-space:nowrap}
+.conf .bar{display:inline-block;width:20px;height:4px;border-radius:2px;background:#E5E7EB;position:relative;overflow:hidden}
+.conf .bar i{position:absolute;left:0;top:0;bottom:0}
+.conf.hi{background:var(--green-fill);color:var(--green)}.conf.hi .bar i{background:var(--green-2)}
+.conf.md{background:var(--accent-fill);color:var(--accent-ink)}.conf.md .bar i{background:var(--accent)}
+.conf.lo{background:#FFEDD5;color:#C2410C}.conf.lo .bar i{background:#F97316}
+/* preview */
+.pv-head{display:flex;justify-content:space-between;align-items:flex-start;padding:12px 14px;border-bottom:1px solid var(--border)}
+.pv-head h4{margin:0;font-size:14.5px}.pv-head p{margin:2px 0 0;color:var(--muted);font-size:12px}
+.canvas{background-color:#FAFAFA;background-image:radial-gradient(#E5E7EB 1px,transparent 1px);background-size:12px 12px;padding:14px;position:relative}
+.dims{text-align:center;color:var(--muted);font-size:11px;margin-bottom:8px}
+.dims span{background:#fff;padding:1px 6px;border-radius:4px}
+.blk{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.blk-h{display:flex;gap:10px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border)}
+.blk-ic{width:26px;height:26px;border-radius:6px;background:var(--accent-fill);color:#CA8A04;display:grid;place-items:center;font-size:12px}
+.blk-h b{font-size:12.5px;display:block}.blk-h span{color:var(--muted);font-size:11.5px}
+.blk-h .tools{margin-left:auto;color:var(--subtle);letter-spacing:4px;font-size:12px}
+.kpi-l{color:var(--text-2);font-size:12px}
+.kpi-v{font-size:26px;font-weight:700;letter-spacing:-.01em;margin:1px 0}
+.up{color:var(--green);font-size:12px;font-weight:500}
+.asof{color:var(--subtle);font-size:11px}
+.hs{border:1px dashed transparent;border-radius:6px;padding:2px 4px;margin:-3px -5px;display:inline-block;position:relative}
+.hs.idle{border-color:#E5E7EB}
+.hs.hot{border:1.5px solid var(--accent);background:var(--accent-wash);box-shadow:0 0 0 3px rgba(250,204,21,.25)}
+.hover-tip{position:absolute;left:calc(100% + 10px);top:4px;background:#111827;color:#F9FAFB;border-radius:8px;padding:6px 9px;font-size:11px;font-weight:600;white-space:nowrap;z-index:2;box-shadow:0 4px 10px rgba(0,0,0,.15)}
+.hover-tip::before{content:"";position:absolute;left:-4px;top:10px;width:8px;height:8px;background:#111827;transform:rotate(45deg)}
+.hover-tip span{display:block;color:#9CA3AF;font-weight:500;font-family:ui-monospace,Menlo,monospace;font-size:10.5px;margin-top:2px}
+.chart-miss{margin:8px 12px 4px;height:126px;border:1.5px dashed var(--red-border);border-radius:var(--r-sm);background:repeating-linear-gradient(135deg,#FFF 0 8px,#FEF2F2 8px 9px);position:relative}
+.chart-miss .msg{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);text-align:center;background:#fff;border:1px solid var(--red-border);border-radius:8px;padding:6px 10px}
+.chart-miss .msg b{color:var(--red);font-size:12.5px;display:block}
+.chart-miss .msg span{color:var(--muted);font-size:11px}
+.chart-miss .ax{position:absolute;left:10px;right:10px;bottom:6px;display:flex;justify-content:space-around;color:var(--muted);font-size:10px;border-top:1px solid #E5E7EB;padding-top:3px}
+.why{margin:10px 14px;font-size:11.5px;color:var(--muted)}
+.why div{display:flex;gap:8px;align-items:center;margin:4px 0}
+.vsp{background:var(--accent-wash);border:1px solid #FDE68A;border-radius:var(--r);padding:10px 12px;font-size:12px;color:var(--text-2)}
+.vsp b{color:#854D0E}
+.actions{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding:12px 16px}
+/* complex state */
+.variant{margin-top:26px;border:2px dashed var(--border-strong);border-radius:12px;padding:16px;background:#fff}
+.variant > .vh{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+.variant > .vh .tag{background:#111827;color:#fff;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700}
+.variant > .vh b{font-size:14px}
+.variant > .vh span{color:var(--muted)}
+.cx{display:grid;grid-template-columns:300px 1fr 340px;gap:14px;align-items:start}
+.cand{display:flex;gap:10px;align-items:flex-start;padding:9px 12px;border-bottom:1px solid #F3F4F6;font-size:12px}
+.cand:last-child{border-bottom:0}
+.cand .rad{width:14px;height:14px;border-radius:50%;border:1.5px solid var(--border-strong);margin-top:2px;flex:none}
+.cand.on{background:var(--accent-fill)}
+.cand.on .rad{border:4px solid #CA8A04}
+.cand code{font-weight:700}
+.cand small{display:block;color:var(--muted);font-size:11px}
+.tree{font-family:ui-monospace,Menlo,monospace;font-size:12px;padding:8px 0}
+.tree .row{display:flex;gap:6px;align-items:center;padding:3px 12px;white-space:nowrap}
+.tree .row .tw{width:12px;color:var(--muted);text-align:center}
+.tree .row .v{color:var(--muted);margin-left:auto;font-size:11px}
+.tree .row.pick{background:var(--accent-fill);box-shadow:inset 3px 0 0 var(--accent)}
+.tree .row.mapped .k{text-decoration:underline;text-decoration-color:var(--green-2);text-underline-offset:3px}
+.tree .row .use{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;font-size:11px;font-weight:700;background:var(--accent);border-radius:5px;padding:1px 7px;color:#111827}
+.crumbpath{display:flex;gap:4px;align-items:center;padding:8px 12px;border-bottom:1px solid var(--border);font-size:11.5px;color:var(--muted);background:var(--surface-2)}
+.crumbpath code{color:var(--text);font-weight:600}
+.lowbar{display:flex;gap:10px;align-items:center;background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--r);padding:9px 12px;margin-bottom:12px;font-size:12.5px}
+.cslot{display:grid;grid-template-columns:18px 120px 1fr;gap:8px;align-items:start;padding:9px 12px;border-bottom:1px solid #F3F4F6;font-size:12px}
+.cslot.lowc{background:#FFF7ED}
+.cslot .nm b{font-size:12px;display:block}
+.cslot code{font-size:11px;word-break:break-all}
+.cslot .why2{color:var(--muted);font-size:11px;display:block;margin-top:2px}
+</style>
+</head>
+<body><div style="background:#111827;color:#FDE047;font:600 13px/1.5 system-ui,sans-serif;padding:10px 16px">Reference mockup (promoted 2026-10-05). <span style="color:#fff;font-weight:400">DESIGN.md and EXPERIENCE.md win on any conflict. Colours in this sketch that fail contrast (for example, yellow chart lines, light control borders, green #00D987-style deltas) are superseded by DESIGN.md tokens (chart stroke #A16207, border-control #80868F, success #15803D, error #DC2626).</span></div>
+<div class="note"><span class="tag">Hybrid · A + B + C</span>
+<div><h1>Map data: auto-map → review → override → preview</h1>
+<p>The admin sets semantic roles on real sample rows (C), and Dashflow fills the KPI &amp; Chart slots from those roles. The slot checklist (A) is where the admin reviews and overrides each slot. It shows every slot, its status and confidence, and its presentation controls. Clicking a region of the live preview (B) jumps to that slot's field picker. The data in this render came from <b>Paste sample JSON</b>, so a persistent badge says it is used only for mapping and preview.</p>
+<p class="tradeoff"><b>Product-owner decisions rendered:</b> 5-step wizard (step ③ active) · status bar with Continue to Preview disabled until required slots are mapped · the second panel shows how auto-map degrades on a complex nested response.</p></div></div>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="logo"><i></i><i></i><i></i><i></i></span>Dashflow</div>
+    <div class="ws"><span class="av">GI</span><div><b>Genie Inc.</b><span>Enterprise workspace</span></div><span style="margin-left:auto;color:var(--subtle)">›</span></div>
+    <div class="navh">ADMINISTRATION</div>
+    <nav class="nav">
+      <a><span class="ic">▥</span>Admin overview</a>
+      <a><span class="ic">⊞</span>Block management</a>
+      <a class="on"><span class="ic" style="color:#CA8A04">＋</span>Create block</a>
+      <a><span class="ic">▤</span>Draft blocks</a>
+      <a><span class="ic">✓</span>Published blocks</a>
+      <a><span class="ic">⊞</span>Block categories</a>
+      <a><span class="ic">▣</span>Dashboard templates</a>
+      <a><span class="ic">☺</span>User configuration</a>
+      <a><span class="ic">⚙</span>System settings</a>
+    </nav>
+    <div class="foot">
+      <nav class="nav"><a><span class="ic">?</span>Help &amp; support</a><a><span class="ic">→</span>Sign out</a><a style="font-size:12px"><span class="ic">◐</span>Appearance</a></nav>
+      <div class="user"><span class="av">AM</span><div><b>Alex Morgan</b><span>Administrator</span></div><span style="margin-left:auto;color:var(--subtle)">···</span></div>
+    </div>
+  </aside>
+  <div>
+    <header class="top"><div class="search">Search anything… <span class="kbd">⌘K</span></div><span class="iconbtn">🔔︎</span><span class="iconbtn">☾</span></header>
+    <div class="crumb">⌂ Administration &nbsp;›&nbsp; <b>Create dashboard block</b></div>
+    <main class="main">
+      <div class="phead">
+        <div class="l"><span class="back">←</span><div><small>Block management / Create block</small><h2>Create dashboard block <span class="draft">• Draft</span></h2></div></div>
+        <div style="display:flex;gap:10px"><span class="btn">Save draft</span><span class="btn">◉ Preview</span><span class="btn pri dis">✦ Publish block</span></div>
+      </div>
+
+      <!-- 5-step wizard -->
+      <div class="stepper">
+        <span class="step done"><span class="n">✓</span>Configure Block</span><span class="step-line done"></span>
+        <span class="step done"><span class="n">✓</span>Data Source</span><span class="step-line done"></span>
+        <span class="step on"><span class="n">3</span>Map Data</span><span class="step-line"></span>
+        <span class="step"><span class="n">4</span>Preview</span><span class="step-line"></span>
+        <span class="step"><span class="n">5</span>Save/Publish</span>
+      </div>
+
+      <!-- completed steps, collapsed -->
+      <div style="display:grid;grid-template-columns:1fr 1.45fr;gap:12px">
+        <div class="card collapsed">
+          <span class="donechk">✓</span>
+          <div><h3>① Configure Block</h3>
+            <div class="sum">Revenue overview <span class="dot">·</span> Finance <span class="dot">·</span> <b style="color:var(--text-2)">KPI &amp; Chart</b> <span class="dot">·</span> 8 cols · 360px</div></div>
+          <div class="r"><span class="btn xs">Edit</span></div>
+        </div>
+        <div class="card collapsed">
+          <span class="donechk">✓</span>
+          <div><h3>② Data Source</h3>
+            <div class="sum">Finance data warehouse <span class="dot">·</span> <span class="get">GET</span><code>/api/v2/finance/revenue</code> <span class="dot">·</span> Every 15 min <span class="dot">·</span> Current year <span class="dot">·</span> <b style="color:var(--text-2)">Pasted sample JSON</b></div></div>
+          <div class="r"><span class="btn xs">Edit</span></div>
+        </div>
+      </div>
+
+      <!-- status bar -->
+      <div class="card statusbar">
+        <span class="sec-ic">⇄</span>
+        <div>
+          <div class="txt">Auto-mapped 6 of 9 <span class="dot">·</span> 2 reviewed <span class="dot">·</span> <span class="miss">1 required missing</span></div>
+          <div class="subt">Fields → slots of your <b style="color:var(--text)">KPI &amp; Chart</b> block</div>
+        </div>
+        <span class="meter"><i></i><i></i><i></i><i></i><i></i><i></i><i class="m"></i><i class="m"></i><i class="x"></i></span>
+        <span class="sample-badge"><i>S</i>Sample data · used for mapping and preview only</span>
+        <div class="r">
+          <span class="btn sm">↻ Re-run auto-map</span>
+          <span class="btn pri dis">Continue to Preview →</span>
+          <div class="tip"><b style="color:#FDE047">Disabled:</b> map the required slot <b>Chart series *</b> to continue. Optional slots can stay empty.</div>
+        </div>
+      </div>
+
+      <div class="grid" style="margin-top:44px">
+        <div>
+          <!-- PART 1: ROLES -->
+          <div class="ann" style="margin-bottom:8px"><span class="adot">1</span><div><b>Roles.</b> Admins say what each field <i>means</i> on real sample rows, not raw JSON. Roles don't depend on the block type, so changing the block type later re-fills the slots without asking again. Here <code style="color:#FDE047">revenue</code> was set to Filter by mistake, and Dashflow flags it.</div></div>
+          <div class="stepcard">
+            <div class="stepcard-h"><span class="n">1</span><div><b>What does each field mean?</b><small>Roles drive auto-map · change any chip to re-fill the slots</small></div>
+              <span style="margin-left:auto;display:flex;gap:8px;align-items:center"><span class="link">View JSON</span><span class="btn sm">Replace sample / Fetch from API</span></span></div>
+            <div class="jsonok">
+              <span class="ok">✓ Valid JSON · 3 records found at <code>data.monthly[]</code></span>
+              <span class="dot">·</span><span style="color:var(--muted)">Pasted 09:14 · 412 bytes · 4 scalars, 1 array</span>
+              <span class="sample-badge" style="margin-left:auto"><i>S</i>Sample data · used for mapping and preview only</span>
+            </div>
+            <div class="scal-h">SINGLE VALUES · in <code>data</code></div>
+            <div class="scalars">
+              <div class="sc"><div class="k">total <span class="ty num">number</span></div><div class="v">284680</div><span class="role r-value dd">Value</span><span class="q">main</span></div>
+              <div class="sc"><div class="k">previous_total <span class="ty num">number</span></div><div class="v">249195</div><span class="role r-value dd">Value</span><span class="q">baseline</span></div>
+              <div class="sc"><div class="k">currency <span class="ty txt">text</span></div><div class="v">"USD"</div><span class="role r-label dd">Label</span><span class="q">unit</span></div>
+              <div class="sc"><div class="k">updated_at <span class="ty date">date</span></div><div class="v">"2026-05-31T09:12:40Z"</div><span class="role r-time dd">Time</span><span class="q">as-of</span></div>
+            </div>
+            <div class="recpath"><b>Rows from</b><span class="sel" style="width:250px"><span><code>data.monthly[]</code> <span class="ty arr">array · 3 rows</span></span></span><span style="color:var(--muted);font-size:12px">Only one array in this sample, so it becomes the chart's rows.</span></div>
+            <div class="scal-h">SAMPLE ROWS · choose a role above each column</div>
+            <table class="sample">
+              <tr>
+                <th><span class="rr"><span class="role r-time dd">Time</span></span><code>month</code> <span class="ty date">date</span></th>
+                <th class="n bad"><span class="rr"><span class="role r-filt dd">Filter-Category</span> <span class="star" title="role mismatch">!</span></span><code>revenue</code> <span class="ty num">number</span></th>
+                <th><span class="rr"><span class="role r-dim dd">Dimension</span></span><code>region</code> <span class="ty txt">text</span></th>
+                <th><span class="rr"><span class="role r-filt dd">Filter-Category</span></span><code>status</code> <span class="ty txt">text</span></th>
+              </tr>
+              <tr><td>2026-01</td><td class="n bad">10200</td><td>North</td><td>final</td></tr>
+              <tr><td>2026-02</td><td class="n bad">12650</td><td>South</td><td>final</td></tr>
+              <tr><td>2026-03</td><td class="n bad">15100</td><td>North</td><td>provisional</td></tr>
+            </table>
+            <div class="suggest"><span style="color:#CA8A04;font-size:15px">✦</span><span><b>revenue looks like a Measure — use as series?</b> <span style="color:var(--muted)">It holds numbers that change each row, and the chart has no series yet.</span></span><span style="margin-left:auto;display:flex;gap:8px"><span class="btn sm pri">Set as Measure</span><span class="btn sm">Keep as Filter</span></span></div>
+            <div class="rlegend">
+              <span><span class="role r-label">Label</span>names or describes</span>
+              <span><span class="role r-value">Value</span>one headline number</span>
+              <span><span class="role r-dim">Dimension</span>groups or splits rows</span>
+              <span><span class="role r-meas">Measure</span>number to plot or sum</span>
+              <span><span class="role r-time">Time</span>when it happened</span>
+              <span><span class="role r-filt">Filter-Category</span>lets users narrow</span>
+            </div>
+          </div>
+
+          <!-- PART 2+3: AUTO-FILL + REVIEW/OVERRIDE -->
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:8px">
+            <div class="ann"><span class="adot">2</span><div><b>Auto-fill.</b> Dashflow fills each slot from the roles and shows a confidence badge. Two Values → it picks the one not named <code style="color:#FDE047">previous_*</code> as the headline. No Measure → the chart series stays empty.</div></div>
+            <div class="ann"><span class="adot">3</span><div><b>Review / Override.</b> Every slot of the block type is listed, grouped, with a status. <b>Change field</b> overrides one slot without changing the role. Expand a row to set its format, emphasis and direction.</div></div>
+          </div>
+          <div class="stepcard">
+            <div class="stepcard-h"><span class="n">2</span><div><b>Review block slots</b><small>KPI &amp; Chart · 9 slots · <span class="star">*</span> required</small></div>
+              <span style="margin-left:auto;display:flex;gap:6px"><span class="seg"><span class="on">All 9</span><span>Needs review 3</span><span style="color:var(--red)">Missing 1</span></span></span></div>
+            <div class="sumrow">
+              <span class="ok">✓ Auto-mapped 6</span><span class="dot">·</span>
+              <span style="color:#1E40AF;font-weight:600">✎ Manually set 2</span><span class="dot">·</span>
+              <span style="color:var(--muted)">◌ Optional empty 0</span><span class="dot">·</span>
+              <span style="color:var(--red);font-weight:700">● Required missing 1</span>
+              <span style="margin-left:auto;color:var(--muted)">Confidence: <span class="conf hi">High</span> <span class="conf md">Medium</span> <span class="conf lo">Low</span></span>
+            </div>
+
+            <div class="grp">HEADER</div>
+            <div class="slot"><span class="st m">✎</span><span class="nm"><b>Title</b><span>Static text</span></span><span class="fld"><span style="font-weight:600">"Revenue overview"</span></span><span class="fmt">From step ① · <b>Header</b></span><span><span class="pill man">✎ Manually set</span></span><span class="chg">Change field ⌄</span></div>
+            <div class="slot"><span class="st m">✎</span><span class="nm"><b>Subtitle</b><span>Text Template</span></span><span class="fld"><code style="font-size:11.5px">Financial performance · {period.label}</code></span><span class="fmt">Template · <b>Secondary</b></span><span><span class="pill man">✎ Overridden</span></span><span class="chg">Change field ⌄</span></div>
+
+            <div class="grp">KPI</div>
+            <div class="slot"><span class="st a">✓</span><span class="nm"><b>KPI label <span class="star">*</span></b><span>Static text</span></span><span class="fld"><span style="font-weight:600">"Total revenue"</span></span><span class="fmt">Generated from field + block name, check wording · <b>Secondary</b></span><span><span class="conf md"><span class="bar"><i style="width:60%"></i></span>Medium</span></span><span class="chg">Change field ⌄</span></div>
+            <div class="slot exp"><span class="st a">✓</span><span class="nm"><b>Headline value <span class="star">*</span></b><span>Number</span></span><span class="fld"><span class="role r-value" style="font-size:10.5px;padding:1px 6px">Value</span><code>total</code></span><span class="fmt"><b>Currency USD · 0 dp · Headline</b></span><span><span class="conf hi"><span class="bar"><i style="width:90%"></i></span>High</span></span><span class="chg">Change field ⌄ <span style="color:var(--muted)">▴</span></span></div>
+            <div class="expand">
+              <div><span class="flabel">Format</span><span class="sel">Currency</span><div style="display:flex;gap:6px;margin-top:6px"><span class="sel" style="flex:1;white-space:nowrap">USD</span><span class="sel" style="width:76px;white-space:nowrap">0 dp</span></div><div style="color:var(--muted);font-size:11px;margin-top:4px">Unit from <code>currency</code></div><div style="color:var(--muted);font-size:11px;margin-top:4px">284680 → <b style="color:var(--text)">$284,680</b></div></div>
+              <div><span class="flabel">Emphasis</span><span class="seg y"><span class="on">Headline</span><span>Primary</span><span>Secondary</span><span>Badge</span></span><div style="color:var(--muted);font-size:11px;margin-top:6px">Headline = largest type in the block, bold. One headline per block.</div></div>
+              <div><span class="flabel">Direction</span><span class="seg y"><span class="on">↑ Higher better</span><span>↓ Lower</span></span><div style="color:var(--muted);font-size:11px;margin-top:6px">Colors the comparison: up = green.</div></div>
+            </div>
+            <div class="slot"><span class="st a">✓</span><span class="nm"><b>Comparison</b><span>Calculated</span></span><span class="fld"><code style="font-size:11.5px">PCT_CHANGE(total, previous_total)</code></span><span class="fmt"><b>Percent · 1 dp · higher is better</b></span><span><span class="conf md"><span class="bar"><i style="width:68%"></i></span>Medium</span></span><span class="chg">Change field ⌄</span></div>
+            <div class="slot"><span class="st a">✓</span><span class="nm"><b>Comparison label</b><span>Static text</span></span><span class="fld"><span style="font-weight:600">"from last year"</span></span><span class="fmt">From Default date range · <b>Secondary</b></span><span><span class="conf md"><span class="bar"><i style="width:62%"></i></span>Medium</span></span><span class="chg">Change field ⌄</span></div>
+
+            <div class="grp">CHART</div>
+            <div class="slot"><span class="st a">✓</span><span class="nm"><b>Chart X <span class="star">*</span></b><span>Category / time axis</span></span><span class="fld"><span class="role r-time" style="font-size:10.5px;padding:1px 6px">Time</span><code>month</code></span><span class="fmt"><b>Date · MMM</b> → Jan, Feb, Mar</span><span><span class="conf hi"><span class="bar"><i style="width:92%"></i></span>High</span></span><span class="chg">Change field ⌄</span></div>
+            <div class="slot missing"><span class="st x">!</span><span class="nm"><b>Chart series <span class="star">*</span></b><span>Number · plotted line</span></span><span class="fld"><span class="role r-none" style="font-size:10.5px;padding:1px 6px">No Measure</span></span><span class="fmt" style="color:var(--red)"><b style="color:var(--red)">Required, missing.</b> <code>revenue</code> has role Filter.</span><span><span class="pill req">Required missing</span></span><span class="chg" style="color:var(--red)">Choose field ⌄</span></div>
+            <div class="suggest" style="margin:0;border-radius:0;border-left:3px solid var(--red);border-right:0;border-top:0"><span style="color:#CA8A04">✦</span><span><b>revenue looks like a Measure — use as series?</b></span><span style="margin-left:auto;display:flex;gap:8px"><span class="btn xs pri">Use revenue as series</span><span class="btn xs">Pick another field</span></span></div>
+
+            <div class="grp">META</div>
+            <div class="slot" style="border-bottom:0"><span class="st a">✓</span><span class="nm"><b>Data-as-of</b><span>Timestamp</span></span><span class="fld"><span class="role r-time" style="font-size:10.5px;padding:1px 6px">Time</span><code>updated_at</code></span><span class="fmt"><b>MMM D, YYYY HH:mm</b></span><span><span class="conf hi"><span class="bar"><i style="width:95%"></i></span>High</span></span><span class="chg">Change field ⌄</span></div>
+          </div>
+        </div>
+
+        <!-- PREVIEW -->
+        <aside>
+          <div class="ann" style="margin-bottom:8px"><span class="adot">4</span><div><b>Preview shortcut.</b> Hovering a block region outlines it and shows "Click to change field". Clicking opens that slot's field picker in the checklist and scrolls to it. Hotspots stay subtle (a faint dashed outline) until hovered.</div></div>
+          <div class="card">
+            <div class="pv-head"><div><h4>Live preview</h4><p>Click any part to change its field.</p></div><span class="seg"><span class="on">Desktop</span><span>Tablet</span><span>Mobile</span></span></div>
+            <div style="padding:8px 14px;border-bottom:1px solid var(--border);background:var(--accent-wash)"><span class="sample-badge"><i>S</i>Sample data · used for mapping and preview only</span></div>
+            <div class="canvas">
+              <div class="dims"><span>8 columns × 360px</span></div>
+              <div class="blk">
+                <div class="blk-h"><span class="blk-ic">▥</span><div><b><span class="hs idle">Revenue overview</span></b><span><span class="hs idle">Financial performance · Current year</span></span></div><span class="tools">↻ – ···</span></div>
+                <div style="padding:12px 14px 2px">
+                  <div class="kpi-l"><span class="hs idle">Total revenue</span></div>
+                  <div class="kpi-v"><span class="hs hot">$284,680<span class="adot sm" style="position:absolute;left:-12px;top:-10px">4</span><span class="hover-tip">Click to change field<span>Headline value ← total</span></span></span></div>
+                  <div class="up"><span class="hs idle">↗ 14.2% from last year</span></div>
+                </div>
+                <div class="chart-miss">
+                  <div class="msg"><b>Chart series required</b><span>No Measure mapped · click to choose</span></div>
+                  <div class="ax"><span>Jan</span><span>Feb</span><span>Mar</span></div>
+                </div>
+                <div style="padding:2px 14px 10px" class="asof"><span class="hs idle">Data as of May 31, 2026 09:12</span></div>
+              </div>
+            </div>
+            <div class="why">
+              <b style="color:var(--text)">Where each part comes from</b>
+              <div><span class="role r-value">Value</span> total → $284,680</div>
+              <div><span class="role r-value">Value</span> previous_total → ↗ 14.2%</div>
+              <div><span class="role r-time">Time</span> month → X axis (Jan–Mar)</div>
+              <div><span class="role r-filt">Filter</span> revenue → <span style="color:var(--red);font-weight:600">not plotted</span></div>
+            </div>
+            <div class="vsp" style="margin:0 14px 14px"><b>Sample data only.</b> Published blocks call <code>GET /api/v2/finance/revenue</code> live. Before you publish, Dashflow checks that the live response matches this sample's shape.</div>
+          </div>
+        </aside>
+      </div>
+
+      <div class="card actions">
+        <span class="btn">← Back to Data Source</span>
+        <span style="display:flex;gap:12px;align-items:center"><span style="color:var(--red);font-size:12px;font-weight:600">1 required slot missing: Chart series</span><span class="btn pri dis">Continue to Preview →</span></span>
+      </div>
+
+      <!-- ============ STATE: complex nested response ============ -->
+      <div class="variant">
+        <div class="vh"><span class="tag">STATE: complex nested response</span><b>Auto-map degrades gracefully</b><span>· same block, a deeper response from <code>GET /api/v2/finance/revenue?breakdown=store</code></span></div>
+        <div class="lowbar"><span style="font-size:15px;color:#C2410C">◐</span><div><b style="color:#C2410C">Auto-mapped 6 of 9 · 3 low confidence — please review</b> <span style="color:var(--muted)">· This response has 3 candidate arrays and numbers nested 3–4 levels deep. Dashflow filled what it could. Confirm the record path, then check the flagged slots.</span></div><span class="btn sm pri dis" style="margin-left:auto">Continue to Preview →</span></div>
+        <div class="cx">
+          <!-- record path picker -->
+          <div class="stepcard" style="margin:0">
+            <div class="stepcard-h"><div><b>Rows from (record path)</b><small>3 candidate arrays found</small></div></div>
+            <div class="cand"><span class="rad"></span><div><code>data.monthly[]</code> <span class="ty arr">3 rows</span><small>month, revenue, region, status · flat</small></div></div>
+            <div class="cand on"><span class="rad"></span><div><code>data.regions[].stores[]</code> <span class="ty arr">12 rows</span><small>4 regions × 3 stores · flattened · adds <code>region.name</code> as a column</small><span class="pill y" style="margin-top:4px">Suggested · most rows</span></div></div>
+            <div class="cand"><span class="rad"></span><div><code>meta.links[]</code> <span class="ty arr">2 rows</span><small>rel, href · looks like pagination, not data</small></div></div>
+            <div style="padding:8px 12px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted)">Flattened preview: <code>region.name · store_id · name · sales.month · sales.amount</code></div>
+          </div>
+          <!-- slots with low confidence -->
+          <div class="stepcard" style="margin:0">
+            <div class="stepcard-h"><div><b>Slots to review</b><small>Low-confidence slots are pinned to the top</small></div><span class="seg" style="margin-left:auto"><span>All 9</span><span class="on">Needs review 3</span></span></div>
+            <div class="cslot lowc"><span class="st" style="width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:#FFEDD5;color:#C2410C;font-size:10px;font-weight:800">?</span><span class="nm"><b>Headline value <span class="star">*</span></b><span class="conf lo"><span class="bar"><i style="width:30%"></i></span>Low</span></span><div><code>data.summary.kpis.total.amount</code><span class="why2">Low confidence — please review · 3 numbers named "amount" at different depths</span><span class="link">Change field ⌄</span></div></div>
+            <div class="cslot lowc"><span class="st" style="width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:#FFEDD5;color:#C2410C;font-size:10px;font-weight:800">?</span><span class="nm"><b>Chart X <span class="star">*</span></b><span class="conf lo"><span class="bar"><i style="width:35%"></i></span>Low</span></span><div><code>stores[].sales.month</code><span class="why2">Low confidence — please review · repeats across 12 stores; may need grouping</span><span class="link">Change field ⌄</span></div></div>
+            <div class="cslot lowc"><span class="st" style="width:18px;height:18px;border-radius:50%;display:grid;place-items:center;background:#FFEDD5;color:#C2410C;font-size:10px;font-weight:800">?</span><span class="nm"><b>Chart series <span class="star">*</span></b><span class="conf lo"><span class="bar"><i style="width:28%"></i></span>Low</span></span><div><code>stores[].sales.amount</code><span class="why2">Low confidence — please review · sum per month across stores?</span><span class="link">Change field ⌄</span></div></div>
+            <div class="cslot"><span class="st a" style="width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:800">✓</span><span class="nm"><b>Data-as-of</b><span class="conf hi">High</span></span><div><code>meta.generated_at</code></div></div>
+            <div class="cslot" style="border-bottom:0"><span class="st a" style="width:18px;height:18px;border-radius:50%;display:grid;place-items:center;font-size:10px;font-weight:800">✓</span><span class="nm"><b>Comparison</b><span class="conf md">Medium</span></span><div><code>PCT_CHANGE(…total.amount, …previous.amount)</code></div></div>
+            <div style="padding:8px 12px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted)">+ 4 more slots (Title, Subtitle, KPI label, Comparison label): manually set or auto-mapped with high confidence</div>
+          </div>
+          <!-- field tree -->
+          <div class="stepcard" style="margin:0">
+            <div class="stepcard-h"><div><b>Field tree</b><small>Picking for <b style="color:var(--text)">Headline value *</b></small></div><span class="link" style="margin-left:auto">Search fields</span></div>
+            <div class="crumbpath">⌂ <code>data</code> › <code>summary</code> › <code>kpis</code> › <code>total</code></div>
+            <div class="tree">
+              <div class="row"><span class="tw">▾</span><span class="k">data</span><span class="ty obj">object</span></div>
+              <div class="row" style="padding-left:28px"><span class="tw">▾</span><span class="k">summary</span><span class="ty obj">object</span></div>
+              <div class="row" style="padding-left:44px"><span class="tw">▾</span><span class="k">kpis</span><span class="ty obj">object</span></div>
+              <div class="row" style="padding-left:60px"><span class="tw">▾</span><span class="k">total</span><span class="ty obj">object</span></div>
+              <div class="row pick" style="padding-left:76px"><span class="tw">•</span><span class="k">amount</span><span class="ty num">number</span><span class="v">284680</span><span class="use">Use</span></div>
+              <div class="row" style="padding-left:76px"><span class="tw">•</span><span class="k">currency</span><span class="ty txt">text</span><span class="v">"USD"</span></div>
+              <div class="row" style="padding-left:60px"><span class="tw">▸</span><span class="k">previous</span><span class="ty obj">object · 2</span></div>
+              <div class="row" style="padding-left:28px"><span class="tw">▸</span><span class="k">monthly</span><span class="ty arr">array · 3</span></div>
+              <div class="row" style="padding-left:28px"><span class="tw">▾</span><span class="k">regions</span><span class="ty arr">array · 4</span></div>
+              <div class="row" style="padding-left:44px"><span class="tw">▾</span><span class="k">[0].stores</span><span class="ty arr">array · 3</span></div>
+              <div class="row mapped" style="padding-left:60px"><span class="tw">▸</span><span class="k">sales</span><span class="ty obj">object · 2</span><span class="v">month, amount</span></div>
+              <div class="row" style="padding-left:12px"><span class="tw">▸</span><span class="k">meta</span><span class="ty obj">object · 2</span></div>
+            </div>
+            <div style="padding:8px 12px;border-top:1px solid var(--border);font-size:11.5px;color:var(--muted)">Selected: <code style="color:var(--text)">data.summary.kpis.total.amount</code> · 284680 → $284,680</div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+</body>
+</html>

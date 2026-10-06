@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1440">
+<title>Map data · C · Semantic roles</title>
+<style>
+/* ==========================================================
+   Dashflow — palette (matches imports/02, 04, 05 mockups)
+   --bg            #F7F8FA  app background
+   --surface       #FFFFFF  cards / panes
+   --surface-2     #F9FAFB  inset wells, table headers
+   --border        #E5E7EB  1px card borders
+   --border-strong #D1D5DB  inputs, dashed drop zones
+   --text          #111827  near-black primary text
+   --text-2        #374151  secondary strong text
+   --muted         #6B7280  grey secondary text
+   --subtle        #9CA3AF  hints, axis labels
+   --accent        #FACC15  yellow accent (buttons, active step)
+   --accent-2      #FDE047  lighter yellow (chart stroke, hover)
+   --accent-fill   #FEF9C3  pale yellow fill for active items
+   --accent-wash   #FFFBEB  very pale yellow (callouts, area fill)
+   --accent-ink    #A16207  yellow-family text on pale fill
+   --green         #16A34A  positive values / success text
+   --green-2       #22C55E  success icon
+   --green-fill    #DCFCE7  success chip fill
+   --red           #DC2626  errors / required-missing
+   --red-border    #FCA5A5  error outline (soft)
+   --red-fill      #FEF2F2  error fill
+   Type chips:
+     number #1D4ED8 on #DBEAFE · text #374151 on #F3F4F6
+     date   #6D28D9 on #EDE9FE · array #C2410C on #FFEDD5
+   Font: system sans-serif stack; radius 10px cards, 8px inputs
+   ========================================================== */
+:root{
+  --bg:#F7F8FA;--surface:#FFFFFF;--surface-2:#F9FAFB;--border:#E5E7EB;--border-strong:#D1D5DB;
+  --text:#111827;--text-2:#374151;--muted:#6B7280;--subtle:#9CA3AF;
+  --accent:#FACC15;--accent-2:#FDE047;--accent-fill:#FEF9C3;--accent-wash:#FFFBEB;--accent-ink:#A16207;
+  --green:#16A34A;--green-2:#22C55E;--green-fill:#DCFCE7;
+  --red:#DC2626;--red-border:#FCA5A5;--red-fill:#FEF2F2;
+  --t-num:#1D4ED8;--t-num-bg:#DBEAFE;--t-txt:#374151;--t-txt-bg:#F3F4F6;--t-date:#6D28D9;--t-date-bg:#EDE9FE;--t-arr:#C2410C;--t-arr-bg:#FFEDD5;
+  --r:10px;--r-sm:8px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:13px;line-height:1.45;min-width:1440px}
+code,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px}
+a{color:inherit}
+/* ---------- exploration note ---------- */
+.note{background:#111827;color:#F9FAFB;padding:14px 28px;display:flex;gap:28px;align-items:flex-start}
+.note .tag{background:var(--accent);color:#111827;font-weight:700;border-radius:6px;padding:3px 8px;font-size:12px;white-space:nowrap}
+.note h1{font-size:15px;margin:0 0 4px}
+.note p{margin:0 0 4px;color:#D1D5DB;max-width:1100px}
+.note .tradeoff{color:#FDE047}
+/* ---------- app shell ---------- */
+.app{display:grid;grid-template-columns:232px 1fr;min-height:100vh}
+.side{background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column}
+.brand{height:64px;display:flex;align-items:center;gap:10px;padding:0 20px;border-bottom:1px solid var(--border);font-weight:700;font-size:16px}
+.logo{width:24px;height:24px;border-radius:6px;background:var(--accent);display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:4px}
+.logo i{background:#111827;border-radius:2px}
+.ws{margin:14px 12px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface-2);padding:10px;display:flex;gap:10px;align-items:center}
+.ws .av{width:30px;height:30px;border-radius:7px;background:var(--accent);font-weight:700;font-size:11px;display:grid;place-items:center}
+.ws b{display:block;font-size:12.5px}.ws span{color:var(--muted);font-size:11.5px}
+.navh{color:var(--muted);font-size:11px;letter-spacing:.08em;font-weight:600;padding:10px 20px 6px}
+.nav a{display:flex;gap:10px;align-items:center;margin:2px 10px;padding:8px 10px;border-radius:8px;text-decoration:none;color:var(--text-2);font-weight:500}
+.nav a .ic{width:16px;color:var(--muted);text-align:center}
+.nav a.on{background:var(--accent-fill);color:var(--text);font-weight:600}
+.side .foot{margin-top:auto;border-top:1px solid var(--border);padding:10px 0}
+.user{display:flex;gap:10px;align-items:center;padding:10px 20px}
+.user .av{width:30px;height:30px;border-radius:50%;background:var(--accent);font-weight:700;font-size:11px;display:grid;place-items:center}
+.user b{display:block;font-size:12.5px}.user span{color:var(--muted);font-size:11.5px}
+.top{height:64px;background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:flex-end;gap:14px;padding:0 24px}
+.search{width:230px;height:34px;border:1px solid var(--border);border-radius:8px;display:flex;align-items:center;padding:0 10px;color:var(--subtle);justify-content:space-between}
+.kbd{border:1px solid var(--border);border-radius:4px;font-size:10px;padding:0 4px}
+.iconbtn{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;color:var(--muted)}
+.crumb{padding:12px 28px;color:var(--muted);font-size:12px;border-bottom:1px solid var(--border);background:var(--bg)}
+.crumb b{color:var(--text);font-weight:500}
+.main{padding:20px 28px 40px}
+.phead{display:flex;align-items:center;justify-content:space-between}
+.phead .l{display:flex;gap:14px;align-items:center}
+.back{width:30px;height:30px;border:1px solid var(--border);border-radius:8px;background:var(--surface);display:grid;place-items:center}
+.phead small{color:var(--muted);font-size:12px;display:block}
+.phead h2{margin:2px 0 0;font-size:20px}
+.draft{color:var(--accent-ink);background:var(--accent-fill);border-radius:6px;padding:2px 8px;font-size:11.5px;font-weight:600;margin-left:8px;vertical-align:middle}
+.btn{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 14px;border:1px solid var(--border-strong);border-radius:8px;background:var(--surface);font-weight:600;font-size:13px;color:var(--text);white-space:nowrap}
+.btn.pri{background:var(--accent);border-color:var(--accent)}
+.btn.sm{height:28px;padding:0 10px;font-size:12px}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.dis{opacity:.45}
+.link{color:var(--accent-ink);font-weight:600;text-decoration:none;font-size:12px}
+.stepper{display:flex;justify-content:center;align-items:center;gap:14px;margin:18px 0 20px;font-size:12.5px;font-weight:600}
+.step{display:flex;gap:8px;align-items:center;color:var(--subtle)}
+.step .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;background:#F3F4F6;color:var(--muted);font-size:11px}
+.step.done{color:#CA8A04}.step.done .n{background:var(--green-2);color:#fff}
+.step.on{color:#CA8A04}.step.on .n{background:var(--accent);color:#111827}
+.step-line{width:70px;height:1px;background:var(--border-strong)}
+/* ---------- cards ---------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r)}
+.sec-h{display:flex;gap:12px;align-items:flex-start;padding:16px 18px;border-bottom:1px solid var(--border)}
+.sec-ic{width:30px;height:30px;border-radius:8px;background:var(--accent-fill);display:grid;place-items:center;color:var(--accent-ink);font-size:14px;flex:none}
+.sec-h h3{margin:0;font-size:15.5px}
+.sec-h p{margin:2px 0 0;color:var(--muted);font-size:12.5px}
+.collapsed{display:flex;align-items:center;gap:12px;padding:12px 18px;margin-bottom:12px}
+.collapsed h3{margin:0;font-size:14px}
+.collapsed .sum{color:var(--muted);font-size:12.5px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.collapsed .r{margin-left:auto;display:flex;gap:10px;align-items:center}
+.get{color:var(--green);background:var(--green-fill);font-weight:700;font-size:10.5px;padding:1px 6px;border-radius:4px}
+.dot{color:var(--subtle)}
+.ok{color:var(--green);font-weight:600}
+/* ---------- chips ---------- */
+.ty{display:inline-block;font-size:10.5px;font-weight:600;padding:1px 6px;border-radius:5px;line-height:16px}
+.ty.num{color:var(--t-num);background:var(--t-num-bg)}
+.ty.txt{color:var(--t-txt);background:var(--t-txt-bg)}
+.ty.date{color:var(--t-date);background:var(--t-date-bg)}
+.ty.arr{color:var(--t-arr);background:var(--t-arr-bg)}
+.ty.obj{color:var(--muted);background:#F3F4F6}
+.pill{display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;border-radius:999px;padding:2px 8px}
+.pill.ok{background:var(--green-fill);color:var(--green)}
+.pill.req{background:var(--red-fill);color:var(--red);border:1px solid var(--red-border)}
+.pill.opt{background:#F3F4F6;color:var(--muted)}
+.pill.y{background:var(--accent-fill);color:var(--accent-ink)}
+.star{color:var(--red);font-weight:700}
+/* ---------- inputs ---------- */
+.field label{display:block;font-weight:600;font-size:12px;margin-bottom:5px}
+.sel,.inp{height:32px;border:1px solid var(--border-strong);border-radius:var(--r-sm);background:var(--surface);display:flex;align-items:center;justify-content:space-between;padding:0 10px;font-weight:500;font-size:12.5px}
+.sel::after{content:"⌄";color:var(--muted);margin-left:8px;position:relative;top:-3px}
+.seg{display:inline-flex;border:1px solid var(--border);border-radius:var(--r-sm);background:var(--surface-2);padding:2px;gap:2px}
+.seg span{padding:4px 9px;border-radius:6px;font-size:11.5px;font-weight:600;color:var(--muted)}
+.seg span.on{background:var(--surface);color:var(--text);box-shadow:0 1px 2px rgba(0,0,0,.08);border:1px solid var(--border)}
+.seg.y span.on{background:var(--accent-fill);border-color:var(--accent)}
+.chk{display:inline-flex;gap:6px;align-items:center;font-size:12px}
+.chk i{width:14px;height:14px;border-radius:4px;background:var(--accent);display:inline-grid;place-items:center;font-style:normal;font-size:10px;font-weight:800}
+.chk i.off{background:var(--surface);border:1px solid var(--border-strong)}
+/* ---------- preview block ---------- */
+.pv-head{display:flex;justify-content:space-between;align-items:flex-start;padding:14px 16px;border-bottom:1px solid var(--border)}
+.pv-head h4{margin:0;font-size:14.5px}.pv-head p{margin:2px 0 0;color:var(--muted);font-size:12px}
+.canvas{background-color:#FAFAFA;background-image:radial-gradient(#E5E7EB 1px,transparent 1px);background-size:12px 12px;padding:14px}
+.dims{text-align:center;color:var(--muted);font-size:11px;margin-bottom:8px}
+.dims span{background:#fff;padding:1px 6px;border-radius:4px}
+.blk{background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:0 1px 3px rgba(0,0,0,.05)}
+.blk-h{display:flex;gap:10px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--border)}
+.blk-ic{width:26px;height:26px;border-radius:6px;background:var(--accent-fill);color:#CA8A04;display:grid;place-items:center;font-size:12px}
+.blk-h b{font-size:12.5px;display:block}.blk-h span{color:var(--muted);font-size:11.5px}
+.blk-h .tools{margin-left:auto;color:var(--subtle);letter-spacing:4px;font-size:12px}
+.kpi-l{color:var(--text-2);font-size:12px}
+.kpi-v{font-size:26px;font-weight:700;letter-spacing:-.01em;margin:2px 0}
+.up{color:var(--green);font-size:12px;font-weight:500}
+.asof{color:var(--subtle);font-size:11px}
+.vsp{background:var(--accent-wash);border:1px solid #FDE68A;border-radius:var(--r);padding:10px 12px;font-size:12px;color:var(--text-2)}
+.vsp b{color:#854D0E}
+/* ---------- state variant frame ---------- */
+.variant{margin-top:22px;border:2px dashed var(--border-strong);border-radius:12px;padding:16px;background:#fff}
+.variant > .vh{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+.variant > .vh .tag{background:#111827;color:#fff;border-radius:6px;padding:2px 8px;font-size:11px;font-weight:700}
+.variant > .vh b{font-size:14px}
+.variant > .vh span{color:var(--muted)}
+.err{border:1.5px solid var(--red)!important;background:var(--red-fill)}
+.errmsg{color:var(--red);font-size:12px;font-weight:500}
+.actions{display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding:12px 16px}
+
+/* Variant C — semantic roles specific
+   Role colours (chip text on fill):
+   Label #374151/#F3F4F6 · Value #854D0E/#FEF08A · Dimension #0F766E/#CCFBF1
+   Measure #1D4ED8/#DBEAFE · Time #6D28D9/#EDE9FE · Filter/Category #C2410C/#FFEDD5 */
+.cgrid{display:grid;grid-template-columns:1fr 360px;gap:16px;padding:16px}
+.stepcard{border:1px solid var(--border);border-radius:var(--r);background:#fff;margin-bottom:14px}
+.stepcard-h{display:flex;gap:10px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--border)}
+.stepcard-h .n{width:22px;height:22px;border-radius:50%;background:#111827;color:#fff;font-size:11px;font-weight:700;display:grid;place-items:center}
+.stepcard-h b{font-size:14px}
+.stepcard-h small{color:var(--muted);font-size:12px;display:block}
+.role{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;border-radius:7px;padding:3px 8px;border:1px solid transparent;white-space:nowrap}
+.role.dd::after{content:"⌄";font-weight:600;position:relative;top:-2px;opacity:.7}
+.r-label{color:#374151;background:#F3F4F6;border-color:#E5E7EB}
+.r-value{color:#854D0E;background:#FEF08A;border-color:#FDE047}
+.r-dim{color:#0F766E;background:#CCFBF1;border-color:#99F6E4}
+.r-meas{color:#1D4ED8;background:#DBEAFE;border-color:#BFDBFE}
+.r-time{color:#6D28D9;background:#EDE9FE;border-color:#DDD6FE}
+.r-filt{color:#C2410C;background:#FFEDD5;border-color:#FED7AA}
+.r-none{color:var(--muted);background:#fff;border:1px dashed var(--border-strong)}
+.recpath{display:flex;gap:10px;align-items:center;padding:12px 14px 0;font-size:12.5px}
+.scal-h{padding:12px 14px 6px;font-size:10.5px;letter-spacing:.08em;font-weight:700;color:var(--muted)}
+.scalars{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;padding:0 14px}
+.sc{border:1px solid var(--border);border-radius:var(--r-sm);padding:9px 10px;background:var(--surface-2)}
+.sc .k{font-family:ui-monospace,Menlo,monospace;font-weight:600;font-size:12px}
+.sc .v{font-family:ui-monospace,Menlo,monospace;color:var(--muted);font-size:11.5px;margin:3px 0 7px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc .q{color:var(--muted);font-size:10.5px;margin-left:4px}
+table.sample{width:calc(100% - 28px);margin:0 14px;border-collapse:separate;border-spacing:0;border:1px solid var(--border);border-radius:var(--r-sm);overflow:hidden;font-size:12.5px}
+table.sample th{background:var(--surface-2);text-align:left;padding:8px 10px;border-bottom:1px solid var(--border);vertical-align:top;font-weight:600}
+table.sample th .rr{margin-bottom:7px;display:block}
+table.sample th code{font-weight:700}
+table.sample td{padding:7px 10px;border-bottom:1px solid #F3F4F6;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+table.sample tr:last-child td{border-bottom:0}
+table.sample td.n{text-align:right}
+table.sample th.n{text-align:right}
+.rlegend{display:flex;flex-wrap:wrap;gap:12px;padding:10px 14px 14px;color:var(--muted);font-size:11.5px}
+.rlegend span{display:inline-flex;gap:5px;align-items:center}
+.sumrow{display:flex;gap:10px;align-items:center;padding:10px 14px;background:var(--surface-2);border-bottom:1px solid var(--border);font-size:12.5px}
+.am-g{padding:10px 14px 2px;font-size:10.5px;letter-spacing:.08em;font-weight:700;color:var(--muted)}
+.am{display:grid;grid-template-columns:200px 18px 1fr 170px 64px;gap:10px;align-items:center;padding:8px 14px;border-bottom:1px solid #F3F4F6}
+.am .src{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.am .src code{font-weight:600}
+.am .arr{color:var(--subtle);font-size:14px;text-align:center}
+.am .slot b{font-size:12.5px}
+.am .slot > span{display:block;color:var(--muted);font-size:11.5px}
+.conf{font-size:11px;line-height:1.35}
+.conf b{display:inline-flex;gap:4px;align-items:center}
+.conf .bar{display:inline-block;width:26px;height:5px;border-radius:3px;background:#E5E7EB;position:relative;overflow:hidden;vertical-align:middle}
+.conf .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--green-2)}
+.conf.hi b{color:var(--green)}
+.conf.md b{color:#CA8A04}.conf.md .bar i{background:var(--accent)}
+.conf.lo b{color:var(--muted)}.conf.lo .bar i{background:var(--subtle)}
+.conf span{color:var(--muted);display:block}
+.ov{font-size:12px;font-weight:600;color:var(--accent-ink);text-align:right}
+.am.sugg{background:var(--accent-wash)}
+.am.empty .slot b{color:var(--muted)}
+.am.info{background:var(--surface-2)}
+.pvlegend{display:flex;gap:6px;align-items:center;color:var(--muted);font-size:11px;padding:0 14px 6px}
+.pvlegend i{width:14px;height:3px;background:#FACC15;border-radius:2px;display:inline-block}
+.why{margin:12px 14px;font-size:11.5px;color:var(--muted)}
+.why div{display:flex;gap:8px;align-items:center;margin:4px 0}
+</style>
+</head>
+<body>
+<div class="note"><span class="tag">Exploration C</span>
+<div><h1>Assign roles, then auto-fill slots</h1>
+<p>This follows the product owner's mental model. Admins first say what each field <i>means</i>: Time, Measure, Dimension, Filter/Category, Value or Label. They do this on a plain table of real sample rows, so they see the data and not JSON. Dashflow then fills the block's slots from those roles. It shows a confidence note for each guess and an override link on every slot. Because the roles don't depend on the block type, switching from KPI &amp; Chart to another block type can re-fill the slots without asking the admin again.</p>
+<p class="tradeoff"><b>Trade-off:</b> best for tabular, well-named APIs and for teams that reuse one endpoint across several block types / weaker when the response has no clean record array, or when two fields share a role (two Values, two Measures), so the auto-fill guesses and the admin has to check them.</p></div></div>
+<div class="app">
+  <aside class="side">
+    <div class="brand"><span class="logo"><i></i><i></i><i></i><i></i></span>Dashflow</div>
+    <div class="ws"><span class="av">GI</span><div><b>Genie Inc.</b><span>Enterprise workspace</span></div><span style="margin-left:auto;color:var(--subtle)">›</span></div>
+    <div class="navh">ADMINISTRATION</div>
+    <nav class="nav">
+      <a><span class="ic">▥</span>Admin overview</a>
+      <a><span class="ic">⊞</span>Block management</a>
+      <a class="on"><span class="ic" style="color:#CA8A04">＋</span>Create block</a>
+      <a><span class="ic">▤</span>Draft blocks</a>
+      <a><span class="ic">✓</span>Published blocks</a>
+      <a><span class="ic">⊞</span>Block categories</a>
+      <a><span class="ic">▣</span>Dashboard templates</a>
+      <a><span class="ic">☺</span>User configuration</a>
+      <a><span class="ic">⚙</span>System settings</a>
+    </nav>
+    <div class="foot">
+      <nav class="nav"><a><span class="ic">?</span>Help &amp; support</a><a><span class="ic">→</span>Sign out</a><a style="font-size:12px"><span class="ic">◐</span>Appearance</a></nav>
+      <div class="user"><span class="av">AM</span><div><b>Alex Morgan</b><span>Administrator</span></div><span style="margin-left:auto;color:var(--subtle)">···</span></div>
+    </div>
+  </aside>
+  <div>
+    <header class="top"><div class="search">Search anything… <span class="kbd">⌘K</span></div><span class="iconbtn">🔔︎</span><span class="iconbtn">☾</span></header>
+    <div class="crumb">⌂ Administration &nbsp;›&nbsp; <b>Create dashboard block</b></div>
+    <main class="main">
+      <div class="phead">
+        <div class="l"><span class="back">←</span><div><small>Block management / Create block</small><h2>Create dashboard block <span class="draft">• Draft</span></h2></div></div>
+        <div style="display:flex;gap:10px"><span class="btn">Save draft</span><span class="btn">◉ Preview</span><span class="btn pri">✦ Publish block</span></div>
+      </div>
+      <div class="stepper">
+        <span class="step done"><span class="n">✓</span>Basic info</span><span class="step-line"></span>
+        <span class="step on"><span class="n">2</span>Configure</span><span class="step-line"></span>
+        <span class="step"><span class="n">3</span>Preview</span><span class="step-line"></span>
+        <span class="step"><span class="n">4</span>Publish</span>
+      </div>
+      <div class="card collapsed">
+        <span class="sec-ic">◎</span>
+        <div><h3>1 · Data configuration</h3>
+          <div class="sum">Finance data warehouse <span class="dot">·</span> <span class="get">GET</span><code>/api/v2/finance/revenue</code> <span class="dot">·</span> Every 15 minutes <span class="dot">·</span> Current year</div></div>
+        <div class="r"><span class="ok">✓ Sample fetched 09:12 · 200 OK · 1.2 KB</span><span class="btn sm">Edit</span></div>
+      </div>
+      <section class="card">
+        <div class="sec-h"><span class="sec-ic">⇄</span><div><h3>2 · Map data — Choose which API fields appear where in your block</h3><p>Tell Dashflow what each field means. It fills the <b style="color:var(--text)">KPI &amp; Chart</b> slots for you, and you can override any of them.</p></div>
+          <div style="margin-left:auto;display:flex;gap:8px;align-items:center"><span class="pill ok">8 of 9 slots filled</span><span class="pill ok">All required filled</span><span class="pill y">2 to review</span><span class="btn sm">↻ Re-fetch sample</span></div></div>
+        <div class="cgrid">
+          <div>
+            <!-- STEP 1 -->
+            <div class="stepcard">
+              <div class="stepcard-h"><span class="n">1</span><div><b>What does each field mean?</b><small>From the sample response · <span class="get">GET</span> <code>/api/v2/finance/revenue</code> · 09:12</small></div><span style="margin-left:auto" class="link">View raw JSON</span></div>
+              <div class="scal-h">SCALARS · single values in <code>data</code></div>
+              <div class="scalars">
+                <div class="sc"><div class="k">total <span class="ty num">number</span></div><div class="v">284680</div><span class="role r-value dd">Value</span><span class="q">main</span></div>
+                <div class="sc"><div class="k">previous_total <span class="ty num">number</span></div><div class="v">249195</div><span class="role r-value dd">Value</span><span class="q">baseline</span></div>
+                <div class="sc"><div class="k">currency <span class="ty txt">text</span></div><div class="v">"USD"</div><span class="role r-label dd">Label</span><span class="q">unit</span></div>
+                <div class="sc"><div class="k">updated_at <span class="ty date">date</span></div><div class="v">"2026-05-31T09:12:40Z"</div><span class="role r-time dd">Time</span><span class="q">as-of</span></div>
+              </div>
+              <div class="recpath"><b>Rows from</b><span class="sel" style="width:240px"><span><code>data.monthly[]</code> <span class="ty arr">array · 3 rows</span></span></span><span style="color:var(--muted)">Only one array in the response; it is used as the chart's rows.</span></div>
+              <div class="scal-h">SAMPLE ROWS · choose a role above each column</div>
+              <table class="sample">
+                <tr>
+                  <th><span class="rr"><span class="role r-time dd">Time</span></span><code>month</code> <span class="ty date">date</span></th>
+                  <th class="n"><span class="rr"><span class="role r-meas dd">Measure</span></span><code>revenue</code> <span class="ty num">number</span></th>
+                  <th><span class="rr"><span class="role r-dim dd">Dimension</span></span><code>region</code> <span class="ty txt">text</span></th>
+                  <th><span class="rr"><span class="role r-filt dd">Filter/Category</span></span><code>status</code> <span class="ty txt">text</span></th>
+                </tr>
+                <tr><td>2026-01</td><td class="n">10200</td><td>North</td><td>final</td></tr>
+                <tr><td>2026-02</td><td class="n">12650</td><td>South</td><td>final</td></tr>
+                <tr><td>2026-03</td><td class="n">15100</td><td>North</td><td>provisional</td></tr>
+              </table>
+              <div class="rlegend">
+                <span><span class="role r-label">Label</span>names or describes</span>
+                <span><span class="role r-value">Value</span>one headline number</span>
+                <span><span class="role r-dim">Dimension</span>groups or splits rows</span>
+                <span><span class="role r-meas">Measure</span>number to plot or sum</span>
+                <span><span class="role r-time">Time</span>when it happened</span>
+                <span><span class="role r-filt">Filter/Category</span>lets users narrow</span>
+              </div>
+            </div>
+            <!-- STEP 2 -->
+            <div class="stepcard">
+              <div class="stepcard-h"><span class="n">2</span><div><b>Auto-mapped to block</b><small>How your roles filled the KPI &amp; Chart slots · <span class="star">*</span> required</small></div><span class="btn sm" style="margin-left:auto">Re-run auto-map</span></div>
+              <div class="sumrow"><span class="ok">✓ 4 of 4 required filled</span><span class="dot">·</span>8 of 9 slots filled<span class="dot">·</span><span style="color:#CA8A04;font-weight:600">2 guesses worth a check</span><span class="dot">·</span><span style="color:var(--muted)">1 optional empty</span></div>
+              <div class="am-g">CHART</div>
+              <div class="am"><span class="src"><span class="role r-time">Time</span><code>month</code></span><span class="arr">→</span><span class="slot"><b>Chart X <span class="star">*</span></b><span>Month "MMM" → Jan, Feb, Mar</span></span><span class="conf hi"><b><span class="bar"><i style="width:92%"></i></span>High</b><span>only Time column in rows</span></span><a class="ov">Override</a></div>
+              <div class="am"><span class="src"><span class="role r-meas">Measure</span><code>revenue</code></span><span class="arr">→</span><span class="slot"><b>Chart series <span class="star">*</span> · #1</b><span>Currency USD, 0 dp · area · primary</span></span><span class="conf hi"><b><span class="bar"><i style="width:90%"></i></span>High</b><span>only Measure column</span></span><a class="ov">Override</a></div>
+              <div class="am sugg"><span class="src"><span class="role r-dim">Dimension</span><code>region</code></span><span class="arr" style="color:#CA8A04">⇢</span><span class="slot"><b>Split series by region?</b><span>Suggestion, not applied · would draw 2 lines</span></span><span class="conf lo"><b><span class="bar"><i style="width:35%"></i></span>Low</b><span>3 rows only; lines would be sparse</span></span><a class="ov">Apply</a></div>
+              <div class="am-g">KPI</div>
+              <div class="am"><span class="src"><span class="role r-value">Value</span><code>total</code></span><span class="arr">→</span><span class="slot"><b>Headline value <span class="star">*</span></b><span>Currency USD (from <code>currency</code>), 0 dp · Headline · bold &amp; large</span></span><span class="conf md"><b><span class="bar"><i style="width:68%"></i></span>Medium</b><span>2 Values; picked the one not named previous_*</span></span><a class="ov">Override</a></div>
+              <div class="am"><span class="src"><span class="role r-value">Value</span><code>previous_total</code></span><span class="arr">→</span><span class="slot"><b>Comparison (% change)</b><span>vs <code>total</code> · Percent, 1 dp · Higher is better</span></span><span class="conf md"><b><span class="bar"><i style="width:70%"></i></span>Medium</b><span>"previous_" treated as the baseline</span></span><a class="ov">Override</a></div>
+              <div class="am sugg"><span class="src"><span class="role r-label">Generated</span></span><span class="arr" style="color:#CA8A04">⇢</span><span class="slot"><b>KPI label <span class="star">*</span> · "Total revenue"</b><span>Comparison label · "from last year" (from Default date range)</span></span><span class="conf lo"><b><span class="bar"><i style="width:45%"></i></span>Check wording</b><span>written from field + block name</span></span><a class="ov">Edit</a></div>
+              <div class="am-g">META</div>
+              <div class="am"><span class="src"><span class="role r-time">Time</span><code>updated_at</code></span><span class="arr">→</span><span class="slot"><b>Data-as-of</b><span>Timestamp "MMM D, HH:mm"</span></span><span class="conf hi"><b><span class="bar"><i style="width:95%"></i></span>High</b><span>ISO timestamp scalar</span></span><a class="ov">Override</a></div>
+              <div class="am"><span class="src"><span class="role r-label">Basic info</span></span><span class="arr">→</span><span class="slot"><b>Title</b><span>Static · "Revenue overview"</span></span><span class="conf hi"><b>From step 1</b></span><a class="ov">Edit</a></div>
+              <div class="am empty"><span class="src"><span class="role r-none">No role</span></span><span class="arr">·</span><span class="slot"><b>Subtitle</b><span>Optional · text template, e.g. "Financial performance · {{date_range}}"</span></span><span class="pill opt" style="justify-self:start">Optional · empty</span><a class="ov">+ Add</a></div>
+              <div class="am info" style="border-bottom:0"><span class="src"><span class="role r-filt">Filter/Category</span><code>status</code></span><span class="arr">↳</span><span class="slot"><b>Not a slot: becomes a user filter</b><span>Users can filter by final / provisional · set it in Display &amp; behavior</span></span><span></span><a class="ov">Settings</a></div>
+            </div>
+          </div>
+          <!-- PREVIEW -->
+          <aside class="card" style="align-self:start;position:sticky;top:12px">
+            <div class="pv-head"><div><h4>Live preview</h4><p>Changes appear here automatically.</p></div><span class="seg"><span class="on">Desktop</span><span>Tablet</span><span>Mobile</span></span></div>
+            <div class="canvas">
+              <div class="dims"><span>8 columns × 360px</span></div>
+              <div class="blk">
+                <div class="blk-h"><span class="blk-ic">▥</span><div><b>Revenue overview</b><span style="font-style:italic;color:var(--subtle)">No subtitle</span></div><span class="tools">↻ – ···</span></div>
+                <div style="padding:12px 14px 2px">
+                  <div class="kpi-l">Total revenue</div>
+                  <div class="kpi-v">$284,680</div>
+                  <div class="up">↗ 14.2% from last year</div>
+                </div>
+                <svg viewBox="0 0 420 150" width="100%" height="150" aria-label="Monthly revenue Jan to Mar 2026">
+                  <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FDE047" stop-opacity=".45"/><stop offset="1" stop-color="#FDE047" stop-opacity="0"/></linearGradient></defs>
+                  <g stroke="#F3F4F6"><line x1="30" y1="16.9" x2="400" y2="16.9"/><line x1="30" y1="51.25" x2="400" y2="51.25"/><line x1="30" y1="85.6" x2="400" y2="85.6"/></g>
+                  <line x1="30" y1="120" x2="400" y2="120" stroke="#E5E7EB"/>
+                  <g fill="#9CA3AF" font-size="9" text-anchor="end"><text x="26" y="20">$15k</text><text x="26" y="54">$10k</text><text x="26" y="89">$5k</text><text x="26" y="123">$0</text></g>
+                  <path d="M50,49.9 C110,44 160,38 215,33 S330,20 380,16.2 L380,120 L50,120 Z" fill="url(#g)"/>
+                  <path d="M50,49.9 C110,44 160,38 215,33 S330,20 380,16.2" fill="none" stroke="#FACC15" stroke-width="2.5"/>
+                  <g fill="#fff" stroke="#EAB308" stroke-width="2"><circle cx="50" cy="49.9" r="3"/><circle cx="215" cy="33" r="3"/><circle cx="380" cy="16.2" r="3"/></g>
+                  <g fill="#6B7280" font-size="10" text-anchor="middle"><text x="50" y="138">Jan</text><text x="215" y="138">Feb</text><text x="380" y="138">Mar</text></g>
+                </svg>
+                <div class="pvlegend"><i></i>revenue (USD)</div>
+                <div style="padding:0 14px 10px" class="asof">Data as of May 31, 2026 09:12</div>
+              </div>
+            </div>
+            <div class="why">
+              <b style="color:var(--text)">Where each part comes from</b>
+              <div><span class="role r-value">Value</span> total → $284,680</div>
+              <div><span class="role r-value">Value</span> previous_total → ↗ 14.2%</div>
+              <div><span class="role r-time">Time</span> month → X axis</div>
+              <div><span class="role r-meas">Measure</span> revenue → line</div>
+            </div>
+            <div class="vsp" style="margin:0 14px 14px"><b>Version-safe publishing</b><br>Role changes after publish create a new version.</div>
+          </aside>
+        </div>
+      </section>
+      <div class="card collapsed" style="margin-top:12px">
+        <span class="sec-ic">⊞</span>
+        <div><h3>3 · Display &amp; behavior</h3>
+          <div class="sum">8 columns <span class="dot">·</span> Medium · 360px <span class="dot">·</span> Header, subtitle, resize, minimize, refresh</div></div>
+        <div class="r"><span class="btn sm">Expand</span></div>
+      </div>
+      <div class="card actions">
+        <span class="btn">← Back to Basic info</span>
+        <span class="btn pri">Continue to Preview →</span>
+      </div>
+      <div class="variant">
+        <div class="vh"><span class="tag">STATE VARIANT</span><b>Re-fetch needed: a field with a role disappeared</b><span>· shown after the nightly schema check, or when the admin clicks "Re-fetch sample"</span></div>
+        <div class="err" style="border-radius:var(--r);padding:10px 14px;display:flex;gap:12px;align-items:center;margin-bottom:12px">
+          <span style="font-size:16px;color:var(--red)">⚠</span>
+          <div style="flex:1"><b style="color:var(--red)">API response changed:</b> field <code>total</code> no longer present → <b>Headline: Unavailable</b><span style="color:var(--muted)"> · Dashflow found a new number field <code>total_revenue</code> that looks like the same data (matching name and value 284680).</span></div>
+          <span class="btn sm pri">Give <code>total_revenue</code> the Value role</span><span class="btn sm">Re-fetch sample</span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 360px;gap:16px;align-items:start">
+          <div class="stepcard" style="margin:0">
+            <div class="scal-h">SCALARS · latest response</div>
+            <div class="scalars" style="padding-bottom:12px">
+              <div class="sc err"><div class="k" style="text-decoration:line-through;color:var(--red)">total <span class="ty num">number</span></div><div class="v" style="color:var(--red)">not in latest response</div><span class="role r-value" style="opacity:.5">Value</span><span class="q">main</span></div>
+              <div class="sc" style="border:1.5px solid var(--accent);background:var(--accent-wash)"><div class="k">total_revenue <span class="ty num">number</span> <span class="pill y" style="font-size:10px">NEW</span></div><div class="v">284680</div><span class="role r-none dd">No role yet</span></div>
+              <div class="sc"><div class="k">previous_total <span class="ty num">number</span></div><div class="v">249195</div><span class="role r-value dd">Value</span><span class="q">baseline</span></div>
+              <div class="sc"><div class="k">updated_at <span class="ty date">date</span></div><div class="v">"2026-06-01T09:10:02Z"</div><span class="role r-time dd">Time</span><span class="q">as-of</span></div>
+            </div>
+            <div class="am" style="background:var(--red-fill);border-top:1px solid var(--red-border)"><span class="src"><span class="role r-value" style="opacity:.5">Value</span><code style="text-decoration:line-through;color:var(--red)">total</code></span><span class="arr" style="color:var(--red)">✕</span><span class="slot"><b style="color:var(--red)">Headline value <span class="star">*</span> · Unavailable</b><span>Source field removed. Comparison (% change) is paused too.</span></span><span class="conf"><b style="color:var(--red)">Broken</b><span>blocks Publish</span></span><a class="ov" style="color:var(--red)">Fix</a></div>
+          </div>
+          <div class="blk">
+            <div class="blk-h"><span class="blk-ic">▥</span><div><b>Revenue overview</b></div><span class="tools">↻ – ···</span></div>
+            <div style="padding:12px 14px">
+              <div class="kpi-l">Total revenue</div>
+              <div class="kpi-v" style="color:var(--red);font-size:20px;margin:4px 0">Unavailable</div>
+              <div class="asof">Comparison hidden · chart still OK (Jan–Mar)</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+</body>
+</html>

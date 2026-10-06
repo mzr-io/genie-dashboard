@@ -1,0 +1,218 @@
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created, ready for development
+#   - in-progress: Developer actively working on implementation
+#   - review: Implementation complete, ready for review
+#   - done: Story completed
+
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+
+# Action Item Status:
+#   - open: Committed during a retrospective, not yet addressed
+#   - in-progress: Actively being worked on
+#   - done: Completed
+
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when its first story starts (via build's sprint sync)
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates the next story after the previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+# - Retrospective appends its action items to action_items; the status view surfaces open ones
+generated: 10-06-2026 11:46
+last_updated: 10-06-2026 11:46
+project: rmg-dashboard-platform
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+development_status:
+  epic-1: backlog
+  1-1-initialise-the-project-from-the-laravel-vue-starter-kit: backlog
+  1-2-enforce-architecture-and-quality-gates-in-ci: backlog
+  1-3-run-all-five-process-roles-locally-with-docker-compose: backlog
+  1-4-observe-every-request-with-opentelemetry-and-scrubbed-logs: backlog
+  1-5-split-valkey-into-queue-and-cache-stores-with-signed-jobs: backlog
+  1-6-apply-the-dashflow-design-tokens-and-brand-seam: backlog
+  1-7-serve-all-product-copy-from-the-canonical-message-catalogue: backlog
+  1-8-build-the-shared-form-controls-and-status-components: backlog
+  1-9-build-dialogs-toasts-banners-popovers-and-live-regions: backlog
+  1-10-isolate-each-workspace-with-row-level-security: backlog
+  1-11-record-audit-events-and-publish-outbox-events-in-the-same-tr: backlog
+  1-12-provision-a-workspace-and-let-its-first-admin-accept-an-invi: backlog
+  1-13-sign-in-as-user-or-admin: backlog
+  1-14-reset-a-forgotten-password: backlog
+  1-15-warn-before-session-expiry-and-keep-forms-safe: backlog
+  1-16-navigate-the-two-area-shell-with-sign-out-and-profile-menu: backlog
+  1-17-switch-the-active-workspace: backlog
+  1-18-edit-my-profile-and-settings-and-open-help-support: backlog
+  1-19-enforce-admin-only-access-with-area-and-permission-checks: backlog
+  1-20-list-the-workspace-s-users-in-user-configuration: backlog
+  1-21-invite-users-to-the-workspace: backlog
+  1-22-assign-roles-and-admin-permissions: backlog
+  1-23-organise-users-into-groups: backlog
+  1-24-deactivate-and-reactivate-users: backlog
+  1-25-verify-security-and-load-readiness-with-test-suites-and-a-lo: backlog
+  epic-1-retrospective: optional
+
+  epic-2: backlog
+  2-1-manage-the-workspace-host-allowlist: backlog
+  2-2-guard-every-outbound-url-with-egressguard-and-operator-priva: backlog
+  2-3-register-and-edit-a-data-source: backlog
+  2-4-add-authentication-and-write-only-secrets-to-a-data-source: backlog
+  2-5-test-a-data-source-connection: backlog
+  2-6-accept-only-json-losslessly-and-within-limits: backlog
+  2-7-use-oauth2-client-credentials: backlog
+  2-8-prevent-overwriting-on-the-data-source-form-with-a-soft-lock: backlog
+  2-9-register-endpoints-on-a-data-source: backlog
+  2-10-test-an-endpoint-and-see-the-sample-response: backlog
+  2-11-follow-pagination-up-to-the-limits: backlog
+  2-12-define-user-attributes-for-user-context-binding: backlog
+  2-13-bind-endpoint-parameters-and-headers-to-user-context: backlog
+  2-14-fetch-each-endpoint-on-a-schedule-and-keep-the-last-good-res: backlog
+  2-15-use-conditional-requests-and-skip-unchanged-data: backlog
+  2-16-choose-how-much-raw-history-a-data-source-keeps: backlog
+  2-17-retry-rate-limit-and-break-the-circuit-on-failing-sources: backlog
+  2-18-see-data-source-health: backlog
+  2-19-refresh-only-what-is-being-watched-within-budgets: backlog
+  2-20-fetch-comparison-data-together-as-a-sync-group: backlog
+  epic-2-retrospective: optional
+
+  epic-3: backlog
+  3-1-register-the-block-type-contract-v1-and-the-kpi-card-package: backlog
+  3-2-see-the-kpi-card-in-every-state-rendered-safely-and-exactly: backlog
+  3-3-start-save-and-discard-a-draft-block: backlog
+  3-4-configure-block-step-1-with-a-live-preview: backlog
+  3-5-autosave-continuously-and-recover-from-expiry-offline-and-sa: backlog
+  3-6-soft-lock-a-draft-and-take-over-editing: backlog
+  3-7-choose-the-data-source-endpoint-parameters-and-refresh-step: backlog
+  3-8-paste-sample-json-and-inspect-it-with-exact-numbers: backlog
+  3-9-fetch-a-sample-from-the-api: backlog
+  3-10-render-the-sample-through-the-query-plan-engine-live-preview: backlog
+  3-11-review-field-roles-and-choose-the-record-path: backlog
+  3-12-auto-map-the-kpi-slots-and-review-the-checklist: backlog
+  3-13-override-a-slot-pick-a-field-and-fix-mismatches: backlog
+  3-14-change-a-slot-from-the-preview-with-hotspots: backlog
+  3-15-set-presentation-rules-for-the-kpi-card-slots: backlog
+  3-16-preview-on-every-device-and-state-step-4: backlog
+  3-17-fetch-and-preview-as-a-user: backlog
+  3-18-validate-the-block-against-the-real-api-step-5: backlog
+  3-19-publish-block-v1-0: backlog
+  epic-3-retrospective: optional
+
+  epic-4: backlog
+  4-1-resolve-every-block-s-period-in-one-place: backlog
+  4-2-compute-block-results-when-payload-changes: backlog
+  4-3-judge-freshness-and-keep-viewed-data-hot: backlog
+  4-4-open-my-overview-and-see-my-blocks-frames: backlog
+  4-5-see-live-block-values-without-waiting-on-the-source: backlog
+  4-6-use-block-chrome-refresh-minimize-about-this-block-footer: backlog
+  4-7-browse-the-add-blocks-panel: backlog
+  4-8-preview-a-block-with-generated-sample-values: backlog
+  4-9-add-and-remove-blocks-with-automatic-placement: backlog
+  4-10-undo-adds-and-removes: backlog
+  4-11-move-and-resize-blocks-in-edit-layout-mode: backlog
+  4-12-move-resize-reorder-and-shortcut-without-drag-and-drop: backlog
+  4-13-receive-live-updates-through-reverb-with-a-polling-fallback: backlog
+  4-14-pause-live-updates-and-see-the-oldest-data-as-of: backlog
+  4-15-set-a-dashboard-date-range-and-block-period-selectors: backlog
+  4-16-manage-my-dashboards-and-switch-between-them: backlog
+  4-17-use-the-dashboard-on-any-screen-size: backlog
+  epic-4-retrospective: optional
+
+  epic-5: backlog
+  5-1-filter-sort-and-top-n-transforms-in-the-map-data-step: backlog
+  5-2-group-and-aggregate-transforms-and-aggregate-rows-by-flatten: backlog
+  5-3-calculated-fields-and-ratio-safe-aggregation: backlog
+  5-4-text-templates-tokens-and-footer-action-target: backlog
+  5-5-comparisons-from-a-mapped-previous-value-with-comparison-mod: backlog
+  5-6-prior-period-comparison-requests-through-sync-groups: backlog
+  5-7-colour-threshold-and-direction-rules: backlog
+  5-8-shared-chart-wrapper-and-the-line-area-block-type: backlog
+  5-9-view-as-table-expanded-view-and-the-paginated-rowset-endpoin: backlog
+  5-10-kpi-chart-block-type-and-the-normative-revenue-example: backlog
+  5-11-bar-and-pie-donut-block-types: backlog
+  5-12-table-block-type-with-sort-pagination-and-stable-row-keys: backlog
+  5-13-list-and-progress-list-block-types: backlog
+  5-14-activity-feed-calendar-agenda-and-text-status-block-types: backlog
+  5-15-change-block-type-while-keeping-same-name-slots: backlog
+  5-16-xss-fixtures-through-every-slot-of-every-block-type: backlog
+  5-17-add-a-block-type-with-only-a-package-and-versioned-contracts: backlog
+  epic-5-retrospective: optional
+
+  epic-6: backlog
+  6-1-edit-a-published-block-into-a-new-draft: backlog
+  6-2-know-who-is-affected-the-block_usage-impact-read-model: backlog
+  6-3-diff-a-new-version-against-the-current-one: backlog
+  6-4-publish-a-new-version-with-diff-impact-and-two-phase-activat: backlog
+  6-5-activate-stuck-prepared-versions-by-maintenance: backlog
+  6-6-propagate-a-new-version-without-moving-layouts: backlog
+  6-7-browse-version-history-with-read-only-preview: backlog
+  6-8-restore-an-old-version-as-a-new-draft: backlog
+  6-9-unpublish-and-archive-blocks: backlog
+  6-10-manage-block-categories-and-tags: backlog
+  6-11-block-management-draft-blocks-and-published-blocks-lists: backlog
+  6-12-restrict-a-block-to-selected-user-groups: backlog
+  6-13-enforce-access-in-every-list-with-no-longer-available-to-you: backlog
+  epic-6-retrospective: optional
+
+  epic-7: backlog
+  7-1-build-a-template-draft-in-the-template-editor: backlog
+  7-2-mark-blocks-as-mandatory-in-the-template-editor: backlog
+  7-3-protect-the-template-editor-with-an-edit-lock: backlog
+  7-4-control-template-access-with-access-manage: backlog
+  7-5-publish-a-template-for-the-first-time: backlog
+  7-6-publish-updates-with-impact-view-versions-restore-unpublish: backlog
+  7-7-browse-the-templates-gallery-with-preview: backlog
+  7-8-create-a-dashboard-from-a-template: backlog
+  7-9-see-how-many-dashboards-came-from-each-template: backlog
+  7-10-keep-mandatory-blocks-on-the-dashboard-including-through-und: backlog
+  7-11-seed-every-new-user-s-overview-from-the-default-template: backlog
+  7-12-add-newly-mandatory-blocks-to-existing-dashboards: backlog
+  7-13-hold-mandatory-blocks-until-access-is-granted: backlog
+  7-14-reset-a-dashboard-to-its-template: backlog
+  7-15-duplicate-a-dashboard-with-its-template-provenance: backlog
+  epic-7-retrospective: optional
+
+  epic-8: backlog
+  8-1-fan-out-in-app-notifications-for-users: backlog
+  8-2-use-the-notification-bell-and-mark-notifications-read: backlog
+  8-3-alert-admins-on-publications-source-health-and-repeated-mapp: backlog
+  8-4-search-dashboards-blocks-and-templates-with-permission-filte: backlog
+  8-5-search-data-sources-users-and-settings-as-an-admin: backlog
+  8-6-use-the-global-search-palette: backlog
+  8-7-search-the-audit-log: backlog
+  8-8-export-the-audit-log-as-a-csv: backlog
+  8-9-see-admin-overview-metrics-and-recent-block-activity: backlog
+  8-10-monitor-platform-and-data-source-health: backlog
+  8-11-configure-workspace-system-settings: backlog
+  8-12-set-retention-with-an-operator-floor-and-delayed-reductions: backlog
+  8-13-offer-an-optional-regulated-data-access-log: backlog
+  8-14-manage-profile-shortcuts-and-find-help: backlog
+  epic-8-retrospective: optional
+
+  epic-9: backlog
+  9-1-build-and-publish-a-signed-multi-stage-image: backlog
+  9-2-run-a-production-style-single-host-stack-with-docker-compose: backlog
+  9-3-deploy-to-kubernetes-with-a-hardened-helm-chart: backlog
+  9-4-isolate-the-network-and-secrets-in-the-helm-chart: backlog
+  9-5-upgrade-without-downtime-and-prove-n-1-compatibility: backlog
+  9-6-back-up-and-restore-postgresql-and-the-keyring-with-a-restor: backlog
+  9-7-rotate-app_key-database-passwords-reverb-and-valkey-secrets: backlog
+  9-8-re-wrap-workspace-deks-and-rotate-digest-keys-with-pre-warm: backlog
+  9-9-operator-commands-for-workspace-first-admin-and-private-rang: backlog
+  9-10-gate-releases-on-supply-chain-checks: backlog
+  9-11-run-the-security-regression-suite-in-ci: backlog
+  9-12-gate-releases-on-cross-browser-and-accessibility-tests: backlog
+  9-13-load-test-the-platform-against-sizing-scenarios: backlog
+  9-14-ship-observability-dashboards-alerts-and-health-endpoints: backlog
+  9-15-document-deployment-models-and-classification-driven-default: backlog
+  epic-9-retrospective: optional

@@ -1,0 +1,1305 @@
+<!DOCTYPE html>
+<!--
+  UX Design Validation Report — skeleton template.
+
+  This file is a starter the synthesis pass fills in directly. There is no
+  substitution engine. The LLM:
+    1. Reads {doc_workspace}/review-rubric.md and every review-{slug}.md from
+       additional reviewers.
+    2. Copies this skeleton.
+    3. Replaces the placeholder content (everything between TEMPLATE markers)
+       with the consolidated review, preserving the structure and CSS.
+    4. Writes the result to {doc_workspace}/validation-report.html.
+    5. Writes a markdown twin to {doc_workspace}/validation-report.md.
+
+  Visual rules the LLM must preserve:
+    - The container width, the color tokens, the typography.
+    - One dimension = one collapsible <section class="dimension">.
+    - Verdict pill uses the verdict-* class matching its judgment.
+    - Severity badge uses the badge-sev-* class matching its level.
+    - Each extra reviewer (accessibility, adversarial, etc.) gets its own
+      collapsible section below the rubric dimensions.
+    - The footer always shows the artifact paths and timestamp.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>UX Design Validation: rmg-dashboard-platform</title>
+<style>
+  :root {
+    --bg: #fafaf9;
+    --surface: #ffffff;
+    --border: #e7e5e4;
+    --text: #1c1917;
+    --muted: #78716c;
+
+    --verdict-strong: #16a34a;
+    --verdict-adequate: #65a30d;
+    --verdict-thin: #d97706;
+    --verdict-broken: #dc2626;
+
+    --sev-low: #64748b;
+    --sev-medium: #ca8a04;
+    --sev-high: #ea580c;
+    --sev-critical: #dc2626;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    font-size: 15px;
+  }
+  .container { max-width: 960px; margin: 0 auto; padding: 32px 24px 64px; }
+
+  header.report-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 24px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 24px;
+  }
+  .title h1 { margin: 0; font-size: 22px; font-weight: 600; letter-spacing: -0.01em; }
+  .title .subtitle { color: var(--muted); font-size: 13px; margin-top: 4px; font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+  .synthesis {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--muted);
+    border-radius: 8px;
+    padding: 18px 22px;
+    margin-bottom: 24px;
+    font-size: 15.5px;
+  }
+  .synthesis p { margin: 0 0 10px; }
+  .synthesis p:last-child { margin-bottom: 0; }
+
+  .dimension-summary {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+    margin-bottom: 24px;
+  }
+  .dim-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 14px;
+  }
+  .dim-card .dim-name { font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .dim-card .dim-verdict { font-size: 14px; font-weight: 600; }
+
+  section.dimension, section.reviewer-section { margin-bottom: 14px; }
+  section.dimension details, section.reviewer-section details {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  section summary {
+    padding: 14px 20px;
+    cursor: pointer;
+    user-select: none;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  section summary::-webkit-details-marker { display: none; }
+  section summary::before {
+    content: "▸";
+    display: inline-block;
+    color: var(--muted);
+    transition: transform 0.15s ease;
+  }
+  section details[open] summary::before { transform: rotate(90deg); }
+  section summary h2 {
+    display: inline;
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    flex: 1;
+  }
+  .verdict-pill {
+    font-size: 11px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: white;
+  }
+  .verdict-strong { background: var(--verdict-strong); }
+  .verdict-adequate { background: var(--verdict-adequate); }
+  .verdict-thin { background: var(--verdict-thin); }
+  .verdict-broken { background: var(--verdict-broken); }
+
+  .dim-body { padding: 4px 20px 18px; }
+  .dim-judgment { color: var(--text); font-size: 14.5px; }
+  .dim-judgment p { margin: 0 0 10px; }
+
+  .findings-list { padding: 0 20px 4px; }
+  article.finding {
+    padding: 14px 0;
+    border-top: 1px solid var(--border);
+  }
+  article.finding:first-child { border-top: none; }
+  article.finding header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-bottom: 6px;
+  }
+  .badge {
+    font-size: 10.5px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    line-height: 1.4;
+  }
+  .badge-sev-low { background: rgba(100, 116, 139, 0.12); color: var(--sev-low); }
+  .badge-sev-medium { background: rgba(202, 138, 4, 0.14); color: var(--sev-medium); }
+  .badge-sev-high { background: rgba(234, 88, 12, 0.14); color: var(--sev-high); }
+  .badge-sev-critical { background: rgba(220, 38, 38, 0.14); color: var(--sev-critical); }
+  .finding-title { margin: 0; font-size: 15px; font-weight: 500; flex: 1; min-width: 200px; }
+  .finding-location { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; color: var(--muted); }
+  .finding-note, .finding-fix { margin-top: 6px; font-size: 14px; }
+  .finding-fix strong { color: var(--muted); font-weight: 500; }
+
+  .reviewer-source {
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+
+  .mechanical {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 16px 20px;
+    margin-top: 24px;
+    font-size: 14px;
+  }
+  .mechanical h3 { margin: 0 0 10px; font-size: 14px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .mechanical ul { margin: 0; padding-left: 20px; }
+  .mechanical li { margin-bottom: 4px; color: var(--text); }
+
+  footer.report-footer {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--muted);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+  }
+  footer .meta { display: flex; gap: 24px; flex-wrap: wrap; }
+
+  .resolution-note {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--verdict-strong);
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 0.9em; background: rgba(120,113,108,0.10); padding: 1px 4px; border-radius: 3px; }
+  .finding-id { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  .finding-source { margin-top: 6px; font-size: 12px; color: var(--muted); font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .counts { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 24px; }
+  .contrast { padding: 0 20px 18px; }
+  .contrast h3 { font-size: 14px; margin: 18px 0 8px; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { text-align: left; padding: 5px 8px; border-bottom: 1px solid var(--border); vertical-align: top; }
+  th { color: var(--muted); font-weight: 600; }
+  td.fail { color: var(--sev-critical); font-weight: 600; }
+  ul.plain { margin: 0 0 10px; padding-left: 20px; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="resolution-note">Findings were addressed in the spines on 2026-10-05; see the Resolution notes in the spines and the decision log (R1–R7).</div>
+    <header class="report-header">
+      <div class="title">
+        <h1>rmg-dashboard-platform — UX Design Validation Report</h1>
+        <div class="subtitle">DESIGN.md: /home/bs01729/Projects/rmg-dashboard-platform/_bmad-output/planning-artifacts/ux-designs/ux-rmg-dashboard-platform-2026-10-05/DESIGN.md</div>
+        <div class="subtitle">EXPERIENCE.md: /home/bs01729/Projects/rmg-dashboard-platform/_bmad-output/planning-artifacts/ux-designs/ux-rmg-dashboard-platform-2026-10-05/EXPERIENCE.md</div>
+        <div class="subtitle">Run at: 2026-10-05T15:07:17+06:00</div>
+      </div>
+    </header>
+    <div class="synthesis">
+      <p><strong>Adequate. The pair is usable as a contract, but fix the high findings before story development.</strong> The mechanics are clean: every <code>{token}</code> reference resolves (93 unique; the only miss is the URL-template <code>{user.email}</code>), every colour token has a hex value, token names are semantic so a dark theme can be added, the sources resolve, DESIGN.md sections are in canonical order, and all PRD journeys are covered by Key Flows. The weaknesses are coverage gaps a downstream builder would have to invent: three CONFIRMED MVP Block Types (Table, Bar chart, Pie/Donut) have no visual spec; most of Map Data's sub-components and all generic admin tables and form controls have no visual spec; several documented colour pairs fail WCAG AA; the Map Data layout does not fit at 1280 px; and charts have no specified interaction or non-visual access. EXPERIENCE.md is about 1.8&times; longer than it needs to be, mostly through repeated copy and FR content.</p>
+      <p>The accessibility review found 1 critical and 10 high findings, so the spines are not yet WCAG 2.1 AA as specified. The foundation is sound, though: the accent-ink text colour, a focus ring that passes 3:1 everywhere, arrows on deltas and words next to status dots, keyboard alternatives for every drag, a defined Esc order, inline reasons for disabled actions, honest Unavailable and Stale states and clear sample-data labelling. The gaps cluster in data visualisation, timing, focus stability, low-contrast boundaries, delta semantics and reflow; none needs a redesign.</p>
+      <p>After merging the findings both reviewers raised, there are 68 findings, numbered F1&ndash;F68 by severity. 9 of them credit both reviewers.</p>
+    </div>
+    <div class="counts">
+      <span class="badge badge-sev-critical">critical: 1</span>
+      <span class="badge badge-sev-high">high: 14</span>
+      <span class="badge badge-sev-medium">medium: 32</span>
+      <span class="badge badge-sev-low">low: 21</span>
+    </div>
+    <div class="dimension-summary">
+      <div class="dim-card">
+        <div class="dim-name">Flow coverage</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Token completeness</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Component coverage</div>
+        <div class="dim-verdict" style="color: var(--verdict-thin)">thin</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">State coverage</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Visual reference coverage</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Bloat &amp; overspecification</div>
+        <div class="dim-verdict" style="color: var(--verdict-thin)">thin</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Inheritance discipline</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
+      </div>
+      <div class="dim-card">
+        <div class="dim-name">Shape fit</div>
+        <div class="dim-verdict" style="color: var(--verdict-adequate)">adequate</div>
+      </div>
+    </div>
+
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Flow coverage</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>PRD journeys UJ-1 to UJ-6 and the brief's "register a REST API" job all map to Key Flows 0–5. Every flow has numbered steps, a Climax beat and a failure path; no journey is missing. The gaps are naming and copy traceability.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="finding-id">F16</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Flow headings do not use the PRD UJ names verbatim</h3>
+              <span class="finding-location">EXPERIENCE → Key Flows, Flows 1–5</span>
+            </header>
+            <div class="finding-note">"Alex publishes 'Revenue overview' (UJ-1)" vs PRD "UJ-1. Alex (Admin) builds the 'Revenue overview' block"; "Jamie adds a block (UJ-3)" vs "Jamie (User) personalizes the Overview"; similar drift for UJ-5 and UJ-4. Traceability tools and story writers matching on UJ names will miss these.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Use the PRD UJ title verbatim as the heading; keep the current wording as a subtitle if wanted.</div>
+            <div class="finding-source">Source: rubric §1</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F17</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Unavailable copy contradicts PRD UJ-1 without a tag</h3>
+              <span class="finding-location">EXPERIENCE → Voice (Unavailable), Flow 4 step 2</span>
+            </header>
+            <div class="finding-note">The PRD edge case shows "Unavailable: total missing"; EXPERIENCE shows Users "Unavailable — this value can't be shown right now" and keeps the field name for Admins. A reasonable refinement, but untagged, so a developer reading the PRD builds the other string.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Tag it <code>[UX DECISION]</code> and add it to the PRD v3.2 alignment list, or adopt the PRD string.</div>
+            <div class="finding-source">Source: rubric §1</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F48</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Flows 3, 4 and 5 have no protagonist line</h3>
+              <span class="finding-location">EXPERIENCE → Flow 3/4/5 headers</span>
+            </header>
+            <div class="finding-note">Flows 0 to 2 state name, role, context or viewport; 3 to 5 do not.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add one line each, for example "Alex Morgan, Admin with publish permission" and "Jamie Davis, User, desktop".</div>
+            <div class="finding-source">Source: rubric §1</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F49</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Flow 2 contradicts PRD UJ-3 on small details</h3>
+              <span class="finding-location">EXPERIENCE → Flow 2, steps 2 and 6</span>
+            </header>
+            <div class="finding-note">"9 available blocks" vs the PRD's 8; step 6 hovers "Recent Activities" but the toast says "Recent activity removed".</div>
+            <div class="finding-fix"><strong>Fix:</strong> Use 8, and use the configured name "Recent activity" throughout.</div>
+            <div class="finding-source">Source: rubric §1</div>
+          </article>
+        </div>
+      </details>
+    </section>
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Token completeness</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>80 colour tokens, all hex; 92 of 93 <code>{path}</code> references resolve (the miss is the URL-template <code>{user.email}</code>). Names are semantic, so a dark theme can be added. The weakness is contrast: several documented text and non-text pairs fail WCAG AA although the spine claims AA for every load-bearing pair.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="finding-id">F2</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Documented text-on-fill pairs fail 4.5:1</h3>
+              <span class="finding-location">DESIGN → button-destructive-soft, slot-row state table (Optional, Required missing, Type mismatch), stepper-step</span>
+            </header>
+            <div class="finding-note"><code>error</code> on <code>error-soft</code> = 4.41 ("× Remove" in every drawer row, the Required-missing pill, whose text colour is also unspecified); <code>text-muted</code> on <code>surface-muted</code> = 4.39 (Optional pill, 11 px upcoming stepper numeral); <code>text-muted</code> on <code>error-soft</code> = 4.42 (captions in error rows). The mapdata-hybrid sketch also has High and Confirmed pills at 3.00. The spine claims AA for every load-bearing pair.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Use <code>error-text</code> (5.91) for destructive-soft and the error pills; <code>text-secondary</code> (9.37) for the Optional pill, the stepper numeral and error-row captions; add the resulting ratios next to the tokens.</div>
+            <div class="finding-source">Source: rubric §2 (high) · accessibility C5 (medium)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F3</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Form control boundaries are below 3:1 non-text contrast</h3>
+              <span class="finding-location">DESIGN → border-strong, input, select, checkbox, segmented-control</span>
+            </header>
+            <div class="finding-note"><code>border-strong</code> #D1D5DB is 1.47:1 on white and 1.39 on canvas. An unchecked checkbox is identifiable only by that border, and inputs and selects rely on it for their hit area. The checked checkbox edge (<code>accent-strong</code>) is 1.92; the check mark carries the state, but the box boundary still fails. Non-text contrast is not stated anywhere (SC 1.4.11).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add <code>border-control: #80868F</code> (3.67 white, 3.45 canvas, 3.51 sunken) for input, select, textarea, checkbox (both states), radio, the method-prefix join and the outer edge of segmented-control; keep <code>border-strong</code> for decorative outlines and text-identified buttons; add a "Non-text contrast" line to DESIGN → Colors.</div>
+            <div class="finding-source">Source: rubric §2 (high) · accessibility C3 (high)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F4</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Chart series 1, 5 and 6 fail non-text contrast</h3>
+              <span class="finding-location">DESIGN → colors.chart-1/5/6, Colors → Chart palette, Chart marks, progress-row.fillDefault</span>
+            </header>
+            <div class="finding-note">The yellow <code>chart-1</code> line is 1.53:1 on white and is the only series in most charts; <code>chart-5</code> is 2.80, <code>chart-6</code> 2.54, and the area fill 1.07. Legends and tooltips help identify a series but do not make the mark perceivable (SC 1.4.11).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add <code>chart-1-stroke: {colors.accent-ink}</code> (4.92) for lines, points and bar outlines, keeping yellow <code>chart-1</code> as fill only (it still follows a Workspace accent override); change <code>chart-5</code> to #EA580C (3.56) and <code>chart-6</code> to #6B7280 (4.83); yellow bars and progress fills get a 1px stroke edge, or state that the % text is the information (see F58).</div>
+            <div class="finding-source">Source: rubric §2 (high) · accessibility C1 (high)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F18</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Placeholders are 2.54:1 and search fields use them as their only label</h3>
+              <span class="finding-location">DESIGN → text-subtle, input.placeholder; EXPERIENCE → drawer search, top-bar search</span>
+            </header>
+            <div class="finding-note"><code>text-subtle</code> placeholder text is 2.54:1 on white (SC 1.4.3 applies to placeholders). The drawer and top-bar search fields have no visible label, so the placeholder is their only name (SC 3.3.2, 4.1.2).</div>
+            <div class="finding-fix"><strong>Fix:</strong> <code>input.placeholder: {colors.text-muted}</code> (4.83); search fields without a visible label get an accessible name (<code>aria-label="Search blocks"</code>); placeholders never carry instructions; keep <code>text-subtle</code> for decorative marks only.</div>
+            <div class="finding-source">Source: rubric §2 (within the high non-text finding) · accessibility C6 (medium)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F19</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Shadows and halos are raw rgba() values outside the token system</h3>
+              <span class="finding-location">DESIGN → toast.shadow, dialog.shadow, drawer-row shadow, scrim, just-added-outline.halo</span>
+            </header>
+            <div class="finding-note"><code>just-added-outline.halo</code> hard-codes <code>rgba(250,204,21,.18)</code> (the default accent), contradicting the Do's row against hard-coded values; it will not follow a Workspace accent override, and the others block the dark theme.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add <code>elevation</code> / <code>shadow-*</code> tokens (or <code>shadow-color</code>, <code>scrim-opacity</code>), and express the halo as <code>{colors.accent}</code> at an alpha.</div>
+            <div class="finding-source">Source: rubric §2</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F20</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">The rule that accent is never used for text is contradicted</h3>
+              <span class="finding-location">DESIGN → signin-hero.tagline, toast.actionColor; EXPERIENCE → Branding &amp; Theming</span>
+            </header>
+            <div class="finding-note">The sign-in tagline is accent text on <code>hero-chip</code>, and toast actions are <code>accent-border</code> text on <code>surface-inverse</code>. Both pass today on dark surfaces, but the override guardrail checks only <code>on-accent</code> and <code>accent-ink</code>, so a Workspace accent override could make them fail.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Qualify the rule ("never text on light surfaces") and extend the guardrail to accent-as-text on dark surfaces, or move both to dedicated tokens such as <code>hero-accent-text</code> and <code>toast-action</code>.</div>
+            <div class="finding-source">Source: rubric §2</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F50</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title"><code>{user.email}</code> uses token-reference syntax for a URL-template field</h3>
+              <span class="finding-location">EXPERIENCE → Map Data → Footer action target</span>
+            </header>
+            <div class="finding-note">A resolver reports it as an unresolved design token.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Mark it as a URL-template example in code, or use another delimiter in prose.</div>
+            <div class="finding-source">Source: rubric §2</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F51</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Several values sit off the token scales or outside tokens</h3>
+              <span class="finding-location">DESIGN → role-chip.radius, checkbox.radius, popovers, stepper</span>
+            </header>
+            <div class="finding-note">Off-scale radii (7px, 4px); popover widths (560, 360, 320px) and stepper geometry only in prose; <code>role-chip</code> has no binding to the per-role text/fill/border triples.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add <code>rounded.xs</code> and popover-width spacing tokens, and <code>role-chip-{role}</code> entries that reference the triples.</div>
+            <div class="finding-source">Source: rubric §2</div>
+          </article>
+        </div>
+      </details>
+    </section>
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Component coverage</h2>
+          <span class="verdict-pill verdict-thin">thin</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>Drawer, toast, stepper and wizard shell, slot row, role chip, Block Chrome, dialog, command palette, notifications, pickers, admin overview and sign-in cards have both a visual and a behaviour spec. KPI card, list, progress, activity and calendar rows and chart marks are visual-only. Three CONFIRMED Block Types, most of Map Data, generic admin tables and several form primitives have no visual spec, and charts and tables have no interaction or non-visual access spec.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="finding-id">F1</span>
+              <span class="badge badge-sev-critical">critical</span>
+              <h3 class="finding-title">Charts and Table Blocks have no text alternative, keyboard access or user-side behaviour spec</h3>
+              <span class="finding-location">EXPERIENCE → Foundation (Charts), Accessibility Floor; DESIGN → Chart marks</span>
+            </header>
+            <div class="finding-note">A chart Block conveys its data only visually; the expanded table exists only when an Admin configures Expanded view, so for a product sold to regulated buyers a whole Block type is unusable for blind users (accessibility, S1, SC 1.1.1 / 1.3.1). EXPERIENCE has no Chart or Table component pattern at all: no keyboard focus on data points, no tooltip on focus, no legend interaction, no Table sort or pagination for Users; the Accessibility Floor says only "chart series carry legends or labels" (rubric §3, SC 1.1.1 / 2.1.1).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add "Chart" and "Table Block" rows to Component Patterns and the Accessibility Floor: every chart is <code>role="img"</code> with a generated <code>aria-label</code> summary; every chart Block's ⋯ menu always has "View as table" (reusing Expanded view, <code>th</code> scope and units) regardless of the Expanded view setting; ← / → step through points with a polite announcement and a tooltip on focus; the legend is a list naming each series with its marker; Table headers are sort buttons with <code>aria-sort</code>, and pagination behaviour is specified.</div>
+            <div class="finding-source">Source: rubric §3 (high) · accessibility S1 (critical), S6 Table row</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F5</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Three CONFIRMED MVP Block Types have no visual spec</h3>
+              <span class="finding-location">DESIGN → Block Type faces, Chart marks; EXPERIENCE → Block-Type settings</span>
+            </header>
+            <div class="finding-note">Table / Data grid, Bar chart (grouped and stacked) and Pie / Donut have no face or tokens; nor does the PROPOSED Text / Status type (FR-32). Block-Type settings omit the Bar stack/series key, the Pie centre value and Text/Status. Renderer stories for 3 of the 5 change-signal Block Types have no visual contract.</div>
+            <div class="finding-fix"><strong>Fix:</strong> In DESIGN add <code>table-header</code>, <code>table-row</code>, <code>table-cell-numeric</code>, sort indicator, pagination, row highlight; <code>chart-bar</code> with gap and stacking; <code>chart-pie</code> with centre label, slice order and slice border. In EXPERIENCE add settings rows for Bar, Pie and Text/Status.</div>
+            <div class="finding-source">Source: rubric §3</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F6</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Most Map Data parts have no visual spec</h3>
+              <span class="finding-location">EXPERIENCE → Map Data; DESIGN → Components</span>
+            </header>
+            <div class="finding-note">The spine calls Map Data "the most important pattern in the product", but DESIGN covers only <code>slot-row*</code>, <code>role-chip</code>, <code>confidence-*</code> and <code>preview-hotspot</code>. Missing: the sticky status bar and meter, Roles table scalar cards and sample-rows table, ✦ suggestion row, collapsed roles summary, record-path candidate list and badges, "Aggregate rows by…", the Transforms builder, Comparison editor and Threshold rows, the step ② Parameters table and Paste-JSON textarea, the fetch-error card, the hatched missing-slot placeholder and the "Where each part comes from" legend.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a "Map Data parts" subsection to DESIGN → Components, naming a token set for each part (mostly reusing existing tokens) so component names match across both spines.</div>
+            <div class="finding-source">Source: rubric §3</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F7</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">No generic data-table / list-page component, and several form primitives are missing</h3>
+              <span class="finding-location">DESIGN → Components; EXPERIENCE → admin lists, Access, Mandatory, Expanded view, Edit Layout</span>
+            </header>
+            <div class="finding-note">Every Admin list (Block management, Draft and Published blocks, Data sources, Audit log, User configuration, Version history, Block categories) and My dashboards is a table or list page with search, filters, row menus and status, and DESIGN specifies none of it. Radio group, toggle/switch, textarea, tooltip, skeleton, two-month date-range calendar, icon picker, Expanded view and the Edit Layout Undo/Redo control are used in EXPERIENCE with no visual spec.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add <code>data-table</code> (header, row, hover, selected, row-menu, status cell, empty and loading rows), <code>radio</code>, <code>switch</code>, <code>textarea</code>, <code>tooltip</code>, <code>skeleton</code>, <code>date-range-calendar</code> and <code>icon-picker</code>, reusing existing tokens.</div>
+            <div class="finding-source">Source: rubric §3</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F8</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Map Data does not fit at 1280 px and does not reflow at 320 CSS px</h3>
+              <span class="finding-location">DESIGN → slot-row.columns, spacing.preview-pane-width; EXPERIENCE → Responsive &amp; Platform (Wizard)</span>
+            </header>
+            <div class="finding-note">The slot row has 548 px of fixed columns plus a <code>1fr</code> presentation column (about 600 px minimum with gaps). Beside the fixed 384 px preview pane, the 232 px sidebar and 28 px gutters, the presentation summary at 1280 px gets about 36 px; the 1024–1279 row says only "preview pane narrows" (rubric). At 400% zoom on a 1280 px screen (320 CSS px) the user gets the mobile layout and a banner telling them to use a desktop; the slot row, expanded three-column editor, scalar cards and transform sentences have no narrow layout, and the slot checklist is not a data table, so it is not exempt from reflow (accessibility, SC 1.4.10).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Commit to a laptop behaviour (collapse the sidebar to the icon rail inside the wizard below 1440 px, wrap the presentation summary under the field below a stated width, or add <code>preview-pane-width-compact</code>) and add a breakpoint row. Below 640 px stack slot rows (status + name, field, presentation, pill + actions), stack the expanded editor, show one scalar card per row and wrap transform sentences; let sample rows and JSON scroll inside a focusable labelled region; make the "wider window" banner dismissible and non-blocking.</div>
+            <div class="finding-source">Source: rubric §3 (high) · accessibility R1 (high)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F21</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Single-character shortcuts have no stated scope</h3>
+              <span class="finding-location">EXPERIENCE → Interaction Primitives, Keyboard model (<code>/</code>, <code>A</code>, <code>M</code>)</span>
+            </header>
+            <div class="finding-note">The scope of <code>/</code> is "the current panel" without saying whether it works only while focus is inside the drawer; if not, it is a page-global single-character shortcut. <code>A</code> and <code>M</code> are acceptable only while the row or Block has focus (SC 2.1.4).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Single-key shortcuts fire only when the owning component has focus and the target is not a text field; add "Keyboard shortcuts: On / Off" in Profile &amp; settings; "?" opens a shortcut list, also listed in Help.</div>
+            <div class="finding-source">Source: rubric §3 (low) · accessibility K4 (medium)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F22</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">The Edit Layout keyboard model is ambiguous: Esc both ends a move and saves the mode</h3>
+              <span class="finding-location">EXPERIENCE → Edit Layout Mode, Keyboard model, Esc order</span>
+            </header>
+            <div class="finding-note">Esc saves and exits Edit Layout Mode, while everywhere else Esc dismisses (rubric). "Enter or Esc ends the move" conflicts with "Esc exits Edit Layout Mode (saving)"; there is no cancel for a move and no defined focus target (accessibility, SC 2.1.1, 3.2.2).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Apply the APG grab pattern: a focusable "Move {Block}" button per header; M or Space picks up, arrows move, Shift+arrows resize; Enter drops, Esc cancels and restores, a second Esc exits; relative announcements; Ctrl/⌘+Z undoes the last move. Confirm in the spine whether exiting saves.</div>
+            <div class="finding-source">Source: rubric §3 (low) · accessibility K5 (medium)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F23</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Responsive behaviour is not committed for 1024–1279 px</h3>
+              <span class="finding-location">EXPERIENCE → Responsive &amp; Platform (Shell); DESIGN → Layout → Narrow layout</span>
+            </header>
+            <div class="finding-note">The Shell column reads "Sidebar 232px, or icon rail [ASSUMPTION]", which is two options, not a default. With the drawer pushed, content width is viewport minus 512 px, below the 720 px narrow threshold up to about 1231 px, so the dashboard silently goes single-column.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Pick one shell behaviour, and state what the dashboard does with the drawer open between 1024 and 1231 px (single column, or overlay below 1232 px).</div>
+            <div class="finding-source">Source: rubric §3</div>
+          </article>
+        </div>
+      </details>
+    </section>
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>State coverage</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>Block states (FR-36 complete, plus Partial data, Unpublished and Access removed), the Dashboard, the Add-blocks Panel, wizard steps, Data sources and Admin overview are strong. Missing: save failure, offline and session expiry outside the Dashboard, concurrent draft edits, and several small surface states.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="finding-id">F9</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">No session-timeout behaviour is specified</h3>
+              <span class="finding-location">EXPERIENCE → State Patterns, Password recovery ("Remember me … maximum duration TBD"), wizard</span>
+            </header>
+            <div class="finding-note">Regulated customers run short idle timeouts. The Map Data step is long and dense, and an unwarned expiry loses the Admin's work (accessibility, SC 2.2.1). State Patterns has no session-expired treatment for the wizard or other forms, even though the idle-timeout value is TBD (rubric §4).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Two minutes before idle expiry, a dialog: "You'll be signed out in 2:00 for security. Stay signed in", announced at 2:00, 1:00 and 0:30. Save wizard state as a local draft continuously and restore it after re-authentication in a dialog without losing the form. On return after expiry: "You were signed out to protect your workspace. Your draft was saved."</div>
+            <div class="finding-source">Source: rubric §4 (medium, session-expiry part) · accessibility T3 (high)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F24</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Save-failure, offline and concurrent-edit states are missing outside the Dashboard</h3>
+              <span class="finding-location">EXPERIENCE → State Patterns (Wizard, Data source form, Template editor, Settings forms)</span>
+            </header>
+            <div class="finding-note">Offline is specified only for the Dashboard. Concurrent draft editing by another Admin is load-bearing for architecture: it decides between locking and last-write-wins. (Session expiry is covered in F9.)</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add rows: save failed with work kept ("We couldn't save your draft. Your changes are still here. Try again."); offline banner with Save disabled and the reason; draft changed by another Admin, with a locking or last-write-wins decision and copy.</div>
+            <div class="finding-source">Source: rubric §4</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F25</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Generic states for settings and admin screens are claimed but only partly written</h3>
+              <span class="finding-location">EXPERIENCE → State Patterns; IA note under the table</span>
+            </header>
+            <div class="finding-note">The IA note says these screens "are covered by State Patterns", but the only generic rows are "Admin lists · Empty" (with Draft-blocks-specific copy) and "Any admin page · Permission denied". No generic cold load, save success or failure, search with no results, or unsaved-changes-on-leave.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add four generic rows with templated copy, for example "No {items} yet. {Primary action} to start." and "No {items} match '{query}'.".</div>
+            <div class="finding-source">Source: rubric §4</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F26</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Small surface states are missing</h3>
+              <span class="finding-location">EXPERIENCE → State Patterns</span>
+            </header>
+            <div class="finding-note">Missing: step ② with no Data Sources registered, the Add-blocks list load error, an empty Notifications panel, Expanded view loading / empty / error, the Dashboard layout load error, and slow ⌘K search results.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add one State Patterns row each.</div>
+            <div class="finding-source">Source: rubric §4</div>
+          </article>
+        </div>
+      </details>
+    </section>
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Visual reference coverage</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>All 11 visual references (5 imports, 6 working sketches) are linked inline with what they illustrate; there are no orphans, and "spines win on conflict" is stated consistently.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="finding-id">F27</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">The .working/ links will break when the hybrids are promoted</h3>
+              <span class="finding-location">DESIGN → Brand &amp; Style, Narrow layout, Stepper; EXPERIENCE → IA, Map Data, step ⑤, Add-blocks Panel, Inspiration</span>
+            </header>
+            <div class="finding-note">The decision log says <code>mapdata-hybrid.html</code> and <code>addblocks-hybrid.html</code> will be promoted to <code>mockups/</code>, but about 8 inline links point at <code>.working/</code>.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Make the link update part of the promotion step, or link to <code>mockups/</code> now with a note.</div>
+            <div class="finding-source">Source: rubric §5</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F52</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">DESIGN → Components cites mockups by number without links</h3>
+              <span class="finding-location">DESIGN → Block Type faces, Top bar, Chart marks, Admin overview, Wizard page parts, Remember me</span>
+            </header>
+            <div class="finding-note">"mockup 02", "mockups 02 and 04", "mockup 03" and others are plain text.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Turn each into a link to <code>imports/0N-….png</code>.</div>
+            <div class="finding-source">Source: rubric §5</div>
+          </article>
+        </div>
+      </details>
+    </section>
+    <section class="dimension">
+      <details open>
+        <summary>
+          <h2>Bloat &amp; overspecification</h2>
+          <span class="verdict-pill verdict-thin">thin</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>EXPERIENCE.md is 13,746 words, about 9 times the reference examples; Component Patterns alone is about 7,400. Map Data justifies some density, but about 35–40% is repetition or restated PRD content, which invites drift.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="finding-id">F28</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">EXPERIENCE.md is too long, and its repetition invites drift</h3>
+              <span class="finding-location">EXPERIENCE → Component Patterns, Voice, Branding &amp; Theming, Security-conscious UX</span>
+            </header>
+            <div class="finding-note">"You don't have permission to publish this block." appears ×5, "no longer available" ×7, "Required by your admin" ×5, and the missing-required-Slot reason in three different variants. There are 137 FR citations, with FR-9, FR-24, FR-27 and FR-35 content restated. Branding &amp; Theming repeats DESIGN → Colors; Security-conscious UX re-states pattern rules.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Make the Voice table the single source of copy with row IDs cited elsewhere; replace restated FR lists with "per FR-n" plus UX deltas; reduce Branding to a 2-line pointer and Security to a 6-row index; convert rule lists to <code>element | rule</code> tables. Target about 8,000–9,000 words with no loss of decisions.</div>
+            <div class="finding-source">Source: rubric §6</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F53</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">EXPERIENCE re-quotes token values in pixels</h3>
+              <span class="finding-location">EXPERIENCE → drawer, icon rail, thumbnails, block heights</span>
+            </header>
+            <div class="finding-note">"drawer (392px)", "icon rail (64px)", "Medium 360px" and others. Harmless while values agree, but every token change becomes a multi-place edit.</div>
+            <div class="finding-fix"><strong>Fix:</strong> In EXPERIENCE reference the token (<code>{spacing.drawer-width}</code>) instead of the number; DESIGN parentheticals can stay.</div>
+            <div class="finding-source">Source: rubric §6</div>
+          </article>
+        </div>
+      </details>
+    </section>
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Inheritance discipline</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>All three sources resolve and the PRD links back. The spines defer to the PRD Glossary verbatim and usage mostly holds; component names and token references are consistent across both spines. Exceptions are a few off-Glossary terms and copy variants.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="finding-id">F29</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Some vocabulary is outside the PRD Glossary or collides with it</h3>
+              <span class="finding-location">EXPERIENCE → Version history, Add-blocks Panel (T10 group), publish toast</span>
+            </header>
+            <div class="finding-note">Version states "Live, Previous, Draft, Unpublished, Archived" are not the Glossary Lifecycle States, and "Live" collides with the Refresh Interval "Live (~30 s)"; "system Blocks" is undefined in the PRD; "Block Library" in the publish toast is the v2 name of the Add-blocks Panel.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Use "Published (current)" / "Published (earlier)" and avoid "Live" outside refresh; define "system Block" or drop it; decide whether "Block Library" is a valid Admin-facing term and align the toast.</div>
+            <div class="finding-source">Source: rubric §7</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F30</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Copy for the same moment differs between sections</h3>
+              <span class="finding-location">EXPERIENCE → Voice, State Patterns, Map Data, Flow 1; DESIGN → Block states</span>
+            </header>
+            <div class="finding-note">The required-slot reason has three variants. The Unavailable face copy differs between Voice ("Unavailable — this value can't be shown right now"), State Patterns ("Unavailable" with ⚠) and DESIGN ("⚠ … the word 'Unavailable'").</div>
+            <div class="finding-fix"><strong>Fix:</strong> Make one Voice row canonical, and reference it from State Patterns and DESIGN.</div>
+            <div class="finding-source">Source: rubric §7</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F54</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Size notation is inconsistent</h3>
+              <span class="finding-location">EXPERIENCE → Add-blocks Panel inline preview, Flow 2, wizard</span>
+            </header>
+            <div class="finding-note">"Default size 2×2", "6×Medium" and "8 columns × 360px"; "2×2" fits neither the 12-column grid nor the named heights.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Use "{columns} columns × {Small|Medium|Large}" everywhere.</div>
+            <div class="finding-source">Source: rubric §7</div>
+          </article>
+        </div>
+      </details>
+    </section>
+    <section class="dimension">
+      <details>
+        <summary>
+          <h2>Shape fit</h2>
+          <span class="verdict-pill verdict-adequate">adequate</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p>DESIGN.md frontmatter and body order are canonical (strong). EXPERIENCE.md has every required section; Data Mapping Model earns its place but belongs inside Map Data, Branding &amp; Theming does not, and Security-conscious UX only partly does.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="finding-id">F55</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">EXPERIENCE section order and frontmatter differ from the reference shape</h3>
+              <span class="finding-location">EXPERIENCE → frontmatter, section order</span>
+            </header>
+            <div class="finding-note">Data Mapping Model, Branding &amp; Theming and Security-conscious UX sit between Accessibility Floor and Key Flows; Responsive and Inspiration come after Key Flows; frontmatter uses <code>title</code> instead of <code>name</code>.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Move Data Mapping Model into Map Data; reduce Branding and Security (F28); put Responsive and Inspiration before Key Flows; rename <code>title</code> to <code>name</code>.</div>
+            <div class="finding-source">Source: rubric §8</div>
+          </article>
+        </div>
+      </details>
+    </section>
+    <section class="reviewer-section">
+      <details>
+        <summary>
+          <h2>Accessibility review</h2>
+          <span class="reviewer-source">/home/bs01729/Projects/rmg-dashboard-platform/_bmad-output/planning-artifacts/ux-designs/ux-rmg-dashboard-platform-2026-10-05/review-accessibility.md</span>
+        </summary>
+        <div class="dim-body">
+          <div class="dim-judgment">
+            <p><strong>Not AA-conformant as specified yet, but close and well-founded. Fix the 1 critical and 10 high findings before build. No redesign is needed.</strong> Standard: WCAG 2.1 AA plus the WAI-ARIA Authoring Practices; light theme only (dark theme deferred, not reviewed).</p>
+            <p>The spines already make several sound commitments:</p>
+            <ul class="plain">
+              <li>the amber accent-ink for text;</li>
+              <li>a blue focus ring that passes 3:1 on every surface (lowest 3.38:1);</li>
+              <li>arrows on deltas, and words next to status dots;</li>
+              <li>keyboard alternatives for every drag, and a defined Esc order;</li>
+              <li>a non-modal drawer on wide screens and a modal sheet on mobile;</li>
+              <li>inline reasons for disabled primary actions;</li>
+              <li>honest &ldquo;Unavailable&rdquo; and &ldquo;Stale&rdquo; states, and clear sample-data labelling.</li>
+            </ul>
+            <p>The gaps cluster in six areas: <strong>data visualisation</strong> (charts have no text alternative, series 1 yellow is 1.53:1, and the &ldquo;colour-blind-safe&rdquo; palette is not safe for slate versus violet); <strong>timing</strong> (the ~6 s Undo toast, Live auto-refresh with no pause, an unspecified session timeout); <strong>focus stability</strong> (re-renders, auto-collapse, re-sorting and Remove can each drop focus to <code>&lt;body&gt;</code>); <strong>low-contrast boundaries and states</strong> (input and checkbox borders at 1.47:1, selection highlights at 1.07:1); <strong>delta semantics</strong> (good versus bad by colour alone); and <strong>reflow and zoom</strong> (the wizard at 320 CSS px, fixed pixel heights).</p>
+            <p>Reviewer count before merging: critical 1 &middot; high 10 &middot; medium 21 &middot; low 13. Findings this reviewer shares with the rubric walk are listed under their rubric category and credit both: F1, F2, F3, F4, F8, F9, F18, F21, F22. The findings below are this reviewer's alone.</p>
+          </div>
+        </div>
+        <div class="findings-list">
+          <article class="finding">
+            <header>
+              <span class="finding-id">F10</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">The chart palette is not colour-vision-deficiency safe</h3>
+              <span class="finding-location">DESIGN → Chart palette; .memlog V5</span>
+            </header>
+            <div class="finding-note">Slate (chart-2) vs violet (chart-4) is ΔE 8.9 protan and 9.1 deutan, and only 16.8 for typical vision; teal/grey and yellow/orange are also weak. The legend swatch is the only link from a line to its name, so in multi-series charts colour is the sole identifier (SC 1.4.1, 1.4.11).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Adopt the proposed palette (chart-1-stroke #A16207, chart-2 #4C6EB1, chart-3 #0F766E, chart-4 #DB2777, chart-5 #EA580C, chart-6 #6B7280). Make secondary encoding mandatory: every chart with 2+ series uses direct end-of-line labels or per-series dash and marker shapes; bar, pie and stacked series use patterns from series 3; legend items show the same dash or marker.</div>
+            <div class="finding-source">Source: accessibility C2</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F11</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Active option and hotspot focus are not visible</h3>
+              <span class="finding-location">DESIGN → Popovers, preview-hotspot.hover; EXPERIENCE → Click-on-preview hotspots</span>
+            </header>
+            <div class="finding-note">In <code>aria-activedescendant</code> listboxes the highlighted option is the focus indicator (command palette, field picker, field tree, role menu, dashboard switcher, workspace list). An accent-soft fill on white is 1.07:1, the field tree's picked inset is 1.53, and the hotspot outline is 1.48 (SC 2.4.7, 1.4.11).</div>
+            <div class="finding-fix"><strong>Fix:</strong> The active option in every listbox, menu, tree and palette shows a 2px <code>focus-ring</code> inset outline (or 3px left bar) plus the accent-soft fill. Hotspots use the standard focus ring on keyboard focus; the accent outline is for hover only.</div>
+            <div class="finding-source">Source: accessibility C4</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F12</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Focus is lost when content re-renders</h3>
+              <span class="finding-location">EXPERIENCE → Date Range refresh, Live refresh, Remove, roles-table auto-collapse (T4), Needs-review filter, low-confidence pinning, optimistic rollback</span>
+            </header>
+            <div class="finding-note">A focused row replaced by a skeleton, the "Set as Measure" button that vanishes when the roles table auto-collapses (Flow 1, step 5 → 7), a row leaving the Needs-review filter, and a Block removed from its own ⋯ menu can each drop focus to <code>&lt;body&gt;</code> (SC 2.4.3).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a Focus stability subsection: refreshes update in place with stable keys (skeletons only on cold load); when the focused element must go, move focus to the nearest logical survivor and announce it politely; the roles table never auto-collapses while focus is inside it; pinning and sorting are computed on load and on Re-run auto-map, never while editing.</div>
+            <div class="finding-source">Source: accessibility K1</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F13</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Whether a delta is good or bad is conveyed by colour alone</h3>
+              <span class="finding-location">DESIGN → KPI card, Admin metric cards; EXPERIENCE → Direction</span>
+            </header>
+            <div class="finding-note">The arrow gives direction; good versus bad is carried only by colour. With "Lower is better" an unfavourable ↗ in red has the same shape as a favourable ↗. Screen readers read the glyph as "north east arrow" or skip it (SC 1.4.1, 1.1.1, 1.3.1).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Visually hidden text such as "Up 14.2% from last year, favourable", glyph <code>aria-hidden</code>; with Lower is better, add a visible word ("↗ 3.8% · worse"); flat values read "No change". Add these to the Comparison editor's Label template defaults.</div>
+            <div class="finding-source">Source: accessibility S2</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F14</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Undo exists only in a toast that closes after about 6 s</h3>
+              <span class="finding-location">EXPERIENCE → Toast (T9), Remove (A6), Interaction Primitives</span>
+            </header>
+            <div class="finding-note">Remove has no confirmation, so the toast's Undo is the only recovery, with a 6 s limit and no way to turn it off, adjust or extend it. A screen-reader user often needs longer to hear it and reach it. Re-adding is not equivalent: position, size and period are lost (SC 2.2.1).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Ctrl/⌘+Z on the dashboard undoes the last add, remove or move for as long as the dashboard is open; action toasts stay at least 10 s and never auto-dismiss while focus is in the drawer or the toast; add "Keep notifications until I close them"; the announcement names the Undo route.</div>
+            <div class="finding-source">Source: accessibility T1</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F15</span>
+              <span class="badge badge-sev-high">high</span>
+              <h3 class="finding-title">Live and interval auto-refresh cannot be paused</h3>
+              <span class="finding-location">EXPERIENCE → Refresh Interval Live ~30 s, Live freshness, Block Chrome Refresh</span>
+            </header>
+            <div class="finding-note">Content updates automatically, alongside other content, indefinitely, with no pause, stop or frequency control. Values changing under the reading cursor disorient screen-reader and cognitive users (SC 2.2.2).</div>
+            <div class="finding-fix"><strong>Fix:</strong> A "Pause live updates" toggle (<code>aria-pressed</code>) in the dashboard header whenever anything auto-refreshes; paused Blocks show "Paused · data as of 10:42"; resuming refreshes immediately; the choice persists per user and dashboard; value changes never animate.</div>
+            <div class="finding-source">Source: accessibility T2</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F31</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Selected states rely on fills of 1.07:1</h3>
+              <span class="finding-location">DESIGN → signin-role-card-selected, sidebar-nav-item-active, segmented-control, chip-category-active</span>
+            </header>
+            <div class="finding-note">The selected role card uses an accent border (1.53) and accent-soft fill (1.07); the sidebar active item uses that fill and a weight change; the active segment is white on sunken with a border-default edge, which is effectively nothing (SC 1.4.11, 1.4.1).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Role card: a visible radio indicator plus a 2px <code>accent-ink-strong</code> border. Sidebar: a 3px <code>accent-ink-strong</code> leading bar and <code>aria-current="page"</code>. Segmented: a <code>border-control</code> edge, weight 600, and radio or <code>aria-pressed</code> semantics. Chips: a leading ✓ on the active chip.</div>
+            <div class="finding-source">Source: accessibility C7</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F32</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">The sketches due to become mockups carry failing colours</h3>
+              <span class="finding-location">.memlog (promotion of mapdata-hybrid and addblocks-hybrid); mapdata-hybrid &lt;style&gt;</span>
+            </header>
+            <div class="finding-note">Active step label #CA8A04 (2.74 on accent-soft), the block icon, the <code>.up</code> delta #16A34A (3.30), "Data as of" and <code>--subtle</code> labels #9CA3AF (2.54), and High / Confirmed pills at 3.00. Implementers copy mockups (SC 1.4.3, 1.4.11).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Correct these colours to the spine tokens before promotion, or add a banner to each promoted file: "Colours superseded by DESIGN.md".</div>
+            <div class="finding-source">Source: accessibility C9</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F33</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">The drawer row uses invalid ARIA and a mixed interaction model</h3>
+              <span class="finding-location">EXPERIENCE → Row, Accessibility Floor; addblocks-hybrid</span>
+            </header>
+            <div class="finding-note"><code>aria-expanded</code> is not supported on <code>listitem</code>, and a focusable listitem that also contains a Tab-reachable action is ambiguous for screen readers (SC 4.1.2, 2.1.1).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Each row is a <code>listitem</code> containing a disclosure button (the Block name, with <code>aria-expanded</code> / <code>aria-controls</code>) and the action button. ↑ / ↓ move between disclosure buttons, Enter or Space toggles the preview, A adds, Tab reaches the action.</div>
+            <div class="finding-source">Source: accessibility K2</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F34</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">F6 is the only route between regions and is not reliable</h3>
+              <span class="finding-location">EXPERIENCE → Interaction Primitives, Foundation</span>
+            </header>
+            <div class="finding-note">Browsers reserve F6 for pane and address-bar cycling and do not reliably deliver it to pages; screen-reader users navigate by landmarks instead (SC 2.1.1, 2.4.1).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Regions are landmarks: dashboard <code>main</code> labelled with its name, drawer <code>complementary</code> "Add blocks", toast stack <code>region</code> "Notifications". F6 is an enhancement; add a visible "Back to dashboard" skip link in the drawer header and a "Go to notifications" skip link while a toast is visible.</div>
+            <div class="finding-source">Source: accessibility K3</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F35</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">The preview hotspots need a keyboard specification</h3>
+              <span class="finding-location">EXPERIENCE → Click-on-preview hotspots, Sticky preview</span>
+            </header>
+            <div class="finding-note">Hotspots have no defined role, name, focus target or return path, and the Block chrome inside the preview is still interactive (SC 2.1.1, 2.4.3, 4.1.2).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Each hotspot is a <code>button</code> named "{Slot}: {field}, {rendered value}. Change field"; the hatched placeholder is "Chart series, required, not mapped. Choose field"; preview chrome is <code>inert</code>; activation moves focus into the field-picker search and Esc returns it; the pane is a region "Live preview, sample data" with a "Skip to slot checklist" link.</div>
+            <div class="finding-source">Source: accessibility K6</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F36</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Slot checklist rows have several controls and conflicting keys</h3>
+              <span class="finding-location">EXPERIENCE → Keyboard model (slot checklist), Confirmed, Enter</span>
+            </header>
+            <div class="finding-note">Each row has Confirm, Change field and Expand, and Enter is defined as both expand and Confirm (SC 2.1.1, 4.1.2).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Slot rows are a list; each row is a <code>group</code> labelled by slot name and status; its buttons are in normal Tab order; ↑ / ↓ between rows is an optional accelerator; Expand uses <code>aria-expanded</code>; Confirm is never bound to Enter on the row.</div>
+            <div class="finding-source">Source: accessibility K7</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F37</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">The field tree needs the APG tree pattern</h3>
+              <span class="finding-location">EXPERIENCE → field tree; DESIGN → Field picker / field tree</span>
+            </header>
+            <div class="finding-note">A "Use" button inside each tree item is an interactive descendant of <code>treeitem</code>, which is invalid (SC 4.1.2, 2.1.1).</div>
+            <div class="finding-fix"><strong>Fix:</strong> <code>role=tree</code> with <code>treeitem</code>s carrying <code>aria-level</code>, <code>aria-expanded</code>, <code>aria-setsize</code>, <code>aria-posinset</code>; arrow, Home / End and type-ahead navigation; Enter on a leaf = Use (the visual pill is <code>aria-hidden</code>); names include type and example; incompatible leaves are <code>aria-disabled</code> with the reason described; search announces "n fields match"; the breadcrumb is a <code>nav</code> "Field path".</div>
+            <div class="finding-source">Source: accessibility K8</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F38</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Live regions announce too much in some places and too little in others</h3>
+              <span class="finding-location">EXPERIENCE → Accessibility Floor (Live regions), State Patterns (Offline, Live freshness), Toast, optimistic rollback</span>
+            </header>
+            <div class="finding-note">A reconnect that makes every Block stale produces N announcements; routine refreshes and the Map Data status bar risk constant chatter; error and rollback toasts auto-dismiss (SC 4.1.3).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Announce Reconnecting once and recovery once; aggregate and debounce Stale / Unavailable per dashboard (about 2 s); never put live freshness, KPI values or chart data in live regions; debounce the drawer count (about 500 ms); the status bar announces only when required-missing or needs-review counts change; error toasts use <code>role="alert"</code> and do not auto-dismiss; the toast announcement names the Undo route.</div>
+            <div class="finding-source">Source: accessibility S3</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F39</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">"✓ Added" turns into "× Remove" on hover or focus, so the state is hidden</h3>
+              <span class="finding-location">EXPERIENCE → Row actions; DESIGN → drawer row actions</span>
+            </header>
+            <div class="finding-note">A keyboard or screen-reader user who tabs to the action hears only "Remove X from dashboard"; the Added state is never announced, and a mouse user brushing it sees it turn destructive (SC 4.1.2, 1.3.1).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Added rows show persistent "✓ Added" status text and a separate Remove button (destructive-soft, visible on hover, focus-within and touch, always in the accessibility tree), named "Remove {Block} from dashboard".</div>
+            <div class="finding-source">Source: accessibility S4</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F40</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Role chips used as selects lack menu-button semantics</h3>
+              <span class="finding-location">EXPERIENCE → Roles table, Small components; DESIGN → Role chips</span>
+            </header>
+            <div class="finding-note">Role chips act as selects with no specified role, name or menu semantics. Under simulated deuteranopia Measure and Time chips are near-identical (ΔE 0.4 text), which passes 1.4.1 only because names are always shown (SC 4.1.2, 1.4.1).</div>
+            <div class="finding-fix"><strong>Fix:</strong> A role chip is a menu button named "Role for {field}: {role}" with <code>aria-haspopup="menu"</code>; flagged chips add ", possible wrong role"; the menu uses <code>menuitemradio</code>; after a change the T1 note is announced and focus returns to the chip. Never show role chips as bare colour swatches.</div>
+            <div class="finding-source">Source: accessibility S5</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F41</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Names, roles and values are unspecified for other custom widgets</h3>
+              <span class="finding-location">EXPERIENCE → Small components; DESIGN → Badges, Stepper, Slot row, Block Type faces</span>
+            </header>
+            <div class="finding-note">Slot status dots, confidence badge, status-bar meter, sample-data badge, progress list, calendar strip, segmented controls, health rows, masked secrets and Technical details have no specified semantics (the Table Block row is folded into F1).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add the reviewer's semantics table to the Accessibility Floor, for example: decorative dots and meters <code>aria-hidden</code> with text as the value; calendar today <code>aria-current="date"</code>; segmented controls as <code>radiogroup</code> or <code>aria-pressed</code>; masked secret read as "Secret set on 2 Oct 2026"; Technical details as a disclosure with a "Copy request ID" button.</div>
+            <div class="finding-source">Source: accessibility S6</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F42</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Disabled buttons hide their reason from keyboard and screen-reader users</h3>
+              <span class="finding-location">EXPERIENCE → Shell (Publish), Continue to Preview, POST read-only, Live disabled, Restore / Unpublish; DESIGN → Disabled at 45% opacity</span>
+            </header>
+            <div class="finding-note">A native <code>disabled</code> button leaves the Tab order, so keyboard and screen-reader users never reach it or hear why. If the reason text inherits the 45% opacity it falls to about 1.8:1 (SC 4.1.2, 1.3.1, 3.3.1).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Blocked primary actions use <code>aria-disabled="true"</code>, stay focusable and describe the inline reason; activating one moves focus to the first blocker and announces it; reason text is never dimmed; disabled select options carry their reason.</div>
+            <div class="finding-source">Source: accessibility F1 (forms)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F43</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Error association, error summary and JSON paste errors are unspecified</h3>
+              <span class="finding-location">DESIGN → Inputs, Error; EXPERIENCE → Paste sample JSON, Transforms errors, Parameters table</span>
+            </header>
+            <div class="finding-note">Errors are inline but not programmatically associated, multi-error steps have no summary, and JSON paste errors are not announced or navigable (SC 3.3.1, 4.1.3).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Invalid fields get <code>aria-invalid</code> and <code>aria-describedby</code>, with the message prefixed by an icon and hidden "Error:"; steps with more than one error show a linked error summary that receives focus on submit; JSON validation is announced politely; the textarea has a line-number gutter and a "Go to line 4" action.</div>
+            <div class="finding-source">Source: accessibility F2 (forms)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F44</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Autocomplete purposes are missing</h3>
+              <span class="finding-location">EXPERIENCE → Sign in, Password recovery, Profile &amp; settings</span>
+            </header>
+            <div class="finding-note">Identity fields do not declare their input purpose (SC 1.3.5).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Email <code>autocomplete="username"</code>, password <code>current-password</code>, new and confirm <code>new-password</code>; profile <code>name</code> and <code>email</code>; pasting into password fields is allowed.</div>
+            <div class="finding-source">Source: accessibility F3 (forms)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F45</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Destructive confirmation dialogs lack focus and role rules</h3>
+              <span class="finding-location">DESIGN → Dialog; EXPERIENCE → Unpublish and archive, Reset to template, Delete, access change (B3), Restore with a draft (B2)</span>
+            </header>
+            <div class="finding-note">Initial focus, role and return focus are unspecified for destructive confirmations, and Reset to template has no Undo (SC 2.4.3, 4.1.2, 3.3.4 in spirit).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Use <code>role="alertdialog"</code> labelled by the title and described by the impact text; initial focus on Cancel; Esc cancels; focus returns to the invoker or its row; destructive buttons repeat the object ("Reset Finance weekly – Jamie").</div>
+            <div class="finding-source">Source: accessibility F5 (forms)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F46</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Fixed pixel heights clip text at 200% text zoom or with text-spacing overrides</h3>
+              <span class="finding-location">DESIGN → button-* 34px, input 36px, block-height-small / medium / large</span>
+            </header>
+            <div class="finding-note">Fixed control and Block heights clip enlarged or re-spaced text (SC 1.4.4, 1.4.12).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Control heights are <code>min-height</code> with padding that grows; Block presets set the grid height and overflowing content scrolls inside a focusable Block body labelled with its title; KPI cards grow in narrow layouts; no line-height or letter-spacing fixed in px.</div>
+            <div class="finding-source">Source: accessibility R2 (reflow)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F47</span>
+              <span class="badge badge-sev-medium">medium</span>
+              <h3 class="finding-title">Stacked sticky layers hide content at high zoom</h3>
+              <span class="finding-location">EXPERIENCE → Map Data sticky status bar and preview, drawer sticky header, tablet Preview bar, 64 px top bar</span>
+            </header>
+            <div class="finding-note">At 1280×1024 and 400% the viewport is 320×256 CSS px; the top bar, status bar and bottom preview bar leave almost nothing (SC 1.4.10; 2.4.11 advisory).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Below 480 CSS px viewport height only the top bar stays sticky; focused elements scroll clear of sticky layers via <code>scroll-padding</code>.</div>
+            <div class="finding-source">Source: accessibility R3 (reflow)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F56</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">The resize corner is a 10px L-shape at 1.53:1</h3>
+              <span class="finding-location">DESIGN → Block card, Edit Layout Mode</span>
+            </header>
+            <div class="finding-note">Fails 1.4.11 and the spine's own 24px target floor.</div>
+            <div class="finding-fix"><strong>Fix:</strong> A 24×24 hit area with a 10px corner glyph in <code>accent-ink-strong</code> (6.85).</div>
+            <div class="finding-source">Source: accessibility C8</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F57</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Two text pairs pass with no margin</h3>
+              <span class="finding-location">DESIGN → Colors</span>
+            </header>
+            <div class="finding-note"><code>text-muted</code> on accent-soft is 4.50 (4.501) and on canvas 4.55; anti-aliasing or a token nudge will make them fail.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add a rule: no text-muted on accent-soft; use text-secondary or accent-ink-strong.</div>
+            <div class="finding-source">Source: accessibility C10</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F58</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">The progress-bar fill is 1.39:1 against its track</h3>
+              <span class="finding-location">DESIGN → progress-row</span>
+            </header>
+            <div class="finding-note">Passes 1.4.11 only if the bar is supplementary.</div>
+            <div class="finding-fix"><strong>Fix:</strong> State that the % text is the value and the bar is <code>aria-hidden</code> and supplementary, for all bars; apply the chart-1 stroke rule (F4) if a bar must stand alone.</div>
+            <div class="finding-source">Source: accessibility C11</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F59</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Stepper semantics conflict with the forward-jump rule</h3>
+              <span class="finding-location">EXPERIENCE → Shell, Small components</span>
+            </header>
+            <div class="finding-note">"Future steps are inert" conflicts with "forward jumps allowed up to the first incomplete step".</div>
+            <div class="finding-fix"><strong>Fix:</strong> The stepper is a <code>nav</code> "Create block progress" with an <code>ol</code>; done steps and the first incomplete step are links named "{n}. {label}, completed", current has <code>aria-current="step"</code>, later steps are plain text "(not started)".</div>
+            <div class="finding-source">Source: accessibility K9</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F60</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Block-level structure is unspecified</h3>
+              <span class="finding-location">EXPERIENCE → Block Chrome</span>
+            </header>
+            <div class="finding-note">Blocks have no landmark or heading structure, and chrome controls are not named per Block.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Each Block is a <code>section</code> labelled by its title heading (h2 under the page h1); chrome controls include the Block name ("Refresh Revenue overview").</div>
+            <div class="finding-source">Source: accessibility S7</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F61</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Gaps in the reduced-motion list</h3>
+              <span class="finding-location">EXPERIENCE → Reduced motion</span>
+            </header>
+            <div class="finding-note">Drawer push, sidebar collapse, accordions, the Just-added halo fade and skeleton shimmer are not covered (SC 2.3.3 advisory, 2.2.2 for long animations).</div>
+            <div class="finding-fix"><strong>Fix:</strong> Add them; shimmer is static under reduced motion and in every mode stops after 5 s with "Still loading…".</div>
+            <div class="finding-source">Source: accessibility T4</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F62</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">The required marker is not exposed correctly</h3>
+              <span class="finding-location">DESIGN → Required fields (red <code>*</code>)</span>
+            </header>
+            <div class="finding-note">The asterisk is visual only.</div>
+            <div class="finding-fix"><strong>Fix:</strong> The <code>*</code> is <code>aria-hidden</code> and inputs have <code>required</code> or <code>aria-required</code>; each form shows "* Required" once at the top.</div>
+            <div class="finding-source">Source: accessibility F4 (forms)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F63</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">The show/hide password control is unspecified</h3>
+              <span class="finding-location">EXPERIENCE → Sign in</span>
+            </header>
+            <div class="finding-note">No name or state is given for the toggle.</div>
+            <div class="finding-fix"><strong>Fix:</strong> A button named "Show password" with <code>aria-pressed</code>; toggling keeps the caret and value.</div>
+            <div class="finding-source">Source: accessibility F6 (forms)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F64</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Target sizes are not specified per component</h3>
+              <span class="finding-location">DESIGN → chip-category, drawer + Add / × Remove, toast close</span>
+            </header>
+            <div class="finding-note">In the sketch, chips are about 20 px tall, <code>.btn-add</code> about 24 px, and the toast × is a <code>span</code>. (2.5.5 is AAA and 2.5.8 is WCAG 2.2, so this enforces the spine's own floor.)</div>
+            <div class="finding-fix"><strong>Fix:</strong> Give components explicit <code>min-height</code>: chips, row actions and toast actions 28 px, 44 px on touch; the toast close is a <code>button</code> "Dismiss notification".</div>
+            <div class="finding-source">Source: accessibility R4 (reflow)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F65</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Mobile chip scroller and sheet details</h3>
+              <span class="finding-location">EXPERIENCE → Responsive (mobile)</span>
+            </header>
+            <div class="finding-note">Focused chips can be hidden by the edge fade, and the sheet relies on a dim strip to close.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Chips scroll into view on focus and the fade never covers them; the sheet has a visible 44 px Close button; the toast never covers the focused element.</div>
+            <div class="finding-source">Source: accessibility R5 (reflow)</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F66</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Masked values for assistive technology</h3>
+              <span class="finding-location">EXPERIENCE → Data source form, fetch as user</span>
+            </header>
+            <div class="finding-note">See F41 (masked secret). "Fetch as user" shows attribute names, which is good.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Make sure screen-reader text never includes resolved user-context values.</div>
+            <div class="finding-source">Source: accessibility D1</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F67</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Freshness times are ambiguous across days and timezones</h3>
+              <span class="finding-location">EXPERIENCE → Stale, Last success, Data as of</span>
+            </header>
+            <div class="finding-note">A bare time is ambiguous after midnight or across zones for audit-minded users.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Include the date when not today ("Stale: last data yesterday 22:10"); About this block shows the full timestamp with timezone.</div>
+            <div class="finding-source">Source: accessibility D2</div>
+          </article>
+          <article class="finding">
+            <header>
+              <span class="finding-id">F68</span>
+              <span class="badge badge-sev-low">low</span>
+              <h3 class="finding-title">Domain jargon in Admin mapping has no in-context definitions</h3>
+              <span class="finding-location">EXPERIENCE → Roles table, Transforms builder</span>
+            </header>
+            <div class="finding-note">"Record path", "Measure", "Dimension", "Filter/Category" and <code>PCT_CHANGE</code> are shown without definitions outside the role legend.</div>
+            <div class="finding-fix"><strong>Fix:</strong> Each role and transform function has a one-line description on focus as well as hover. General 1.4.13 rule: every tooltip appears on focus and hover, is dismissible with Esc, and stays while hovered.</div>
+            <div class="finding-source">Source: accessibility D3</div>
+          </article>
+        </div>
+        <div class="contrast">
+<h3>Text (4.5:1 for normal text; 3:1 for text of at least 18.66 px bold or 24 px)</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Pair</th><th>Foreground / background</th><th>Ratio</th><th>Result</th></tr></thead><tbody>
+<tr><td>text-primary on white</td><td>#111827 / #FFFFFF</td><td>17.74</td><td>Pass</td></tr>
+<tr><td>text-primary on canvas</td><td>#111827 / #F7F8FA</td><td>16.69</td><td>Pass</td></tr>
+<tr><td>text-secondary on white</td><td>#374151 / #FFFFFF</td><td>10.31</td><td>Pass</td></tr>
+<tr><td>text-secondary on surface-muted (tag, lock)</td><td>#374151 / #F3F4F6</td><td>9.37</td><td>Pass</td></tr>
+<tr><td>text-muted on white</td><td>#6B7280 / #FFFFFF</td><td>4.83</td><td>Pass</td></tr>
+<tr><td>text-muted on canvas</td><td>#6B7280 / #F7F8FA</td><td>4.55</td><td>Pass (thin)</td></tr>
+<tr><td>text-muted on surface-sunken</td><td>#6B7280 / #F9FAFB</td><td>4.63</td><td>Pass</td></tr>
+<tr><td>text-muted on accent-wash</td><td>#6B7280 / #FFFBEB</td><td>4.66</td><td>Pass</td></tr>
+<tr><td>text-muted on accent-soft</td><td>#6B7280 / #FEF9C3</td><td>4.50</td><td>Pass (no margin), C10</td></tr>
+<tr><td><strong>text-muted on surface-muted</strong> (Optional pill, stepper numeral)</td><td>#6B7280 / #F3F4F6</td><td class="fail"><strong>4.39</strong></td><td class="fail"><strong>Fail</strong>, C5</td></tr>
+<tr><td><strong>text-muted on error-soft</strong> (captions in error rows)</td><td>#6B7280 / #FEF2F2</td><td class="fail"><strong>4.42</strong></td><td class="fail"><strong>Fail</strong>, C5</td></tr>
+<tr><td><strong>text-subtle</strong> (placeholder) on white</td><td>#9CA3AF / #FFFFFF</td><td class="fail"><strong>2.54</strong></td><td class="fail"><strong>Fail</strong>, C6</td></tr>
+<tr><td>text-subtle on surface-sunken</td><td>#9CA3AF / #F9FAFB</td><td>2.43</td><td>Fail (decorative only)</td></tr>
+<tr><td>accent-ink on white</td><td>#A16207 / #FFFFFF</td><td>4.92</td><td>Pass</td></tr>
+<tr><td>accent-ink on accent-soft</td><td>#A16207 / #FEF9C3</td><td>4.58</td><td>Pass</td></tr>
+<tr><td>accent-ink on canvas</td><td>#A16207 / #F7F8FA</td><td>4.63</td><td>Pass</td></tr>
+<tr><td>accent-ink on accent-wash</td><td>#A16207 / #FFFBEB</td><td>4.75</td><td>Pass</td></tr>
+<tr><td>accent-ink on surface-sunken</td><td>#A16207 / #F9FAFB</td><td>4.71</td><td>Pass</td></tr>
+<tr><td>accent-ink-strong on white</td><td>#854D0E / #FFFFFF</td><td>6.85</td><td>Pass</td></tr>
+<tr><td>accent-ink-strong on accent-soft (badges)</td><td>#854D0E / #FEF9C3</td><td>6.38</td><td>Pass</td></tr>
+<tr><td>accent as text on white (forbidden)</td><td>#FACC15 / #FFFFFF</td><td>1.53</td><td>Fail (correctly banned)</td></tr>
+<tr><td>sketch active step #CA8A04 on accent-soft</td><td>#CA8A04 / #FEF9C3</td><td>2.74</td><td>Fail (sketch only), C9</td></tr>
+<tr><td>on-accent on accent (primary button, New, Just added, today)</td><td>#111827 / #FACC15</td><td>11.58</td><td>Pass</td></tr>
+<tr><td>on-accent on accent-strong (hover)</td><td>#111827 / #EAB308</td><td>9.25</td><td>Pass</td></tr>
+<tr><td>white on accent</td><td>#FFFFFF / #FACC15</td><td>1.53</td><td>Fail (never use; the on-accent auto-switch handles this)</td></tr>
+<tr><td>success-text on white</td><td>#15803D / #FFFFFF</td><td>5.02</td><td>Pass</td></tr>
+<tr><td>success-text on success-soft (High, Operational, Confirmed)</td><td>#15803D / #DCFCE7</td><td>4.57</td><td>Pass</td></tr>
+<tr><td>success-text on success-wash ("✓ Added")</td><td>#15803D / #F0FDF4</td><td>4.79</td><td>Pass</td></tr>
+<tr><td>success-text on surface-sunken (GET prefix)</td><td>#15803D / #F9FAFB</td><td>4.80</td><td>Pass</td></tr>
+<tr><td>success #16A34A as text on white</td><td>#16A34A / #FFFFFF</td><td>3.30</td><td>Fail (correctly banned for text)</td></tr>
+<tr><td>sketch #16A34A on #DCFCE7 pills</td><td>#16A34A / #DCFCE7</td><td>3.00</td><td>Fail (sketch only), C9</td></tr>
+<tr><td>error on white (negative delta)</td><td>#DC2626 / #FFFFFF</td><td>4.83</td><td>Pass</td></tr>
+<tr><td><strong>error on error-soft</strong> (destructive-soft, Required pill)</td><td>#DC2626 / #FEF2F2</td><td class="fail"><strong>4.41</strong></td><td class="fail"><strong>Fail</strong>, C5</td></tr>
+<tr><td>error-text on error-soft</td><td>#B91C1C / #FEF2F2</td><td>5.91</td><td>Pass</td></tr>
+<tr><td>white on error (destructive button, bell badge)</td><td>#FFFFFF / #DC2626</td><td>4.83</td><td>Pass</td></tr>
+<tr><td>warning on white (Stale)</td><td>#C2410C / #FFFFFF</td><td>5.18</td><td>Pass</td></tr>
+<tr><td>warning on warning-soft (Low, Partial data)</td><td>#C2410C / #FFEDD5</td><td>4.52</td><td>Pass (thin)</td></tr>
+<tr><td>info on white</td><td>#1D4ED8 / #FFFFFF</td><td>6.70</td><td>Pass</td></tr>
+<tr><td>info-strong on info-soft (Overridden, Reconnecting)</td><td>#1E40AF / #DBEAFE</td><td>7.15</td><td>Pass</td></tr>
+<tr><td>role Label</td><td>#374151 / #F3F4F6</td><td>9.37</td><td>Pass</td></tr>
+<tr><td>role Value</td><td>#854D0E / #FEF08A</td><td>5.89</td><td>Pass</td></tr>
+<tr><td>role Dimension</td><td>#0F766E / #CCFBF1</td><td>4.86</td><td>Pass</td></tr>
+<tr><td>role Measure</td><td>#1D4ED8 / #DBEAFE</td><td>5.49</td><td>Pass</td></tr>
+<tr><td>role Time</td><td>#6D28D9 / #EDE9FE</td><td>5.98</td><td>Pass</td></tr>
+<tr><td>role Filter/Category</td><td>#C2410C / #FFEDD5</td><td>4.52</td><td>Pass (thin)</td></tr>
+<tr><td>text-inverse on surface-inverse (toast, tooltip)</td><td>#F9FAFB / #111827</td><td>16.98</td><td>Pass</td></tr>
+<tr><td>toast action accent-border on inverse</td><td>#FDE047 / #111827</td><td>13.46</td><td>Pass</td></tr>
+<tr><td>toast close #9CA3AF on inverse</td><td>#9CA3AF / #111827</td><td>6.99</td><td>Pass</td></tr>
+<tr><td>hero-text-muted on hero-surface</td><td>#9099A6 / #0A0E11</td><td>6.73</td><td>Pass</td></tr>
+<tr><td>accent on hero-chip (tagline)</td><td>#FACC15 / #1C1C13</td><td>11.20</td><td>Pass</td></tr>
+<tr><td>disabled primary (45% opacity): text on fill</td><td>≈#938A64 / ≈#FDE896</td><td>2.83</td><td>Exempt (inactive); the reason text must not be dimmed (F1)</td></tr>
+<tr><td>reason text if dimmed to 45% (text-muted)</td><td>≈#BCC0C6 / #FFFFFF</td><td>1.83</td><td>Would fail, F1</td></tr>
+</tbody></table></div>
+<h3>Non-text (3:1 against adjacent colours)</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Element</th><th>Colour / against</th><th>Ratio</th><th>Result</th></tr></thead><tbody>
+<tr><td>focus-ring on white</td><td>#2563EB / #FFFFFF</td><td>5.17</td><td>Pass</td></tr>
+<tr><td>focus-ring on canvas</td><td>#2563EB / #F7F8FA</td><td>4.86</td><td>Pass</td></tr>
+<tr><td>focus-ring on accent-soft</td><td>#2563EB / #FEF9C3</td><td>4.81</td><td>Pass</td></tr>
+<tr><td>focus-ring on error-soft</td><td>#2563EB / #FEF2F2</td><td>4.72</td><td>Pass</td></tr>
+<tr><td>focus-ring on surface-inverse (inside the toast)</td><td>#2563EB / #111827</td><td>3.43</td><td>Pass</td></tr>
+<tr><td>focus-ring next to an accent fill</td><td>#2563EB / #FACC15</td><td>3.38</td><td>Pass</td></tr>
+<tr><td>focus-ring on hero-surface</td><td>#2563EB / #0A0E11</td><td>3.75</td><td>Pass</td></tr>
+<tr><td><strong>border-strong</strong> (input, select, checkbox) on white</td><td>#D1D5DB / #FFFFFF</td><td class="fail"><strong>1.47</strong></td><td class="fail"><strong>Fail</strong>, C3</td></tr>
+<tr><td>border-strong on canvas</td><td>#D1D5DB / #F7F8FA</td><td>1.39</td><td>Fail, C3</td></tr>
+<tr><td>proposed <code>border-control</code> on white / canvas / sunken</td><td>#80868F</td><td>3.67 / 3.45 / 3.51</td><td>Pass</td></tr>
+<tr><td>checked checkbox edge (accent-strong)</td><td>#EAB308 / #FFFFFF</td><td>1.92</td><td>Fail (the check mark at 11.58 carries the state), C3</td></tr>
+<tr><td>selected role card border (accent)</td><td>#FACC15 / #FFFFFF</td><td>1.53</td><td>Fail, C7</td></tr>
+<tr><td>selected-state fill (accent-soft against white)</td><td>#FEF9C3 / #FFFFFF</td><td>1.07</td><td>Fail as the only indicator, C4 / C7</td></tr>
+<tr><td>hotspot idle dashed (border-default)</td><td>#E5E7EB / #FFFFFF</td><td>1.24</td><td>Fail (the pane header text compensates), K6</td></tr>
+<tr><td>hotspot hover or focus (accent on accent-wash)</td><td>#FACC15 / #FFFBEB</td><td>1.48</td><td>Fail for focus, C4</td></tr>
+<tr><td>"+ Add" border (accent-border)</td><td>#FDE047 / #FFFFFF</td><td>1.32</td><td>Text-identified; acceptable</td></tr>
+<tr><td>resize corner (accent)</td><td>#FACC15 / #FFFFFF</td><td>1.53</td><td>Fail, C8</td></tr>
+<tr><td>just-added outline (accent)</td><td>#FACC15 / canvas</td><td>1.47</td><td>Informational, with a "Just added" text pill; acceptable</td></tr>
+<tr><td>Required-missing left rule (error on error-soft)</td><td>#DC2626 / #FEF2F2</td><td>4.41</td><td>Pass</td></tr>
+<tr><td>error-border pill outline</td><td>#FCA5A5 / #FFFFFF</td><td>1.90</td><td>Pill text carries the meaning; acceptable</td></tr>
+<tr><td><strong>chart-1</strong> yellow line</td><td>#FACC15 / #FFFFFF</td><td class="fail"><strong>1.53</strong></td><td class="fail"><strong>Fail</strong>, C1</td></tr>
+<tr><td>chart-2 slate</td><td>#4C6EB1 / #FFFFFF</td><td>5.03</td><td>Pass</td></tr>
+<tr><td>chart-3 teal</td><td>#0D9488 / #FFFFFF</td><td>3.74</td><td>Pass</td></tr>
+<tr><td>chart-4 violet</td><td>#8B5CF6 / #FFFFFF</td><td>4.23</td><td>Pass (CVD clash with chart-2), C2</td></tr>
+<tr><td><strong>chart-5</strong> orange</td><td>#F97316 / #FFFFFF</td><td class="fail"><strong>2.80</strong></td><td class="fail"><strong>Fail</strong>, C1</td></tr>
+<tr><td><strong>chart-6</strong> grey</td><td>#9CA3AF / #FFFFFF</td><td class="fail"><strong>2.54</strong></td><td class="fail"><strong>Fail</strong>, C1</td></tr>
+<tr><td>proposed chart-1-stroke (accent-ink)</td><td>#A16207 / #FFFFFF</td><td>4.92</td><td>Pass</td></tr>
+<tr><td>proposed chart-3 / 4 / 5 / 6</td><td>#0F766E / #DB2777 / #EA580C / #6B7280</td><td>5.47 / 4.60 / 3.56 / 4.83</td><td>Pass</td></tr>
+<tr><td>chart-grid gridlines</td><td>#F3F4F6 / #FFFFFF</td><td>1.10</td><td>Acceptable only while gridlines are not the sole value cue (the axis labels are)</td></tr>
+<tr><td>progress fill chart-1 against its track</td><td>#FACC15 / #F3F4F6</td><td>1.39</td><td>Supplementary to the % text, C11</td></tr>
+<tr><td>success status dot / step check fill</td><td>#16A34A / #FFFFFF</td><td>3.30</td><td>Pass</td></tr>
+<tr><td>warning dot / error dot</td><td>#C2410C, #DC2626 / #FFFFFF</td><td>5.18 / 4.83</td><td>Pass (but 3.3 ΔE apart under deuteranopia, so the words are required; they are present)</td></tr>
+<tr><td>success check in toast</td><td>#16A34A / #111827</td><td>5.38</td><td>Pass</td></tr>
+</tbody></table></div>
+<h3>Colour-vision simulation summary (CIEDE2000; below 10 means effectively the same colour)</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Set</th><th>Worst pairs</th></tr></thead><tbody>
+<tr><td>Chart palette (current)</td><td>slate/violet 8.9 (protan), 9.1 (deutan), 16.8 (normal vision); teal/grey 11.3–11.8; yellow/orange 12.8 (deutan)</td></tr>
+<tr><td>Chart palette (proposed, C2)</td><td>First four series ≥ 12.6 under protan and deutan; weakest is teal/grey 5.0 (deutan), only when 6 series are shown together, so the mandatory dash or marker covers it</td></tr>
+<tr><td>Role chip text</td><td>Measure/Time 0.4 (deutan), 3.7 (protan); Value/Filter 3.0 (protan). Passes because names are always shown</td></tr>
+<tr><td>Delta positive/negative</td><td>10.4 (protan), 12.7 (deutan). Arrows cover direction; S2 covers good versus bad</td></tr>
+<tr><td>Status success/warning/error</td><td>warning/error 3.3 (deutan). Words are always shown, so this passes</td></tr>
+</tbody></table></div>
+        </div>
+      </details>
+    </section>
+    <div class="mechanical">
+      <h3>Mechanical notes</h3>
+      <ul>
+        <li>Token resolution: DESIGN frontmatter parsed as YAML; 93 unique <code>{section.path}</code> references across both files, 92 resolve (<code>{user.email}</code> is a URL-template token, F50). <code>extends</code> targets (<code>input</code>, <code>button-ghost</code>, <code>button-secondary</code>, <code>kpi-card</code>) all exist. All 80 colour values are 6-digit hex.</li>
+        <li>Components in the frontmatter but never named in DESIGN prose (<code>drawer</code>, <code>button-ghost</code>, <code>drawer-thumbnail-mobile</code>, <code>badge*</code>, <code>stepper-step*</code>, <code>kpi-headline-in-block</code>, <code>preview-hotspot</code>) are described under other labels or in EXPERIENCE; acceptable.</li>
+        <li>Recomputed contrast failures: error / error-soft 4.41, text-muted / surface-muted 4.39, border-strong / white 1.47 (non-text), chart-5 2.80 and chart-6 2.54 (non-text). Full tables are in the Accessibility review section.</li>
+        <li>Word counts: DESIGN 7,020; EXPERIENCE 13,746 (Component Patterns about 7,400, Key Flows about 1,400, Voice about 950, State Patterns about 900, IA about 700).</li>
+        <li>Decision log vs spines: A1&ndash;A7, B1&ndash;B3, D1&ndash;D4, T1&ndash;T10 and V1&ndash;V6 are all reflected; the three &ldquo;Gaps&rdquo; decisions are reflected; no decision is contradicted.</li>
+        <li>Not flagged, by instruction: <code>[ASSUMPTION]</code> and <code>[PROPOSED]</code> tags, the light-only palette, TBD admin-overview metric windows, and generic-only states for settings and admin screens (except where claimed but not written, F25).</li>
+      </ul>
+    </div>
+
+    <footer class="report-footer">
+      <div class="meta">
+        <span>Rubric: /home/bs01729/Projects/rmg-dashboard-platform/_bmad-output/planning-artifacts/ux-designs/ux-rmg-dashboard-platform-2026-10-05/review-rubric.md</span>
+        <span>Accessibility: /home/bs01729/Projects/rmg-dashboard-platform/_bmad-output/planning-artifacts/ux-designs/ux-rmg-dashboard-platform-2026-10-05/review-accessibility.md</span>
+        <span>Generated: 2026-10-05T15:07:17+06:00</span>
+      </div>
+    </footer>
+  </div>
+</body>
+</html>
