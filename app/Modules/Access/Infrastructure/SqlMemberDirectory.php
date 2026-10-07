@@ -23,11 +23,11 @@ use Illuminate\Support\Str;
 final class SqlMemberDirectory implements MemberDirectory
 {
     private const SELECT_ROWS = <<<'SQL'
-        SELECT m.id, 'member'::text AS kind, m.name, m.email, m.role, m.status, m.last_active_at
+        SELECT m.id, 'member'::text AS kind, m.name, m.email, m.role, m.status, m.last_active_at, m.revision
         FROM access_workspace_members m
         WHERE m.workspace_id = ?
         UNION ALL
-        SELECT i.id, 'invitation'::text AS kind, ''::varchar AS name, i.email, i.role, 'invited'::text AS status, NULL::timestamp AS last_active_at
+        SELECT i.id, 'invitation'::text AS kind, ''::varchar AS name, i.email, i.role, 'invited'::text AS status, NULL::timestamp AS last_active_at, NULL::integer AS revision
         FROM access_workspace_invitations() i
         SQL;
 
@@ -59,11 +59,11 @@ final class SqlMemberDirectory implements MemberDirectory
 
             $limit = max(1, $query->pageSize);
 
-            /** @var list<object{id: string, kind: string, name: string, email: string, role: string, status: string, last_active: string|null, sort_key: string}> $found */
+            /** @var list<object{id: string, kind: string, name: string, email: string, role: string, status: string, last_active: string|null, revision: int|string|null, sort_key: string}> $found */
             $found = DB::select(
                 'WITH directory AS ('.self::SELECT_ROWS.'), keyed AS ('
                 .'SELECT d.*, ('.$this->sortExpression($query->sort).')::text COLLATE "C" AS sort_key FROM directory d WHERE '.$match
-                .') SELECT k.id, k.kind, k.name, k.email, k.role, k.status, '
+                .') SELECT k.id, k.kind, k.name, k.email, k.role, k.status, k.revision, '
                 ."to_char(k.last_active_at, 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS last_active, k.sort_key "
                 ."FROM keyed k WHERE true {$after} ORDER BY k.sort_key {$order}, k.id {$order} LIMIT ".($limit + 1),
                 [$workspaceId, ...$matchBindings, ...$afterBindings],
@@ -74,7 +74,7 @@ final class SqlMemberDirectory implements MemberDirectory
             $last = $found === [] ? null : $found[array_key_last($found)];
 
             return new MemberPage(
-                rows: array_map($this->row(...), $found),
+                rows: $this->withPermissions($found),
                 nextCursor: $more && $last !== null ? $this->encode($query, $last->sort_key, $last->id) : null,
                 total: (int) $counts->total,
                 matched: (int) $counts->matched,
@@ -89,15 +89,15 @@ final class SqlMemberDirectory implements MemberDirectory
         }
 
         return $this->transactions->run($workspaceId, function () use ($workspaceId, $membershipId): ?MemberRow {
-            /** @var object{id: string, kind: string, name: string, email: string, role: string, status: string, last_active: string|null}|null $found */
+            /** @var object{id: string, kind: string, name: string, email: string, role: string, status: string, last_active: string|null, revision: int|string|null}|null $found */
             $found = DB::selectOne(
-                "SELECT m.id, 'member'::text AS kind, m.name, m.email, m.role, m.status, "
+                "SELECT m.id, 'member'::text AS kind, m.name, m.email, m.role, m.status, m.revision, "
                 ."to_char(m.last_active_at, 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') AS last_active "
                 .'FROM access_workspace_members m WHERE m.workspace_id = ? AND m.id = ?',
                 [$workspaceId, strtolower($membershipId)],
             );
 
-            return $found === null ? null : $this->row($found);
+            return $found === null ? null : $this->withPermissions([$found])[0];
         });
     }
 
@@ -122,9 +122,30 @@ final class SqlMemberDirectory implements MemberDirectory
     }
 
     /**
-     * @param  object{id: string, kind: string, name: string, email: string, role: string, status: string, last_active: string|null}  $found
+     * The rows with the permissions of their members (one query, inside the Workspace's transaction).
+     *
+     * @param  list<object{id: string, kind: string, name: string, email: string, role: string, status: string, last_active: string|null, revision?: int|string|null}>  $found
+     * @return list<MemberRow>
      */
-    private function row(object $found): MemberRow
+    private function withPermissions(array $found): array
+    {
+        $ids = array_values(array_map(fn (object $row): string => $row->id, array_filter($found, fn (object $row): bool => $row->kind === MemberRow::MEMBER)));
+        $held = [];
+
+        if ($ids !== []) {
+            foreach (DB::table('membership_permissions')->whereIn('membership_id', $ids)->orderBy('permission')->get(['membership_id', 'permission']) as $permission) {
+                $held[strtolower((string) $permission->membership_id)][] = (string) $permission->permission;
+            }
+        }
+
+        return array_map(fn (object $row): MemberRow => $this->row($row, $held[strtolower($row->id)] ?? []), $found);
+    }
+
+    /**
+     * @param  object{id: string, kind: string, name: string, email: string, role: string, status: string, last_active: string|null, revision?: int|string|null}  $found
+     * @param  list<string>  $permissions
+     */
+    private function row(object $found, array $permissions = []): MemberRow
     {
         return new MemberRow(
             id: $found->id,
@@ -135,6 +156,8 @@ final class SqlMemberDirectory implements MemberDirectory
             status: $found->status,
             groups: [],
             lastActiveAt: $found->last_active,
+            permissions: $permissions,
+            revision: isset($found->revision) ? (int) $found->revision : null,
         );
     }
 

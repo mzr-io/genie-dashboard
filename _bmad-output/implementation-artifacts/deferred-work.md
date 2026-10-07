@@ -103,3 +103,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-18-edit-my-profile-and-settings-and-open-help-and-support.md`
   summary: Add a "remove avatar" action and re-encode uploaded avatars (strip EXIF and trailing data) once an image library is chosen; give single-key shortcuts of the drawer story a test that they go through `registerShortcut`.
   evidence: Avatars are stored byte for byte after a `getimagesize` sniff and cannot be cleared; no single-key feature exists yet, so nothing proves a real handler honours the Keyboard shortcuts switch.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-22-assign-roles-and-admin-permissions.md`
+  summary: Make the Admin password-confirmation throttles (Stories 1.21 and 1.22) independent of the request transaction (a counter outside the transaction, or a boot-time check that the cache store is not the database connection) and add a two-connection concurrency helper to `Cluster` to test the `FOR UPDATE` and last-holder recount.
+  evidence: With `CACHE_STORE=database` the failed-attempt count is written inside the request's PostgreSQL transaction that rolls back on 4xx, so the limit never accumulates; Compose uses Valkey so it works there. The row-lock and last-holder guarantees are only exercised sequentially.

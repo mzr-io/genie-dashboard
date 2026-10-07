@@ -13,6 +13,7 @@ enum ErrorCode: string
     case LastUsersManageHolder = 'access.last_users_manage_holder';
     case NotAuthorized = 'access.not_authorized';
     case PermissionNotHeld = 'access.permission_not_held';
+    case RevisionConflict = 'access.revision_conflict';
     case SelfChangeForbidden = 'access.self_change_forbidden';
     case WorkspaceForbidden = 'access.workspace_forbidden';
 }

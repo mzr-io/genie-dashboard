@@ -86,6 +86,7 @@ function gateCall(string $method, string $uri)
         return match ($method) {
             'GET' => test()->getJson($uri, $headers),
             'DELETE' => test()->deleteJson($uri, [], $headers),
+            'PATCH' => test()->patchJson($uri, [], $headers),
             default => test()->postJson($uri, [], $headers),
         };
     }
@@ -155,6 +156,8 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
         // Past the gate: a page or read is 200, a route naming an ID that does not exist 404 and an empty create 422 (never 403).
         $status = gateCall($method, $uri)->status();
         expect($status)->toBe(match (true) {
+            // The member update validates its body (the revision) before it looks for the member.
+            $name === 'api.admin.members.update' => 422,
             str_contains($uri, '{') => 404,
             $name === 'api.admin.invitations.store' => 422,
             default => 200,

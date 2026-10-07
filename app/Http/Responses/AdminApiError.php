@@ -16,7 +16,7 @@ final class AdminApiError
 {
     /**
      * @param  array<string, list<string>>  $errors  field errors
-     * @param  array<string, scalar|null>  $extra  further top-level members (`reason`, `invitation_id`)
+     * @param  array<string, mixed>  $extra  further top-level members (`reason`, `invitation_id`, `data`)
      */
     public static function json(Request $request, string $code, int $status, ?string $message = null, array $errors = [], array $extra = []): JsonResponse
     {

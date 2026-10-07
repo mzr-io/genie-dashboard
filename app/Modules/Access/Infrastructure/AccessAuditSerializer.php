@@ -25,6 +25,7 @@ final class AccessAuditSerializer implements AuditSerializer
             'role' => AuditField::Enum,
             'status' => AuditField::Enum,
             'permission' => AuditField::Enum,
+            'permissions' => AuditField::EnumList,
             'area' => AuditField::Enum,
             'reason' => AuditField::Enum,
             'route' => AuditField::Enum,

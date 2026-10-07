@@ -99,7 +99,17 @@ it('registers every ADMIN_API_ROUTES entry as a route that uses the admin middle
 
     expect($registered)->toEqualCanonicalizing(array_keys(ShellNavigation::ADMIN_API_ROUTES))
         ->and(ShellNavigation::ADMIN_API_ROUTES['api.admin.members'])->toBe(Permission::UsersManage)
-        ->and(ShellNavigation::ADMIN_API_ROUTES['api.admin.members.show'])->toBe(Permission::UsersManage);
+        ->and(ShellNavigation::ADMIN_API_ROUTES['api.admin.members.show'])->toBe(Permission::UsersManage)
+        ->and(ShellNavigation::ADMIN_API_ROUTES['api.admin.members.update'])->toBe(Permission::UsersManage);
+});
+
+it('maps the member update route (PATCH) to users.manage and no other permission', function () {
+    $route = Router::getRoutes()->getByName('api.admin.members.update');
+
+    expect($route)->not->toBeNull()
+        ->and($route->methods())->toContain('PATCH')
+        ->and(ShellNavigation::ADMIN_API_ROUTES['api.admin.members.update'])->toBe(Permission::UsersManage)
+        ->and(adminMiddlewareKeys($route))->toBe([null]);
 });
 
 it('maps the invitation routes (create, resend, revoke) to users.manage and no other permission', function () {

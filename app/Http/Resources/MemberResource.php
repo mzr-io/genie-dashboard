@@ -15,7 +15,7 @@ use Illuminate\Http\Resources\Json\JsonResource;
 final class MemberResource extends JsonResource
 {
     /**
-     * @return array<string, mixed> `kind` is `member` or `invitation`; a member has `membership_id`, an invitation `invitation_id` (never both). Shape: {kind, membership_id|invitation_id, name: string, email: string, role: string, status: string, groups: list<string>, last_active_at: string|null}
+     * @return array<string, mixed> `kind` is `member` or `invitation`; a member has `membership_id`, an invitation `invitation_id` (never both). Shape: {kind, membership_id|invitation_id, name: string, email: string, role: string, status: string, groups: list<string>, last_active_at: string|null, permissions?: list<string>, revision?: int} (the last two for a member only)
      */
     public function toArray(Request $request): array
     {
@@ -30,6 +30,8 @@ final class MemberResource extends JsonResource
             'status' => $this->resource->status,
             'groups' => $this->resource->groups,
             'last_active_at' => $this->resource->lastActiveAt,
+            // Story 1.22: what the Roles & permissions editor needs; an invitation has neither.
+            ...($isMember ? ['permissions' => $this->resource->permissions, 'revision' => $this->resource->revision] : []),
         ];
     }
 }

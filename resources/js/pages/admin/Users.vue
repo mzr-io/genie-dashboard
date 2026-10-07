@@ -14,6 +14,7 @@ import { useI18n } from 'vue-i18n';
 import DataTable from '@/components/DataTable.vue';
 import type { DataTableColumn } from '@/components/DataTable.vue';
 import InviteUserForm from '@/components/InviteUserForm.vue';
+import MemberAccessEditor from '@/components/MemberAccessEditor.vue';
 import InviteUserLink from '@/components/InviteUserLink.vue';
 import ListStates from '@/components/ListStates.vue';
 import PageHeader from '@/components/PageHeader.vue';
@@ -34,6 +35,7 @@ import {
 import type { Member, MembersMeta, MemberSortKey } from '@/lib/members';
 import { SIGN_IN_URL } from '@/lib/session';
 import {
+    accessLabels,
     inviteLabels,
     shellPages,
     userListLabels as labels,
@@ -47,7 +49,7 @@ import { useToasts } from '@/stores/toasts';
 // Story 1.23, so the column shows "No groups". "Invite user" expands the inline invite form (Story 1.21); an
 // Invited row carries Resend and Revoke.
 const { t } = useI18n();
-const { can } = useShell();
+const { can, membershipId } = useShell();
 const toasts = useToasts();
 const config = shellPages['user-configuration'];
 const SEARCH_DEBOUNCE_MS = 300;
@@ -76,6 +78,8 @@ const busyRows = ref<string[]>([]);
 const heldPermissions = computed(() =>
     Object.keys(can.value).filter((key) => can.value[key] === true),
 );
+// The member whose Roles & permissions editor is expanded under its row (Story 1.22), if any.
+const editing = ref<string | null>(null);
 
 let controller: AbortController | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -295,6 +299,50 @@ function invited(): void {
     void load();
 }
 
+// Why a member's access cannot be edited here (shown beside a disabled Edit), or null when it can. The person's own
+// membership ID comes from the server; while it is unknown the editor fails closed.
+function editBlock(row: Member): string | null {
+    if (
+        membershipId.value === null ||
+        row.membership_id === membershipId.value
+    ) {
+        return accessLabels.selfReason;
+    }
+
+    return row.status === 'active' ? null : accessLabels.inactiveReason;
+}
+
+function toggleEdit(row: Member): void {
+    const key = memberKey(row);
+
+    editing.value = editing.value === key ? null : key;
+}
+
+function closeEditor(row: Member): void {
+    editing.value = null;
+    void nextTick(() =>
+        document
+            .querySelector<HTMLElement>(
+                `[data-test="edit-access"][data-member="${memberKey(row)}"]`,
+            )
+            ?.focus(),
+    );
+}
+
+// The member is gone from the Workspace: close the editor and reload the list.
+function memberGone(): void {
+    editing.value = null;
+    toasts.add({ kind: 'error', message: accessLabels.gone });
+    void load();
+}
+
+// The server's new state of a member: the row shows it at once and the editor stays open on it.
+function accessSaved(updated: Member): void {
+    members.value = members.value.map((row) =>
+        memberKey(row) === memberKey(updated) ? { ...row, ...updated } : row,
+    );
+}
+
 function isBusy(row: Member): boolean {
     return busyRows.value.includes(memberKey(row));
 }
@@ -490,8 +538,19 @@ onBeforeUnmount(() => {
                 :sort-key="sortKey"
                 :sort-direction="direction"
                 :busy="refreshing"
+                :expanded="editing"
                 @sort="sortBy"
             >
+                <template #detail="{ row }">
+                    <MemberAccessEditor
+                        :key="memberKey(row)"
+                        :member="row"
+                        :held="heldPermissions"
+                        @saved="accessSaved"
+                        @gone="memberGone"
+                        @close="closeEditor(row)"
+                    />
+                </template>
                 <template #cell-name="{ row }">
                     <template v-if="row.name">{{ row.name }}</template>
                     <template v-else>
@@ -536,6 +595,52 @@ onBeforeUnmount(() => {
                     </template>
                 </template>
                 <template #cell-actions="{ row }">
+                    <span
+                        v-if="row.kind === 'member'"
+                        class="flex flex-col items-start gap-1"
+                    >
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            :blocked="editBlock(row) !== null"
+                            :blocked-reason="editBlock(row) ?? undefined"
+                            :aria-expanded="
+                                editing === memberKey(row) ? 'true' : 'false'
+                            "
+                            :aria-label="
+                                editing === memberKey(row)
+                                    ? accessLabels.closeFor(
+                                          row.name || row.email,
+                                      )
+                                    : accessLabels.editFor(
+                                          row.name || row.email,
+                                      )
+                            "
+                            :aria-controls="
+                                editing === memberKey(row)
+                                    ? `detail-${memberKey(row)}`
+                                    : undefined
+                            "
+                            :aria-describedby="
+                                editBlock(row) !== null
+                                    ? `own-${memberKey(row)}`
+                                    : undefined
+                            "
+                            :data-member="memberKey(row)"
+                            data-test="edit-access"
+                            @click="toggleEdit(row)"
+                        >
+                            {{ accessLabels.edit }}
+                        </Button>
+                        <p
+                            v-if="editBlock(row) !== null"
+                            :id="`own-${memberKey(row)}`"
+                            class="type-caption text-text-secondary"
+                        >
+                            {{ editBlock(row) }}
+                        </p>
+                    </span>
                     <span
                         v-if="row.kind === 'invitation'"
                         class="flex flex-wrap items-center gap-2"

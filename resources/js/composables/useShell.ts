@@ -14,6 +14,10 @@ export function useShell() {
     const area = computed(() => shell.value?.area ?? 'user');
     // Permission key => held in the active Admin area (Story 1.19); empty when nothing is known.
     const can = computed<Record<string, boolean>>(() => shell.value?.can ?? {});
+    // The person's own membership ID from the server; null when unknown (the editor then fails closed).
+    const membershipId = computed<string | null>(
+        () => shell.value?.membership_id ?? null,
+    );
     const items = computed(() => navItems(shell.value?.items ?? []));
     const path = computed(
         () =>
@@ -76,6 +80,7 @@ export function useShell() {
         shell,
         area,
         can,
+        membershipId,
         items,
         current,
         sectionLabel,

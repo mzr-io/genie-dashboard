@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Modules\Access\Application\ChangeMemberAccess;
 use App\Modules\Access\Application\InviteMembers;
+use App\Modules\Access\Contracts\MemberAccess;
 use App\Modules\Access\Contracts\MemberDirectory;
 use App\Modules\Access\Contracts\MemberInvitations;
 use App\Modules\Access\Contracts\MembershipLookup;
@@ -65,6 +67,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(QueuedInvitationCourier::class);
         $this->app->bind(InvitationCourier::class, QueuedInvitationCourier::class);
         $this->app->bind(MemberInvitations::class, InviteMembers::class);
+        $this->app->bind(MemberAccess::class, ChangeMemberAccess::class);
         $this->app->bind(SignInMemberships::class, SignInMembershipsAdapter::class);
         $this->app->bind(TenantCache::class, fn ($app) => new TenantCache($app['cache']->store()));
         $this->app->singleton(JobSigner::class, fn ($app) => new JobSigner((string) $app['config']->get('app.key')));

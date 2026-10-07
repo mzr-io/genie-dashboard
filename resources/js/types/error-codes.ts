@@ -6,6 +6,7 @@ export enum ErrorCode {
     AccessLastUsersManageHolder = 'access.last_users_manage_holder',
     AccessNotAuthorized = 'access.not_authorized',
     AccessPermissionNotHeld = 'access.permission_not_held',
+    AccessRevisionConflict = 'access.revision_conflict',
     AccessSelfChangeForbidden = 'access.self_change_forbidden',
     AccessWorkspaceForbidden = 'access.workspace_forbidden',
     IdentityInvitationDeliveryFailed = 'identity.invitation_delivery_failed',

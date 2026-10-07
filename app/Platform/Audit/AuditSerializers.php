@@ -63,6 +63,7 @@ final class AuditSerializers
                 $kind === AuditField::Id => $this->id($name, $value),
                 $kind === AuditField::Enum => $this->slug($name, $value),
                 $kind === AuditField::Count => $this->count($name, $value),
+                $kind === AuditField::EnumList => $this->slugs($name, $value),
                 default => $this->hasher->hash($value),
             };
         }
@@ -90,6 +91,22 @@ final class AuditSerializers
         }
 
         throw new InvalidArgumentException("Audit field {$name} is declared a count and must be a non-negative integer.");
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function slugs(string $name, mixed $value): array
+    {
+        if (! is_array($value) || ! array_is_list($value)) {
+            throw new InvalidArgumentException("Audit field {$name} is declared an enum list and must be a list of short lowercase slugs.");
+        }
+
+        $slugs = array_map(fn (mixed $item): string => $this->slug($name, $item), $value);
+        $slugs = array_values(array_unique($slugs));
+        sort($slugs);
+
+        return $slugs;
     }
 
     private function slug(string $name, mixed $value): string

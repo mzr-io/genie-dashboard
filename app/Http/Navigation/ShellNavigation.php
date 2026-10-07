@@ -60,6 +60,7 @@ final class ShellNavigation
     public const ADMIN_API_ROUTES = [
         'api.admin.members' => Permission::UsersManage,
         'api.admin.members.show' => Permission::UsersManage,
+        'api.admin.members.update' => Permission::UsersManage,
         'api.admin.invitations.store' => Permission::UsersManage,
         'api.admin.invitations.resend' => Permission::UsersManage,
         'api.admin.invitations.destroy' => Permission::UsersManage,
@@ -95,7 +96,7 @@ final class ShellNavigation
     ) {}
 
     /**
-     * @return array{area: string, workspace: array{id: string, name: string, label: string|null}|null, role: string|null, workspaces: list<array{id: string, name: string, label: string|null, role: string}>, can: array<string, bool>, items: list<array{key: string, href: string, permission: string|null, allowed: bool}>, switch_href: string, help_href: string, profile_href: string, sign_out_href: string}
+     * @return array{area: string, membership_id: string|null, workspace: array{id: string, name: string, label: string|null}|null, role: string|null, workspaces: list<array{id: string, name: string, label: string|null, role: string}>, can: array<string, bool>, items: list<array{key: string, href: string, permission: string|null, allowed: bool}>, switch_href: string, help_href: string, profile_href: string, sign_out_href: string}
      */
     public function for(Request $request): array
     {
@@ -125,6 +126,8 @@ final class ShellNavigation
 
         return [
             'area' => $effective ?? $area,
+            // The person's own active membership in the Workspace (the Roles & permissions editor refuses its own row).
+            'membership_id' => $workspace === null ? null : $this->membershipId($memberships, $workspaceId),
             'workspace' => $workspace,
             'role' => $role,
             'workspaces' => $this->workspaces($memberships),
@@ -171,6 +174,18 @@ final class ShellNavigation
         }
 
         return [null, null];
+    }
+
+    /** @param  list<UserMembership>  $memberships */
+    private function membershipId(array $memberships, ?string $workspaceId): ?string
+    {
+        foreach ($memberships as $membership) {
+            if ($membership->workspaceId === $workspaceId && $membership->status === 'active' && $membership->workspaceStatus === 'active') {
+                return $membership->membershipId;
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -76,7 +76,7 @@ it('lists the Workspace\'s members and pending invitations with name, email, rol
         ->and($response->json('meta.next_cursor'))->toBeNull()
         ->and($rows['new@example.test'])->not->toHaveKey('membership_id')
         ->and($rows['bo@example.test'])->toMatchArray(['kind' => 'member'])->not->toHaveKey('invitation_id')
-        ->and(array_keys($rows['bo@example.test']))->toBe(['kind', 'membership_id', 'name', 'email', 'role', 'status', 'groups', 'last_active_at'])
+        ->and(array_keys($rows['bo@example.test']))->toBe(['kind', 'membership_id', 'name', 'email', 'role', 'status', 'groups', 'last_active_at', 'permissions', 'revision'])
         ->and(array_keys($rows['new@example.test']))->toBe(['kind', 'invitation_id', 'name', 'email', 'role', 'status', 'groups', 'last_active_at'])
         ->and($response->headers->get('Cache-Control'))->toContain('no-store')->toContain('private');
 });
@@ -429,4 +429,27 @@ it('concatenates its pages into exactly the single full sorted list for every so
             expect($full)->toHaveCount(25)->and($paged)->toBe($full, "{$sort} {$direction}");
         }
     }
+});
+
+it('carries the exact sorted permissions and the real revision on member rows, and none on invitation rows', function () {
+    $workspace = Cluster::workspace('Acme');
+    listAdmin($workspace, permissions: ['users.manage', 'blocks.edit', 'audit.view']);
+    [, $bo] = listMember($workspace, 'bo@example.test', 'Bo Admin', 'admin', 'active', null, ['templates.manage', 'blocks.publish']);
+    listMember($workspace, 'cy@example.test', 'Cy User', 'user');
+    Cluster::superuser()->prepare('UPDATE workspace_memberships SET revision = 7 WHERE id = ?')->execute([$bo]);
+    listInvitation($workspace, 'new@example.test', 'admin');
+
+    $rows = collect(listGet('sort=email')->assertOk()->json('data'))->keyBy('email');
+
+    expect($rows['admin@example.test']['permissions'])->toBe(['audit.view', 'blocks.edit', 'users.manage'])
+        ->and($rows['admin@example.test']['revision'])->toBe(1)
+        ->and($rows['bo@example.test']['permissions'])->toBe(['blocks.publish', 'templates.manage'])
+        ->and($rows['bo@example.test']['revision'])->toBe(7)
+        ->and($rows['cy@example.test']['permissions'])->toBe([])
+        ->and($rows['new@example.test'])->not->toHaveKey('permissions')->not->toHaveKey('revision');
+
+    // The single-member read carries them too.
+    listGet()->assertOk();
+    $this->getJson("/api/v1/admin/members/{$bo}", ['Referer' => 'http://localhost:8000'])->assertOk()
+        ->assertJsonPath('data.permissions', ['blocks.publish', 'templates.manage'])->assertJsonPath('data.revision', 7);
 });

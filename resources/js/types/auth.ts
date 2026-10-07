@@ -37,6 +37,8 @@ export type ShellWorkspace = {
 // The two-area shell's navigation model (Story 1.16), shared with every page of a signed-in person.
 export type Shell = {
     area: ShellArea;
+    // The person's own membership in the active Workspace (null when none): the access editor refuses this row.
+    membership_id?: string | null;
     workspace: { id: string; name: string; label: string | null } | null;
     role: string | null;
     // The Workspaces the person may switch to (usable memberships only), with their role in each (Story 1.17).

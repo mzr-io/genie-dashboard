@@ -47,6 +47,25 @@ afterEach(() => {
     document.body.innerHTML = '';
 });
 
+describe('GatedAction for a member without blocks.publish', () => {
+    it('renders Publish blocked with the catalogue reason perm-publish, and Save draft stays outside the gate', async () => {
+        withCan({ 'blocks.publish': false, 'blocks.edit': true });
+        const onClick = vi.fn();
+        // No reason prop: the catalogue's perm-publish text is what the gate shows for a Publish action.
+        const wrapper = mountAction(
+            { permission: 'blocks.publish', reason: en['perm-publish'] },
+            onClick,
+        );
+
+        expect(wrapper.get('button').attributes('aria-disabled')).toBe('true');
+        expect(wrapper.get('[data-slot="blocked-reason"]').text()).toBe(
+            en['perm-publish'],
+        );
+        await wrapper.get('button').trigger('click');
+        expect(onClick).not.toHaveBeenCalled();
+    });
+});
+
 describe('GatedAction', () => {
     it('renders Publish aria-disabled and focusable with perm-publish inline, and runs nothing', async () => {
         withCan({ 'blocks.publish': false, 'blocks.edit': true });

@@ -27,6 +27,8 @@ const props = defineProps<{
     sortDirection?: 'asc' | 'desc';
     // A new page is on its way: the old rows stay, marked busy.
     busy?: boolean;
+    // The key of the row whose `detail` slot is expanded inline, in a row of its own under it.
+    expanded?: string | null;
 }>();
 
 const emit = defineEmits<{ sort: [key: string] }>();
@@ -111,29 +113,39 @@ const columnsWithState = computed(() =>
                 </tr>
             </thead>
             <tbody>
-                <tr
-                    v-for="row in rows"
-                    :key="rowKey(row)"
-                    data-slot="data-row"
-                    class="border-b border-border-default last:border-b-0"
-                >
-                    <template v-for="column in columns" :key="column.key">
-                        <component
-                            :is="column.rowHeader ? 'th' : 'td'"
-                            :scope="column.rowHeader ? 'row' : undefined"
-                            class="type-body-sm px-4 py-3 align-middle font-normal text-text-primary"
-                            :class="column.class"
-                        >
-                            <slot
-                                :name="`cell-${column.key}`"
-                                :row="row"
-                                :value="row[column.key]"
+                <template v-for="row in rows" :key="rowKey(row)">
+                    <tr
+                        data-slot="data-row"
+                        class="border-b border-border-default last:border-b-0"
+                    >
+                        <template v-for="column in columns" :key="column.key">
+                            <component
+                                :is="column.rowHeader ? 'th' : 'td'"
+                                :scope="column.rowHeader ? 'row' : undefined"
+                                class="type-body-sm px-4 py-3 align-middle font-normal text-text-primary"
+                                :class="column.class"
                             >
-                                {{ row[column.key] }}
-                            </slot>
-                        </component>
-                    </template>
-                </tr>
+                                <slot
+                                    :name="`cell-${column.key}`"
+                                    :row="row"
+                                    :value="row[column.key]"
+                                >
+                                    {{ row[column.key] }}
+                                </slot>
+                            </component>
+                        </template>
+                    </tr>
+                    <tr
+                        v-if="expanded != null && expanded === rowKey(row)"
+                        :id="`detail-${rowKey(row)}`"
+                        data-slot="detail-row"
+                        class="border-b border-border-default bg-surface-sunken last:border-b-0"
+                    >
+                        <td :colspan="columns.length" class="px-4 py-4">
+                            <slot name="detail" :row="row" />
+                        </td>
+                    </tr>
+                </template>
             </tbody>
         </table>
     </div>

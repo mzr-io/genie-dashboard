@@ -22,6 +22,9 @@ export type Member = {
     status: 'active' | 'invited' | 'deactivated';
     groups: string[];
     last_active_at: string | null;
+    // Story 1.22 (members only): the catalogue permissions held and the revision the editor must send back.
+    permissions?: string[];
+    revision?: number;
 };
 
 export type MembersMeta = {
@@ -208,4 +211,91 @@ export async function revokeInvitation(id: string): Promise<void> {
         'DELETE',
         `${INVITATIONS_URL}/${encodeURIComponent(id)}`,
     );
+}
+
+// ---- Roles and permissions (Story 1.22) ------------------------------------------------------------------------
+
+export const MEMBER_URL = '/api/v1/admin/members';
+
+export type MemberUpdate = {
+    revision: number;
+    role?: 'user' | 'admin';
+    permissions?: string[];
+    confirm_password?: string;
+};
+
+// The member's current access, as a 409 returns it for a stale revision.
+export type MemberAccess = {
+    role: 'user' | 'admin';
+    permissions: string[];
+    revision: number;
+};
+
+// A change the server refused (or that never arrived: status 0): 403 `access.self_change_forbidden` or
+// `access.permission_not_held`, 409 `access.last_users_manage_holder` or `access.revision_conflict` (with the
+// member's `current` state), 422 with field errors, 429 throttled.
+export class MemberUpdateError extends Error {
+    constructor(
+        readonly status: number,
+        readonly code: string | null = null,
+        readonly errors: Record<string, string[]> = {},
+        readonly current: MemberAccess | null = null,
+        readonly reason: string | null = null,
+    ) {
+        super(`member update failed: ${status}`);
+    }
+}
+
+type UpdateBody = {
+    data?: Member;
+    error?: { code?: string };
+    errors?: Record<string, string[]>;
+    current?: MemberAccess;
+    reason?: string | null;
+};
+
+export async function updateMember(
+    membershipId: string,
+    payload: MemberUpdate,
+): Promise<Member> {
+    let response: Response;
+
+    try {
+        response = await fetch(
+            `${MEMBER_URL}/${encodeURIComponent(membershipId)}`,
+            {
+                method: 'PATCH',
+                credentials: 'same-origin',
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-XSRF-TOKEN': xsrfToken(),
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(payload),
+            },
+        );
+    } catch {
+        throw new MemberUpdateError(0);
+    }
+
+    let json: UpdateBody | null = null;
+
+    try {
+        json = (await response.json()) as UpdateBody | null;
+    } catch {
+        json = null;
+    }
+
+    if (!response.ok || !json?.data) {
+        throw new MemberUpdateError(
+            response.ok ? 500 : response.status,
+            json?.error?.code ?? null,
+            json?.errors ?? {},
+            json?.current ?? null,
+            json?.reason ?? null,
+        );
+    }
+
+    return json.data;
 }

@@ -422,6 +422,43 @@ export const inviteLabels = {
         'The invitation is saved as Invited, but its email did not go out. Retry sends it again.',
 } as const;
 
+// Labels of the inline Roles & permissions editor on User configuration (Story 1.22). Its messages are the catalogue's
+// `saved`, `save-failed.form`, `throttled` and `field-error`; the role vocabulary is `inviteLabels`'.
+export const accessLabels = {
+    edit: 'Edit access',
+    editFor: (name: string) => `Edit access for ${name}`,
+    closeFor: (name: string) => `Close the access editor for ${name}`,
+    region: (name: string) => `Roles and permissions for ${name}`,
+    title: (name: string) => `Roles & permissions for ${name}`,
+    userNoPermissions:
+        'A User holds no permissions. Choose Admin to give permissions.',
+    notHeldReason:
+        "You don't hold this permission, so you can't give or remove it.",
+    selfReason: "You can't change your own role or permissions.",
+    passwordHelper:
+        'Enter your password to confirm this change. We ask again each time.',
+    passwordRequired: 'Enter your password to confirm this change.',
+    save: 'Save changes',
+    close: 'Close',
+    retry: 'Retry',
+    inactiveReason:
+        "This member is deactivated, so their access can't be changed.",
+    savedFor: (name: string) => `Access updated for ${name}.`,
+    downgradeTitle: (name: string) => `Change ${name} to User?`,
+    downgradeImpact: (name: string) =>
+        `${name} will lose Admin access and every permission. Their open Admin pages stop working on their next request.`,
+    downgradeVerb: 'Change',
+    downgradeObject: (name: string) => `${name} to User`,
+    lastHolder:
+        'This person is the last one who can manage users. Give Manage users to another Admin first.',
+    conflict:
+        'Someone else changed this member. The latest role and permissions are shown.',
+    held: "You can't give or remove a permission you don't hold.",
+    inactive: "This member is deactivated, so their access can't be changed.",
+    gone: 'This member is no longer in the workspace. The list has been refreshed.',
+    unchanged: 'Nothing to save: the role and permissions are as they were.',
+} as const;
+
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after
 // signing back in (`session-expired`) come from the catalogue.
 export const sessionLabels = {

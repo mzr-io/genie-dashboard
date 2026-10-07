@@ -19,6 +19,8 @@ final readonly class MemberRow
      * @param  string  $status  `active`, `invited` or `deactivated`
      * @param  list<string>  $groups  always empty until Story 1.23
      * @param  string|null  $lastActiveAt  ISO 8601, UTC
+     * @param  list<string>  $permissions  catalogue values a member holds (sorted); always empty for an invitation row
+     * @param  int|null  $revision  the member's revision (Story 1.22); null for an invitation row
      */
     public function __construct(
         public string $id,
@@ -29,5 +31,7 @@ final readonly class MemberRow
         public string $status,
         public array $groups,
         public ?string $lastActiveAt,
+        public array $permissions = [],
+        public ?int $revision = null,
     ) {}
 }
