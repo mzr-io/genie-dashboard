@@ -38,6 +38,15 @@ return [
             'report' => false,
         ],
 
+        // Profile pictures (Story 1.18): private, never in the web root, served only by the authenticated avatar route.
+        'avatars' => [
+            'driver' => 'local',
+            'root' => storage_path('app/private/avatars'),
+            'serve' => false,
+            'throw' => false,
+            'report' => false,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

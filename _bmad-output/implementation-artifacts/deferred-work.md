@@ -99,3 +99,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-17-switch-the-active-workspace.md`
   summary: Make every Epic 1+ form register with `registerUnsavedForm` (and reconcile it with the `formDrafts` dirty tracking) so the Workspace switcher's unsaved-changes dialog covers all forms.
   evidence: Only the Profile page registers; a switch on any other form silently discards unsaved edits.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-18-edit-my-profile-and-settings-and-open-help-and-support.md`
+  summary: Add a "remove avatar" action and re-encode uploaded avatars (strip EXIF and trailing data) once an image library is chosen; give single-key shortcuts of the drawer story a test that they go through `registerShortcut`.
+  evidence: Avatars are stored byte for byte after a `getimagesize` sniff and cannot be cleared; no single-key feature exists yet, so nothing proves a real handler honours the Keyboard shortcuts switch.

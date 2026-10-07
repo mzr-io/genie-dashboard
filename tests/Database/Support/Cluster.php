@@ -223,6 +223,7 @@ final class Cluster
             'outbox_events' => self::seedOutbox($workspaceId),
             'outbox_consumptions' => self::seedConsumption($workspaceId),
             'membership_permissions' => self::seedPermission($workspaceId),
+            'workspace_settings' => self::seedSettings($workspaceId),
             default => null,
         };
     }
@@ -250,6 +251,15 @@ final class Cluster
         $id = (string) Str::uuid7();
         self::superuser()->prepare("INSERT INTO outbox_consumptions (id, workspace_id, consumer, event_id, subject, subject_seq, applied, consumed_at) VALUES (?, ?, 'test.consumer', ?, 'membership:1', 1, true, now())")
             ->execute([$id, $workspaceId, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    public static function seedSettings(string $workspaceId, string $links = '[]', ?string $contact = null): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO workspace_settings (id, workspace_id, help_links, contact_href, created_at, updated_at) VALUES (?, ?, ?::jsonb, ?, now(), now())')
+            ->execute([$id, $workspaceId, $links, $contact]);
 
         return $id;
     }

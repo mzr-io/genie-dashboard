@@ -11,9 +11,10 @@ use Illuminate\Support\Facades\Log;
 use Throwable;
 
 /**
- * Records a completed password reset as `identity.password.reset`, a security event in the person's
- * active Workspace. With no Workspace to hold it, a structured log line with the reason only is written.
- * It carries no email, token or password, and a failure to record never undoes the reset.
+ * Records a completed password reset as `identity.password.reset`, and a password change from Profile &
+ * settings as `identity.password.changed`: security events in the person's active Workspace. With no
+ * Workspace to hold one, a structured log line with the reason only is written. They carry no email, token
+ * or password, and a failure to record never undoes the change.
  */
 final class PasswordResetRecorder
 {
@@ -24,17 +25,27 @@ final class PasswordResetRecorder
 
     public function reset(User $user): void
     {
+        $this->record($user, AuditAction::IdentityPasswordReset);
+    }
+
+    public function changed(User $user): void
+    {
+        $this->record($user, AuditAction::IdentityPasswordChanged);
+    }
+
+    private function record(User $user, AuditAction $action): void
+    {
         try {
             $membership = SignInMembership::active($this->memberships->forUser($user->id));
 
             if ($membership === null) {
-                Log::warning(AuditAction::IdentityPasswordReset->value, ['reason' => 'no_membership']);
+                Log::warning($action->value, ['reason' => 'no_membership']);
 
                 return;
             }
 
             $this->audit->recordSecurityEvent(
-                AuditAction::IdentityPasswordReset,
+                $action,
                 ['user_id' => $user->id, 'membership_id' => $membership->membershipId],
                 $membership->workspaceId,
                 subject: 'membership:'.$membership->membershipId,
@@ -42,7 +53,7 @@ final class PasswordResetRecorder
             );
         } catch (Throwable) {
             try {
-                Log::error('identity.password.reset.record_failed', ['action' => AuditAction::IdentityPasswordReset->value]);
+                Log::error($action->value.'.record_failed', ['action' => $action->value]);
             } catch (Throwable) {
             }
         }

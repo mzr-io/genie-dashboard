@@ -249,7 +249,7 @@ describe('User area sidebar', () => {
     });
 
     it('keeps Profile & settings active on its sub-pages', () => {
-        signedIn(shell('user'), '/settings/security');
+        signedIn(shell('user'), '/settings/notifications');
         mountShell();
 
         expect(
@@ -630,10 +630,10 @@ describe('top bar', () => {
     });
 
     it('offers the back button only with a parent breadcrumb', () => {
-        signedIn(shell('user'), '/settings/security');
+        signedIn(shell('user'), '/settings/notifications');
         mountShell([
             { title: 'Profile & settings', href: '/settings/profile' },
-            { title: 'Security settings', href: '/settings/security' },
+            { title: 'Notification settings', href: '/settings/notifications' },
         ]);
 
         expect($('[data-test="back-button"]').getAttribute('href')).toBe(
@@ -752,13 +752,18 @@ describe('landmarks', () => {
             props: {
                 breadcrumbs: [
                     { title: 'Profile & settings', href: '/settings/profile' },
-                    { title: 'Security settings', href: '/settings/security' },
+                    {
+                        title: 'Notification settings',
+                        href: '/settings/notifications',
+                    },
                 ],
             },
             global: { plugins: plugins() },
         });
 
-        expect($('main').getAttribute('aria-label')).toBe('Security settings');
+        expect($('main').getAttribute('aria-label')).toBe(
+            'Notification settings',
+        );
     });
 });
 

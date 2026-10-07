@@ -78,7 +78,7 @@ it('renders the placeholder page of every navigation target for a signed-in pers
     $this->actingAs(User::factory()->create());
 
     $pages = [
-        'overview' => 'overview', 'dashboards.index' => 'my-dashboards', 'templates.index' => 'templates', 'help' => 'help',
+        'overview' => 'overview', 'dashboards.index' => 'my-dashboards', 'templates.index' => 'templates',
         'admin.overview' => 'admin-overview', 'admin.blocks.index' => 'block-management', 'admin.blocks.create' => 'create-block',
         'admin.blocks.drafts' => 'draft-blocks', 'admin.blocks.published' => 'published-blocks', 'admin.categories.index' => 'block-categories',
         'admin.templates.index' => 'dashboard-templates', 'admin.data-sources.index' => 'data-sources', 'admin.users.index' => 'user-configuration',
@@ -93,9 +93,10 @@ it('renders the placeholder page of every navigation target for a signed-in pers
     }
 
     $this->get(route('profile.edit'))->assertOk()->assertInertia(fn (AssertableInertia $inertia) => $inertia->component('settings/Profile'));
+    $this->get(route('help'))->assertOk()->assertInertia(fn (AssertableInertia $inertia) => $inertia->component('Help')->where('shell.area', 'user'));
 });
 
-it('keeps Help & support open to guests as the placeholder page', function () {
+it('keeps Help & support open to guests', function () {
     $this->get(route('help'))->assertOk()->assertInertia(fn (AssertableInertia $inertia) => $inertia
         ->component('auth/Help')
         ->where('shell', null));

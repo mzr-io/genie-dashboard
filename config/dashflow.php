@@ -110,6 +110,11 @@ return [
             'invitation_lifetime' => $tunable('DASHFLOW_INVITATION_LIFETIME'),
         ],
 
+        'profile' => [
+            // Largest avatar upload, in bytes. Unset: PHP's own `upload_max_filesize` applies, so no number is invented.
+            'avatar_max_bytes' => $tunable('DASHFLOW_AVATAR_MAX_BYTES'),
+        ],
+
         'targets' => [
             'rpo' => $tunable('DASHFLOW_TARGET_RPO'),
             'rto' => $tunable('DASHFLOW_TARGET_RTO'),

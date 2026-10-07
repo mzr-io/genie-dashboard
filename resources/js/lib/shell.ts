@@ -60,7 +60,7 @@ export function navItems(items: ShellItem[]): ShellNavItem[] {
         }));
 }
 
-// Pages that belong to an item without sharing its path (Security settings sit under Profile & settings).
+// Pages that belong to an item without sharing its path (any /settings page sits under Profile & settings).
 const OWNED_PREFIXES: Partial<Record<ShellPageKey, string>> = {
     profile: '/settings',
 };

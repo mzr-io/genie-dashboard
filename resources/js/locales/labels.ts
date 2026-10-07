@@ -134,9 +134,56 @@ export const passwordResetLabels = {
         "We couldn't submit this. Check your connection, reload the page and try again.",
 } as const;
 
-// Label of the guest Help & support placeholder that Story 1.18 replaces.
-export const placeholderLabels = {
-    help: 'Help & support',
+// Labels of Help & support (Story 1.18). The empty
+// list is `msg:list-empty`; the contact line repeats the sign-in page's wording.
+export const helpLabels = {
+    title: 'Help & support',
+    linksHeading: 'Help links',
+    contact: 'Contact your workspace administrator',
+    contactHeading: 'Contact',
+    opensInNewTab: '(opens in a new tab)',
+} as const;
+
+// Labels of Profile & settings (Story 1.18; UX-DR-23, 169, 263, 269). The save messages are `msg:saved` and
+// `msg:save-failed` (form wording); the Locale and Time zone lists show the identifiers the server accepts.
+export const profileLabels = {
+    profileHeading: 'Profile',
+    avatar: 'Profile picture',
+    avatarHelper: 'A PNG, JPEG or WebP image.',
+    avatarCurrent: (name: string) => `Current profile picture of ${name}`,
+    avatarWrongType: 'Choose a PNG, JPEG or WebP image.',
+    avatarTooLarge: (limit: string) =>
+        `Choose an image no larger than ${limit}.`,
+    avatarTooLargeGeneric: 'Choose a smaller image.',
+    name: 'Full name',
+    nameRequired: 'Enter your full name.',
+    locale: 'Locale',
+    timezone: 'Time zone',
+    formatPreview: 'Preview',
+    formatPreviewNumber: 'Number',
+    formatPreviewCurrency: 'Currency',
+    formatPreviewDate: 'Date and time',
+    shortcuts: 'Keyboard shortcuts',
+    shortcutsHelper:
+        'Off turns the single-key shortcuts off. Shortcuts with Ctrl or Cmd, and the arrow, Enter, Space, Esc and Tab keys, keep working.',
+    shortcutList: [
+        { key: '/', does: "Focus the drawer's search" },
+        { key: 'A', does: 'Add the focused drawer row' },
+        { key: 'M', does: 'Pick up the focused Move button' },
+    ],
+    save: 'Save',
+    passwordHeading: 'Change password',
+    passwordDescription:
+        'Enter your current password and choose a new one. Your other sessions are signed out.',
+    currentPassword: 'Current password',
+    currentPasswordRequired: 'Enter your current password.',
+    newPassword: 'New password',
+    newPasswordRequired: 'Enter a new password.',
+    passwordConfirmation: 'Confirm new password',
+    passwordMismatch: 'The two passwords must match.',
+    passwordSubmit: 'Change password',
+    passwordChanged:
+        'Your password was changed. Your other sessions were signed out.',
 } as const;
 
 // The pages of the two-area shell (Story 1.16): the navigation title, what the page lists and the action
@@ -239,7 +286,6 @@ export const shellLabels = {
     help: 'Help & support',
     profileMenu: (name: string) => `Account menu for ${name}`,
     profileSettings: 'Profile & settings',
-    securitySettings: 'Security settings',
     roleAdmin: 'Admin',
     roleUser: 'User',
     roleIn: (role: string, workspace: string) => `${role} in ${workspace}`,
