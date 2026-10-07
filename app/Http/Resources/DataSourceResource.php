@@ -3,12 +3,13 @@
 namespace App\Http\Resources;
 
 use App\Modules\Connector\Contracts\DataSource;
+use App\Modules\Connector\Contracts\SecretSlots;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * One Data Source. Health, the last successful call and the Blocks using it are fields of the row so Stories 2.18, 2.14
- * and Epic 3 only fill them; until then they stand at "checking", null and 0. No credential is ever part of it.
+ * One Data Source. A credential is never part of it: a secret slot or header is only `{configured, updated_at}`. Health, the last successful call and the Blocks using it are fields of the row so Stories 2.18, 2.14
+ * and Epic 3 only fill them; until then they stand at "checking", null and 0.
  *
  * @property DataSource $resource
  */
@@ -35,7 +36,13 @@ final class DataSourceResource extends JsonResource
             'host' => $source->host,
             'port' => $source->port,
             'auth_type' => $source->authType,
-            'headers' => $this->headerValues ? $source->headers : array_map(fn (array $h): array => ['name' => $h['name']], $source->headers),
+            'api_key_name' => $source->apiKeyName,
+            'api_key_placement' => $source->apiKeyPlacement,
+            'headers' => array_map(fn (array $h): array => isset($h['secret'])
+                ? ['name' => $h['name'], 'secret' => true]
+                : ($this->headerValues ? ['name' => $h['name'], 'value' => $h['value']] : ['name' => $h['name']]), $source->headers),
+            // Each slot in use, set or not: only `{configured, updated_at}`. The list leaves them out.
+            ...($this->headerValues ? ['secrets' => $this->secrets($source)] : []),
             'timeout_seconds' => $source->timeoutSeconds,
             'max_response_bytes' => $source->maxResponseBytes,
             'max_pages' => $source->maxPages,
@@ -47,5 +54,26 @@ final class DataSourceResource extends JsonResource
             'created_at' => $source->createdAt,
             'updated_at' => $source->updatedAt,
         ];
+    }
+
+    /** @return array<string, array{configured: bool, updated_at: string|null}> */
+    private function secrets(DataSource $source): array
+    {
+        $slots = SecretSlots::forAuth($source->authType);
+
+        foreach ($source->headers as $header) {
+            if (isset($header['secret'])) {
+                $slots[] = SecretSlots::header($header['name']);
+            }
+        }
+
+        $out = [];
+
+        foreach ($slots as $slot) {
+            $status = $source->secrets[$slot] ?? null;
+            $out[$slot] = ['configured' => $status !== null, 'updated_at' => $status?->updatedAt];
+        }
+
+        return $out;
     }
 }

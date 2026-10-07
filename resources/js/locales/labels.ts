@@ -793,13 +793,65 @@ export const dataSourceLabels = {
         'invalid-boolean': 'Choose on or off.',
         'headers-invalid':
             'The default headers are not valid. Reload the page and try again.',
-        'auth-type-unavailable': 'Authentication is not available yet.',
+        'auth-type-unavailable':
+            'This authentication type is not available yet.',
+        'auth-type-invalid': 'Choose an authentication type.',
+        'api-key-name-required': 'Enter the name the API key is sent under.',
+        'api-key-name-invalid':
+            "The name uses letters, digits and the characters ! # $ % & ' * + - . ^ _ ` | ~ only.",
+        'api-key-name-reserved':
+            'This name is reserved. Choose another name for the API key.',
+        'api-key-name-duplicate': 'A default header already uses this name.',
+        'api-key-placement-invalid': 'Choose header or query string.',
+        'secret-required': 'Enter a new value.',
+        'secret-values-refused':
+            'This form cannot carry a secret value. Remove it and try again.',
+        'secret-value-invalid':
+            'A credential uses visible ASCII characters only, on one line. Remove line breaks and other special characters.',
+        'secret-value-too-long': 'This credential is too long.',
+        'secret-slot-unused':
+            'This credential does not belong to the chosen authentication type.',
+        'secrets-invalid':
+            'The credentials are not valid. Reload the page and try again.',
     } as Record<string, string>,
     // Someone else saved first (409): the typed values stay.
     conflict:
         'This data source was changed by someone else. Your changes are still here. Review them, then save again to keep them, or reload to see the latest.',
     reload: 'Reload latest',
     reloaded: 'Showing the latest saved values.',
+    // Authentication (Story 2.4; UX-DR-29, 207, 23, 248). Secrets are write-only: a saved one shows only its date.
+    authentication: 'Authentication',
+    authenticationHelper:
+        'Credentials are stored sealed and never shown again. Leave a saved credential alone to keep it.',
+    authType: 'Authentication type',
+    authOptions: {
+        none: 'None',
+        api_key: 'API key',
+        bearer: 'Bearer token',
+        basic: 'Basic (user name and password)',
+    } as Record<string, string>,
+    apiKeyName: 'API key name',
+    apiKeyNameHelper:
+        'The header or query parameter the key is sent under, such as X-Api-Key.',
+    apiKeyPlacement: 'Send the key in',
+    placementHeader: 'A header (recommended)',
+    placementQuery: 'The query string',
+    queryWarning:
+        'A key in the query string can end up in the API’s logs and in proxies. Use a header if the API allows it.',
+    apiKey: 'API key',
+    bearerToken: 'Token',
+    basicUsername: 'User name',
+    basicPassword: 'Password',
+    secretHeader: 'Secret',
+    secretHeaderHint:
+        'Mark a header as secret to store its value sealed. It is then shown as set, never in full.',
+    secretHeaderValue: (n: number) => `Header ${n} value (secret)`,
+    confirmPassword: 'Your password',
+    confirmPasswordHelper:
+        'Confirm your password to change credentials or the authentication type.',
+    confirmPasswordWrong: 'The password is incorrect.',
+    credentialsUnavailable:
+        'Credentials cannot be saved until the platform key is configured. Ask an operator to set it, then try again.',
 } as const;
 
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after

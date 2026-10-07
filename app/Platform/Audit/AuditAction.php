@@ -49,6 +49,9 @@ enum AuditAction: string
     case ConnectorDataSourceCreated = 'connector.data_source.created';
     case ConnectorDataSourceUpdated = 'connector.data_source.updated';
 
+    // Connector: a credential set, replaced or removed (Story 2.4); the value is never part of the event, only its keyed hash.
+    case ConnectorDataSourceSecretChanged = 'connector.data_source.secret_changed';
+
     // Connector: outbound guard (Story 2.2). A block is a security event; a grant is an operator action mirrored here.
     case ConnectorEgressBlocked = 'connector.egress.blocked';
     case ConnectorEgressGrantCreated = 'connector.egress_grant.created';

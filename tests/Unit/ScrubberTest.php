@@ -77,3 +77,9 @@ it('keeps valid request ids and replaces the rest', function () {
         expect($id)->toHaveLength(26)->not->toBe($bad);
     }
 });
+
+it('redacts the credential field names of Data Sources (Story 2.4)', function () {
+    $out = Scrubber::value(['basic_username' => 'u', 'ciphertext' => 'c', 'bearer_token' => 't', 'secrets' => ['api_key' => 'k'], 'api_key_name' => 'X', 'confirm_password' => 'p', 'sealed' => 's1', 'sealed_value' => 's2', 'private_key' => 'k1', 'private-key' => 'k2']);
+
+    expect(json_encode($out))->not->toContain('"u"')->not->toContain('"c"')->not->toContain('"t"')->not->toContain('"k"')->not->toContain('"p"')->not->toContain('s1')->not->toContain('s2')->not->toContain('k1')->not->toContain('k2');
+});

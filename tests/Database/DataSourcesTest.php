@@ -450,15 +450,18 @@ it('checks no ceiling that is not set: nothing is invented', function () {
         ->assertJsonPath('data.max_response_bytes', 999999999999);
 });
 
-it('refuses credentials: any auth type but none is a 422 until Story 2.4', function (string $auth) {
+it('refuses an auth type that is not offered: OAuth2 client credentials wait for Story 2.7, anything else is not a type', function (string $auth, string $reason) {
     $workspace = Cluster::workspace('Acme');
     dsAdmin($workspace);
     dsAllow($workspace);
 
-    dsCreate(['auth_type' => $auth])->assertStatus(422)->assertJsonPath('reasons.auth_type', 'auth-type-unavailable');
+    dsCreate(['auth_type' => $auth])->assertStatus(422)->assertJsonPath('reasons.auth_type', $reason);
 
     expect(dsRows())->toBe([]);
-})->with(['api_key', 'bearer', 'basic', 'oauth2_client_credentials', 'anything']);
+})->with([
+    'oauth2' => ['oauth2_client_credentials', 'auth-type-unavailable'],
+    'anything' => ['anything', 'auth-type-invalid'],
+]);
 
 it('lists the Workspace\'s Data Sources with search, whitelisted sort, counts and the placeholder fields, and an empty Workspace has none', function () {
     $workspace = Cluster::workspace('Acme');

@@ -145,6 +145,16 @@ return [
         'operator_password_hash' => $tunable('DASHFLOW_EGRESS_OPERATOR_PASSWORD_HASH'),
     ],
 
+    // Write-only secrets (Story 2.4), kept outside `tunables` like `egress`. The platform's public key for the `cred`
+    // purpose (base64 of a 32-byte X25519 key) and its version are `pending_input` with no default and are not secret:
+    // every role may seal to it, only `worker-connector` holds the private key (the `key-cred` mount). Unset or invalid:
+    // saving a secret is refused (503) and nothing is stored. The key file path defaults to the Compose secret mount.
+    'secrets' => [
+        'cred_public_key' => $tunable('DASHFLOW_SECRETS_CRED_PUBLIC_KEY'),
+        'cred_key_version' => $tunable('DASHFLOW_SECRETS_CRED_KEY_VERSION'),
+        'cred_key_path' => $tunable('DASHFLOW_SECRETS_CRED_KEY_PATH', '/run/secrets/key-cred'),
+    ],
+
     // Load-test harness targets (Story 1.25), read by `npm run load` (load/config.mjs) from the environment.
     // Each is `pending_input` with no default: the harness exits non-zero naming every variable that is unset.
     // Kept outside `tunables`, which is the closed AR-57 list. tests/Feature/LoadSettingsTest.php keeps this list

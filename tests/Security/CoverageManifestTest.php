@@ -107,6 +107,13 @@ function securityManifest(): array
                 'does not follow a redirect inside curl and ignores proxy variables set in the environment (httpoxy)',
             ],
         ]],
+        'write-only secrets: never returned, logged or audited; the web tier cannot open them' => ['tests' => [
+            'Database/DataSourceSecretsTest.php' => [
+                'leaves no canary in logs, audit rows, outbox, responses or the page props across every credential flow',
+                'opens a stored secret only where the private key is mounted: on web it fails with KeyringUnavailable',
+                'builds a FetchRequest with secret_refs and the credential scheme only, never a value or ciphertext',
+            ],
+        ]],
         'fail closed on missing context' => ['tests' => [
             'Database/RowLevelSecurityTest.php' => ['returns zero rows from every tenant table when no context is set'],
             'Database/AuditTest.php' => ['refuses to run outside a Workspace transaction and stores nothing'],

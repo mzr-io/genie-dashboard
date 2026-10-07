@@ -36,4 +36,8 @@ pest()->group('security')->in(
     'Unit/BlockedAddressClassTest.php',
     'Database/EgressGrantsTest.php',
     'Database/EgressTransportTest.php',
+    'Database/DataSourceSecretsTest.php',
+    'Unit/LocalSecretVaultTest.php',
+    'Unit/FetchRequestTest.php',
+    'Unit/RejectsSecretValuesTest.php',
 );

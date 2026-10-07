@@ -7,7 +7,21 @@ export const DATA_SOURCES_URL = '/api/v1/admin/data-sources';
 
 export type DataSourceSortKey = 'name' | 'host' | 'auth_type';
 
-export type DefaultHeader = { name: string; value: string };
+// A default header. A secret one has no value in what the server returns: only its name and the flag.
+export type DefaultHeader = { name: string; value?: string; secret?: boolean };
+
+export type AuthType = 'none' | 'api_key' | 'bearer' | 'basic';
+
+// The credential slots of an auth type; a secret header's slot is `header:{lower-case name}`.
+export const SECRET_SLOTS: Record<AuthType, string[]> = {
+    none: [],
+    api_key: ['api_key'],
+    bearer: ['bearer_token'],
+    basic: ['basic_username', 'basic_password'],
+};
+
+// All the API says about a secret: whether it is set and when, never a value.
+export type SecretStatus = { configured: boolean; updated_at: string | null };
 
 export type Ceilings = {
     timeout_seconds: number | null;
@@ -23,7 +37,11 @@ export type DataSource = {
     host: string;
     port: number;
     auth_type: string;
+    api_key_name: string | null;
+    api_key_placement: 'header' | 'query' | null;
     headers: DefaultHeader[];
+    // Absent in the list; on a single read the status of each slot in use.
+    secrets?: Record<string, SecretStatus>;
     timeout_seconds: number | null;
     max_response_bytes: number | null;
     max_pages: number | null;
@@ -64,7 +82,13 @@ export type DataSourceInput = {
     max_response_bytes: string | null;
     max_pages: string | null;
     live_capable: boolean;
-    auth_type: 'none';
+    auth_type: AuthType;
+    api_key_name?: string;
+    api_key_placement?: 'header' | 'query';
+    // Only the slots being set or replaced; an absent slot stays as saved. Never kept anywhere but in this request.
+    secrets?: Record<string, string>;
+    // Needed when a secret value or the auth type changes.
+    confirm_password?: string;
 };
 
 // A request the server refused (or that never arrived: status 0): 403 no permission, 404 not in the Workspace, 409 a

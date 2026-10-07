@@ -65,6 +65,8 @@ function source(overrides: Partial<DataSource> = {}): DataSource {
         host: 'api.example.com',
         port: 443,
         auth_type: 'none',
+        api_key_name: null,
+        api_key_placement: null,
         headers: [{ name: 'X-Team', value: 'finance' }],
         timeout_seconds: 30,
         max_response_bytes: null,

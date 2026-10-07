@@ -34,7 +34,8 @@ final class Scrubber
 
     private const RESOURCE_PREFIXES = ['service.', 'telemetry.', 'deployment.', 'host.name', 'process.pid'];
 
-    private const SENSITIVE_KEY = '/authorization|cookie|passw|secret|token|api[_-]?key|credential|signature|bearer/i';
+    /** The one list of credential-like field names (substrings, case-insensitive), shared with the secret-value guard. */
+    public const SENSITIVE_KEY = '/authorization|cookie|passw|secret|token|api[_-]?key|credential|signature|bearer|cipher|sealed|basic[_-]?user|private[_-]?key/i';
 
     public static function url(string $url): string
     {

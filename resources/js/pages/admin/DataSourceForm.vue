@@ -15,11 +15,13 @@ import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import FormField from '@/components/FormField.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import RequiredNote from '@/components/RequiredNote.vue';
+import SecretField from '@/components/SecretField.vue';
 import TechnicalDetails from '@/components/TechnicalDetails.vue';
 import UnsavedChangesDialog from '@/components/UnsavedChangesDialog.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { announce } from '@/lib/announce';
@@ -30,7 +32,9 @@ import {
     fetchDataSource,
     updateDataSource,
 } from '@/lib/dataSources';
+import { SECRET_SLOTS } from '@/lib/dataSources';
 import type {
+    AuthType,
     Ceilings,
     DataSource,
     DataSourceInput,
@@ -52,7 +56,15 @@ const props = defineProps<{ dataSourceId?: string | null }>();
 const { t } = useI18n();
 const editing = computed(() => !!props.dataSourceId);
 
-type Row = { key: number; name: string; value: string };
+type Row = {
+    key: number;
+    name: string;
+    value: string;
+    // A secret header: its value is write-only. `savedAt` and `origName` describe the saved secret, if any.
+    secret: boolean;
+    savedAt: string | null;
+    origName: string;
+};
 type LoadState = 'loading' | 'error' | 'forbidden' | 'missing' | 'ready';
 
 const prefix = useId();
@@ -75,7 +87,14 @@ const form = reactive({
     max_response_bytes: '',
     max_pages: '',
     live_capable: false,
+    auth_type: 'none' as AuthType,
+    api_key_name: '',
+    api_key_placement: 'header' as 'header' | 'query',
+    confirm_password: '',
 });
+// Secret values live only here, in memory: never in the snapshot, a draft, storage or the URL.
+const secretValues = reactive<Record<string, string>>({});
+const replacing = reactive<Record<string, boolean>>({});
 let baseline = snapshot();
 
 const errors = reactive<Record<string, string | null>>({});
@@ -83,7 +102,9 @@ const urlRequestId = ref<string | null>(null);
 // The blur check refused the Base URL: Save stays `aria-disabled` until it is changed and accepted.
 const urlBlock = ref<'host' | 'url' | null>(null);
 const urlChecking = ref(false);
-const failure = ref<'save' | 'throttled' | 'stale' | null>(null);
+const failure = ref<'save' | 'throttled' | 'stale' | 'unconfigured' | null>(
+    null,
+);
 const failureRef = ref<HTMLElement | null>(null);
 const summaryRef = ref<InstanceType<typeof FormErrorSummary> | null>(null);
 const showSummary = ref(false);
@@ -105,6 +126,12 @@ function snapshot(): string {
         form.max_response_bytes,
         form.max_pages,
         form.live_capable,
+        form.auth_type,
+        form.api_key_name,
+        form.api_key_placement,
+        // Whether a secret was typed, never what.
+        Object.values(secretValues).map((value) => value !== ''),
+        form.headers.map((row) => row.secret),
     ]);
 }
 
@@ -115,11 +142,29 @@ const dirty = computed(
 function fill(source: DataSource): void {
     form.name = source.name;
     form.base_url = source.base_url;
-    form.headers = source.headers.map((header) => ({
-        key: nextRowKey++,
-        name: header.name,
-        value: header.value,
-    }));
+    form.headers = source.headers.map((header) => {
+        const status = header.secret
+            ? source.secrets?.[`header:${header.name.toLowerCase()}`]
+            : undefined;
+
+        return {
+            key: nextRowKey++,
+            name: header.name,
+            value: header.value ?? '',
+            secret: header.secret === true,
+            savedAt: status?.configured ? status.updated_at : null,
+            origName: header.name,
+        };
+    });
+    form.auth_type = (
+        ['none', 'api_key', 'bearer', 'basic'].includes(source.auth_type)
+            ? source.auth_type
+            : 'none'
+    ) as AuthType;
+    form.api_key_name = source.api_key_name ?? '';
+    form.api_key_placement = source.api_key_placement ?? 'header';
+    form.confirm_password = '';
+    clearSecretInputs();
     form.timeout_seconds = source.timeout_seconds?.toString() ?? '';
     form.max_response_bytes = source.max_response_bytes?.toString() ?? '';
     form.max_pages = source.max_pages?.toString() ?? '';
@@ -128,6 +173,73 @@ function fill(source: DataSource): void {
     revision.value = source.revision;
     baseline = snapshot();
 }
+
+function clearSecretInputs(): void {
+    for (const key of Object.keys(secretValues)) {
+        delete secretValues[key];
+    }
+
+    for (const key of Object.keys(replacing)) {
+        delete replacing[key];
+    }
+}
+
+// The saved date of a credential slot, or null when it holds nothing yet.
+function savedAt(slot: string): string | null {
+    const status = original.value?.secrets?.[slot];
+
+    return status?.configured ? status.updated_at : null;
+}
+
+const slots = computed(() => SECRET_SLOTS[form.auth_type]);
+
+function chooseAuth(type: AuthType): void {
+    form.auth_type = type;
+    clearSecretInputs();
+    errors.auth_type = null;
+}
+
+// Any typed secret, a changed auth type, or a secret header removed or unflagged needs the password.
+const authChanged = computed(
+    () => form.auth_type !== (original.value?.auth_type ?? 'none'),
+);
+const needsPassword = computed(() => {
+    if (authChanged.value) {
+        return true;
+    }
+
+    if (Object.values(secretValues).some((value) => value !== '')) {
+        return true;
+    }
+
+    // Rerouting a stored credential (another name or the query string) needs the password too.
+    const saved = original.value;
+
+    if (
+        saved &&
+        Object.values(saved.secrets ?? {}).some(
+            (status) => status.configured,
+        ) &&
+        (form.api_key_name !== (saved.api_key_name ?? '') ||
+            form.api_key_placement !== (saved.api_key_placement ?? 'header'))
+    ) {
+        return true;
+    }
+
+    if (form.headers.some((row) => row.secret && row.value !== '')) {
+        return true;
+    }
+
+    const kept = new Set(
+        form.headers
+            .filter((row) => row.secret)
+            .map((row) => row.name.toLowerCase()),
+    );
+
+    return (original.value?.headers ?? []).some(
+        (header) => header.secret && !kept.has(header.name.toLowerCase()),
+    );
+});
 
 function clearErrors(): void {
     for (const key of Object.keys(errors)) {
@@ -179,10 +291,29 @@ async function load(): Promise<void> {
     }
 }
 
+// A secret header's saved date holds only while its name is the saved one: a renamed header is a new secret.
+function headerSavedAt(row: Row): string | null {
+    return row.secret && row.name.toLowerCase() === row.origName.toLowerCase()
+        ? row.savedAt
+        : null;
+}
+
+function toggleSecret(row: Row, on: boolean): void {
+    row.secret = on;
+    row.value = '';
+}
+
 // ---- Rows -------------------------------------------------------------------------------------------------------
 
 function addHeader(): void {
-    form.headers.push({ key: nextRowKey++, name: '', value: '' });
+    form.headers.push({
+        key: nextRowKey++,
+        name: '',
+        value: '',
+        secret: false,
+        savedAt: null,
+        origName: '',
+    });
     const n = form.headers.length - 1;
 
     void nextTick(() =>
@@ -311,14 +442,43 @@ function payload(): DataSourceInput {
         name: form.name.trim(),
         base_url: form.base_url.trim(),
         headers: form.headers
-            .filter((row) => row.name !== '' || row.value !== '')
-            .map((row) => ({ name: row.name, value: row.value })),
+            .filter((row) => row.name !== '' || row.value !== '' || row.secret)
+            .map((row) =>
+                row.secret
+                    ? {
+                          name: row.name,
+                          secret: true,
+                          ...(row.value !== '' ? { value: row.value } : {}),
+                      }
+                    : { name: row.name, value: row.value },
+            ),
         timeout_seconds: limit(form.timeout_seconds),
         max_response_bytes: limit(form.max_response_bytes),
         max_pages: limit(form.max_pages),
         live_capable: form.live_capable,
-        auth_type: 'none',
+        auth_type: form.auth_type,
+        ...(form.auth_type === 'api_key'
+            ? {
+                  api_key_name: form.api_key_name,
+                  api_key_placement: form.api_key_placement,
+              }
+            : {}),
+        ...secretsPayload(),
+        ...(needsPassword.value
+            ? { confirm_password: form.confirm_password }
+            : {}),
     };
+}
+
+// Only the slots being set or replaced; an untouched saved slot is left out and stays as it is.
+function secretsPayload(): Pick<DataSourceInput, 'secrets'> {
+    const typed = Object.fromEntries(
+        slots.value
+            .filter((slot) => (secretValues[slot] ?? '') !== '')
+            .map((slot) => [slot, secretValues[slot]]),
+    );
+
+    return Object.keys(typed).length > 0 ? { secrets: typed } : {};
 }
 
 // The row of a header error field (`headers.2.value`) is the row's position in the submitted list: rows left blank
@@ -327,7 +487,11 @@ function rowFor(sent: number): number {
     let seen = -1;
 
     for (let i = 0; i < form.headers.length; i++) {
-        if (form.headers[i].name !== '' || form.headers[i].value !== '') {
+        if (
+            form.headers[i].name !== '' ||
+            form.headers[i].value !== '' ||
+            form.headers[i].secret
+        ) {
             seen++;
         }
 
@@ -345,6 +509,16 @@ function fieldLabel(field: string): string {
     if (field === 'timeout_seconds') return labels.timeout;
     if (field === 'max_response_bytes') return labels.maxResponse;
     if (field === 'max_pages') return labels.maxPages;
+    if (field === 'auth_type') return labels.authType;
+    if (field === 'api_key_name') return labels.apiKeyName;
+    if (field === 'api_key_placement') return labels.apiKeyPlacement;
+    if (field === 'confirm_password') return labels.confirmPassword;
+
+    const secret = /^secrets\.(\w+)$/.exec(field);
+
+    if (secret) {
+        return slotLabel(secret[1]);
+    }
 
     const match = /^headers\.(\d+)\.(name|value)$/.exec(field);
 
@@ -359,6 +533,16 @@ function fieldLabel(field: string): string {
     return labels.headers;
 }
 
+function slotLabel(slot: string): string {
+    return slot === 'api_key'
+        ? labels.apiKey
+        : slot === 'bearer_token'
+          ? labels.bearerToken
+          : slot === 'basic_username'
+            ? labels.basicUsername
+            : labels.basicPassword;
+}
+
 function elementFor(field: string): string {
     const match = /^headers\.(\d+)\.(name|value)$/.exec(field);
 
@@ -367,7 +551,17 @@ function elementFor(field: string): string {
         : fieldId(field === 'headers' ? 'add-header' : field);
 }
 
-const fieldOrder = ['name', 'base_url'];
+const fieldOrder = [
+    'name',
+    'base_url',
+    'auth_type',
+    'api_key_name',
+    'api_key_placement',
+    'secrets.api_key',
+    'secrets.bearer_token',
+    'secrets.basic_username',
+    'secrets.basic_password',
+];
 
 const summaryItems = computed(() =>
     Object.keys(errors)
@@ -402,6 +596,7 @@ function order(a: string, b: string): number {
                 'max_response_bytes',
                 'max_pages',
                 'live_capable',
+                'confirm_password',
             ].indexOf(field)
         );
     };
@@ -457,7 +652,9 @@ async function showServerErrors(error: DataSourceError): Promise<boolean> {
     return true;
 }
 
-async function failWith(kind: 'save' | 'throttled' | 'stale'): Promise<void> {
+async function failWith(
+    kind: 'save' | 'throttled' | 'stale' | 'unconfigured',
+): Promise<void> {
     failure.value = kind;
     await nextTick();
     failureRef.value?.focus();
@@ -479,7 +676,35 @@ async function submit(): Promise<void> {
         errors.base_url = labels.baseUrlRequired;
     }
 
-    if (errors.name || errors.base_url) {
+    if (form.auth_type === 'api_key' && form.api_key_name === '') {
+        errors.api_key_name = labels.reasons['api-key-name-required'];
+    }
+
+    // A credential needs a value: a new one, or the saved one left alone. "Replace" asks for a new value.
+    for (const slot of slots.value) {
+        if (
+            (secretValues[slot] ?? '') === '' &&
+            (savedAt(slot) === null || replacing[slot] === true)
+        ) {
+            errors[`secrets.${slot}`] = labels.reasons['secret-required'];
+        }
+    }
+
+    form.headers.forEach((row, i) => {
+        if (
+            row.secret &&
+            row.value === '' &&
+            (headerSavedAt(row) === null || replacing[`header:${row.key}`])
+        ) {
+            errors[`headers.${i}.value`] = labels.reasons['secret-required'];
+        }
+    });
+
+    if (needsPassword.value && form.confirm_password === '') {
+        errors.confirm_password = labels.confirmPasswordHelper;
+    }
+
+    if (Object.keys(errors).some((key) => errors[key])) {
         const shown = Object.keys(errors).filter((key) => errors[key]);
 
         showSummary.value = shown.length >= 2;
@@ -488,7 +713,7 @@ async function submit(): Promise<void> {
         if (shown.length >= 2) {
             summaryRef.value?.focus();
         } else {
-            document.getElementById(fieldId(shown[0]))?.focus();
+            document.getElementById(elementFor(shown.sort(order)[0]))?.focus();
         }
 
         return;
@@ -541,6 +766,28 @@ async function refused(error: unknown): Promise<void> {
         }
 
         if (error.status === 422 && (await showServerErrors(error))) {
+            return;
+        }
+
+        if (
+            error.status === 503 &&
+            error.errors.confirm_password === undefined
+        ) {
+            await failWith(
+                error.code === 'connector.secrets_not_configured'
+                    ? 'unconfigured'
+                    : 'save',
+            );
+
+            return;
+        }
+
+        if (error.status === 429 && error.errors.confirm_password) {
+            errors.confirm_password = t('throttled');
+            form.confirm_password = '';
+            await nextTick();
+            document.getElementById(fieldId('confirm_password'))?.focus();
+
             return;
         }
 
@@ -726,9 +973,11 @@ const ceilingHelper = (value: number | null): string | undefined =>
                         {{
                             failure === 'stale'
                                 ? labels.conflict
-                                : failure === 'throttled'
-                                  ? t('throttled')
-                                  : t('save-failed.form')
+                                : failure === 'unconfigured'
+                                  ? labels.credentialsUnavailable
+                                  : failure === 'throttled'
+                                    ? t('throttled')
+                                    : t('save-failed.form')
                         }}
                     </p>
                     <div v-if="failure === 'stale'">
@@ -822,12 +1071,150 @@ const ceilingHelper = (value: number | null): string | undefined =>
                     </div>
                 </fieldset>
 
+                <fieldset class="grid gap-4" data-test="auth-section">
+                    <legend class="type-title-md mb-1 text-text-primary">
+                        {{ labels.authentication }}
+                    </legend>
+                    <p class="type-caption text-text-muted">
+                        {{ labels.authenticationHelper }}
+                    </p>
+                    <FormField
+                        :id="fieldId('auth_type')"
+                        :label="labels.authType"
+                        :error="errors.auth_type"
+                        #default="{ field }"
+                    >
+                        <select
+                            v-bind="field"
+                            :value="form.auth_type"
+                            name="auth_type"
+                            class="bg-surface h-9 w-full max-w-xs rounded-md border border-border px-3 text-sm"
+                            data-test="auth-type"
+                            @change="
+                                chooseAuth(
+                                    ($event.target as HTMLSelectElement)
+                                        .value as AuthType,
+                                )
+                            "
+                        >
+                            <option
+                                v-for="type in [
+                                    'none',
+                                    'api_key',
+                                    'bearer',
+                                    'basic',
+                                ]"
+                                :key="type"
+                                :value="type"
+                            >
+                                {{ labels.authOptions[type] }}
+                            </option>
+                        </select>
+                    </FormField>
+
+                    <template v-if="form.auth_type === 'api_key'">
+                        <FormField
+                            :id="fieldId('api_key_name')"
+                            :label="labels.apiKeyName"
+                            :helper="labels.apiKeyNameHelper"
+                            :error="errors.api_key_name"
+                            required
+                            #default="{ field }"
+                        >
+                            <Input
+                                v-bind="field"
+                                v-model="form.api_key_name"
+                                name="api_key_name"
+                                type="text"
+                                maxlength="128"
+                                autocomplete="off"
+                                autocapitalize="off"
+                                spellcheck="false"
+                                data-test="api-key-name"
+                                @input="errors.api_key_name = null"
+                            />
+                        </FormField>
+                        <FormField
+                            :id="fieldId('api_key_placement')"
+                            :label="labels.apiKeyPlacement"
+                            :error="errors.api_key_placement"
+                            #default="{ field }"
+                        >
+                            <select
+                                v-bind="field"
+                                v-model="form.api_key_placement"
+                                name="api_key_placement"
+                                class="bg-surface h-9 w-full max-w-xs rounded-md border border-border px-3 text-sm"
+                                data-test="api-key-placement"
+                            >
+                                <option value="header">
+                                    {{ labels.placementHeader }}
+                                </option>
+                                <option value="query">
+                                    {{ labels.placementQuery }}
+                                </option>
+                            </select>
+                        </FormField>
+                        <p
+                            v-if="form.api_key_placement === 'query'"
+                            role="note"
+                            class="type-body-sm rounded-md border-l-[3px] border-warning bg-warning-soft p-3 text-text-primary"
+                            data-test="query-warning"
+                        >
+                            {{ labels.queryWarning }}
+                        </p>
+                    </template>
+
+                    <FormField
+                        v-for="slot in slots"
+                        :key="slot"
+                        :id="fieldId(`secrets.${slot}`)"
+                        :label="slotLabel(slot)"
+                        :error="errors[`secrets.${slot}`]"
+                        required
+                        #default="{ field }"
+                    >
+                        <SecretField
+                            v-bind="field"
+                            v-model="secretValues[slot]"
+                            :saved-at="savedAt(slot)"
+                            :data-test="`secret-${slot}`"
+                            data-secret
+                            @update:replacing="replacing[slot] = $event"
+                            @update:model-value="
+                                errors[`secrets.${slot}`] = null
+                            "
+                        />
+                    </FormField>
+
+                    <FormField
+                        v-if="needsPassword"
+                        :id="fieldId('confirm_password')"
+                        :label="labels.confirmPassword"
+                        :helper="labels.confirmPasswordHelper"
+                        :error="errors.confirm_password"
+                        required
+                        #default="{ field }"
+                    >
+                        <Input
+                            v-bind="field"
+                            v-model="form.confirm_password"
+                            name="confirm_password"
+                            type="password"
+                            autocomplete="current-password"
+                            maxlength="255"
+                            data-test="confirm-password"
+                            @input="errors.confirm_password = null"
+                        />
+                    </FormField>
+                </fieldset>
+
                 <fieldset class="grid gap-4">
                     <legend class="type-title-md mb-1 text-text-primary">
                         {{ labels.headers }}
                     </legend>
                     <p class="type-caption text-text-muted">
-                        {{ labels.headersHelper }}
+                        {{ labels.headersHelper }} {{ labels.secretHeaderHint }}
                     </p>
                     <p
                         v-if="form.headers.length === 0"
@@ -840,7 +1227,7 @@ const ceilingHelper = (value: number | null): string | undefined =>
                         <li
                             v-for="(row, position) in form.headers"
                             :key="row.key"
-                            class="grid gap-3 sm:grid-cols-[1fr_1fr_auto] sm:items-start"
+                            class="grid gap-3 sm:grid-cols-[1fr_1fr_auto_auto] sm:items-start"
                             data-test="header-row"
                         >
                             <FormField
@@ -866,11 +1253,31 @@ const ceilingHelper = (value: number | null): string | undefined =>
                             </FormField>
                             <FormField
                                 :id="fieldId(`headers.${position}.value`)"
-                                :label="labels.headerValue(position + 1)"
+                                :label="
+                                    row.secret
+                                        ? labels.secretHeaderValue(position + 1)
+                                        : labels.headerValue(position + 1)
+                                "
                                 :error="errors[`headers.${position}.value`]"
                                 #default="{ field }"
                             >
+                                <SecretField
+                                    v-if="row.secret"
+                                    v-bind="field"
+                                    v-model="row.value"
+                                    :saved-at="headerSavedAt(row)"
+                                    data-secret
+                                    data-test="header-secret-value"
+                                    @update:replacing="
+                                        replacing[`header:${row.key}`] = $event
+                                    "
+                                    @update:model-value="
+                                        errors[`headers.${position}.value`] =
+                                            null
+                                    "
+                                />
                                 <Input
+                                    v-else
                                     v-bind="field"
                                     v-model="row.value"
                                     type="text"
@@ -884,6 +1291,22 @@ const ceilingHelper = (value: number | null): string | undefined =>
                                     "
                                 />
                             </FormField>
+                            <div class="flex items-center gap-2 sm:mt-6">
+                                <Switch
+                                    :id="fieldId(`headers.${position}.secret`)"
+                                    :model-value="row.secret"
+                                    :aria-label="`${labels.secretHeader}: ${labels.headerName(position + 1)}`"
+                                    data-test="header-secret"
+                                    @update:model-value="
+                                        toggleSecret(row, $event === true)
+                                    "
+                                />
+                                <Label
+                                    :for="fieldId(`headers.${position}.secret`)"
+                                    class="type-caption"
+                                    >{{ labels.secretHeader }}</Label
+                                >
+                            </div>
                             <Button
                                 type="button"
                                 variant="secondary"

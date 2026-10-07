@@ -32,7 +32,7 @@ final class DataSourceRequest extends FormRequest
      */
     public function rules(): array
     {
-        return $this->isMethod('PUT') ? ['revision' => ['required', 'integer', 'min:1']] : [];
+        return ($this->isMethod('PUT') ? ['revision' => ['required', 'integer', 'min:1']] : []) + ['confirm_password' => ['nullable', 'string', 'max:255']];
     }
 
     /**
@@ -63,6 +63,14 @@ final class DataSourceRequest extends FormRequest
     public function revision(): int
     {
         return (int) $this->input('revision');
+    }
+
+    /** The Admin's password for a change of credentials; an empty string when none was given. */
+    public function confirmation(): string
+    {
+        $value = $this->input('confirm_password');
+
+        return is_string($value) ? $value : '';
     }
 
     public function dataSourceInput(): DataSourceInput

@@ -10,4 +10,6 @@ enum ErrorCode: string
 {
     case RevisionConflict = 'connector.revision_conflict';
     case SsrfBlocked = 'connector.ssrf_blocked';
+    case SecretsNotConfigured = 'connector.secrets_not_configured';
+    case SecretValuesRefused = 'connector.secret_values_refused';
 }

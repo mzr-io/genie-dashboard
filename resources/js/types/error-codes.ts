@@ -10,6 +10,8 @@ export enum ErrorCode {
     AccessSelfChangeForbidden = 'access.self_change_forbidden',
     AccessWorkspaceForbidden = 'access.workspace_forbidden',
     ConnectorRevisionConflict = 'connector.revision_conflict',
+    ConnectorSecretValuesRefused = 'connector.secret_values_refused',
+    ConnectorSecretsNotConfigured = 'connector.secrets_not_configured',
     ConnectorSsrfBlocked = 'connector.ssrf_blocked',
     IdentityInvitationDeliveryFailed = 'identity.invitation_delivery_failed',
     IdentityInvitationInvalid = 'identity.invitation_invalid',

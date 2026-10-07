@@ -2,6 +2,7 @@
 
 namespace App\Modules\Connector\Application;
 
+use App\Modules\Connector\Contracts\ConfirmationRefused;
 use App\Modules\Connector\Contracts\DataSource;
 use App\Modules\Connector\Contracts\DataSourceActor;
 use App\Modules\Connector\Contracts\DataSourceCeilings;
@@ -15,6 +16,11 @@ use App\Modules\Connector\Contracts\DataSourceSort;
 use App\Modules\Connector\Contracts\DataSourceUrl;
 use App\Modules\Connector\Contracts\HostAllowlist;
 use App\Modules\Connector\Contracts\InvalidDataSource;
+use App\Modules\Connector\Contracts\SealedSecret;
+use App\Modules\Connector\Contracts\SecretContext;
+use App\Modules\Connector\Contracts\SecretSlots;
+use App\Modules\Connector\Contracts\SecretStatus;
+use App\Modules\Connector\Contracts\SecretVault;
 use App\Modules\Connector\Infrastructure\DataSourceSettings;
 use App\Platform\Audit\Audit;
 use App\Platform\Audit\AuditAction;
@@ -36,7 +42,7 @@ final class ManageDataSources implements DataSources
 {
     private const STAMP = "'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'";
 
-    private const COLUMNS = 'd.id, d.name, d.base_url, d.scheme, d.host, d.port, d.auth_type, d.default_headers, d.timeout_seconds, d.max_response_bytes, d.max_pages, d.live_capable, d.revision, '
+    private const COLUMNS = 'd.id, d.name, d.base_url, d.scheme, d.host, d.port, d.auth_type, d.default_headers, d.timeout_seconds, d.max_response_bytes, d.max_pages, d.live_capable, d.api_key_name, d.api_key_placement, d.revision, '
         .'to_char(d.created_at, '.self::STAMP.') AS created, to_char(d.updated_at, '.self::STAMP.') AS updated';
 
     public function __construct(
@@ -44,6 +50,7 @@ final class ManageDataSources implements DataSources
         private readonly Audit $audit,
         private readonly HostAllowlist $allowlist,
         private readonly DataSourceSettings $settings,
+        private readonly SecretVault $vault,
     ) {}
 
     public function list(string $workspaceId, DataSourceQuery $query): DataSourcePage
@@ -91,20 +98,23 @@ final class ManageDataSources implements DataSources
         });
     }
 
-    public function register(DataSourceActor $actor, DataSourceInput $input): DataSource
+    public function register(DataSourceActor $actor, #[\SensitiveParameter] DataSourceInput $input, ?\Closure $confirm = null): DataSource
     {
-        return $this->transactions->run($actor->workspaceId, function () use ($actor, $input): DataSource {
+        return $this->transactions->run($actor->workspaceId, function () use ($actor, $input, $confirm): DataSource {
             $this->assertAcceptable($actor->workspaceId, $input, null);
 
             $id = (string) Str::uuid7();
+            $plan = $this->plan($input, []);
+            $this->confirm($plan, $input->authType !== 'none', $confirm);
+            $sealed = $this->seal($actor->workspaceId, $id, $plan);
 
             try {
                 DB::insert(
-                    'insert into data_sources (id, workspace_id, name, base_url, scheme, host, port, auth_type, default_headers, timeout_seconds, max_response_bytes, max_pages, live_capable, revision, created_by_membership_id, created_at, updated_at) '
-                    .'values (?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?::boolean, 1, ?, ?, ?)',
+                    'insert into data_sources (id, workspace_id, name, base_url, scheme, host, port, auth_type, api_key_name, api_key_placement, default_headers, timeout_seconds, max_response_bytes, max_pages, live_capable, revision, created_by_membership_id, created_at, updated_at) '
+                    .'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?::boolean, 1, ?, ?, ?)',
                     [
                         $id, $actor->workspaceId, $input->name, $input->url->baseUrl, $input->url->scheme, $input->url->host, $input->url->port,
-                        $input->authType, json_encode($input->headers, JSON_THROW_ON_ERROR), $input->timeoutSeconds, $input->maxResponseBytes, $input->maxPages,
+                        $input->authType, $input->apiKeyName, $input->apiKeyPlacement, json_encode($this->storedHeaders($input->headers), JSON_THROW_ON_ERROR), $input->timeoutSeconds, $input->maxResponseBytes, $input->maxPages,
                         $input->liveCapable ? 'true' : 'false', $actor->membershipId, now(), now(),
                     ],
                 );
@@ -121,13 +131,15 @@ final class ManageDataSources implements DataSources
                 actor: $actor->membershipId,
             );
 
-            return $created;
+            $this->storeSecrets($actor, $id, $plan, $sealed, []);
+
+            return $this->fetch($actor->workspaceId, $id, false) ?? throw new DataSourceNotFound;
         });
     }
 
-    public function update(DataSourceActor $actor, string $id, DataSourceInput $input, int $revision): DataSource
+    public function update(DataSourceActor $actor, string $id, #[\SensitiveParameter] DataSourceInput $input, int $revision, ?\Closure $confirm = null): DataSource
     {
-        return $this->transactions->run($actor->workspaceId, function () use ($actor, $id, $input, $revision): DataSource {
+        return $this->transactions->run($actor->workspaceId, function () use ($actor, $id, $input, $revision, $confirm): DataSource {
             $before = $this->fetch($actor->workspaceId, $id, true) ?? throw new DataSourceNotFound;
 
             if ($before->revision !== $revision) {
@@ -136,19 +148,27 @@ final class ManageDataSources implements DataSources
 
             $this->assertAcceptable($actor->workspaceId, $input, $before->id);
 
+            $plan = $this->plan($input, $before->secrets);
+            // A credential already stored must not be rerouted (another header, name or the query string) without the password.
+            $rerouted = $before->secrets !== [] && ($input->apiKeyName !== $before->apiKeyName || $input->apiKeyPlacement !== $before->apiKeyPlacement);
+            $this->confirm($plan, $input->authType !== $before->authType || $rerouted, $confirm);
+            $sealed = $this->seal($actor->workspaceId, $before->id, $plan);
+
             try {
                 DB::update(
-                    'update data_sources set name = ?, base_url = ?, scheme = ?, host = ?, port = ?, auth_type = ?, default_headers = ?::jsonb, timeout_seconds = ?, max_response_bytes = ?, max_pages = ?, live_capable = ?::boolean, revision = revision + 1, updated_at = ? '
+                    'update data_sources set name = ?, base_url = ?, scheme = ?, host = ?, port = ?, auth_type = ?, api_key_name = ?, api_key_placement = ?, default_headers = ?::jsonb, timeout_seconds = ?, max_response_bytes = ?, max_pages = ?, live_capable = ?::boolean, revision = revision + 1, updated_at = ? '
                     .'where workspace_id = ? and id = ?',
                     [
-                        $input->name, $input->url->baseUrl, $input->url->scheme, $input->url->host, $input->url->port, $input->authType,
-                        json_encode($input->headers, JSON_THROW_ON_ERROR), $input->timeoutSeconds, $input->maxResponseBytes, $input->maxPages,
+                        $input->name, $input->url->baseUrl, $input->url->scheme, $input->url->host, $input->url->port, $input->authType, $input->apiKeyName, $input->apiKeyPlacement,
+                        json_encode($this->storedHeaders($input->headers), JSON_THROW_ON_ERROR), $input->timeoutSeconds, $input->maxResponseBytes, $input->maxPages,
                         $input->liveCapable ? 'true' : 'false', now(), $actor->workspaceId, $before->id,
                     ],
                 );
             } catch (QueryException $e) {
                 throw $this->nameTaken($e);
             }
+
+            $this->storeSecrets($actor, $before->id, $plan, $sealed, $before->secrets);
 
             $after = $this->fetch($actor->workspaceId, $before->id, false) ?? throw new DataSourceNotFound;
 
@@ -170,7 +190,7 @@ final class ManageDataSources implements DataSources
     }
 
     /** All the checks that need the database, refused together; nothing has been written yet. */
-    private function assertAcceptable(string $workspaceId, DataSourceInput $input, ?string $ownId): void
+    private function assertAcceptable(string $workspaceId, #[\SensitiveParameter] DataSourceInput $input, ?string $ownId): void
     {
         $errors = [];
         $reasons = [];
@@ -211,6 +231,158 @@ final class ManageDataSources implements DataSources
         return null;
     }
 
+    /**
+     * What the change does to the secret slots. The slots in use are those of the auth type plus one per secret default
+     * header; every one must hold a value (saved, or given now). A slot no longer in use is removed. Nothing is written.
+     *
+     * @param  array<string, SecretStatus>  $existing
+     * @return array{set: array<string, string>, remove: list<string>, kinds: array<string, string>}
+     */
+    private function plan(#[\SensitiveParameter] DataSourceInput $input, array $existing): array
+    {
+        $used = SecretSlots::forAuth($input->authType);
+        $rows = [];
+
+        foreach ($input->headers as $i => $header) {
+            if (($header['secret'] ?? false) === true) {
+                $slot = SecretSlots::header($header['name']);
+                $used[] = $slot;
+                $rows[$slot] = $i;
+            }
+        }
+
+        $errors = [];
+        $reasons = [];
+
+        foreach ($used as $slot) {
+            if (! isset($existing[$slot]) && ! isset($input->secretValues[$slot])) {
+                $field = isset($rows[$slot]) ? "headers.{$rows[$slot]}.value" : "secrets.{$slot}";
+                $errors[$field] = ['Enter a value.'];
+                $reasons[$field] = 'secret-required';
+            }
+        }
+
+        if ($errors !== []) {
+            throw new InvalidDataSource($errors, $reasons);
+        }
+
+        $set = array_intersect_key($input->secretValues, array_flip($used));
+        $remove = array_values(array_diff(array_keys($existing), $used));
+        $kinds = [];
+
+        foreach ($set as $slot => $_) {
+            $kinds[$slot] = isset($existing[$slot]) ? 'replaced' : 'set';
+        }
+
+        foreach ($remove as $slot) {
+            $kinds[$slot] = 'removed';
+        }
+
+        return ['set' => $set, 'remove' => $remove, 'kinds' => $kinds];
+    }
+
+    /**
+     * Setting, replacing or removing a secret, or changing the auth type, needs the Admin's password; the caller's closure
+     * checks it. Nothing has been written yet.
+     *
+     * @param  array{set: array<string, string>, remove: list<string>, kinds: array<string, string>}  $plan
+     */
+    private function confirm(#[\SensitiveParameter] array $plan, bool $authChanged, ?\Closure $confirm): void
+    {
+        if (($plan['kinds'] !== [] || $authChanged) && ($confirm === null || $confirm() !== true)) {
+            throw new ConfirmationRefused;
+        }
+    }
+
+    /**
+     * Seals every value to be stored before anything is written, so an unset platform key refuses the whole change.
+     *
+     * @param  array{set: array<string, string>, remove: list<string>, kinds: array<string, string>}  $plan
+     * @return array<string, SealedSecret>
+     */
+    private function seal(string $workspaceId, string $dataSourceId, #[\SensitiveParameter] array $plan): array
+    {
+        $sealed = [];
+
+        foreach ($plan['set'] as $slot => $value) {
+            $sealed[$slot] = $this->vault->seal(new SecretContext($workspaceId, $dataSourceId, $slot), $value);
+        }
+
+        return $sealed;
+    }
+
+    /**
+     * Writes the sealed values and removes the slots no longer used (through the `SECURITY DEFINER` function: `app` cannot
+     * delete), auditing each change with the value's keyed hash only.
+     *
+     * @param  array{set: array<string, string>, remove: list<string>, kinds: array<string, string>}  $plan
+     * @param  array<string, SealedSecret>  $sealed
+     * @param  array<string, SecretStatus>  $existing
+     */
+    private function storeSecrets(DataSourceActor $actor, string $dataSourceId, #[\SensitiveParameter] array $plan, #[\SensitiveParameter] array $sealed, array $existing): void
+    {
+        foreach ($sealed as $slot => $secret) {
+            $encoded = base64_encode($secret->ciphertext);
+
+            if (isset($existing[$slot])) {
+                DB::update(
+                    "update secrets set ciphertext = decode(?, 'base64'), key_version = ?, key_ref = ?, updated_at = ? where workspace_id = ? and data_source_id = ? and slot = ?",
+                    [$encoded, $secret->keyVersion, $secret->keyRef, now(), $actor->workspaceId, $dataSourceId, $slot],
+                );
+            } else {
+                DB::insert(
+                    "insert into secrets (id, workspace_id, data_source_id, slot, purpose, key_version, key_ref, ciphertext, created_at, updated_at) values (?, ?, ?, ?, 'cred', ?, ?, decode(?, 'base64'), ?, ?)",
+                    [(string) Str::uuid7(), $actor->workspaceId, $dataSourceId, $slot, $secret->keyVersion, $secret->keyRef, $encoded, now(), now()],
+                );
+            }
+
+            $this->audit->record(
+                AuditAction::ConnectorDataSourceSecretChanged,
+                [
+                    'data_source_id' => $dataSourceId,
+                    'slot' => SecretSlots::kind($slot),
+                    'purpose' => SecretContext::PURPOSE_CRED,
+                    'key_version' => $secret->keyVersion,
+                    'action' => $plan['kinds'][$slot],
+                    'value_hash' => $plan['set'][$slot],
+                ],
+                subject: 'data_source:'.$dataSourceId,
+                actor: $actor->membershipId,
+            );
+        }
+
+        if ($plan['remove'] !== []) {
+            $literal = '{'.implode(',', array_map(fn (string $slot): string => '"'.addcslashes($slot, '"\\').'"', $plan['remove'])).'}';
+            DB::selectOne('select connector_remove_secrets(?::uuid, ?::text[]) as removed', [$dataSourceId, $literal]);
+
+            foreach ($plan['remove'] as $slot) {
+                $this->audit->record(
+                    AuditAction::ConnectorDataSourceSecretChanged,
+                    [
+                        'data_source_id' => $dataSourceId,
+                        'slot' => SecretSlots::kind($slot),
+                        'purpose' => SecretContext::PURPOSE_CRED,
+                        'key_version' => $existing[$slot]->keyVersion,
+                        'action' => 'removed',
+                    ],
+                    subject: 'data_source:'.$dataSourceId,
+                    actor: $actor->membershipId,
+                );
+            }
+        }
+    }
+
+    /**
+     * A secret header keeps only its name and the flag.
+     *
+     * @param  list<array{name: string, value: string, secret?: true}>  $headers
+     * @return list<array{name: string, value?: string, secret?: true}>
+     */
+    private function storedHeaders(array $headers): array
+    {
+        return array_map(fn (array $h): array => isset($h['secret']) ? ['name' => $h['name'], 'secret' => true] : $h, $headers);
+    }
+
     private function nameTaken(QueryException $e): \Throwable
     {
         // The pre-check cannot see a concurrent insert; the unique index still guards it.
@@ -230,7 +402,7 @@ final class ManageDataSources implements DataSources
             [$workspaceId, strtolower($id)],
         );
 
-        return $row === null ? null : $this->source($row);
+        return $row === null ? null : $this->source($row, $this->vault->status($workspaceId, strtolower($row->id)));
     }
 
     /** The allowlisted audit fields: the URL's parts, never the full URL path; the header count and a keyed hash of the header map, never a value. */
@@ -246,24 +418,29 @@ final class ManageDataSources implements DataSources
             'host' => $source->host,
             'port' => $source->port,
             'auth_type' => $source->authType,
+            'api_key_name' => $source->apiKeyName,
+            'api_key_placement' => $source->apiKeyPlacement,
             'timeout_seconds' => $source->timeoutSeconds,
             'max_response_bytes' => $source->maxResponseBytes,
             'max_pages' => $source->maxPages,
             'live_capable' => $source->liveCapable ? 'true' : 'false',
             'header_count' => count($headers),
-            'headers' => json_encode(array_map(fn (array $h): array => [strtolower($h['name']), $h['value']], $headers), JSON_THROW_ON_ERROR),
+            'headers' => json_encode(array_map(fn (array $h): array => isset($h['secret']) ? [strtolower($h['name']), '', true] : [strtolower($h['name']), $h['value']], $headers), JSON_THROW_ON_ERROR),
             'revision' => $source->revision,
         ];
     }
 
-    private function source(object $row): DataSource
+    /** @param  array<string, SecretStatus>  $secrets */
+    private function source(object $row, array $secrets = []): DataSource
     {
-        /** @var object{id: string, name: string, base_url: string, scheme: string, host: string, port: int|string, auth_type: string, default_headers: string, timeout_seconds: int|string|null, max_response_bytes: int|string|null, max_pages: int|string|null, live_capable: bool|string|int, revision: int|string, created: string, updated: string} $row */
+        /** @var object{id: string, name: string, base_url: string, scheme: string, host: string, port: int|string, auth_type: string, default_headers: string, timeout_seconds: int|string|null, max_response_bytes: int|string|null, max_pages: int|string|null, live_capable: bool|string|int, api_key_name: string|null, api_key_placement: string|null, revision: int|string, created: string, updated: string} $row */
         $decoded = json_decode($row->default_headers, true);
         $headers = [];
 
         foreach (is_array($decoded) ? $decoded : [] as $header) {
-            if (is_array($header) && is_string($header['name'] ?? null) && is_string($header['value'] ?? null)) {
+            if (is_array($header) && is_string($header['name'] ?? null) && ($header['secret'] ?? false) === true) {
+                $headers[] = ['name' => $header['name'], 'value' => '', 'secret' => true];
+            } elseif (is_array($header) && is_string($header['name'] ?? null) && is_string($header['value'] ?? null)) {
                 $headers[] = ['name' => $header['name'], 'value' => $header['value']];
             }
         }
@@ -284,6 +461,9 @@ final class ManageDataSources implements DataSources
             (int) $row->revision,
             $row->created,
             $row->updated,
+            $row->api_key_name,
+            $row->api_key_placement,
+            $secrets,
         );
     }
 

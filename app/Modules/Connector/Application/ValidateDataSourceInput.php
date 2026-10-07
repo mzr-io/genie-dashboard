@@ -7,6 +7,7 @@ use App\Modules\Connector\Contracts\DataSourceUrl;
 use App\Modules\Connector\Contracts\InvalidDataSource;
 use App\Modules\Connector\Contracts\InvalidDataSourceUrl;
 use App\Modules\Connector\Contracts\ReservedHeaders;
+use App\Modules\Connector\Contracts\SecretSlots;
 use App\Modules\Connector\Infrastructure\DataSourceSettings;
 
 /**
@@ -26,6 +27,14 @@ final class ValidateDataSourceInput
 
     public const HEADERS_MAX = 25;
 
+    public const SECRET_VALUE_MAX = 2048;
+
+    public const API_KEY_NAME_MAX = 128;
+
+    public const PLACEMENTS = ['header', 'query'];
+
+    private const TOKEN = '/\A[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/D';
+
     public function __construct(private readonly DataSourceSettings $settings) {}
 
     /**
@@ -33,7 +42,7 @@ final class ValidateDataSourceInput
      *
      * @throws InvalidDataSource
      */
-    public function validate(array $raw): DataSourceInput
+    public function validate(#[\SensitiveParameter] array $raw): DataSourceInput
     {
         $errors = [];
         $reasons = [];
@@ -44,7 +53,8 @@ final class ValidateDataSourceInput
 
         $name = $this->name($raw['name'] ?? null, $fail);
         $url = $this->url($raw['base_url'] ?? null, $fail);
-        $headers = $this->headers($raw['headers'] ?? [], $fail);
+        $secretValues = [];
+        $headers = $this->headers($raw['headers'] ?? [], $fail, $secretValues);
         $ceilings = $this->settings->ceilings();
         $timeout = $this->limit($raw['timeout_seconds'] ?? null, 'timeout_seconds', $ceilings->timeoutSeconds, 'timeout', $fail);
         $bytes = $this->limit($raw['max_response_bytes'] ?? null, 'max_response_bytes', $ceilings->maxResponseBytes, 'response size', $fail);
@@ -52,16 +62,22 @@ final class ValidateDataSourceInput
         $live = $this->boolean($raw['live_capable'] ?? false, 'live_capable', $fail);
         $auth = $raw['auth_type'] ?? 'none';
 
-        // Only `none` is accepted until Story 2.4 adds credentials and their write-only secrets.
-        if ($auth !== 'none') {
-            $fail('auth_type', 'auth-type-unavailable', 'Authentication other than none is not available yet.');
+        if (! is_string($auth) || ! in_array($auth, DataSourceInput::AUTH_TYPES, true)) {
+            $fail('auth_type', 'auth-type-invalid', 'Choose an authentication type.');
+            $auth = 'none';
+        } elseif (! in_array($auth, DataSourceInput::ACCEPTED_AUTH_TYPES, true)) {
+            // OAuth2 client credentials arrive with Story 2.7.
+            $fail('auth_type', 'auth-type-unavailable', 'This authentication type is not available yet.');
         }
+
+        [$apiKeyName, $apiKeyPlacement] = $this->apiKey($auth, $raw, $headers, $fail);
+        $this->secrets($auth, $raw['secrets'] ?? null, $secretValues, $fail);
 
         if ($errors !== [] || $name === null || $url === null) {
             throw new InvalidDataSource($errors, $reasons);
         }
 
-        return new DataSourceInput($name, $url, $headers, $timeout, $bytes, $pages, $live);
+        return new DataSourceInput($name, $url, $headers, $timeout, $bytes, $pages, $live, $auth, $apiKeyName, $apiKeyPlacement, $secretValues);
     }
 
     /** The Base URL alone, for the blur check. @throws InvalidDataSource */
@@ -113,8 +129,11 @@ final class ValidateDataSourceInput
         return $name;
     }
 
-    /** @return list<array{name: string, value: string}> */
-    private function headers(mixed $value, callable $fail): array
+    /**
+     * @param  array<string, string>  $secretValues  filled with the value of each secret header being set, by slot
+     * @return list<array{name: string, value: string, secret?: true}>
+     */
+    private function headers(#[\SensitiveParameter] mixed $value, callable $fail, #[\SensitiveParameter] array &$secretValues): array
     {
         if ($value === null || $value === '') {
             return [];
@@ -138,7 +157,25 @@ final class ValidateDataSourceInput
         foreach ($value as $i => $row) {
             $name = is_array($row) ? ($row['name'] ?? null) : null;
             $text = is_array($row) ? ($row['value'] ?? null) : null;
+            $secret = is_array($row) && filter_var($row['secret'] ?? false, FILTER_VALIDATE_BOOLEAN);
             $nameOk = $this->headerName($name, "headers.{$i}.name", $seen, $fail);
+
+            if ($secret) {
+                // A secret header keeps only its name and the flag; an absent value leaves the saved secret as it is.
+                $valueOk = ! array_key_exists('value', $row) || $this->secretValue($text, "headers.{$i}.value", $fail);
+
+                if ($nameOk && $valueOk) {
+                    $headers[] = ['name' => (string) $name, 'value' => '', 'secret' => true];
+                    $seen[strtolower((string) $name)] = true;
+
+                    if (array_key_exists('value', $row)) {
+                        $secretValues[SecretSlots::header((string) $name)] = (string) $text;
+                    }
+                }
+
+                continue;
+            }
+
             $valueOk = $this->headerValue($text, "headers.{$i}.value", $fail);
 
             if ($nameOk && $valueOk) {
@@ -185,6 +222,113 @@ final class ValidateDataSourceInput
 
         if (strlen($value) > self::HEADER_VALUE_MAX) {
             $fail($field, 'header-value-too-long', 'A header value can have at most '.self::HEADER_VALUE_MAX.' characters.');
+
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * The API key's header or query parameter name and where it travels; both null for any other type.
+     *
+     * @param  array<string, mixed>  $raw
+     * @param  list<array{name: string, value: string, secret?: true}>  $headers
+     * @return array{0: ?string, 1: ?string}
+     */
+    private function apiKey(string $auth, #[\SensitiveParameter] array $raw, array $headers, callable $fail): array
+    {
+        if ($auth !== 'api_key') {
+            return [null, null];
+        }
+
+        $name = $raw['api_key_name'] ?? null;
+        $placement = $raw['api_key_placement'] ?? 'header';
+        $ok = true;
+
+        if (! is_string($placement) || ! in_array($placement, self::PLACEMENTS, true)) {
+            $fail('api_key_placement', 'api-key-placement-invalid', 'Choose header or query string.');
+            $placement = null;
+        }
+
+        if (! is_string($name) || $name === '') {
+            $fail('api_key_name', 'api-key-name-required', 'Enter the name the API key is sent under.');
+            $ok = false;
+        } elseif (strlen($name) > self::API_KEY_NAME_MAX || preg_match(self::TOKEN, $name) !== 1) {
+            $fail('api_key_name', 'api-key-name-invalid', 'The name uses letters, digits and the characters ! # $ % & \' * + - . ^ _ ` | ~ only.');
+            $ok = false;
+        } elseif ($placement === 'query' && preg_match('/\A[A-Za-z0-9_.~-]+\z/D', $name) !== 1) {
+            $fail('api_key_name', 'api-key-name-invalid', 'A query parameter name uses letters, digits and the characters _ . ~ - only.');
+            $ok = false;
+        } elseif ($placement === 'header' && (ReservedHeaders::transport($name) || ReservedHeaders::credential($name))) {
+            $fail('api_key_name', 'api-key-name-reserved', 'This header name is reserved. Choose another name.');
+            $ok = false;
+        } elseif ($placement === 'header' && array_filter($headers, fn (array $h): bool => strcasecmp($h['name'], $name) === 0) !== []) {
+            $fail('api_key_name', 'api-key-name-duplicate', 'This name is already used by a default header.');
+            $ok = false;
+        }
+
+        return [$ok ? (string) $name : null, $placement];
+    }
+
+    /**
+     * Checks the values posted for the secret slots of this type; each is added to `$secretValues` (an absent slot stays as saved).
+     *
+     * @param  array<string, string>  $secretValues
+     */
+    private function secrets(string $auth, #[\SensitiveParameter] mixed $given, #[\SensitiveParameter] array &$secretValues, callable $fail): void
+    {
+        if ($given === null || $given === [] || $given === '') {
+            return;
+        }
+
+        if (! is_array($given) || array_is_list($given)) {
+            $fail('secrets', 'secrets-invalid', 'The credentials are not valid.');
+
+            return;
+        }
+
+        $allowed = SecretSlots::forAuth($auth);
+
+        foreach ($given as $slot => $value) {
+            $slot = (string) $slot;
+
+            if (! in_array($slot, $allowed, true)) {
+                $fail("secrets.{$slot}", 'secret-slot-unused', 'This credential does not belong to the chosen authentication type.');
+
+                continue;
+            }
+
+            if ($slot === SecretSlots::BASIC_USERNAME && is_string($value) && str_contains($value, ':')) {
+                // A colon would split the Basic credentials in the wrong place.
+                $fail("secrets.{$slot}", 'secret-value-invalid', 'A user name cannot contain a colon.');
+
+                continue;
+            }
+
+            if ($this->secretValue($value, "secrets.{$slot}", $fail)) {
+                $secretValues[$slot] = (string) $value;
+            }
+        }
+    }
+
+    /** A secret's value: required, visible ASCII (0x20 to 0x7E) on one line, never trimmed or repaired. */
+    private function secretValue(#[\SensitiveParameter] mixed $value, string $field, callable $fail): bool
+    {
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            $fail($field, 'secret-required', 'Enter a value.');
+
+            return false;
+        }
+
+        if (! is_string($value) || preg_match('/\A[\x20-\x7e]+\z/D', $value) !== 1) {
+            $fail($field, 'secret-value-invalid', 'A credential uses visible ASCII characters only, on one line.');
+
+            return false;
+        }
+
+        if (strlen($value) > self::SECRET_VALUE_MAX) {
+            $fail($field, 'secret-value-too-long', 'A credential can have at most '.self::SECRET_VALUE_MAX.' characters.');
 
             return false;
         }

@@ -66,6 +66,13 @@ x-app-env: &app-env
     DASHFLOW_EGRESS_DEPLOYMENT_CIDRS: ${DASHFLOW_EGRESS_DEPLOYMENT_CIDRS:-}
     DASHFLOW_EGRESS_ALERT_THRESHOLD: ${DASHFLOW_EGRESS_ALERT_THRESHOLD:-}
     DASHFLOW_EGRESS_ALERT_WINDOW: ${DASHFLOW_EGRESS_ALERT_WINDOW:-}
+    # Write-only secrets (Story 2.4; pending_input, empty = unset): the platform's public key for the `cred` purpose
+    # (base64) and its version. Public values, so every role gets them; saving a secret is refused while they are unset.
+    # The private key stays in the `key-cred` mount of worker-connector alone.
+    DASHFLOW_SECRETS_CRED_PUBLIC_KEY: ${DASHFLOW_SECRETS_CRED_PUBLIC_KEY:-}
+    DASHFLOW_SECRETS_CRED_KEY_VERSION: ${DASHFLOW_SECRETS_CRED_KEY_VERSION:-}
+    # Where worker-connector reads the private key (a path, not key material; empty = the default /run/secrets/key-cred).
+    DASHFLOW_SECRETS_CRED_KEY_PATH: ${DASHFLOW_SECRETS_CRED_KEY_PATH:-}
     # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
     OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}

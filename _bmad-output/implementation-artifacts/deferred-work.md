@@ -143,3 +143,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-3-register-and-edit-a-data-source.md`
   summary: Add paging for the Data Source list, a retire or delete action, and an outbox event for Data Source changes when a consuming story needs them.
   evidence: The list ships every row; the `app` role has no DELETE; downstream consumers (health, Blocks) will need an invalidation signal.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-4-add-authentication-and-write-only-secrets-to-a-data-source.md`
+  summary: Decide whether changing the Base URL of a Data Source that holds a credential should require password re-confirmation.
+  evidence: The spec requires confirmation for secret and auth-type changes only; repointing a stored credential to another allowlisted host is allowed without it.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-4-add-authentication-and-write-only-secrets-to-a-data-source.md`
+  summary: Story 2.5 must add `SecretVault::resolve(SecretRef, SecretContext)` that reads the secrets row and opens it, and key-version selection with a distinct KeyringMismatch for rotation.
+  evidence: FetchRequest carries only SecretRef(id, slot) but `open()` takes a ciphertext, and `open()` always uses the single mounted key regardless of the stored key_version or key_ref.

@@ -230,6 +230,7 @@ final class Cluster
             'host_allowlist_versions' => self::seedHostVersion($workspaceId),
             'egress_grants' => self::seedEgressGrant($workspaceId),
             'data_sources' => self::seedDataSource($workspaceId),
+            'secrets' => self::seedSecret($workspaceId),
             default => null,
         };
     }
@@ -294,6 +295,17 @@ final class Cluster
         $url = $scheme.'://'.$host.($port === ($scheme === 'https' ? 443 : 80) ? '' : ':'.$port);
         self::superuser()->prepare('INSERT INTO data_sources (id, workspace_id, name, base_url, scheme, host, port, created_by_membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, now(), now())')
             ->execute([$id, $workspaceId, $name ?? 'Source '.$id, $url, $scheme, $host, $port, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /** A sealed-looking row (not real ciphertext) for a new Data Source of the Workspace; leak tests never open it. */
+    public static function seedSecret(string $workspaceId, ?string $dataSourceId = null, string $slot = 'bearer_token'): string
+    {
+        $id = (string) Str::uuid7();
+        $dataSourceId ??= self::seedDataSource($workspaceId);
+        self::superuser()->prepare("INSERT INTO secrets (id, workspace_id, data_source_id, slot, purpose, key_version, key_ref, ciphertext, created_at, updated_at) VALUES (?, ?, ?, ?, 'cred', 1, 'test-key-ref', decode('00ff', 'hex'), now(), now())")
+            ->execute([$id, $workspaceId, $dataSourceId, $slot]);
 
         return $id;
     }

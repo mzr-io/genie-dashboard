@@ -8,8 +8,10 @@ use App\Http\Requests\Admin\ListDataSourcesRequest;
 use App\Http\Resources\DataSourceResource;
 use App\Http\Responses\AdminApiError;
 use App\Models\User;
+use App\Modules\Access\Contracts\ConfirmationThrottled;
 use App\Modules\Access\Contracts\MembershipLookup;
 use App\Modules\Connector\Application\ValidateDataSourceInput;
+use App\Modules\Connector\Contracts\ConfirmationRefused;
 use App\Modules\Connector\Contracts\DataSource;
 use App\Modules\Connector\Contracts\DataSourceActor;
 use App\Modules\Connector\Contracts\DataSourceNotFound;
@@ -19,20 +21,31 @@ use App\Modules\Connector\Contracts\DataSourceRevisionConflict;
 use App\Modules\Connector\Contracts\DataSources;
 use App\Modules\Connector\Contracts\ErrorCode;
 use App\Modules\Connector\Contracts\InvalidDataSource;
+use App\Modules\Connector\Contracts\SecretsNotConfigured;
 use App\Platform\Contracts\ErrorCode as PlatformErrorCode;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * Data Sources (Story 2.3). Every route sits behind the `admin` middleware (`data_sources.manage`); the Workspace is
  * the session's, never a client-supplied ID. A Data Source of another Workspace is invisible (404, under row-level
  * security). A stale `revision` is a 409 with the current state. Nothing here contacts any host.
+ *
+ * Credentials (Story 2.4) are write-only: a response carries each secret slot as `{configured, updated_at}` only. Setting,
+ * replacing or removing one, or changing the auth type, needs `confirm_password` (the rules, throttle key and error shapes of
+ * the member editor: wrong 422, throttled 429); an unset platform key is a 503 and nothing is stored.
  */
 final class DataSourceController extends Controller
 {
     /** Data sources are Admin-only configuration: never stored by a cache. */
     private const NO_STORE = 'no-store, private';
+
+    private const CONFIRM_ATTEMPTS = 6;
+
+    private const CONFIRM_DECAY_SECONDS = 60;
 
     public function __construct(
         private readonly DataSources $sources,
@@ -62,9 +75,11 @@ final class DataSourceController extends Controller
     public function store(DataSourceRequest $request): JsonResponse
     {
         try {
-            $created = $this->sources->register($this->actor($request), $request->dataSourceInput());
+            $created = $this->sources->register($this->actor($request), $request->dataSourceInput(), fn (): bool => $this->confirmPassword($request));
         } catch (InvalidDataSource $e) {
             return $this->invalid($request, $e);
+        } catch (ConfirmationRefused|ConfirmationThrottled|SecretsNotConfigured $e) {
+            return $this->refused($request, $e);
         }
 
         return $this->one($request, $created, 201);
@@ -73,7 +88,7 @@ final class DataSourceController extends Controller
     public function update(DataSourceRequest $request, string $dataSource): JsonResponse
     {
         try {
-            $updated = $this->sources->update($this->actor($request), $dataSource, $request->dataSourceInput(), $request->revision());
+            $updated = $this->sources->update($this->actor($request), $dataSource, $request->dataSourceInput(), $request->revision(), fn (): bool => $this->confirmPassword($request));
         } catch (DataSourceNotFound) {
             abort(404);
         } catch (DataSourceRevisionConflict $e) {
@@ -82,6 +97,8 @@ final class DataSourceController extends Controller
             ]);
         } catch (InvalidDataSource $e) {
             return $this->invalid($request, $e);
+        } catch (ConfirmationRefused|ConfirmationThrottled|SecretsNotConfigured $e) {
+            return $this->refused($request, $e);
         }
 
         return $this->one($request, $updated, 200);
@@ -100,6 +117,43 @@ final class DataSourceController extends Controller
         }
 
         return response()->json(['data' => ['allowed' => true]], 200, ['Cache-Control' => self::NO_STORE]);
+    }
+
+    /** A wrong password is a 422 on `confirm_password`, too many wrong ones a 429, an unset platform key a 503. */
+    private function refused(Request $request, ConfirmationRefused|ConfirmationThrottled|SecretsNotConfigured $e): JsonResponse
+    {
+        return match (true) {
+            $e instanceof ConfirmationThrottled => AdminApiError::json($request, PlatformErrorCode::TooManyRequests->value, 429, 'Too many attempts.', ['confirm_password' => ['Too many attempts.']])
+                ->header('Retry-After', (string) $e->retryAfter),
+            $e instanceof SecretsNotConfigured => AdminApiError::json($request, ErrorCode::SecretsNotConfigured->value, 503, 'Credentials cannot be saved until the platform key is configured.', extra: ['reason' => 'secrets-not-configured']),
+            default => AdminApiError::json($request, PlatformErrorCode::ValidationFailed->value, 422, errors: ['confirm_password' => ['The password is incorrect.']]),
+        };
+    }
+
+    /** True when the password is right. Wrong guesses are throttled per person and IP; a right guess never clears them. */
+    private function confirmPassword(DataSourceRequest $request): bool
+    {
+        $user = $request->user();
+        $key = 'member-confirm:'.($user instanceof User ? $user->id : '').'|'.$request->ip();
+
+        if (RateLimiter::tooManyAttempts($key, self::CONFIRM_ATTEMPTS)) {
+            throw new ConfirmationThrottled(RateLimiter::availableIn($key));
+        }
+
+        $given = $request->confirmation();
+
+        // A missing password is a field error, not a guess: it does not count against the throttle.
+        if ($given === '') {
+            return false;
+        }
+
+        if (! $user instanceof User || ! Hash::check($given, $user->getAuthPassword())) {
+            RateLimiter::hit($key, self::CONFIRM_DECAY_SECONDS);
+
+            return false;
+        }
+
+        return true;
     }
 
     private function invalid(Request $request, InvalidDataSource $e): JsonResponse

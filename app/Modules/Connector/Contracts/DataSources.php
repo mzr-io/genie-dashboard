@@ -22,15 +22,25 @@ interface DataSources
      */
     public function checkUrl(string $workspaceId, DataSourceUrl $url): void;
 
-    /** @throws InvalidDataSource */
-    public function register(DataSourceActor $actor, DataSourceInput $input): DataSource;
+    /**
+     * @param  (\Closure(): bool)|null  $confirm  asked when the change needs the Admin's password (a secret value, or a credential type other than `none`); false refuses it
+     *
+     * @throws InvalidDataSource
+     * @throws ConfirmationRefused
+     * @throws SecretsNotConfigured when a secret is to be sealed and the platform key is not set
+     */
+    public function register(DataSourceActor $actor, #[\SensitiveParameter] DataSourceInput $input, ?\Closure $confirm = null): DataSource;
 
     /**
+     * @param  (\Closure(): bool)|null  $confirm  asked when a secret value is set, replaced or removed, or the auth type changes
+     *
+     * @throws ConfirmationRefused
+     * @throws SecretsNotConfigured
      * @throws DataSourceNotFound
      * @throws DataSourceRevisionConflict
      * @throws InvalidDataSource
      */
-    public function update(DataSourceActor $actor, string $id, DataSourceInput $input, int $revision): DataSource;
+    public function update(DataSourceActor $actor, string $id, #[\SensitiveParameter] DataSourceInput $input, int $revision, ?\Closure $confirm = null): DataSource;
 
     /** The platform ceilings the limits are checked against. */
     public function ceilings(): DataSourceCeilings;
