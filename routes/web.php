@@ -3,6 +3,7 @@
 use App\Http\Controllers\HelpController;
 use App\Modules\Identity\Http\InvitationController;
 use App\Modules\Identity\Http\InvitationResponseHeaders;
+use App\Modules\Identity\Http\WorkspaceSwitchController;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use App\Support\Health\HealthChecker;
 use App\Support\Health\Role;
@@ -38,6 +39,13 @@ Route::get('help', HelpController::class)->name('help');
 // Every navigation target of the two-area shell is a named placeholder page (Story 1.16). Admin pages are not
 // gated here: Story 1.19 enforces the area and permission checks.
 Route::middleware(['auth'])->group(function () {
+    // Switch the active Workspace (Story 1.17). It opens the target Workspace's own transaction, so the
+    // session Workspace's request transaction must not wrap it.
+    Route::post('workspaces/switch', WorkspaceSwitchController::class)
+        ->withoutMiddleware([WorkspaceTransaction::class])
+        ->middleware('throttle:30,1')
+        ->name('workspaces.switch');
+
     // The User Overview (Story 1.13). The old route name `dashboard` is kept as an alias that sends visitors
     // to it (a route name cannot point at the same URI twice).
     Route::inertia('dashboard', 'Placeholder', ['page' => 'overview'])->name('overview');

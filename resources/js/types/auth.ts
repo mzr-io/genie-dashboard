@@ -24,11 +24,21 @@ export type ShellItem = {
     allowed: boolean;
 };
 
+export type ShellWorkspace = {
+    id: string;
+    name: string;
+    label: string | null;
+    role: string;
+};
+
 // The two-area shell's navigation model (Story 1.16), shared with every page of a signed-in person.
 export type Shell = {
     area: ShellArea;
-    workspace: { id: string; name: string } | null;
+    workspace: { id: string; name: string; label: string | null } | null;
     role: string | null;
+    // The Workspaces the person may switch to (usable memberships only), with their role in each (Story 1.17).
+    workspaces: ShellWorkspace[];
+    switch_href: string;
     items: ShellItem[];
     help_href: string;
     profile_href: string;

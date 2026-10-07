@@ -95,3 +95,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-15-warn-before-session-expiry-and-keep-forms-safe.md`
   summary: Decide whether sessions need an absolute maximum lifetime (a new `pending_input` tunable) on top of the idle timeout, and add a Story 1.9 dialog-refusal test for the session warning.
   evidence: Extending resets the idle clock every time, so a session can live indefinitely; the spec defines only an idle limit. The warning dialog's refusal path when another dialog is open is untested.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-17-switch-the-active-workspace.md`
+  summary: Make every Epic 1+ form register with `registerUnsavedForm` (and reconcile it with the `formDrafts` dirty tracking) so the Workspace switcher's unsaved-changes dialog covers all forms.
+  evidence: Only the Profile page registers; a switch on any other form silently discards unsaved edits.

@@ -136,7 +136,7 @@ it('gives app SELECT and UPDATE of used_at and updated_at only on invitations, a
     }
 });
 
-it('denies operator UPDATE and DELETE on operator_audit and invitations, SELECT on invitations, and any column of workspaces but label', function () {
+it('denies operator UPDATE and DELETE on operator_audit and invitations, SELECT on invitations, and any column of workspaces', function () {
     $operator = Cluster::operator();
 
     foreach ([
@@ -147,13 +147,12 @@ it('denies operator UPDATE and DELETE on operator_audit and invitations, SELECT 
         'delete from invitations',
         'select * from invitations',
         'select name from workspaces',
+        'select label from workspaces',
         'update workspaces set label = \'x\'',
         'delete from workspaces',
     ] as $statement) {
         expect(fn () => $operator->query($statement))->toThrow(PDOException::class, 'permission denied');
     }
-
-    expect(fn () => $operator->query('select label from workspaces'))->not->toThrow(PDOException::class);
 });
 
 it('lets app update used_at on an invitation but not its hash, expiry, email or Workspace', function () {

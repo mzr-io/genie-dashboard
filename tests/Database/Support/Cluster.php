@@ -194,11 +194,11 @@ final class Cluster
         return array_column($rows, 'relname');
     }
 
-    public static function workspace(string $name, string $status = 'active'): string
+    public static function workspace(string $name, string $status = 'active', ?string $label = null): string
     {
         $id = (string) Str::uuid7();
-        self::superuser()->prepare('INSERT INTO workspaces (id, name, status, created_at, updated_at) VALUES (?, ?, ?, now(), now())')
-            ->execute([$id, $name, $status]);
+        self::superuser()->prepare('INSERT INTO workspaces (id, name, label, status, created_at, updated_at) VALUES (?, ?, ?, ?, now(), now())')
+            ->execute([$id, $name, $label, $status]);
 
         return $id;
     }

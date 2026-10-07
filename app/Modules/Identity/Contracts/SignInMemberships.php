@@ -15,6 +15,9 @@ interface SignInMemberships
      */
     public function forUser(int $userId): array;
 
-    /** Stamps `last_active_at` on the membership, inside that Workspace's own transaction. */
-    public function markActive(string $workspaceId, string $membershipId): void;
+    /**
+     * Stamps `last_active_at` on the active membership, inside that Workspace's own transaction. False when
+     * no active membership was updated (it is gone or no longer active).
+     */
+    public function markActive(string $workspaceId, string $membershipId): bool;
 }

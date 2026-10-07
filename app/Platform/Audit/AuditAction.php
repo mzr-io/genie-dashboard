@@ -29,6 +29,7 @@ enum AuditAction: string
 
     // Access: memberships, roles, permissions, groups, attributes and denials.
     case AccessAdminDenied = 'access.admin.denied';
+    case AccessWorkspaceForbidden = 'access.workspace.forbidden';
     case AccessMembershipInvited = 'access.membership.invited';
     case AccessMembershipChanged = 'access.membership.changed';
     case AccessMembershipRemoved = 'access.membership.removed';

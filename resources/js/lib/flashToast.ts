@@ -16,6 +16,23 @@ export function initializeFlashToast(): void {
             });
         }
 
+        // A switch to a Workspace where the person is only a User: msg:workspace-role lands them on the User
+        // Overview. The name is plain text in a text node, never markup.
+        const role = flash?.workspace_role as
+            | { workspace?: string }
+            | undefined;
+
+        if (role?.workspace) {
+            useToasts().add({
+                kind: 'info',
+                // A function replacer: `$&`, `$1` and `$'` in a name stay literal.
+                message: en['workspace-role'].replace(
+                    '{workspace}',
+                    () => role.workspace as string,
+                ),
+            });
+        }
+
         if (!data) {
             return;
         }

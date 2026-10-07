@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Form, Head, usePage } from '@inertiajs/vue3';
-import { computed } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import ProfileController from '@/actions/App/Http/Controllers/Settings/ProfileController';
 import DeleteUser from '@/components/DeleteUser.vue';
 import Heading from '@/components/Heading.vue';
@@ -8,6 +8,7 @@ import InputError from '@/components/InputError.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { registerUnsavedForm } from '@/lib/unsavedForms';
 import { shellPages } from '@/locales/labels';
 import { edit } from '@/routes/profile';
 
@@ -24,6 +25,38 @@ defineOptions({
 
 const page = usePage();
 const user = computed(() => page.props.auth.user);
+
+// Unsaved name or email edits are asked about before a Workspace switch (Story 1.17); Save submits the form.
+const form = ref<{ isDirty: boolean; submit: () => void } | null>(null);
+let settle: ((saved: boolean) => void) | null = null;
+
+const stop = registerUnsavedForm({
+    id: 'profile',
+    isDirty: () => form.value?.isDirty ?? false,
+    save: () => {
+        if (!form.value) {
+            return Promise.resolve(false);
+        }
+
+        // An earlier save still waiting is settled first, so no promise is left hanging.
+        settled(false);
+
+        return new Promise<boolean>((resolve) => {
+            settle = resolve;
+            form.value?.submit();
+        });
+    },
+});
+
+function settled(saved: boolean): void {
+    settle?.(saved);
+    settle = null;
+}
+
+onBeforeUnmount(() => {
+    stop();
+    settled(false);
+});
 </script>
 
 <template>
@@ -39,9 +72,13 @@ const user = computed(() => page.props.auth.user);
         />
 
         <Form
+            ref="form"
             v-bind="ProfileController.update.form()"
             class="space-y-6"
             v-slot="{ errors, processing }"
+            @success="settled(true)"
+            @error="settled(false)"
+            @finish="settled(false)"
         >
             <div class="grid gap-2">
                 <Label for="name">Name</Label>

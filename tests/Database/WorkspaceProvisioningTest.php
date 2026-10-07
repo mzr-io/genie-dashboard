@@ -454,16 +454,15 @@ it('records the OS user as the operator actor in operator_audit and the mirrored
     expect($operator)->toMatch('/\Aoperator:[a-z0-9_.-]+\z/')->and($mirror)->toBe($operator)->and($created)->toBe($operator);
 });
 
-it('refuses a duplicate label with a clear message and creates nothing more', function () {
-    provisionWorkspace();
+it('accepts a descriptive label with spaces and capitals, and the same label twice', function () {
+    provisionWorkspace('a@example.test', 'Acme', 'Acme Industries - Production');
+    $second = Artisan::call('dashflow:workspace:create', ['name' => 'Other', 'label' => 'Acme Industries - Production', 'admin-email' => 'b@example.test']);
 
-    $code = Artisan::call('dashflow:workspace:create', ['name' => 'Other', 'label' => 'acme', 'admin-email' => 'b@example.test']);
-
-    expect($code)->not->toBe(0)->and(Artisan::output())->toContain('already exists')
-        ->and(count_of('workspaces'))->toBe(1)->and(count_of('invitations'))->toBe(1);
+    expect($second)->toBe(0)->and(count_of('workspaces'))->toBe(2)
+        ->and(Cluster::rows(Cluster::superuser(), 'select label from workspaces order by name')[0]['label'])->toBe('Acme Industries - Production');
 });
 
-it('refuses control characters in the name and a label that is not a lower-case slug', function (string $name, string $label) {
+it('refuses control characters in the name or the label, and a label over 64 characters', function (string $name, string $label) {
     config(['dashflow.tunables.users.invitation_lifetime.value' => '48']);
 
     expect(Artisan::call('dashflow:workspace:create', ['name' => $name, 'label' => $label, 'admin-email' => 'a@example.test']))->not->toBe(0)
@@ -471,10 +470,12 @@ it('refuses control characters in the name and a label that is not a lower-case 
 })->with([
     ["Line\nBreak", 'ok'],
     ["Tab\there", 'ok'],
-    ['Acme', 'Upper'],
-    ['Acme', 'has space'],
     ['Acme', "new\nline"],
-    ['Acme', 'double--hyphen'],
+    ['Acme', "tab\there"],
+    ['Acme', "bell\x07"],
+    ['Acme', "line\u{2028}separator"],
+    ['Acme', "paragraph\u{2029}separator"],
+    ['Acme', str_repeat('a', 65)],
 ]);
 
 it('caps the lifetime at 8760 hours and names the bound', function () {

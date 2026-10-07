@@ -173,7 +173,7 @@ it('builds the Admin navigation from the one permission constant', function () {
     $shell = shellFor($user, 'admin', [Permission::BlocksEdit, Permission::AuditView]);
 
     expect($shell['area'])->toBe('admin')
-        ->and($shell['workspace'])->toBe(['id' => SHELL_WORKSPACE, 'name' => 'Acme Industries'])
+        ->and($shell['workspace'])->toBe(['id' => SHELL_WORKSPACE, 'name' => 'Acme Industries', 'label' => null])
         ->and($shell['role'])->toBe('admin')
         ->and(array_column($shell['items'], 'key'))->toBe(array_keys(ShellNavigation::ADMIN_ITEMS));
 
@@ -281,4 +281,101 @@ it('does not render an Appearance control or a theme setting', function () {
         ->assertInertia(fn (AssertableInertia $inertia) => $inertia->missing('shell.appearance'));
 
     expect(Str::lower(json_encode(ShellNavigation::USER_ITEMS + ShellNavigation::ADMIN_ITEMS)))->not->toContain('appearance');
+});
+
+it('lists only usable memberships as switchable Workspaces, with label and role, and keeps the label verbatim', function () {
+    $user = new User(['name' => 'Ada', 'email' => 'ada@example.test']);
+    $user->id = 7;
+
+    app()->instance(MembershipLookup::class, new class implements MembershipLookup
+    {
+        public function forUser(int $userId): array
+        {
+            return [
+                new UserMembership('m-1', SHELL_WORKSPACE, 'Acme Industries', 'Acme <b>Production</b>', 'active', 'admin', 'active', null),
+                new UserMembership('m-2', '0197f1a0-0000-7000-8000-000000000002', 'Beta', null, 'active', 'user', 'active', null),
+                new UserMembership('m-3', '0197f1a0-0000-7000-8000-000000000003', 'Gamma', null, 'active', 'admin', 'suspended', null),
+                new UserMembership('m-4', '0197f1a0-0000-7000-8000-000000000004', 'Delta', null, 'suspended', 'admin', 'active', null),
+            ];
+        }
+    });
+    app()->instance(MembershipPermissions::class, new class implements MembershipPermissions
+    {
+        public function forUser(int $userId, string $workspaceId): array
+        {
+            return [];
+        }
+    });
+
+    $request = Request::create('/dashboard');
+    $request->setUserResolver(fn () => $user);
+    $request->setLaravelSession(app('session')->driver());
+    $request->session()->put('area', 'user');
+    $request->session()->put('workspace_id', SHELL_WORKSPACE);
+
+    $shell = app(ShellNavigation::class)->for($request);
+
+    expect($shell['workspaces'])->toBe([
+        ['id' => SHELL_WORKSPACE, 'name' => 'Acme Industries', 'label' => 'Acme <b>Production</b>', 'role' => 'admin'],
+        ['id' => '0197f1a0-0000-7000-8000-000000000002', 'name' => 'Beta', 'label' => null, 'role' => 'user'],
+    ])
+        ->and($shell['workspace'])->toBe(['id' => SHELL_WORKSPACE, 'name' => 'Acme Industries', 'label' => 'Acme <b>Production</b>'])
+        ->and($shell['switch_href'])->toBe('/workspaces/switch');
+});
+
+it('registers the switch as a named POST route behind auth, with no ID in the path', function () {
+    $route = Router::getRoutes()->getByName('workspaces.switch');
+
+    expect($route)->not->toBeNull()
+        ->and($route->uri())->toBe('workspaces/switch')
+        ->and($route->methods())->toBe(['POST'])
+        ->and($route->gatherMiddleware())->toContain('auth');
+
+    $this->post('/workspaces/switch', ['workspace_id' => (string) Str::uuid()])->assertRedirect('/login');
+});
+
+/** @param list<UserMembership> $memberships */
+function shellWith(array $memberships, string $current = SHELL_WORKSPACE): array
+{
+    $user = new User(['name' => 'Ada', 'email' => 'ada@example.test']);
+    $user->id = 7;
+
+    app()->instance(MembershipLookup::class, new class($memberships) implements MembershipLookup
+    {
+        /** @param list<UserMembership> $memberships */
+        public function __construct(private array $memberships) {}
+
+        public function forUser(int $userId): array
+        {
+            return $this->memberships;
+        }
+    });
+
+    $request = Request::create('/dashboard');
+    $request->setUserResolver(fn () => $user);
+    $request->setLaravelSession(app('session')->driver());
+    $request->session()->put('area', 'user');
+    $request->session()->put('workspace_id', $current);
+
+    return app(ShellNavigation::class)->for($request);
+}
+
+it('treats a session Workspace that is no longer active like no membership', function () {
+    $shell = shellWith([new UserMembership('m-1', SHELL_WORKSPACE, 'Acme', null, 'suspended', 'admin', 'active', null)]);
+
+    expect($shell['workspace'])->toBeNull()->and($shell['role'])->toBeNull()->and($shell['items'])->toBe([])->and($shell['workspaces'])->toBe([]);
+});
+
+it('sorts the switcher list by name, ignoring case, with more than 7 Workspaces', function () {
+    $names = ['zeta', 'Alpha', 'beta', 'Eta', 'delta', 'Gamma', 'Theta', 'epsilon', 'Acme'];
+    $memberships = [];
+
+    foreach ($names as $i => $name) {
+        $memberships[] = new UserMembership("m-{$i}", sprintf('0197f1a0-0000-7000-8000-0000000001%02d', $i), $name, null, 'active', 'user', 'active', null);
+    }
+
+    $shell = shellWith($memberships, $memberships[0]->workspaceId);
+
+    expect(array_column($shell['workspaces'], 'name'))->toBe(['Acme', 'Alpha', 'beta', 'delta', 'epsilon', 'Eta', 'Gamma', 'Theta', 'zeta'])
+        ->and($shell['workspaces'])->toHaveCount(9);
 });

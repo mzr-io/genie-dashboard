@@ -94,8 +94,10 @@ function shell(
 
     return {
         area,
-        workspace: { id: 'w-1', name: 'Acme Industries' },
+        workspace: { id: 'w-1', name: 'Acme Industries', label: null },
         role,
+        workspaces: [],
+        switch_href: '/workspaces/switch',
         items,
         help_href: '/help',
         profile_href: '/settings/profile',

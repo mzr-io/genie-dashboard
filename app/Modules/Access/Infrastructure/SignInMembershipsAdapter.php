@@ -28,13 +28,12 @@ final class SignInMembershipsAdapter implements SignInMemberships
         ), $this->lookup->forUser($userId));
     }
 
-    public function markActive(string $workspaceId, string $membershipId): void
+    public function markActive(string $workspaceId, string $membershipId): bool
     {
-        $this->transactions->run($workspaceId, function () use ($workspaceId, $membershipId): void {
-            WorkspaceMembership::query()
-                ->where('workspace_id', $workspaceId)
-                ->whereKey($membershipId)
-                ->update(['last_active_at' => now()]);
-        });
+        return $this->transactions->run($workspaceId, fn (): bool => WorkspaceMembership::query()
+            ->where('workspace_id', $workspaceId)
+            ->where('status', 'active')
+            ->whereKey($membershipId)
+            ->update(['last_active_at' => now()]) > 0);
     }
 }

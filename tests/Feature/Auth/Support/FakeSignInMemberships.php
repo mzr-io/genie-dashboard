@@ -51,8 +51,10 @@ final class FakeSignInMemberships implements SignInMemberships
         return $all;
     }
 
-    public function markActive(string $workspaceId, string $membershipId): void
+    public function markActive(string $workspaceId, string $membershipId): bool
     {
         $this->marked[] = $membershipId;
+
+        return true;
     }
 }

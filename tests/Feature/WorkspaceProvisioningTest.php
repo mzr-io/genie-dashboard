@@ -25,7 +25,8 @@ it('registers no route whose path creates a Workspace', function () {
     foreach (Route::getRoutes() as $route) {
         $writes = array_diff($route->methods(), ['GET', 'HEAD', 'OPTIONS']);
 
-        expect($writes !== [] && str_contains($route->uri(), 'workspace'))->toBeFalse("route {$route->uri()} must not exist");
+        // `workspaces/switch` (Story 1.17) changes the active Workspace of a session; it creates nothing.
+        expect($writes !== [] && str_contains($route->uri(), 'workspace') && $route->uri() !== 'workspaces/switch')->toBeFalse("route {$route->uri()} must not exist");
     }
 });
 

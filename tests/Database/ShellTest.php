@@ -75,7 +75,7 @@ it('shares the User navigation, the Workspace and the role with a User', functio
 
     expect($shell['area'])->toBe('user')
         ->and($shell['role'])->toBe('user')
-        ->and($shell['workspace'])->toBe(['id' => $workspace, 'name' => 'Acme Industries'])
+        ->and($shell['workspace'])->toBe(['id' => $workspace, 'name' => 'Acme Industries', 'label' => null])
         ->and(array_column($shell['items'], 'key'))->toBe(['overview', 'my-dashboards', 'templates', 'profile', 'help'])
         ->and(array_column($shell['items'], 'href'))->toBe(['/dashboard', '/dashboards', '/templates', '/settings/profile', '/help'])
         ->and(array_unique(array_column($shell['items'], 'allowed')))->toBe([true])
@@ -256,7 +256,10 @@ it('signs out even when recording the event fails, and logs the failure', functi
             throw new RuntimeException('lookup down');
         }
 
-        public function markActive(string $workspaceId, string $membershipId): void {}
+        public function markActive(string $workspaceId, string $membershipId): bool
+        {
+            return true;
+        }
     });
 
     Log::spy();

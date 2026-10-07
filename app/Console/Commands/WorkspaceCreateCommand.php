@@ -23,7 +23,7 @@ use Throwable;
  * commits, so a failed email leaves nothing behind. The action is then mirrored into the Workspace audit
  * log as role `app`, which cannot see the new Workspace until the operator transaction has committed.
  */
-#[Signature('dashflow:workspace:create {name : Workspace name} {label : Short label} {admin-email : Email of the first Admin}')]
+#[Signature('dashflow:workspace:create {name : Workspace name} {label : Descriptive label, up to 64 characters} {admin-email : Email of the first Admin}')]
 class WorkspaceCreateCommand extends Command
 {
     public const CONNECTION = 'operator';
@@ -57,11 +57,11 @@ class WorkspaceCreateCommand extends Command
 
         $validator = Validator::make($input, [
             'name' => ['required', 'string', 'max:255', 'regex:/\A[^\p{C}]+\z/u'],
-            'label' => ['required', 'string', 'max:64', 'regex:/\A[a-z0-9]+(?:-[a-z0-9]+)*\z/'],
+            'label' => ['required', 'string', 'max:64', 'regex:/\A[^\p{C}\p{Zl}\p{Zp}]+\z/u'],
             'email' => ['required', 'string', 'email:rfc', 'max:254'],
         ], [
             'name.regex' => 'The name must not contain control characters or line breaks.',
-            'label.regex' => 'The label must be a lower-case slug: letters, digits and single hyphens, like acme-corp.',
+            'label.regex' => 'The label must not contain control characters or line breaks.',
         ], ['email' => 'admin-email']);
 
         if ($validator->fails()) {
@@ -75,21 +75,6 @@ class WorkspaceCreateCommand extends Command
         $workspaceId = (string) Str::uuid7();
         $connection = DB::connection(self::CONNECTION);
         $actor = self::actor();
-
-        try {
-            // Column-limited: `operator` may read `label` only, so no `select *`.
-            $taken = $connection->table('workspaces')->where('label', $input['label'])->value('label') !== null;
-        } catch (Throwable $e) {
-            $this->components->error('Nothing was created: '.$e::class.'.');
-
-            return self::FAILURE;
-        }
-
-        if ($taken) {
-            $this->components->error("A Workspace with the label \"{$input['label']}\" already exists. Choose another label.");
-
-            return self::INVALID;
-        }
 
         try {
             $invitationId = $connection->transaction(function () use ($connection, $invitations, $hasher, $workspaceId, $input, $actor): string {

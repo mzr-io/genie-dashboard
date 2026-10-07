@@ -260,6 +260,15 @@ export const shellLabels = {
     retry: 'Retry',
     loadFailed: (items: string) => `We couldn't load ${items}. Try again.`,
     loadingItems: (items: string) => `Loading ${items}`,
+    // Workspace switcher (Story 1.17). The message after a role drop is `workspace-role` in the catalogue.
+    switchWorkspace: 'Switch workspace',
+    switchWorkspaceCard: (name: string) => `Switch workspace, current: ${name}`,
+    workspaceList: 'Workspaces',
+    searchWorkspaces: 'Search workspaces',
+    noWorkspaceMatch: 'No workspace matches your search.',
+    currentWorkspace: 'Current workspace',
+    switchFailed: "We couldn't switch workspace. Try again.",
+    switchSave: 'Save',
 } as const;
 
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after

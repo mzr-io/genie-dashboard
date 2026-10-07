@@ -19,7 +19,6 @@ final class IdentityAuditSerializer implements AuditSerializer
             'user_id' => AuditField::Id,
             'membership_id' => AuditField::Id,
             'invitation_id' => AuditField::Id,
-            'from_workspace_id' => AuditField::Id,
             'to_workspace_id' => AuditField::Id,
             'area' => AuditField::Enum,
             'reason' => AuditField::Enum,

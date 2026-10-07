@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Modules\Access\Contracts\MembershipLookup;
 use App\Modules\Access\Contracts\MembershipPermissions;
 use App\Modules\Access\Contracts\Permission;
+use App\Modules\Access\Contracts\UserMembership;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -55,7 +56,7 @@ final class ShellNavigation
     ) {}
 
     /**
-     * @return array{area: string, workspace: array{id: string, name: string}|null, role: string|null, items: list<array{key: string, href: string, permission: string|null, allowed: bool}>, help_href: string, profile_href: string, sign_out_href: string}
+     * @return array{area: string, workspace: array{id: string, name: string, label: string|null}|null, role: string|null, workspaces: list<array{id: string, name: string, label: string|null, role: string}>, items: list<array{key: string, href: string, permission: string|null, allowed: bool}>, switch_href: string, help_href: string, profile_href: string, sign_out_href: string}
      */
     public function for(Request $request): array
     {
@@ -67,9 +68,10 @@ final class ShellNavigation
         $workspace = null;
         $role = null;
         $held = [];
+        $memberships = $user instanceof User ? $this->memberships($user->id) : [];
 
-        if ($user instanceof User && $workspaceId !== null) {
-            [$workspace, $role] = $this->membership($user->id, $workspaceId);
+        if ($workspaceId !== null) {
+            [$workspace, $role] = $this->membership($memberships, $workspaceId);
         }
 
         // The navigation follows the active membership, not just the session: the Admin navigation needs an
@@ -78,14 +80,16 @@ final class ShellNavigation
         // Sign out remain in the footer).
         $effective = $workspace === null ? null : ($area === 'admin' && $role === 'admin' ? 'admin' : 'user');
 
-        if ($effective === 'admin' && $user instanceof User && $workspaceId !== null) {
-            $held = $this->held($user->id, $workspaceId);
+        if ($effective === 'admin' && $user instanceof User) {
+            $held = $this->held($user->id, $workspace['id']);
         }
 
         return [
             'area' => $effective ?? $area,
             'workspace' => $workspace,
             'role' => $role,
+            'workspaces' => $this->workspaces($memberships),
+            'switch_href' => route('workspaces.switch', absolute: false),
             'items' => match ($effective) {
                 'admin' => $this->adminItems($held),
                 'user' => $this->userItems(),
@@ -98,21 +102,63 @@ final class ShellNavigation
     }
 
     /**
-     * @return array{0: array{id: string, name: string}|null, 1: string|null}
+     * Every membership of the person (the Access SECURITY DEFINER lookup), read once per request; a failed
+     * read means no Workspace and no switcher rather than a failed page.
+     *
+     * @return list<UserMembership>
      */
-    private function membership(int $userId, string $workspaceId): array
+    private function memberships(int $userId): array
     {
         try {
-            foreach ($this->memberships->forUser($userId) as $membership) {
-                if ($membership->workspaceId === $workspaceId && $membership->status === 'active') {
-                    return [['id' => $membership->workspaceId, 'name' => $membership->workspaceName], $membership->role];
-                }
-            }
+            return $this->memberships->forUser($userId);
         } catch (Throwable) {
             Log::error('shell.membership.failed');
+
+            return [];
+        }
+    }
+
+    /**
+     * @param  list<UserMembership>  $memberships
+     * @return array{0: array{id: string, name: string, label: string|null}|null, 1: string|null}
+     */
+    private function membership(array $memberships, string $workspaceId): array
+    {
+        foreach ($memberships as $membership) {
+            if ($membership->workspaceId === $workspaceId && $membership->status === 'active' && $membership->workspaceStatus === 'active') {
+                return [['id' => $membership->workspaceId, 'name' => $membership->workspaceName, 'label' => $membership->workspaceLabel], $membership->role];
+            }
         }
 
         return [null, null];
+    }
+
+    /**
+     * The Workspaces the person may switch to: usable memberships only (active membership in an active
+     * Workspace), in Workspace-name order. The label is cosmetic text, shown verbatim.
+     *
+     * @param  list<UserMembership>  $memberships
+     * @return list<array{id: string, name: string, label: string|null, role: string}>
+     */
+    private function workspaces(array $memberships): array
+    {
+        $list = [];
+
+        foreach ($memberships as $membership) {
+            if ($membership->status === 'active' && $membership->workspaceStatus === 'active') {
+                $list[] = [
+                    'id' => $membership->workspaceId,
+                    'name' => $membership->workspaceName,
+                    'label' => $membership->workspaceLabel,
+                    'role' => $membership->role,
+                ];
+            }
+        }
+
+        // Case-insensitive by name (the lookup's own order is the database collation's); ID breaks ties.
+        usort($list, fn (array $a, array $b): int => [mb_strtolower($a['name']), $a['name'], $a['id']] <=> [mb_strtolower($b['name']), $b['name'], $b['id']]);
+
+        return $list;
     }
 
     /**
