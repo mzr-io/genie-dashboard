@@ -46,7 +46,7 @@ return [
         ],
         'Connector' => [
             'data_sources', 'endpoints', 'endpoint_revisions', 'secrets',
-            'host_allowlist_entries', 'host_allowlist_versions', 'endpoint_usage',
+            'host_allowlist_entries', 'host_allowlist_versions', 'egress_grants', 'endpoint_usage',
         ],
         'Ingestion' => ['sync_targets', 'sync_subscriptions', 'sync_generations', 'sync_runs'],
         'RawStore' => ['raw_bodies', 'raw_observations'],

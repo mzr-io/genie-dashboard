@@ -1,0 +1,12 @@
+<?php
+
+namespace App\Modules\Connector\Infrastructure;
+
+final class NativeCurlClient
+{
+    public function run(): void
+    {
+        $h = curl_init();
+        curl_setopt($h, CURLOPT_URL, 'https://example.com');
+    }
+}

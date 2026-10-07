@@ -132,6 +132,19 @@ return [
 
     ],
 
+    // Outbound guard settings (Story 2.2). Each is `pending_input` with no default and kept outside `tunables`, the closed
+    // AR-57 list. Unset: no deployment CIDR beyond the built-in undeniable ranges, no SSRF alert, and the operator grant
+    // commands refuse to run (no password hash).
+    'egress' => [
+        // Comma-separated CIDRs of the deployment's own networks (database, cache, internal services): never reachable.
+        'deployment_cidrs' => $tunable('DASHFLOW_EGRESS_DEPLOYMENT_CIDRS'),
+        // The SSRF alert fires when one Workspace has more than `alert_threshold` blocks within `alert_window` seconds.
+        'alert_threshold' => $tunable('DASHFLOW_EGRESS_ALERT_THRESHOLD'),
+        'alert_window' => $tunable('DASHFLOW_EGRESS_ALERT_WINDOW'),
+        // bcrypt hash of the operator's password, checked by `dashflow:egress:grant` and `:revoke`. Given to the operator service only.
+        'operator_password_hash' => $tunable('DASHFLOW_EGRESS_OPERATOR_PASSWORD_HASH'),
+    ],
+
     // Load-test harness targets (Story 1.25), read by `npm run load` (load/config.mjs) from the environment.
     // Each is `pending_input` with no default: the harness exits non-zero naming every variable that is unset.
     // Kept outside `tunables`, which is the closed AR-57 list. tests/Feature/LoadSettingsTest.php keeps this list

@@ -153,6 +153,38 @@ final class Scanner
     }
 
     /**
+     * Any file under `$appRoot` that makes an outbound request around the guard: curl, the `Http` facade, Guzzle, raw sockets,
+     * or `file_get_contents` / `fopen` on an http(s) URL. Only NativeCurlClient may use curl.
+     *
+     * @return list<string>
+     */
+    public function egressViolations(string $appRoot): array
+    {
+        $violations = [];
+        $pattern = '/\bcurl_(?:init|setopt|setopt_array|multi_init)\s*\(|\bHttp::|\bGuzzleHttp\\\\Client\b|\bfsockopen\s*\(|\bpfsockopen\s*\(|\bstream_socket_client\s*\(|\b(?:file_get_contents|fopen)\s*\(\s*[\'"]https?:\/\//i';
+
+        foreach ($this->files($appRoot) as $file) {
+            $relative = substr($file, strlen(rtrim($appRoot, '/')) + 1);
+
+            // HealthChecker only probes this container's own listening port on 127.0.0.1: no Data Source, no outside host.
+            if (in_array($relative, ['Modules/Connector/Infrastructure/NativeCurlClient.php', 'Modules/Connector/Infrastructure/NativeCurlClient.php.stub', 'Support/Health/HealthChecker.php'], true)) {
+                continue;
+            }
+
+            $code = $this->stripComments((string) file_get_contents($file));
+            $code = str_replace('\\\\', '\\', $code);
+
+            if (preg_match_all($pattern, $code, $matches, PREG_OFFSET_CAPTURE)) {
+                foreach ($matches[0] as [$text, $offset]) {
+                    $violations[] = "{$file}:{$this->lineAt($code, $offset)} makes an outbound request with {$text}; use EgressTransport";
+                }
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
      * Migrations creating a non-global table without `workspace_id`.
      *
      * @return list<string>

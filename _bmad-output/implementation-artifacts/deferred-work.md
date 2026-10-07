@@ -123,3 +123,15 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-1-manage-the-workspace-host-allowlist.md`
   summary: Story 2.2 must review `BlockedAddress` for documentation and benchmark ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24, 198.18.0.0/15, 2001:db8::/32) and decide about reserved host names (`localhost`, `*.internal`).
   evidence: Story 2.1 blocks only the classes the spec names and accepts any non-IP name; the EgressGuard classifier reuses `BlockedAddress` as the single list.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-guard-every-outbound-url-with-egressguard-and-operator-private-range-grants.md`
+  summary: Add a replay path for a failed Workspace-audit mirror of an egress grant or revoke.
+  evidence: The mirror runs after the operator commit; on failure the row and `operator_audit` entry exist but a retry fails as already_granted or not_granted.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-guard-every-outbound-url-with-egressguard-and-operator-private-range-grants.md`
+  summary: Replace the single shared operator password hash with real operator identities, add a cross-run lockout, and keep the hash out of container env.
+  evidence: Operator re-confirmation is one bcrypt hash in an env setting; the three-attempt limit resets on every run and the hash is visible via docker inspect.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-guard-every-outbound-url-with-egressguard-and-operator-private-range-grants.md`
+  summary: Add a response-size ceiling to the egress transport (Story 2.6) and pin all checked records for dual-stack fallback (Story 2.14).
+  evidence: NativeCurlClient buffers the whole body and pins only addresses[0]; no caller exists yet.

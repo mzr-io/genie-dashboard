@@ -14,6 +14,9 @@ enum AuditField
     /** A host name or IP literal (lower case letters, digits, dots, hyphens, colons and brackets), stored as is. */
     case Host;
 
+    /** A network in CIDR notation (`10.0.0.0/8`, `fd00::/8`), stored as is. */
+    case Cidr;
+
     /** A non-negative integer count, stored as is. */
     case Count;
 

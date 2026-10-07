@@ -12,6 +12,9 @@ interface HostAllowlist
 {
     public function list(string $workspaceId, AllowlistQuery $query): AllowlistPage;
 
+    /** Whether the Workspace allowlists this exact scheme, host (lower case, an IPv6 literal bracketed) and port. */
+    public function isAllowed(string $workspaceId, string $scheme, string $host, int $port): bool;
+
     /**
      * @return AddedHost the new entry and the list's new revision
      *

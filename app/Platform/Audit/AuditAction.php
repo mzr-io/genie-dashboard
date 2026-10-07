@@ -45,6 +45,11 @@ enum AuditAction: string
     case ConnectorHostAllowlistEntryCreated = 'connector.host_allowlist_entry.created';
     case ConnectorHostAllowlistEntryRemoved = 'connector.host_allowlist_entry.removed';
 
+    // Connector: outbound guard (Story 2.2). A block is a security event; a grant is an operator action mirrored here.
+    case ConnectorEgressBlocked = 'connector.egress.blocked';
+    case ConnectorEgressGrantCreated = 'connector.egress_grant.created';
+    case ConnectorEgressGrantRevoked = 'connector.egress_grant.revoked';
+
     // Platform: operator actions mirrored into the Workspace audit log.
     case PlatformWorkspaceCreated = 'platform.workspace.created';
 

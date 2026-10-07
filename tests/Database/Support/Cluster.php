@@ -228,6 +228,7 @@ final class Cluster
             'group_members' => self::seedGroupMember($workspaceId),
             'host_allowlist_entries' => self::seedHostEntry($workspaceId),
             'host_allowlist_versions' => self::seedHostVersion($workspaceId),
+            'egress_grants' => self::seedEgressGrant($workspaceId),
             default => null,
         };
     }
@@ -282,6 +283,15 @@ final class Cluster
         $id = (string) Str::uuid7();
         self::superuser()->prepare('INSERT INTO host_allowlist_entries (id, workspace_id, host, scheme, port, added_by_membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, now(), now())')
             ->execute([$id, $workspaceId, $host === '' ? 'host-'.$id.'.example.test' : $host, $scheme, $port, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    public static function seedEgressGrant(string $workspaceId, string $cidr = '10.0.0.0/8', bool $revoked = false): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO egress_grants (id, workspace_id, cidr, reason, granted_by, granted_at, revoked_at, revoked_by) VALUES (?, ?, ?, ?, ?, now(), '.($revoked ? 'now()' : 'NULL').', '.($revoked ? "'operator:test'" : 'NULL').')')
+            ->execute([$id, $workspaceId, $cidr, 'test grant', 'operator:test']);
 
         return $id;
     }

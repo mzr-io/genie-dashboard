@@ -9,4 +9,5 @@ namespace App\Modules\Connector\Contracts;
 enum ErrorCode: string
 {
     case RevisionConflict = 'connector.revision_conflict';
+    case SsrfBlocked = 'connector.ssrf_blocked';
 }

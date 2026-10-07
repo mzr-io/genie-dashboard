@@ -44,11 +44,12 @@ it('gives app SELECT, INSERT and UPDATE on tenant tables and nothing else', func
             $privileges[$privilege] = Cluster::rows(Cluster::superuser(), 'select has_table_privilege(?, ?, ?) as p', ['app', "public.{$table}", $privilege])[0]['p'];
         }
 
-        // Append-only and relay-owned tables: app never updates them.
-        $updatable = ! in_array($table, ['audit_events', 'outbox_events', 'outbox_consumptions'], true);
+        // Append-only and relay-owned tables: app never updates them. `egress_grants` is the operator's: app only reads it.
+        $updatable = ! in_array($table, ['audit_events', 'outbox_events', 'outbox_consumptions', 'egress_grants'], true);
+        $insertable = $table !== 'egress_grants';
 
         expect($privileges)->toBe([
-            'SELECT' => true, 'INSERT' => true, 'UPDATE' => $updatable,
+            'SELECT' => true, 'INSERT' => $insertable, 'UPDATE' => $updatable,
             'DELETE' => false, 'TRUNCATE' => false, 'REFERENCES' => false, 'TRIGGER' => false,
         ], "app privileges on {$table}");
     }
@@ -100,18 +101,37 @@ it('does not let app bypass or change row-level security', function () {
     expect(Cluster::rows($app, "select rolbypassrls from pg_roles where rolname = 'app'")[0]['rolbypassrls'])->toBeFalse();
 });
 
-it('gives system no table-level privileges and operator INSERT on workspaces, invitations and operator_audit only', function () {
-    $operatorInsert = ['workspaces', 'invitations', 'operator_audit'];
+it('gives system no table-level privileges and operator INSERT on workspaces, invitations, operator_audit and egress_grants, and SELECT on egress_grants only', function () {
+    $operatorInsert = ['workspaces', 'invitations', 'operator_audit', 'egress_grants'];
 
     foreach (['system', 'operator'] as $role) {
         foreach (Cluster::allTables() as $table) {
             foreach (['SELECT', 'INSERT', 'UPDATE', 'DELETE'] as $privilege) {
-                $expected = $role === 'operator' && $privilege === 'INSERT' && in_array($table, $operatorInsert, true);
+                $expected = $role === 'operator' && (
+                    ($privilege === 'INSERT' && in_array($table, $operatorInsert, true))
+                    || ($privilege === 'SELECT' && $table === 'egress_grants')
+                );
 
                 expect(Cluster::rows(Cluster::superuser(), 'select has_table_privilege(?, ?, ?) as p', [$role, "public.{$table}", $privilege])[0]['p'])
                     ->toBe($expected, "{$role} {$privilege} on {$table}");
             }
         }
+    }
+});
+
+it('lets operator UPDATE only revoked_at and revoked_by of egress_grants, and app only read it', function () {
+    $column = fn (string $role, string $name): bool => Cluster::rows(Cluster::superuser(), "select has_column_privilege(?, 'public.egress_grants', ?, 'UPDATE') as p", [$role, $name])[0]['p'];
+
+    foreach (['revoked_at', 'revoked_by'] as $name) {
+        expect($column('operator', $name))->toBeTrue("operator UPDATE on egress_grants.{$name}");
+    }
+
+    foreach (['id', 'workspace_id', 'cidr', 'reason', 'granted_by', 'granted_at'] as $name) {
+        expect($column('operator', $name))->toBeFalse("operator UPDATE on egress_grants.{$name}");
+    }
+
+    foreach (['revoked_at', 'cidr', 'workspace_id'] as $name) {
+        expect($column('app', $name))->toBeFalse("app UPDATE on egress_grants.{$name}");
     }
 });
 

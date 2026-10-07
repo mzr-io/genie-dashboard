@@ -78,6 +78,14 @@ final class ManageHostAllowlist implements HostAllowlist
         });
     }
 
+    public function isAllowed(string $workspaceId, string $scheme, string $host, int $port): bool
+    {
+        return $this->transactions->run($workspaceId, fn (): bool => DB::selectOne(
+            'select 1 as found from host_allowlist_entries where workspace_id = ? and scheme = ? and host = ? and port = ? limit 1',
+            [$workspaceId, $scheme, $host, $port],
+        ) !== null);
+    }
+
     public function add(AllowlistActor $actor, AllowedHost $host, int $revision): AddedHost
     {
         return $this->transactions->run($actor->workspaceId, function () use ($actor, $host, $revision): AddedHost {

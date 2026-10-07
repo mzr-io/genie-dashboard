@@ -61,6 +61,11 @@ x-app-env: &app-env
     # 422 `access.invitations_not_configured` and `dashflow:workspace:create` refuses to run). Every role gets it
     # because the web role creates invitations and the operator service shares this block.
     DASHFLOW_INVITATION_LIFETIME: ${DASHFLOW_INVITATION_LIFETIME:-}
+    # Outbound guard (Story 2.2; pending_input, empty = unset): the deployment's own CIDRs (never reachable) and the SSRF
+    # alert threshold and window in seconds (the alert is off unless both are set).
+    DASHFLOW_EGRESS_DEPLOYMENT_CIDRS: ${DASHFLOW_EGRESS_DEPLOYMENT_CIDRS:-}
+    DASHFLOW_EGRESS_ALERT_THRESHOLD: ${DASHFLOW_EGRESS_ALERT_THRESHOLD:-}
+    DASHFLOW_EGRESS_ALERT_WINDOW: ${DASHFLOW_EGRESS_ALERT_WINDOW:-}
     # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
     OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
@@ -292,6 +297,7 @@ services:
     # One-off operator commands, not started by `docker compose up` (profile `operator`). The only service
     # holding the `operator` database credentials. Create a Workspace and invite its first Admin with:
     #   docker compose run --rm operator php artisan dashflow:workspace:create "Name" label admin@example.com
+    # Check, grant and revoke private-range access for a Workspace (Story 2.2) with dashflow:egress:check, :grant and :revoke.
     operator:
         <<: *app
         profiles: ['operator']
@@ -308,6 +314,9 @@ services:
             DB_OPERATOR_USERNAME: operator
             DB_OPERATOR_PASSWORD: ${POSTGRES_OPERATOR_PASSWORD:-dashflow-dev-operator}
             DASHFLOW_INVITATION_LIFETIME: ${DASHFLOW_INVITATION_LIFETIME:-}
+            # bcrypt hash `dashflow:egress:grant` and `:revoke` check the operator's password against (pending_input;
+            # empty = unset, so they refuse). Only this service holds it.
+            DASHFLOW_EGRESS_OPERATOR_PASSWORD_HASH: ${DASHFLOW_EGRESS_OPERATOR_PASSWORD_HASH:-}
         depends_on:
             postgres:
                 condition: service_healthy

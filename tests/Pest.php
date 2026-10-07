@@ -32,4 +32,8 @@ pest()->group('security')->in(
     'Feature/Auth/PasswordResetFlowTest.php',
     'Feature/Queue/SignedJobTest.php',
     'Unit/JobSignerTest.php',
+    'Unit/EgressGuardTest.php',
+    'Unit/BlockedAddressClassTest.php',
+    'Database/EgressGrantsTest.php',
+    'Database/EgressTransportTest.php',
 );

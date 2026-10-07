@@ -81,6 +81,32 @@ function securityManifest(): array
             'Unit/JobSignerTest.php' => ['rejects a payload whose signed fields changed'],
             'Database/WorkspaceJobTest.php' => ['carries workspace_id in the serialised command, so the job signature covers it'],
         ]],
+        'SSRF: every undeniable address class, odd IP spellings and mixed answers are denied, whatever the grants' => ['tests' => [
+            'Unit/EgressGuardTest.php' => [
+                'denies the whole request as blocked_address when any resolved address is undeniable',
+                'classifies every spelling of a blocked IP literal and never resolves it',
+                'never lets a grant lift an undeniable class',
+                'classifies the deployment CIDRs as undeniable, even with a grant that covers them',
+            ],
+            'Unit/BlockedAddressClassTest.php' => ['classifies an address as undeniable, whatever a grant says'],
+        ]],
+        'SSRF: a private range is allowed only for the Workspace holding an operator grant' => ['tests' => [
+            'Unit/EgressGuardTest.php' => ['denies a private address without a grant as host_not_allowlisted, and allows it for the Workspace holding the grant only'],
+            'Database/EgressGrantsTest.php' => [
+                'allows a granted private range for that Workspace only',
+                'refuses a CIDR that is undeniable, overlaps one, overlaps the deployment, is public, is malformed or is already granted, and writes nothing',
+                'records a denial as a connector.egress.blocked security event with reason, host and port and never an address',
+            ],
+        ]],
+        'SSRF: pinned connection, rebinding, redirects and proxy variables' => ['tests' => [
+            'Database/EgressTransportTest.php' => [
+                'connects to exactly the address the guard checked: the host and port are pinned with CURLOPT_RESOLVE',
+                'resolves the name once: a name that answers public and then loopback never reaches loopback (rebinding)',
+                'refuses a redirect to another origin, a non-allowlisted host, another port or an https-to-http downgrade, sends nothing more and audits it',
+                'ignores every proxy variable: the proxy option is empty and NO_PROXY is *',
+                'does not follow a redirect inside curl and ignores proxy variables set in the environment (httpoxy)',
+            ],
+        ]],
         'fail closed on missing context' => ['tests' => [
             'Database/RowLevelSecurityTest.php' => ['returns zero rows from every tenant table when no context is set'],
             'Database/AuditTest.php' => ['refuses to run outside a Workspace transaction and stores nothing'],
