@@ -11,6 +11,9 @@ enum AuditField
     /** A short enum-style slug, stored as is. */
     case Enum;
 
+    /** A non-negative integer count, stored as is. */
+    case Count;
+
     /** Any other attribute, header or sample value: stored as an HMAC-SHA256 hash, never raw. */
     case Hashed;
 }

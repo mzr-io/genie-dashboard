@@ -1,30 +1,54 @@
 <script setup lang="ts">
 import { Head } from '@inertiajs/vue3';
 import { Ban, CircleCheck, Mail } from '@lucide/vue';
-import { computed, onBeforeUnmount, onMounted, ref, useId } from 'vue';
+import {
+    computed,
+    nextTick,
+    onBeforeUnmount,
+    onMounted,
+    ref,
+    useId,
+} from 'vue';
 import type { Component } from 'vue';
 import { useI18n } from 'vue-i18n';
 import DataTable from '@/components/DataTable.vue';
 import type { DataTableColumn } from '@/components/DataTable.vue';
+import InviteUserForm from '@/components/InviteUserForm.vue';
 import InviteUserLink from '@/components/InviteUserLink.vue';
 import ListStates from '@/components/ListStates.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import Tag from '@/components/Tag.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { useShell } from '@/composables/useShell';
 import { announce, announceDebounced } from '@/lib/announce';
 import { formatDateTime } from '@/lib/format';
-import { fetchMembers, memberKey, MembersRequestError } from '@/lib/members';
+import {
+    fetchMembers,
+    InvitationRequestError,
+    memberKey,
+    MembersRequestError,
+    resendInvitation,
+    revokeInvitation,
+} from '@/lib/members';
 import type { Member, MembersMeta, MemberSortKey } from '@/lib/members';
 import { SIGN_IN_URL } from '@/lib/session';
-import { shellPages, userListLabels as labels } from '@/locales/labels';
+import {
+    inviteLabels,
+    shellPages,
+    userListLabels as labels,
+} from '@/locales/labels';
+import { useToasts } from '@/stores/toasts';
 
 // User configuration (Story 1.20): the Workspace's members and pending invitations in a sortable, searchable
 // data table paged by cursor. The server owns the rows, the sort whitelist and the page-size cap; the page
 // shows the generic list states (UX-DR-263): the toolbar stays while 5 skeleton rows load or a failure row
 // with Retry shows, `list-empty` with "Invite user", and `list-no-match` with Clear search. Groups arrive with
-// Story 1.23, so the column shows "No groups". "Invite user" stays disabled, with its reason, until Story 1.21.
+// Story 1.23, so the column shows "No groups". "Invite user" expands the inline invite form (Story 1.21); an
+// Invited row carries Resend and Revoke.
 const { t } = useI18n();
+const { can } = useShell();
+const toasts = useToasts();
 const config = shellPages['user-configuration'];
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -46,6 +70,12 @@ const meta = ref<MembersMeta | null>(null);
 const state = ref<'loading' | 'error' | 'forbidden' | 'ready'>('loading');
 const refreshing = ref(false);
 const searchId = useId();
+const inviting = ref(false);
+const inviteRegionId = useId();
+const busyRows = ref<string[]>([]);
+const heldPermissions = computed(() =>
+    Object.keys(can.value).filter((key) => can.value[key] === true),
+);
 
 let controller: AbortController | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -81,6 +111,7 @@ const columns: DataTableColumn[] = [
         sortable: true,
         class: 'tabular-nums',
     },
+    { key: 'actions', label: labels.actions },
 ];
 
 const statusIcons: Record<Member['status'], Component> = {
@@ -245,6 +276,85 @@ function previousPage(): void {
     void load();
 }
 
+function toggleInvite(): void {
+    inviting.value = !inviting.value;
+}
+
+function closeInvite(): void {
+    inviting.value = false;
+    void nextTick(() =>
+        document
+            .querySelector<HTMLElement>('[data-test="invite-user"]')
+            ?.focus(),
+    );
+}
+
+// An invitation was created, re-sent or saved without its email: show it (the first page, current order).
+function invited(): void {
+    cursors.value = [null];
+    void load();
+}
+
+function isBusy(row: Member): boolean {
+    return busyRows.value.includes(memberKey(row));
+}
+
+async function rowAction(
+    row: Member,
+    action: (id: string) => Promise<unknown>,
+    done: string,
+): Promise<void> {
+    const id = row.invitation_id;
+
+    if (!id || isBusy(row)) {
+        return;
+    }
+
+    busyRows.value = [...busyRows.value, memberKey(row)];
+
+    try {
+        await action(id);
+        announce(done, 'polite');
+        await load();
+    } catch (error) {
+        if (
+            error instanceof InvitationRequestError &&
+            (error.status === 401 || error.status === 419)
+        ) {
+            window.location.assign(SIGN_IN_URL);
+
+            return;
+        }
+
+        // The row is as the server left it; say why the action did not happen.
+        const status =
+            error instanceof InvitationRequestError ? error.status : 0;
+        const code =
+            error instanceof InvitationRequestError ? error.code : null;
+        const message =
+            code === 'access.permission_not_held'
+                ? inviteLabels.resendNotHeld
+                : status === 429
+                  ? t('throttled')
+                  : status === 404
+                    ? inviteLabels.gone
+                    : t('save-failed.form');
+
+        toasts.add({ kind: 'error', message });
+        await load();
+    } finally {
+        busyRows.value = busyRows.value.filter((key) => key !== memberKey(row));
+    }
+}
+
+function resend(row: Member): Promise<void> {
+    return rowAction(row, resendInvitation, labels.resent(row.email));
+}
+
+function revoke(row: Member): Promise<void> {
+    return rowAction(row, revokeInvitation, labels.revoked(row.email));
+}
+
 onMounted(() => {
     void load();
 });
@@ -263,9 +373,22 @@ onBeforeUnmount(() => {
 
     <div class="flex flex-col gap-6 px-4 py-6 sm:px-7">
         <PageHeader :title="config.title">
-            <!-- Disabled with its reason until Story 1.21; in the empty state it sits in the empty region. -->
-            <InviteUserLink v-if="!isEmpty" />
+            <!-- In the empty state the action sits in the empty region instead. -->
+            <InviteUserLink
+                v-if="!isEmpty"
+                :expanded="inviting"
+                :controls="inviteRegionId"
+                @open="toggleInvite"
+            />
         </PageHeader>
+
+        <div v-if="inviting" :id="inviteRegionId">
+            <InviteUserForm
+                :held="heldPermissions"
+                @changed="invited"
+                @close="closeInvite"
+            />
+        </div>
 
         <div
             v-if="showToolbar"
@@ -327,7 +450,11 @@ onBeforeUnmount(() => {
             :items="config.items"
             :action="config.action"
         >
-            <InviteUserLink />
+            <InviteUserLink
+                :expanded="inviting"
+                :controls="inviteRegionId"
+                @open="toggleInvite"
+            />
         </ListStates>
 
         <section
@@ -407,6 +534,35 @@ onBeforeUnmount(() => {
                         <span aria-hidden="true">{{ labels.emptyCell }}</span>
                         <span class="sr-only">{{ labels.noLastActive }}</span>
                     </template>
+                </template>
+                <template #cell-actions="{ row }">
+                    <span
+                        v-if="row.kind === 'invitation'"
+                        class="flex flex-wrap items-center gap-2"
+                    >
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            :disabled="isBusy(row)"
+                            :aria-label="labels.resendFor(row.email)"
+                            data-test="resend"
+                            @click="resend(row)"
+                        >
+                            {{ labels.resend }}
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="destructive-soft"
+                            size="sm"
+                            :disabled="isBusy(row)"
+                            :aria-label="labels.revokeFor(row.email)"
+                            data-test="revoke"
+                            @click="revoke(row)"
+                        >
+                            {{ labels.revoke }}
+                        </Button>
+                    </span>
                 </template>
             </DataTable>
 

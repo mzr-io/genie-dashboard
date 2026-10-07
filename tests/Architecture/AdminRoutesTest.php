@@ -101,3 +101,16 @@ it('registers every ADMIN_API_ROUTES entry as a route that uses the admin middle
         ->and(ShellNavigation::ADMIN_API_ROUTES['api.admin.members'])->toBe(Permission::UsersManage)
         ->and(ShellNavigation::ADMIN_API_ROUTES['api.admin.members.show'])->toBe(Permission::UsersManage);
 });
+
+it('maps the invitation routes (create, resend, revoke) to users.manage and no other permission', function () {
+    $routes = ['api.admin.invitations.store' => 'POST', 'api.admin.invitations.resend' => 'POST', 'api.admin.invitations.destroy' => 'DELETE'];
+
+    foreach ($routes as $name => $method) {
+        $route = Router::getRoutes()->getByName($name);
+
+        expect($route)->not->toBeNull($name)
+            ->and($route->methods())->toContain($method)
+            ->and(ShellNavigation::ADMIN_API_ROUTES[$name])->toBe(Permission::UsersManage)
+            ->and(adminMiddlewareKeys($route))->toBe([null]);
+    }
+});

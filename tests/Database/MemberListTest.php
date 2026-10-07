@@ -118,6 +118,16 @@ it('leaves used and expired invitations out', function () {
     expect(array_column(listGet()->json('data'), 'email'))->toEqualCanonicalizing(['admin@example.test', 'pending@example.test']);
 });
 
+it('leaves revoked invitations out of the list and the function', function () {
+    $workspace = Cluster::workspace('Acme');
+    listAdmin($workspace);
+    $revoked = listInvitation($workspace, 'revoked@example.test');
+    listInvitation($workspace, 'pending@example.test');
+    Cluster::superuser()->prepare('UPDATE invitations SET revoked_at = now() WHERE id = ?')->execute([$revoked]);
+
+    expect(array_column(listGet()->json('data'), 'email'))->toEqualCanonicalizing(['admin@example.test', 'pending@example.test']);
+});
+
 it('returns no invitations from the function when the Workspace context is unset, and only its own with it', function () {
     $a = Cluster::workspace('Alpha');
     $b = Cluster::workspace('Beta');

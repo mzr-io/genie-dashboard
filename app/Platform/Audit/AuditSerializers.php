@@ -62,6 +62,7 @@ final class AuditSerializers
                 $value === null => null,
                 $kind === AuditField::Id => $this->id($name, $value),
                 $kind === AuditField::Enum => $this->slug($name, $value),
+                $kind === AuditField::Count => $this->count($name, $value),
                 default => $this->hasher->hash($value),
             };
         }
@@ -80,6 +81,15 @@ final class AuditSerializers
         }
 
         throw new InvalidArgumentException("Audit field {$name} is declared an ID and must be an integer or a UUID.");
+    }
+
+    private function count(string $name, mixed $value): int
+    {
+        if (is_int($value) && $value >= 0) {
+            return $value;
+        }
+
+        throw new InvalidArgumentException("Audit field {$name} is declared a count and must be a non-negative integer.");
     }
 
     private function slug(string $name, mixed $value): string

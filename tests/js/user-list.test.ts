@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import { flushPromises, mount } from '@vue/test-utils';
+import { createPinia, setActivePinia } from 'pinia';
 import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createCatalogue } from '../../resources/js/lib/i18n';
@@ -9,6 +10,10 @@ import type { Member } from '../../resources/js/lib/members';
 
 vi.mock('@inertiajs/vue3', () => ({
     Head: { render: () => null },
+    usePage: () => ({
+        url: '/admin/users',
+        props: { shell: { can: { 'users.manage': true }, items: [] } },
+    }),
 }));
 
 const { default: Users } =
@@ -76,6 +81,7 @@ const $$ = (selector: string) =>
 const polite = () => $('[data-announcer="polite"]');
 
 beforeEach(() => {
+    setActivePinia(createPinia());
     requests.length = 0;
     replies = [];
     vi.stubGlobal(
@@ -153,7 +159,7 @@ describe('User configuration', () => {
             userListLabels.caption,
         );
         const headers = $$('thead th');
-        expect(headers).toHaveLength(6);
+        expect(headers).toHaveLength(7);
         expect(headers.every((th) => th.getAttribute('scope') === 'col')).toBe(
             true,
         );
@@ -182,22 +188,16 @@ describe('User configuration', () => {
         expect(requests[0]).toContain('/api/v1/admin/members?');
     });
 
-    it('shows a Workspace with only the first Admin as that row, with Invite user disabled with its reason', async () => {
+    it('shows a Workspace with only the first Admin as that row, with Invite user enabled', async () => {
         replies = [ok(body([member()]))];
         await mountPage();
 
         expect($$('tbody tr')).toHaveLength(1);
         const invite = $('[data-test="invite-user"]')!;
-        expect(invite.tagName).toBe('A');
+        expect(invite.tagName).toBe('BUTTON');
         expect(invite.textContent?.trim()).toBe(userListLabels.invite);
-        expect(invite.getAttribute('aria-disabled')).toBe('true');
-        expect(invite.hasAttribute('href')).toBe(false);
-        const reason = document.getElementById(
-            invite.getAttribute('aria-describedby')!,
-        );
-        expect(reason?.textContent?.trim()).toBe(
-            'Invitations arrive with the next release',
-        );
+        expect(invite.hasAttribute('aria-disabled')).toBe(false);
+        expect(invite.getAttribute('aria-expanded')).toBe('false');
     });
 
     it('shows msg:list-empty when there are no members at all', async () => {
@@ -408,28 +408,6 @@ describe('User configuration', () => {
             ),
         ).toBe(true);
         expect($('[data-test="search"]')).toBeNull();
-    });
-
-    it('announces the Invite user reason for Enter and Space without scrolling', async () => {
-        replies = [ok(body([member()]))];
-        await mountPage();
-
-        const invite = $('[data-test="invite-user"]')!;
-
-        for (const key of ['Enter', ' ']) {
-            const event = new KeyboardEvent('keydown', {
-                key,
-                bubbles: true,
-                cancelable: true,
-            });
-            invite.dispatchEvent(event);
-            expect(event.defaultPrevented).toBe(true);
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, 5));
-        expect(polite()?.textContent).toContain(
-            'Invitations arrive with the next release',
-        );
     });
 
     it('announces the sort order only after the load succeeds', async () => {

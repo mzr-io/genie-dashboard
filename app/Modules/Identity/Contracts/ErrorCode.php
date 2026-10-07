@@ -10,4 +10,7 @@ enum ErrorCode: string
 {
     /** An unknown, used, expired or tampered invitation link, or a wrong email: one neutral answer for all. */
     case InvitationInvalid = 'identity.invitation_invalid';
+
+    /** An Admin's invitation was saved but its email could not be sent: Resend retries it. */
+    case InvitationDeliveryFailed = 'identity.invitation_delivery_failed';
 }

@@ -10,5 +10,7 @@ enum RejectionReason: string
     case Expired = 'expired';
     case EmailMismatch = 'email_mismatch';
     case UnsupportedRole = 'unsupported_role';
+    case InviterGone = 'inviter_gone';
+    case Revoked = 'revoked';
     case MembershipInactive = 'membership_inactive';
 }

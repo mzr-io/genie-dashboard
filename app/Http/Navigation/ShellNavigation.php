@@ -60,6 +60,9 @@ final class ShellNavigation
     public const ADMIN_API_ROUTES = [
         'api.admin.members' => Permission::UsersManage,
         'api.admin.members.show' => Permission::UsersManage,
+        'api.admin.invitations.store' => Permission::UsersManage,
+        'api.admin.invitations.resend' => Permission::UsersManage,
+        'api.admin.invitations.destroy' => Permission::UsersManage,
     ];
 
     /** Whether the route name is an Admin item or Admin API route (the gate fails closed for any other route without a key). */

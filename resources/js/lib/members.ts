@@ -1,3 +1,5 @@
+import { xsrfToken } from '@/lib/session';
+
 // Client of the Workspace's user list (Story 1.20): `GET /api/v1/admin/members`. The server owns the whitelist
 // of sort columns and the page-size cap; the client only names a column and a direction.
 export const MEMBERS_URL = '/api/v1/admin/members';
@@ -91,4 +93,119 @@ export async function fetchMembers(
     }
 
     return body as MembersPage;
+}
+
+// ---- Invitations (Story 1.21) ----------------------------------------------------------------------------------
+
+export const INVITATIONS_URL = '/api/v1/admin/invitations';
+
+export type InvitePayload = {
+    email: string;
+    role: 'user' | 'admin';
+    permissions: string[];
+    confirm_password?: string;
+};
+
+// An invitation request the server refused (or that never arrived: status 0). The server's field errors are keyed
+// by form field; `reason` is `pending` or `member` for an email that cannot be invited, and `invitationId` names the
+// invitation a delivery failure or a pending duplicate refers to. Nothing here ever holds a token.
+export class InvitationRequestError extends Error {
+    constructor(
+        readonly status: number,
+        readonly code: string | null = null,
+        readonly errors: Record<string, string[]> = {},
+        readonly reason: string | null = null,
+        readonly invitationId: string | null = null,
+    ) {
+        super(`invitation request failed: ${status}`);
+    }
+}
+
+type InvitationBody = {
+    data?: Member;
+    error?: { code?: string };
+    errors?: Record<string, string[]>;
+    reason?: string | null;
+    invitation_id?: string | null;
+};
+
+async function invitationCall(
+    method: 'POST' | 'DELETE',
+    path: string,
+    body?: unknown,
+): Promise<Member | null> {
+    let response: Response;
+
+    try {
+        response = await fetch(path, {
+            method,
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-XSRF-TOKEN': xsrfToken(),
+                ...(body === undefined
+                    ? {}
+                    : { 'Content-Type': 'application/json' }),
+            },
+            body: body === undefined ? undefined : JSON.stringify(body),
+        });
+    } catch {
+        throw new InvitationRequestError(0);
+    }
+
+    if (response.status === 204) {
+        return null;
+    }
+
+    let json: InvitationBody | null = null;
+
+    try {
+        json = (await response.json()) as InvitationBody | null;
+    } catch {
+        json = null;
+    }
+
+    if (!response.ok) {
+        throw new InvitationRequestError(
+            response.status,
+            json?.error?.code ?? null,
+            json?.errors ?? {},
+            json?.reason ?? null,
+            json?.invitation_id ?? null,
+        );
+    }
+
+    return json?.data ?? null;
+}
+
+export async function inviteMember(payload: InvitePayload): Promise<Member> {
+    const member = await invitationCall('POST', INVITATIONS_URL, payload);
+
+    if (!member) {
+        throw new InvitationRequestError(500);
+    }
+
+    return member;
+}
+
+export async function resendInvitation(id: string): Promise<Member> {
+    const member = await invitationCall(
+        'POST',
+        `${INVITATIONS_URL}/${encodeURIComponent(id)}/resend`,
+        {},
+    );
+
+    if (!member) {
+        throw new InvitationRequestError(500);
+    }
+
+    return member;
+}
+
+export async function revokeInvitation(id: string): Promise<void> {
+    await invitationCall(
+        'DELETE',
+        `${INVITATIONS_URL}/${encodeURIComponent(id)}`,
+    );
 }

@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Modules\Access\Application\InviteMembers;
 use App\Modules\Access\Contracts\MemberDirectory;
+use App\Modules\Access\Contracts\MemberInvitations;
 use App\Modules\Access\Contracts\MembershipLookup;
 use App\Modules\Access\Contracts\MembershipPermissions;
 use App\Modules\Access\Infrastructure\AccessAuditSerializer;
@@ -12,6 +14,8 @@ use App\Modules\Access\Infrastructure\SecurityDefinerMembershipLookup;
 use App\Modules\Access\Infrastructure\SignInMembershipsAdapter;
 use App\Modules\Access\Infrastructure\SqlMemberDirectory;
 use App\Modules\Identity\Application\IssueInvitation;
+use App\Modules\Identity\Application\QueuedInvitationCourier;
+use App\Modules\Identity\Contracts\InvitationCourier;
 use App\Modules\Identity\Contracts\InvitationIssuer;
 use App\Modules\Identity\Contracts\InvitedMembershipGranter;
 use App\Modules\Identity\Contracts\SignInMemberships;
@@ -57,6 +61,10 @@ class AppServiceProvider extends ServiceProvider
         // Identity declares these ports (it cannot call Access); the modules that implement them are bound here.
         $this->app->bind(InvitedMembershipGranter::class, AdminMembershipGranter::class);
         $this->app->bind(InvitationIssuer::class, IssueInvitation::class);
+        // One courier per request: it queues the invitation emails that go out after the transaction commits.
+        $this->app->singleton(QueuedInvitationCourier::class);
+        $this->app->bind(InvitationCourier::class, QueuedInvitationCourier::class);
+        $this->app->bind(MemberInvitations::class, InviteMembers::class);
         $this->app->bind(SignInMemberships::class, SignInMembershipsAdapter::class);
         $this->app->bind(TenantCache::class, fn ($app) => new TenantCache($app['cache']->store()));
         $this->app->singleton(JobSigner::class, fn ($app) => new JobSigner((string) $app['config']->get('app.key')));

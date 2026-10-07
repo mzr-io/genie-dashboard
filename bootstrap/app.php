@@ -3,6 +3,7 @@
 use App\Http\Middleware\HandleInertiaRequests;
 use App\Http\Middleware\RequireAdminAccess;
 use App\Modules\Identity\Http\IdleTimeout;
+use App\Modules\Identity\Http\SendInvitationsAfterCommit;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use App\Support\Observability\ApiErrorRenderer;
 use App\Support\Observability\OtelBootstrap;
@@ -42,7 +43,8 @@ return Application::configure(basePath: dirname(__DIR__))
             WorkspaceTransaction::class,
         ]);
 
-        $middleware->api(append: [IdleTimeout::class, WorkspaceTransaction::class]);
+        // Invitation emails go out after the transaction of the next middleware has committed.
+        $middleware->api(append: [IdleTimeout::class, SendInvitationsAfterCommit::class, WorkspaceTransaction::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(ApiErrorRenderer::render(...));

@@ -1,4 +1,4 @@
-You have been invited to set up the {{ $workspaceName }} workspace on Dashflow as its Admin.
+You have been invited to join the {{ $workspaceName }} workspace on Dashflow as {{ $roleName ?? 'an Admin' }}.
 
 Open this link to choose your name and password:
 

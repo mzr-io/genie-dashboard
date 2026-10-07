@@ -1,36 +1,22 @@
 <script setup lang="ts">
-import { useId } from 'vue';
-import BlockedReason from '@/components/BlockedReason.vue';
 import { Button } from '@/components/ui/button';
-import { announce } from '@/lib/announce';
 import { userListLabels as labels } from '@/locales/labels';
 
-// "Invite user" until Story 1.21: a link that stays focusable and `aria-disabled`, with its reason inline.
-// Enter and Space announce the reason like a click and never scroll or navigate.
-const reasonId = useId();
+// "Invite user" (Story 1.21): enabled for an Admin with `users.manage` (the page itself is behind that gate). It
+// expands the inline invite form, so it reports whether the form is open and which region it controls.
+defineProps<{ expanded?: boolean; controls?: string }>();
 
-function blocked(event: Event): void {
-    event.preventDefault();
-    announce(labels.inviteReason);
-}
+const emit = defineEmits<{ open: [] }>();
 </script>
 
 <template>
-    <span class="inline-flex flex-col items-center gap-1">
-        <Button as-child blocked :blocked-reason="labels.inviteReason">
-            <a
-                role="link"
-                tabindex="0"
-                aria-disabled="true"
-                data-test="invite-user"
-                :aria-describedby="reasonId"
-                @click="blocked"
-                @keydown.enter="blocked"
-                @keydown.space="blocked"
-            >
-                {{ labels.invite }}
-            </a>
-        </Button>
-        <BlockedReason :id="reasonId">{{ labels.inviteReason }}</BlockedReason>
-    </span>
+    <Button
+        type="button"
+        data-test="invite-user"
+        :aria-expanded="expanded ? 'true' : 'false'"
+        :aria-controls="expanded ? controls : undefined"
+        @click="emit('open')"
+    >
+        {{ labels.invite }}
+    </Button>
 </template>

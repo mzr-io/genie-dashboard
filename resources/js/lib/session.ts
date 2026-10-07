@@ -7,7 +7,7 @@ export type SessionStatus = { remaining_seconds: number; area: string | null };
 // The server answered 401: the session is already over.
 export class SessionEnded extends Error {}
 
-function xsrfToken(): string {
+export function xsrfToken(): string {
     const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]+)/);
 
     return match ? decodeURIComponent(match[1]) : '';

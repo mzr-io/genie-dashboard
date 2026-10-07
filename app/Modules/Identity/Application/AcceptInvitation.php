@@ -4,6 +4,7 @@ namespace App\Modules\Identity\Application;
 
 use App\Models\User;
 use App\Modules\Identity\Contracts\InvitedMembershipGranter;
+use App\Modules\Identity\Contracts\InviterGone;
 use App\Modules\Identity\Contracts\MembershipNotGrantable;
 use App\Platform\Audit\Audit;
 use App\Platform\Audit\AuditAction;
@@ -15,10 +16,10 @@ use Throwable;
 
 /**
  * Accepts an invitation: finds it by the SHA-256 hash of the token, checks it (compared in constant time),
- * then in one Workspace transaction creates or reuses the user, grants the Admin membership with every Admin
- * permission, audits `identity.invitation.accepted` and marks the invitation used.
+ * then in one Workspace transaction creates or reuses the user, grants the invited role and permissions (capped at what the inviter holds now),
+ * audits `identity.invitation.accepted` and marks the invitation used.
  *
- * Every refusal (unknown, tampered, used, expired, wrong email) throws the same InvitationRejected and
+ * Every refusal (unknown, tampered, used, revoked, expired, wrong email) throws the same InvitationRejected and
  * records `identity.invitation.rejected` as a security event: reason and invitation ID, never the token.
  * An existing user keeps their name and password.
  */
@@ -94,18 +95,24 @@ final class AcceptInvitation
             throw $reject(RejectionReason::Used);
         }
 
+        // A revoked link answers like an expired one.
+        if ($invitation->revokedAt !== null) {
+            throw $reject(RejectionReason::Revoked);
+        }
+
         if (now()->greaterThanOrEqualTo($invitation->expiresAt)) {
             throw $reject(RejectionReason::Expired);
+        }
+
+        // An invitation is for `user` or `admin`; any other value is refused rather than upgraded.
+        if (! in_array($invitation->role, ['user', 'admin'], true)) {
+            throw $reject(RejectionReason::UnsupportedRole);
         }
 
         if ($email !== null && ! hash_equals(strtolower($invitation->email), strtolower($email))) {
             throw $reject(RejectionReason::EmailMismatch);
         }
 
-        // Only Admin invitations exist today; any other role is refused rather than upgraded to Admin.
-        if ($invitation->role !== 'admin') {
-            throw $reject(RejectionReason::UnsupportedRole);
-        }
     }
 
     private function accept(string $invitationId, string $email, string $name, string $password): string
@@ -122,9 +129,11 @@ final class AcceptInvitation
         $user = $this->user($email, $name, $password);
 
         try {
-            $grant = $this->memberships->grantAdmin($user->id, $invitation->workspaceId);
+            $grant = $this->memberships->grant($user->id, $invitation->workspaceId, $invitation->role, $invitation->permissions, $invitation->createdBy);
         } catch (MembershipNotGrantable) {
             throw new InvitationRejected(RejectionReason::MembershipInactive, $invitation->id, $invitation->workspaceId);
+        } catch (InviterGone) {
+            throw new InvitationRejected(RejectionReason::InviterGone, $invitation->id, $invitation->workspaceId);
         }
 
         $this->audit->record(

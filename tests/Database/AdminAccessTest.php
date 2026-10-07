@@ -78,12 +78,16 @@ function gateRoutes(): array
 function gateCall(string $method, string $uri)
 {
     // A route parameter is a member that does not exist (the allowed case then answers 404, the gate's 403 is what matters).
-    $uri = str_replace('{membership}', (string) Str::uuid7(), $uri);
+    $uri = str_replace(['{membership}', '{invitation}'], (string) Str::uuid7(), $uri);
 
     if (str_starts_with($uri, '/api/')) {
         $headers = ['Referer' => 'http://localhost:8000'];
 
-        return $method === 'GET' ? test()->getJson($uri, $headers) : test()->postJson($uri, [], $headers);
+        return match ($method) {
+            'GET' => test()->getJson($uri, $headers),
+            'DELETE' => test()->deleteJson($uri, [], $headers),
+            default => test()->postJson($uri, [], $headers),
+        };
     }
 
     return test()->get($uri, [
@@ -109,6 +113,8 @@ function gateAssertDenied(string $label, $response, string $uri): void
 }
 
 it('covers every Admin route for User area, Admin without the permission, Admin without only its own, demoted and allowed', function () {
+    // Invitations need the lifetime: without it the write routes answer 422 before looking for the invitation.
+    config(['dashflow.tunables.users.invitation_lifetime.value' => '48']);
     $workspace = Cluster::workspace('Acme');
     [$both] = gateMember($workspace, 'both@example.test', 'admin', Permission::values());
     [$none] = gateMember($workspace, 'none@example.test', 'admin');
@@ -117,7 +123,7 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
     $routes = gateRoutes();
     $denials = fn (): int => count(gateDenials());
 
-    // Eleven pages (ADMIN_ITEMS), the two API probes and the two member endpoints (ADMIN_API_ROUTES).
+    // Eleven pages (ADMIN_ITEMS), the two API probes and the member and invitation endpoints (ADMIN_API_ROUTES).
     expect($routes)->toHaveCount(count(ShellNavigation::ADMIN_ITEMS) + 2 + count(ShellNavigation::ADMIN_API_ROUTES));
 
     foreach ($routes as $n => [$method, $uri, $name, $permission]) {
@@ -146,7 +152,13 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
         Cache::flush();
         $before = $denials();
         gateAs($both, $workspace, 'admin');
-        expect(gateCall($method, $uri)->status())->toBe(str_contains($uri, '{') ? 404 : 200, "{$name}: Admin with permission")
+        // Past the gate: a page or read is 200, a route naming an ID that does not exist 404 and an empty create 422 (never 403).
+        $status = gateCall($method, $uri)->status();
+        expect($status)->toBe(match (true) {
+            str_contains($uri, '{') => 404,
+            $name === 'api.admin.invitations.store' => 422,
+            default => 200,
+        }, "{$name}: Admin with permission")
             ->and($denials())->toBe($before, "{$name}: allowed is not audited");
     }
 });

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\InvitationController;
 use App\Http\Controllers\Admin\MemberController;
 use App\Modules\Identity\Http\SessionController;
 use Illuminate\Support\Facades\Route;
@@ -26,4 +27,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // User configuration (Story 1.20). The permission comes from ShellNavigation::ADMIN_API_ROUTES by route name.
     Route::get('members', [MemberController::class, 'index'])->middleware('admin')->name('api.admin.members');
     Route::get('members/{membership}', [MemberController::class, 'show'])->middleware('admin')->name('api.admin.members.show');
+
+    // Invitations (Story 1.21): create, re-send (replaces the token) and revoke. Same mapping, permission `users.manage`.
+    Route::post('invitations', [InvitationController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.invitations.store');
+    Route::post('invitations/{invitation}/resend', [InvitationController::class, 'resend'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.invitations.resend');
+    Route::delete('invitations/{invitation}', [InvitationController::class, 'destroy'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.invitations.destroy');
 });

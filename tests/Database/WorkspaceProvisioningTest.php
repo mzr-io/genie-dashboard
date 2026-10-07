@@ -319,14 +319,16 @@ it('refuses a suspended or removed membership as a neutral rejection and changes
         ->and(Cluster::rows(Cluster::superuser(), "select count(*) as n from audit_events where action = 'identity.invitation.accepted'")[0]['n'])->toBe(0);
 })->with(['suspended', 'removed']);
 
-it('refuses an invitation whose role is not admin and creates nothing', function () {
-    [, $token] = provisionWorkspace();
-    Cluster::superuser()->exec("update invitations set role = 'user'");
+it('accepts an invitation for the role user as a user membership with no permissions', function () {
+    [$workspace, $token] = provisionWorkspace();
+    Cluster::superuser()->exec("update invitations set role = 'user', permissions = '[]'");
 
-    assertNeutral($this->post("/invitations/{$token}", acceptPayload()));
+    $this->post("/invitations/{$token}", acceptPayload())->assertRedirect();
 
-    expect(count_of('users'))->toBe(0)->and(count_of('workspace_memberships'))->toBe(0)
-        ->and(json_decode(rejections()[0]['after_state'], true)['reason'])->toBe('unsupported_role');
+    $membership = Cluster::rows(Cluster::superuser(), 'select role, status from workspace_memberships')[0];
+    expect($membership)->toBe(['role' => 'user', 'status' => 'active'])
+        ->and(count_of('membership_permissions'))->toBe(0)
+        ->and(Cluster::rows(Cluster::superuser(), 'select used_at from invitations')[0]['used_at'])->not->toBeNull();
 });
 
 it('matches a known email case-insensitively', function () {

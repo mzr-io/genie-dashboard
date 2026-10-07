@@ -323,7 +323,6 @@ export const shellLabels = {
 
 // Labels of User configuration, the Workspace's users table (Story 1.20; UX-DR-37, 261, 263, 273, 279, 282).
 // Its messages are the catalogue's `list-empty`, `list-no-match` and `perm-denied`; the rest is table vocabulary.
-// Until Story 1.21 the "Invite user" action is disabled with its reason (perm-denied-style copy).
 export const userListLabels = {
     caption:
         'Users with access to this workspace, with their role, status and when they were last active',
@@ -332,7 +331,6 @@ export const userListLabels = {
     searchPlaceholder: 'Search by name or email',
     clearSearch: 'Clear search',
     invite: 'Invite user',
-    inviteReason: 'Invitations arrive with the next release',
     columns: {
         name: 'Name',
         email: 'Email',
@@ -362,6 +360,66 @@ export const userListLabels = {
     pageNumber: (page: number) => `Page ${page}`,
     pageChanged: (page: number, shown: number) =>
         `Page ${page}, ${shown} ${shown === 1 ? 'user' : 'users'}`,
+    actions: 'Actions',
+    resend: 'Resend',
+    revoke: 'Revoke',
+    resendFor: (email: string) => `Resend the invitation to ${email}`,
+    revokeFor: (email: string) => `Revoke the invitation to ${email}`,
+    resent: (email: string) => `Invitation sent again to ${email}.`,
+    revoked: (email: string) => `Invitation to ${email} revoked.`,
+    invited: (email: string) => `Invitation sent to ${email}.`,
+} as const;
+
+// Labels of the inline invite form on User configuration (Story 1.21). Its messages are the catalogue's `field-error`,
+// `saved`, `save-failed.form`, `throttled` and `perm-denied`; the rest is form vocabulary.
+export const inviteLabels = {
+    title: 'Invite user',
+    region: 'Invite a user',
+    email: 'Email',
+    emailHelper: 'We send the invitation link to this address.',
+    role: 'Role',
+    roleMenuLabel: (role: string) => `Role: ${role}`,
+    roles: { user: 'User', admin: 'Admin' },
+    roleDescriptions: {
+        user: 'Uses dashboards and blocks. No Admin access.',
+        admin: 'Works in the Admin area with the permissions you choose.',
+    },
+    permissions: 'Admin permissions',
+    permissionsHelper: 'You can only give permissions you hold yourself.',
+    permissionsNone: 'You hold no permissions you can give.',
+    permissionLabels: {
+        'data_sources.manage': 'Manage data sources',
+        'blocks.edit': 'Edit blocks',
+        'blocks.publish': 'Publish blocks',
+        'templates.manage': 'Manage templates',
+        'users.manage': 'Manage users',
+        'settings.manage': 'Manage system settings',
+        'audit.view': 'View the audit log',
+        'data.preview_as_user': 'Preview data as a user',
+        'access.manage': 'Manage access',
+    } as Record<string, string>,
+    confirmPassword: 'Your password',
+    confirmPasswordHelper:
+        'Enter your password to give these permissions. We ask again each time.',
+    confirmPasswordRequired: 'Enter your password to give these permissions.',
+    confirmPasswordWrong: 'That password is not right. Try again.',
+    send: 'Send invitation',
+    cancel: 'Cancel',
+    retry: 'Retry',
+    resendPending: 'Resend invitation',
+    emailPending:
+        'This email already has a pending invitation. Resend it to send a new link; the earlier link stops working.',
+    emailMember: 'This email already belongs to a member of this workspace.',
+    notConfigured:
+        "Invitations aren't set up yet. Ask a platform operator to set the invitation lifetime.",
+    notHeld:
+        "You can't give a permission you don't hold. Reload the page and try again.",
+    throttled: 'Too many attempts. Wait a minute, then try again.',
+    resendNotHeld:
+        "You can't resend this invitation: it grants permissions you don't hold.",
+    gone: 'This invitation is no longer pending. The list has been refreshed.',
+    deliveryFailed:
+        'The invitation is saved as Invited, but its email did not go out. Retry sends it again.',
 } as const;
 
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after

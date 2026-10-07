@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-06-2026 11:46
-last_updated: 10-07-2026 11:43
+last_updated: 10-07-2026 12:17
 project: rmg-dashboard-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -56,7 +56,7 @@ development_status:
   1-18-edit-my-profile-and-settings-and-open-help-support: review
   1-19-enforce-admin-only-access-with-area-and-permission-checks: review
   1-20-list-the-workspace-s-users-in-user-configuration: review
-  1-21-invite-users-to-the-workspace: backlog
+  1-21-invite-users-to-the-workspace: review
   1-22-assign-roles-and-admin-permissions: backlog
   1-23-organise-users-into-groups: backlog
   1-24-deactivate-and-reactivate-users: backlog

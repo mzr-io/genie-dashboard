@@ -2,11 +2,13 @@
 // Every code is `{module}.{snake_case}` and starts with its owning module name.
 export enum ErrorCode {
     AccessContextMissing = 'access.context_missing',
+    AccessInvitationsNotConfigured = 'access.invitations_not_configured',
     AccessLastUsersManageHolder = 'access.last_users_manage_holder',
     AccessNotAuthorized = 'access.not_authorized',
     AccessPermissionNotHeld = 'access.permission_not_held',
     AccessSelfChangeForbidden = 'access.self_change_forbidden',
     AccessWorkspaceForbidden = 'access.workspace_forbidden',
+    IdentityInvitationDeliveryFailed = 'identity.invitation_delivery_failed',
     IdentityInvitationInvalid = 'identity.invitation_invalid',
     PlatformCsrfTokenMismatch = 'platform.csrf_token_mismatch',
     PlatformForbidden = 'platform.forbidden',
