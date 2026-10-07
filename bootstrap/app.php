@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RequireAdminAccess;
 use App\Modules\Identity\Http\IdleTimeout;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use App\Support\Observability\ApiErrorRenderer;
@@ -27,6 +28,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(RequestContextMiddleware::class);
 
         $middleware->statefulApi();
+
+        // `admin` / `admin:{permission}`: the Admin area and permission gate (Story 1.19).
+        $middleware->alias(['admin' => RequireAdminAccess::class]);
 
         $middleware->encryptCookies(except: ['sidebar_state']);
 

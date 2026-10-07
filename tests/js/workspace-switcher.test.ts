@@ -72,6 +72,7 @@ function signedIn(list: ShellWorkspace[]): void {
         workspace: { id: current.id, name: current.name, label: current.label },
         role: current.role,
         workspaces: list,
+        can: {},
         switch_href: '/workspaces/switch',
         items: [],
         help_href: '/help',

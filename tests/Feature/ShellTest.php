@@ -77,19 +77,18 @@ it('registers a named placeholder route for every navigation target, all behind 
 it('renders the placeholder page of every navigation target for a signed-in person', function () {
     $this->actingAs(User::factory()->create());
 
-    $pages = [
-        'overview' => 'overview', 'dashboards.index' => 'my-dashboards', 'templates.index' => 'templates',
-        'admin.overview' => 'admin-overview', 'admin.blocks.index' => 'block-management', 'admin.blocks.create' => 'create-block',
-        'admin.blocks.drafts' => 'draft-blocks', 'admin.blocks.published' => 'published-blocks', 'admin.categories.index' => 'block-categories',
-        'admin.templates.index' => 'dashboard-templates', 'admin.data-sources.index' => 'data-sources', 'admin.users.index' => 'user-configuration',
-        'admin.settings.index' => 'system-settings', 'admin.audit.index' => 'audit-log',
-    ];
+    $pages = ['overview' => 'overview', 'dashboards.index' => 'my-dashboards', 'templates.index' => 'templates'];
 
     foreach ($pages as $name => $page) {
         $this->get(route($name))->assertOk()->assertInertia(fn (AssertableInertia $inertia) => $inertia
             ->component('Placeholder')
             ->where('page', $page)
             ->where('shell.area', 'user'));
+    }
+
+    // Admin pages are gated (Story 1.19): with no Workspace and no Admin area they are the 403 page.
+    foreach (array_column(array_values(ShellNavigation::ADMIN_ITEMS), 0) as $name) {
+        $this->get(route($name))->assertForbidden()->assertInertia(fn (AssertableInertia $inertia) => $inertia->component('Forbidden'));
     }
 
     $this->get(route('profile.edit'))->assertOk()->assertInertia(fn (AssertableInertia $inertia) => $inertia->component('settings/Profile'));

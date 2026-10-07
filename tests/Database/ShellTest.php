@@ -147,9 +147,10 @@ it('shows the User navigation to an Admin session whose membership was demoted t
 
     Cluster::superuser()->prepare("UPDATE workspace_memberships SET role = 'user' WHERE id = ?")->execute([$membership]);
 
-    $shell = shellProps(route('admin.overview'));
+    $shell = shellProps(route('overview'));
     expect($shell['area'])->toBe('user')->and($shell['role'])->toBe('user')
         ->and(array_column($shell['items'], 'key'))->toBe(['overview', 'my-dashboards', 'templates', 'profile', 'help']);
+    $this->get(route('admin.overview'))->assertForbidden();
 });
 
 it('shows no items to an Admin session whose membership was deactivated', function () {
@@ -182,12 +183,13 @@ it('reads no permissions of a deactivated membership', function () {
     expect($reader->forUser($user, $workspace))->toBe([]);
 });
 
-it('does not gate an Admin page request: a denied item still answers 200 (Story 1.19 enforces)', function () {
+it('gates an Admin page request on the permission: a denied item answers 403 (Story 1.19)', function () {
     $workspace = Cluster::workspace('Acme');
     shellMember($workspace, 'root@example.test', 'admin');
 
     shellSignIn('root@example.test', 'admin');
-    $this->get(route('admin.users.index'))->assertOk()->assertInertia(fn ($page) => $page->component('Placeholder')->where('page', 'user-configuration'));
+    $this->get(route('admin.users.index'))->assertForbidden()->assertInertia(fn ($page) => $page->component('Forbidden'));
+    $this->get(route('admin.overview'))->assertOk()->assertInertia(fn ($page) => $page->component('Placeholder')->where('page', 'admin-overview'));
 });
 
 it('signs out: rotates the session ID, ends the session, lands on sign-in and audits identity.signout.completed', function () {

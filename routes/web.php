@@ -36,8 +36,9 @@ Route::middleware([InvitationResponseHeaders::class, 'throttle:30,1'])->prefix('
 // as a placeholder until Story 1.18.
 Route::get('help', HelpController::class)->name('help');
 
-// Every navigation target of the two-area shell is a named placeholder page (Story 1.16). Admin pages are not
-// gated here: Story 1.19 enforces the area and permission checks.
+// Every navigation target of the two-area shell is a named placeholder page (Story 1.16). Every Admin page
+// uses the `admin` middleware (Story 1.19): the Admin area and the permission ShellNavigation::ADMIN_ITEMS
+// maps to the route name.
 Route::middleware(['auth'])->group(function () {
     // Switch the active Workspace (Story 1.17). It opens the target Workspace's own transaction, so the
     // session Workspace's request transaction must not wrap it.
@@ -53,7 +54,7 @@ Route::middleware(['auth'])->group(function () {
     Route::inertia('dashboards', 'Placeholder', ['page' => 'my-dashboards'])->name('dashboards.index');
     Route::inertia('templates', 'Placeholder', ['page' => 'templates'])->name('templates.index');
 
-    Route::prefix('admin')->group(function () {
+    Route::prefix('admin')->middleware('admin')->group(function () {
         Route::inertia('/', 'Placeholder', ['page' => 'admin-overview'])->name('admin.overview');
         Route::inertia('blocks', 'Placeholder', ['page' => 'block-management'])->name('admin.blocks.index');
         Route::inertia('blocks/create', 'Placeholder', ['page' => 'create-block'])->name('admin.blocks.create');

@@ -12,6 +12,8 @@ export function useShell() {
         () => (page.props.shell as Shell | null | undefined) ?? null,
     );
     const area = computed(() => shell.value?.area ?? 'user');
+    // Permission key => held in the active Admin area (Story 1.19); empty when nothing is known.
+    const can = computed<Record<string, boolean>>(() => shell.value?.can ?? {});
     const items = computed(() => navItems(shell.value?.items ?? []));
     const path = computed(
         () =>
@@ -73,6 +75,7 @@ export function useShell() {
     return {
         shell,
         area,
+        can,
         items,
         current,
         sectionLabel,

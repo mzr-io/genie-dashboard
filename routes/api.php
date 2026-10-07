@@ -15,3 +15,10 @@ Route::middleware('auth')->prefix('session')->group(function () {
     Route::get('/', [SessionController::class, 'status'])->name('api.session.status');
     Route::post('extend', [SessionController::class, 'extend'])->middleware('throttle:30,1')->name('api.session.extend');
 });
+
+// Admin APIs (Story 1.19): the `admin` middleware requires the Admin area and the permission, after the stateful
+// group's CSRF check. The probes prove the gate until the Admin features add their endpoints.
+Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
+    Route::get('ping', fn () => response()->json(['status' => 'ok']))->middleware('admin:audit.view')->name('api.admin.ping');
+    Route::post('ping', fn () => response()->json(['status' => 'ok']))->middleware('admin:settings.manage')->name('api.admin.ping.store');
+});

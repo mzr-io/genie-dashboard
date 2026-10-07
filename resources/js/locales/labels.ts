@@ -315,6 +315,9 @@ export const shellLabels = {
     currentWorkspace: 'Current workspace',
     switchFailed: "We couldn't switch workspace. Try again.",
     switchSave: 'Save',
+    // The 403 page (Story 1.19); its message is `perm-denied` in the catalogue.
+    forbiddenTitle: 'Access denied',
+    forbiddenBack: 'Back to your overview',
 } as const;
 
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after

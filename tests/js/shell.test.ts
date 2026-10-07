@@ -97,6 +97,7 @@ function shell(
         workspace: { id: 'w-1', name: 'Acme Industries', label: null },
         role,
         workspaces: [],
+        can: {},
         switch_href: '/workspaces/switch',
         items,
         help_href: '/help',

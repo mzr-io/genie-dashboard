@@ -41,6 +41,8 @@ export type Shell = {
     role: string | null;
     // The Workspaces the person may switch to (usable memberships only), with their role in each (Story 1.17).
     workspaces: ShellWorkspace[];
+    // Every permission key => whether the person holds it in the active Admin area (Story 1.19).
+    can: Record<string, boolean>;
     switch_href: string;
     items: ShellItem[];
     help_href: string;

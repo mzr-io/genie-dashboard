@@ -18,7 +18,10 @@ use Throwable;
  * (`user` or `admin`) comes from the session; the client owns the copy and the icons (it maps `key`).
  *
  * An Admin item whose permission the person lacks is still listed, with `allowed` false: the shell shows it
- * disabled with its reason rather than hiding it. A page request is not gated here (Story 1.19 enforces).
+ * disabled with its reason rather than hiding it. `ADMIN_ITEMS` is also the one route-to-permission mapping the
+ * `admin` route middleware enforces (Story 1.19), so the menu and the gate cannot drift apart. `can` maps every
+ * permission to whether the person holds it in the active Admin area, for actions the person cannot do
+ * (rendered disabled with their reason, never hidden).
  */
 final class ShellNavigation
 {
@@ -34,7 +37,7 @@ final class ShellNavigation
     /**
      * Admin area items, in order: item key => [route name, the permission it needs (null: none)].
      * The planning documents name the permissions and the items but not which gates which, so this one
-     * constant is the mapping; Story 1.19 may refine it.
+     * constant is the mapping, for the navigation and for the `admin` middleware alike.
      */
     public const ADMIN_ITEMS = [
         'admin-overview' => ['admin.overview', null],
@@ -50,13 +53,37 @@ final class ShellNavigation
         'audit-log' => ['admin.audit.index', Permission::AuditView],
     ];
 
+    /** Whether the route name is an Admin item (the gate fails closed for any other route without a key). */
+    public static function hasRoute(string $route): bool
+    {
+        foreach (self::ADMIN_ITEMS as [$name]) {
+            if ($name === $route) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /** The permission an Admin route needs (null: the Admin area only, or not an Admin item). */
+    public static function permissionForRoute(string $route): ?Permission
+    {
+        foreach (self::ADMIN_ITEMS as [$name, $permission]) {
+            if ($name === $route) {
+                return $permission;
+            }
+        }
+
+        return null;
+    }
+
     public function __construct(
         private readonly MembershipLookup $memberships,
         private readonly MembershipPermissions $permissions,
     ) {}
 
     /**
-     * @return array{area: string, workspace: array{id: string, name: string, label: string|null}|null, role: string|null, workspaces: list<array{id: string, name: string, label: string|null, role: string}>, items: list<array{key: string, href: string, permission: string|null, allowed: bool}>, switch_href: string, help_href: string, profile_href: string, sign_out_href: string}
+     * @return array{area: string, workspace: array{id: string, name: string, label: string|null}|null, role: string|null, workspaces: list<array{id: string, name: string, label: string|null, role: string}>, can: array<string, bool>, items: list<array{key: string, href: string, permission: string|null, allowed: bool}>, switch_href: string, help_href: string, profile_href: string, sign_out_href: string}
      */
     public function for(Request $request): array
     {
@@ -89,6 +116,7 @@ final class ShellNavigation
             'workspace' => $workspace,
             'role' => $role,
             'workspaces' => $this->workspaces($memberships),
+            'can' => $this->can($held),
             'switch_href' => route('workspaces.switch', absolute: false),
             'items' => match ($effective) {
                 'admin' => $this->adminItems($held),
@@ -159,6 +187,21 @@ final class ShellNavigation
         usort($list, fn (array $a, array $b): int => [mb_strtolower($a['name']), $a['name'], $a['id']] <=> [mb_strtolower($b['name']), $b['name'], $b['id']]);
 
         return $list;
+    }
+
+    /**
+     * @param  list<Permission>  $held  empty unless the active area is Admin
+     * @return array<string, bool>
+     */
+    private function can(array $held): array
+    {
+        $can = [];
+
+        foreach (Permission::cases() as $permission) {
+            $can[$permission->value] = in_array($permission, $held, true);
+        }
+
+        return $can;
     }
 
     /**
