@@ -35,32 +35,32 @@ project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 development_status:
-  epic-1: in-progress
-  1-1-initialise-the-project-from-the-laravel-vue-starter-kit: review
-  1-2-enforce-architecture-and-quality-gates-in-ci: review
-  1-3-run-all-five-process-roles-locally-with-docker-compose: review
+  epic-1: done
+  1-1-initialise-the-project-from-the-laravel-vue-starter-kit: done
+  1-2-enforce-architecture-and-quality-gates-in-ci: done
+  1-3-run-all-five-process-roles-locally-with-docker-compose: done
   1-4-observe-every-request-with-opentelemetry-and-scrubbed-logs: done
   1-5-split-valkey-into-queue-and-cache-stores-with-signed-jobs: done
   1-6-apply-the-dashflow-design-tokens-and-brand-seam: done
-  1-7-serve-all-product-copy-from-the-canonical-message-catalogue: review
-  1-8-build-the-shared-form-controls-and-status-components: review
-  1-9-build-dialogs-toasts-banners-popovers-and-live-regions: review
-  1-10-isolate-each-workspace-with-row-level-security: review
-  1-11-record-audit-events-and-publish-outbox-events-in-the-same-tr: review
-  1-12-provision-a-workspace-and-let-its-first-admin-accept-an-invi: review
-  1-13-sign-in-as-user-or-admin: review
-  1-14-reset-a-forgotten-password: review
-  1-15-warn-before-session-expiry-and-keep-forms-safe: review
-  1-16-navigate-the-two-area-shell-with-sign-out-and-profile-menu: review
-  1-17-switch-the-active-workspace: review
-  1-18-edit-my-profile-and-settings-and-open-help-support: review
-  1-19-enforce-admin-only-access-with-area-and-permission-checks: review
-  1-20-list-the-workspace-s-users-in-user-configuration: review
-  1-21-invite-users-to-the-workspace: review
-  1-22-assign-roles-and-admin-permissions: review
-  1-23-organise-users-into-groups: review
-  1-24-deactivate-and-reactivate-users: review
-  1-25-verify-security-and-load-readiness-with-test-suites-and-a-lo: review
+  1-7-serve-all-product-copy-from-the-canonical-message-catalogue: done
+  1-8-build-the-shared-form-controls-and-status-components: done
+  1-9-build-dialogs-toasts-banners-popovers-and-live-regions: done
+  1-10-isolate-each-workspace-with-row-level-security: done
+  1-11-record-audit-events-and-publish-outbox-events-in-the-same-tr: done
+  1-12-provision-a-workspace-and-let-its-first-admin-accept-an-invi: done
+  1-13-sign-in-as-user-or-admin: done
+  1-14-reset-a-forgotten-password: done
+  1-15-warn-before-session-expiry-and-keep-forms-safe: done
+  1-16-navigate-the-two-area-shell-with-sign-out-and-profile-menu: done
+  1-17-switch-the-active-workspace: done
+  1-18-edit-my-profile-and-settings-and-open-help-support: done
+  1-19-enforce-admin-only-access-with-area-and-permission-checks: done
+  1-20-list-the-workspace-s-users-in-user-configuration: done
+  1-21-invite-users-to-the-workspace: done
+  1-22-assign-roles-and-admin-permissions: done
+  1-23-organise-users-into-groups: done
+  1-24-deactivate-and-reactivate-users: done
+  1-25-verify-security-and-load-readiness-with-test-suites-and-a-lo: done
   epic-1-retrospective: optional
 
   epic-2: backlog
