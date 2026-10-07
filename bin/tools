@@ -20,7 +20,7 @@ TTY=()
 # no Docker socket, so the host starts them first (bin/test-db) and tears them down afterwards.
 # If they cannot start, the command fails: there is no skip. DASHFLOW_KEEP_TEST_DB=1 leaves them running.
 WITH_DB=0
-if [[ "${1:-}" == "composer" && ( "${2:-}" == "ci:check" || "${2:-}" == "test:database" ) ]]; then
+if [[ "${1:-}" == "composer" && ( "${2:-}" == "ci:check" || "${2:-}" == "test:database" || "${2:-}" == "test:security" ) ]]; then
     WITH_DB=1
     # Registered before `up`, so a partial start is torn down too.
     if [[ -z "${DASHFLOW_KEEP_TEST_DB:-}" ]]; then
@@ -42,7 +42,20 @@ RUN=(docker run --rm -i "${TTY[@]}" \
     "$IMAGE" "$@")
 
 if [[ "$WITH_DB" == 1 ]]; then
-    "${RUN[@]}"
+    # The restore check (Story 1.25) runs on the host after the Database suite, against the same containers,
+    # and fails the command when it fails (the PHP container has no Docker or pg_dump).
+    status=0
+    "${RUN[@]}" || status=$?
+    if [[ "$status" == 0 ]]; then
+        # Every WITH_DB command (ci:check, test:database, test:security) ran the Database suite. The global
+        # table list comes from the PHP source of truth, read in the tools container.
+        DASHFLOW_GLOBAL_TABLES="$("$0" php -r 'echo implode(",", (require "tests/Architecture/dependencies.php")["global_tables"]);')" || status=$?
+        if [[ "$status" == 0 ]]; then
+            export DASHFLOW_GLOBAL_TABLES
+            "$ROOT/bin/test-restore" || status=$?
+        fi
+    fi
+    exit "$status"
 else
     exec "${RUN[@]}"
 fi

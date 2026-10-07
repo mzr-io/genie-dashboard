@@ -11,6 +11,9 @@
         <testsuite name="Feature">
             <directory>tests/Feature</directory>
         </testsuite>
+        <testsuite name="Security">
+            <directory>tests/Security</directory>
+        </testsuite>
         <testsuite name="Architecture">
             <directory>tests/Architecture</directory>
         </testsuite>
@@ -37,5 +40,18 @@
         <env name="PULSE_ENABLED" value="false"/>
         <env name="TELESCOPE_ENABLED" value="false"/>
         <env name="NIGHTWATCH_ENABLED" value="false"/>
+        <!-- A developer's .env may set this pending_input tunable; the suites must not depend on it (env() reads "(null)" as null). -->
+        <env name="DASHFLOW_INVITATION_LIFETIME" value="(null)"/>
+        <!-- The load harness variables are read by Node only; a developer's .env must not reach LoadSettingsTest. -->
+        <env name="DASHFLOW_LOAD_BASE_URL" value="(null)"/>
+        <env name="DASHFLOW_LOAD_EMAIL" value="(null)"/>
+        <env name="DASHFLOW_LOAD_PASSWORD" value="(null)"/>
+        <env name="DASHFLOW_LOAD_ROLE" value="(null)"/>
+        <env name="DASHFLOW_LOAD_CONCURRENCY" value="(null)"/>
+        <env name="DASHFLOW_LOAD_DURATION_SECONDS" value="(null)"/>
+        <env name="DASHFLOW_LOAD_RATE_CEILING" value="(null)"/>
+        <env name="DASHFLOW_LOAD_P95_TARGET_MS" value="(null)"/>
+        <env name="DASHFLOW_LOAD_REQUEST_TIMEOUT_MS" value="(null)"/>
+        <env name="DASHFLOW_LOAD_ALLOW_REMOTE" value="(null)"/>
     </php>
 </phpunit>

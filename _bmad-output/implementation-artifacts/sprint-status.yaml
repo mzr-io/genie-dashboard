@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-06-2026 11:46
-last_updated: 10-07-2026 13:52
+last_updated: 10-07-2026 17:10
 project: rmg-dashboard-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -60,7 +60,7 @@ development_status:
   1-22-assign-roles-and-admin-permissions: review
   1-23-organise-users-into-groups: review
   1-24-deactivate-and-reactivate-users: review
-  1-25-verify-security-and-load-readiness-with-test-suites-and-a-lo: backlog
+  1-25-verify-security-and-load-readiness-with-test-suites-and-a-lo: review
   epic-1-retrospective: optional
 
   epic-2: backlog

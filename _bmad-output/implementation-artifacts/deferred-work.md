@@ -111,3 +111,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-23-organise-users-into-groups.md`
   summary: Paginate the Groups list and its embedded members (cursor, with a per-group member cap), add group add/remove from the member's row in User configuration, and test the concurrent duplicate-name and duplicate-add races once `Cluster` has a two-connection helper.
   evidence: `SqlGroupDirectory::list` returns every group with every member in one response; the epic's "or from the member's row" entry point is not built; the 23505 mapping and the group-row lock are exercised only sequentially.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-25-verify-security-and-load-readiness-with-test-suites-and-a-load-test-skeleton.md`
+  summary: Add a negative run for `bin/test-restore` (a scratch copy with FORCE RLS removed or DELETE granted to `app` must fail), real-browser axe with contrast, layout and error-state coverage, and the full backup and restore drill.
+  evidence: The restore check has only been seen passing; axe runs in happy-dom without layout, so contrast, reflow and dialog or error states are unchecked; the full drill is Epic 9.

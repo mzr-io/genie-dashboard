@@ -97,6 +97,11 @@
         "error-codes": [
             "@php artisan dashflow:error-codes"
         ],
+        "test:security": [
+            "@php artisan config:clear --ansi",
+            "pest --group=security",
+            "pest --configuration=phpunit.database.xml --group=security"
+        ],
         "test:database": [
             "@php artisan config:clear --ansi",
             "pest --configuration=phpunit.database.xml"

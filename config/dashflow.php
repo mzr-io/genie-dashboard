@@ -132,4 +132,22 @@ return [
 
     ],
 
+    // Load-test harness targets (Story 1.25), read by `npm run load` (load/config.mjs) from the environment.
+    // Each is `pending_input` with no default: the harness exits non-zero naming every variable that is unset.
+    // Kept outside `tunables`, which is the closed AR-57 list. tests/Feature/LoadSettingsTest.php keeps this list
+    // equal to load/config.mjs.
+    'load' => [
+        'base_url' => $tunable('DASHFLOW_LOAD_BASE_URL'),
+        'email' => $tunable('DASHFLOW_LOAD_EMAIL'),
+        'password' => $tunable('DASHFLOW_LOAD_PASSWORD'),
+        'role' => $tunable('DASHFLOW_LOAD_ROLE'),
+        'concurrency' => $tunable('DASHFLOW_LOAD_CONCURRENCY'),
+        'duration_seconds' => $tunable('DASHFLOW_LOAD_DURATION_SECONDS'),
+        'rate_ceiling' => $tunable('DASHFLOW_LOAD_RATE_CEILING'),
+        'p95_target_ms' => $tunable('DASHFLOW_LOAD_P95_TARGET_MS'),
+        'request_timeout_ms' => $tunable('DASHFLOW_LOAD_REQUEST_TIMEOUT_MS'),
+        // Optional and development-only: `true` lets the harness target a host outside loopback and private networks.
+        'allow_remote' => $tunable('DASHFLOW_LOAD_ALLOW_REMOTE'),
+    ],
+
 ];
