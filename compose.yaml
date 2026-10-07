@@ -57,6 +57,10 @@ x-app-env: &app-env
     DASHFLOW_LISTS_MAX_PAGE_SIZE: ${DASHFLOW_LISTS_MAX_PAGE_SIZE:-}
     # Largest avatar upload in bytes (pending_input; empty = unset, so PHP's upload_max_filesize applies).
     DASHFLOW_AVATAR_MAX_BYTES: ${DASHFLOW_AVATAR_MAX_BYTES:-}
+    # Whole hours an invitation link stays valid (pending_input; empty = unset, so inviting from the Admin UI answers
+    # 422 `access.invitations_not_configured` and `dashflow:workspace:create` refuses to run). Every role gets it
+    # because the web role creates invitations and the operator service shares this block.
+    DASHFLOW_INVITATION_LIFETIME: ${DASHFLOW_INVITATION_LIFETIME:-}
     # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
     OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
