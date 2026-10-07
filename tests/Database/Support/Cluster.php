@@ -229,6 +229,7 @@ final class Cluster
             'host_allowlist_entries' => self::seedHostEntry($workspaceId),
             'host_allowlist_versions' => self::seedHostVersion($workspaceId),
             'egress_grants' => self::seedEgressGrant($workspaceId),
+            'data_sources' => self::seedDataSource($workspaceId),
             default => null,
         };
     }
@@ -283,6 +284,16 @@ final class Cluster
         $id = (string) Str::uuid7();
         self::superuser()->prepare('INSERT INTO host_allowlist_entries (id, workspace_id, host, scheme, port, added_by_membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, now(), now())')
             ->execute([$id, $workspaceId, $host === '' ? 'host-'.$id.'.example.test' : $host, $scheme, $port, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    public static function seedDataSource(string $workspaceId, ?string $name = null, string $host = 'api.example.com', int $port = 443, string $scheme = 'https'): string
+    {
+        $id = (string) Str::uuid7();
+        $url = $scheme.'://'.$host.($port === ($scheme === 'https' ? 443 : 80) ? '' : ':'.$port);
+        self::superuser()->prepare('INSERT INTO data_sources (id, workspace_id, name, base_url, scheme, host, port, created_by_membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $name ?? 'Source '.$id, $url, $scheme, $host, $port, (string) Str::uuid7()]);
 
         return $id;
     }

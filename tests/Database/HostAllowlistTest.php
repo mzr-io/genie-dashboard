@@ -4,7 +4,7 @@ use App\Models\User;
 use App\Modules\Connector\Contracts\DependentDataSource;
 use App\Modules\Connector\Contracts\ErrorCode;
 use App\Modules\Connector\Contracts\HostAllowlistDependents;
-use App\Modules\Connector\Infrastructure\NoHostAllowlistDependents;
+use App\Modules\Connector\Infrastructure\SqlHostAllowlistDependents;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
@@ -274,13 +274,21 @@ it('requires the revision on a removal', function () {
     expect(halEntries())->toHaveCount(1);
 });
 
-it('lists no dependents until Story 2.3 binds the Data Source implementation', function () {
+it('lists no dependents for a host no Data Source uses, and the Data Sources on that host and port (Story 2.3) otherwise', function () {
     $workspace = Cluster::workspace('Acme');
+    $other = Cluster::workspace('Other');
     halAdmin($workspace);
     $id = Cluster::seedHostEntry($workspace, 'api.example.com', 443);
+    $unused = Cluster::seedHostEntry($workspace, 'unused.example.com', 443);
+    $sales = Cluster::seedDataSource($workspace, 'Sales API', 'api.example.com', 443);
+    $billing = Cluster::seedDataSource($workspace, 'billing API', 'api.example.com', 443);
+    Cluster::seedDataSource($workspace, 'Other port', 'api.example.com', 8443);
+    Cluster::seedDataSource($other, 'Foreign', 'api.example.com', 443);
 
-    expect(app(HostAllowlistDependents::class))->toBeInstanceOf(NoHostAllowlistDependents::class);
-    test()->getJson(HAL_URL."/{$id}/dependents", HAL_HEADERS)->assertOk()->assertExactJson(['data' => []]);
+    expect(app(HostAllowlistDependents::class))->toBeInstanceOf(SqlHostAllowlistDependents::class);
+    test()->getJson(HAL_URL."/{$unused}/dependents", HAL_HEADERS)->assertOk()->assertExactJson(['data' => []]);
+    test()->getJson(HAL_URL."/{$id}/dependents", HAL_HEADERS)->assertOk()
+        ->assertExactJson(['data' => [['id' => $billing, 'name' => 'billing API'], ['id' => $sales, 'name' => 'Sales API']]]);
 });
 
 it('lists the dependents of an entry through the port once an implementation is bound', function () {

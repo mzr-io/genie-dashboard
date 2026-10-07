@@ -78,7 +78,7 @@ function gateRoutes(): array
 function gateCall(string $method, string $uri)
 {
     // A route parameter is a member that does not exist (the allowed case then answers 404, the gate's 403 is what matters).
-    $uri = str_replace(['{membership}', '{invitation}', '{group}', '{entry}'], (string) Str::uuid7(), $uri);
+    $uri = str_replace(['{membership}', '{invitation}', '{group}', '{entry}', '{dataSource}'], (string) Str::uuid7(), $uri);
 
     if (str_starts_with($uri, '/api/')) {
         $headers = ['Referer' => 'http://localhost:8000'];
@@ -87,6 +87,7 @@ function gateCall(string $method, string $uri)
             'GET' => test()->getJson($uri, $headers),
             'DELETE' => test()->deleteJson($uri, [], $headers),
             'PATCH' => test()->patchJson($uri, [], $headers),
+            'PUT' => test()->putJson($uri, [], $headers),
             default => test()->postJson($uri, [], $headers),
         };
     }
@@ -125,7 +126,7 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
     $denials = fn (): int => count(gateDenials());
 
     // Eleven pages (ADMIN_ITEMS), the pages that are views of an item (ADMIN_PAGES), the two API probes and the member,
-    // invitation, group and host allowlist endpoints (ADMIN_API_ROUTES).
+    // invitation, group, host allowlist and Data source endpoints (ADMIN_API_ROUTES).
     expect($routes)->toHaveCount(count(ShellNavigation::ADMIN_ITEMS) + count(ShellNavigation::ADMIN_PAGES) + 2 + count(ShellNavigation::ADMIN_API_ROUTES));
 
     foreach ($routes as $n => [$method, $uri, $name, $permission]) {
@@ -171,6 +172,10 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
             in_array($name, ['api.admin.groups.store', 'api.admin.groups.update'], true) => 422,
             // A host and revision are validated before the allowlist is touched; a removal validates its revision before the entry.
             in_array($name, ['api.admin.host-allowlist.store', 'api.admin.host-allowlist.destroy'], true) => 422,
+            // A Data source is validated before it is looked up (the revision first), and the blur check validates its URL.
+            in_array($name, ['api.admin.data-sources.store', 'api.admin.data-sources.update', 'api.admin.data-sources.check-url'], true) => 422,
+            // The edit page renders whatever Data source it names; the form loads it through the API.
+            $name === 'admin.data-sources.edit' => 200,
             str_contains($uri, '{') => 404,
             $name === 'api.admin.invitations.store' => 422,
             default => 200,

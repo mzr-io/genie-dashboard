@@ -663,6 +663,145 @@ export const hostAllowlistLabels = {
     removeVerb: 'Remove',
 } as const;
 
+// Labels of the Data sources list and form (Story 2.3; UX-DR-207, 115, 261, 263, 23, 26, 22, 37, 39, 274, 282). The
+// messages for the standard states (`list-empty`, `list-no-match`, `msg:saved`, `msg:perm-denied`, the allowlist miss
+// `host-not-allowlisted`, the save failure) come from the catalogue and `shellLabels`.
+export const dataSourceLabels = {
+    pageTitle: 'Data sources',
+    pageSubtitle:
+        'The APIs this workspace reads. Dashflow only calls hosts on the host allowlist.',
+    items: 'data sources',
+    // The phrase of `list-empty` ("No data sources yet. Register a data source to start.").
+    action: 'Register a data source',
+    register: '+ Register data source',
+    caption:
+        'Data sources of this workspace, with host, authentication, health, last successful call and the blocks using them',
+    tableRegion: 'Data sources table',
+    toolbar: 'Data source tools',
+    search: 'Search data sources',
+    searchPlaceholder: 'Search by name or host',
+    clearSearch: 'Clear search',
+    count: (matched: number, total: number) =>
+        `${matched} of ${total} ${total === 1 ? 'data source' : 'data sources'}`,
+    sorted: (column: string, descending: boolean) =>
+        `Sorted by ${column}, ${descending ? 'descending' : 'ascending'}`,
+    columns: {
+        name: 'Name',
+        host: 'Host',
+        auth_type: 'Auth type',
+        health: 'Health',
+        last_success: 'Last successful call',
+        blocks: 'Blocks using it',
+    },
+    authTypes: {
+        none: 'None',
+        api_key: 'API key',
+        bearer: 'Bearer token',
+        basic: 'Basic',
+        oauth2_client_credentials: 'OAuth2 client credentials',
+    } as Record<string, string>,
+    // Placeholders until Stories 2.18 (health) and 2.14 (last call) and Epic 3 (blocks) fill them.
+    checking: 'Checking…',
+    noCall: '—',
+    notEncrypted: hostAllowlistLabels.notEncrypted,
+    notEncryptedNote: 'Calls to this data source are sent over plain http.',
+    edit: (name: string) => `Edit ${name}`,
+    saved: (name: string) => `${name} registered.`,
+    gone: 'This data source no longer exists.',
+    // The form.
+    registerTitle: 'Register data source',
+    editTitle: 'Edit data source',
+    registerSubtitle:
+        'Describe the API. Saving does not contact it, and the host must be on the host allowlist.',
+    editSubtitle: (name: string) => `Changes to ${name} apply to later calls.`,
+    back: 'Back to Data sources',
+    formRegion: 'Data source',
+    connection: 'Connection',
+    name: 'Name',
+    nameHelper:
+        'Up to 64 characters. Each data source in the workspace needs its own name.',
+    baseUrl: 'Base URL',
+    baseUrlHelper:
+        'Where the API lives, such as https://api.example.com/v1. No user name, query string or fragment.',
+    headers: 'Default headers',
+    headersHelper:
+        'Sent with every call to this data source. Credentials are not headers here: they are added separately and never shown again.',
+    headersNone: 'No default headers.',
+    addHeader: '+ Add header',
+    headerName: (n: number) => `Header ${n} name`,
+    headerValue: (n: number) => `Header ${n} value`,
+    removeHeaderButton: 'Remove',
+    removeHeader: (n: number) => `Remove header ${n}`,
+    headerRemoved: (n: number) => `Header ${n} removed.`,
+    limits: 'Limits',
+    limitsHelper: 'Leave a limit blank to use the platform setting.',
+    timeout: 'Timeout (seconds)',
+    maxResponse: 'Maximum response size (bytes)',
+    maxPages: 'Maximum pages',
+    ceiling: (value: number) => `The platform limit is ${value}.`,
+    refresh: 'Refresh',
+    live: 'Supports Live refresh (~30 s)',
+    liveHelper:
+        'Only turn this on if the API can handle a call every 30 seconds per block.',
+    save: 'Save',
+    create: 'Register data source',
+    cancel: 'Cancel',
+    saving: 'Saving…',
+    loading: 'Loading the data source',
+    loadFailed: "We couldn't load these settings. Try again.",
+    notFound: 'This data source no longer exists.',
+    // Save is unavailable until the Base URL's host is allowed (`aria-disabled`, reason adjacent: UX-DR-22).
+    saveBlocked:
+        "Save is unavailable until the base URL's host is on the workspace allowlist.",
+    saveBlockedUrl: 'Save is unavailable until the base URL is accepted.',
+    nameRequired: 'Enter a name.',
+    baseUrlRequired: 'Enter the base URL.',
+    // Field errors by the server's reason; a reason without an entry shows the server's own message.
+    reasons: {
+        'name-required': 'Enter a name.',
+        'name-too-long': 'The name can have at most 64 characters.',
+        'name-invalid-characters':
+            'The name contains characters that are not allowed. Remove control or invisible characters.',
+        'name-taken':
+            'A data source with this name already exists. Choose another name.',
+        empty: 'Enter the base URL.',
+        'too-long': 'The base URL is too long.',
+        whitespace:
+            'The base URL cannot contain spaces. Remove them and try again.',
+        malformed: 'Enter a full address such as https://api.example.com/v1.',
+        scheme: 'The base URL must start with http:// or https://.',
+        userinfo: 'Leave the user name and password out of the base URL.',
+        query: 'Leave the query string out of the base URL.',
+        fragment: 'Leave the fragment (#) out of the base URL.',
+        'invalid-host':
+            'The host is not valid. Use a host name, or an IP address that is not in a private or reserved range.',
+        'https-required':
+            'This workspace requires https. Change the base URL to start with https://.',
+        'header-name-invalid':
+            "A header name uses letters, digits and the characters ! # $ % & ' * + - . ^ _ ` | ~ only.",
+        'header-name-reserved':
+            'This header cannot be set as a default header. Credentials are added separately.',
+        'header-name-duplicate': 'This header is already listed.',
+        'header-value-invalid':
+            'A header value uses visible ASCII characters only, on one line. Remove line breaks and other special characters.',
+        'header-value-too-long': 'This header value is too long.',
+        'too-many-headers': 'There are too many default headers.',
+        'not-positive-integer':
+            'Enter a whole number greater than zero, or leave it blank to use the platform setting.',
+        'above-ceiling':
+            'This is above the platform limit. Enter a smaller number.',
+        'invalid-boolean': 'Choose on or off.',
+        'headers-invalid':
+            'The default headers are not valid. Reload the page and try again.',
+        'auth-type-unavailable': 'Authentication is not available yet.',
+    } as Record<string, string>,
+    // Someone else saved first (409): the typed values stay.
+    conflict:
+        'This data source was changed by someone else. Your changes are still here. Review them, then save again to keep them, or reload to see the latest.',
+    reload: 'Reload latest',
+    reloaded: 'Showing the latest saved values.',
+} as const;
+
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after
 // signing back in (`session-expired`) come from the catalogue.
 export const sessionLabels = {

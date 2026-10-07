@@ -56,6 +56,23 @@ final class WorkspaceSettings
         return self::isWebAddress($href) || self::isMailAddress($href) ? $href : null;
     }
 
+    /**
+     * Whether the Workspace refuses plain `http://` Data Source Base URLs (`require_https`, default off). Read fresh
+     * each time, because it decides whether a write is allowed; a failed read fails closed (refuse http).
+     */
+    public function requireHttps(): bool
+    {
+        try {
+            $value = DB::transaction(fn () => DB::table('workspace_settings')->value('require_https'));
+
+            return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+        } catch (Throwable $e) {
+            Log::warning('workspace_settings.read_failed', ['exception' => $e::class]);
+
+            return true;
+        }
+    }
+
     /** @var array<string, mixed>|null|false The row, read once per instance; false until read. */
     private array|null|false $loaded = false;
 

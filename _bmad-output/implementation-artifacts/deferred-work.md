@@ -135,3 +135,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-2-guard-every-outbound-url-with-egressguard-and-operator-private-range-grants.md`
   summary: Add a response-size ceiling to the egress transport (Story 2.6) and pin all checked records for dual-stack fallback (Story 2.14).
   evidence: NativeCurlClient buffers the whole body and pins only addresses[0]; no caller exists yet.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-register-and-edit-a-data-source.md`
+  summary: Test the concurrent duplicate-name path (SQLSTATE 23505) of Data Source create and update with two live connections.
+  evidence: `ManageDataSources::nameTaken` is never executed; the pre-check catches every sequential duplicate.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-register-and-edit-a-data-source.md`
+  summary: Add paging for the Data Source list, a retire or delete action, and an outbox event for Data Source changes when a consuming story needs them.
+  evidence: The list ships every row; the `app` role has no DELETE; downstream consumers (health, Blocks) will need an invalidation signal.

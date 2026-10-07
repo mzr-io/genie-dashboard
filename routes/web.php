@@ -8,6 +8,7 @@ use App\Platform\Tenancy\WorkspaceTransaction;
 use App\Support\Health\HealthChecker;
 use App\Support\Health\Role;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 // Health probes skip the web middleware group: no session, so they never touch PostgreSQL themselves.
 Route::withoutMiddleware('web')->group(function () {
@@ -62,7 +63,12 @@ Route::middleware(['auth'])->group(function () {
         Route::inertia('blocks/published', 'Placeholder', ['page' => 'published-blocks'])->name('admin.blocks.published');
         Route::inertia('categories', 'Placeholder', ['page' => 'block-categories'])->name('admin.categories.index');
         Route::inertia('templates', 'Placeholder', ['page' => 'dashboard-templates'])->name('admin.templates.index');
-        Route::inertia('data-sources', 'Placeholder', ['page' => 'data-sources'])->name('admin.data-sources.index');
+        Route::inertia('data-sources', 'admin/DataSources')->name('admin.data-sources.index');
+        // Register and edit (Story 2.3): views of the Data sources item, mapped in ShellNavigation::ADMIN_PAGES.
+        Route::inertia('data-sources/create', 'admin/DataSourceForm')->name('admin.data-sources.create');
+        Route::get('data-sources/{dataSource}/edit', fn (string $dataSource) => Inertia::render('admin/DataSourceForm', ['dataSourceId' => strtolower($dataSource)]))
+            ->whereUuid('dataSource')
+            ->name('admin.data-sources.edit');
         Route::inertia('users', 'admin/Users')->name('admin.users.index');
         // The Groups view of User configuration (Story 1.23): same permission, mapped in ShellNavigation::ADMIN_PAGES.
         Route::inertia('users/groups', 'admin/UserGroups')->name('admin.users.groups');

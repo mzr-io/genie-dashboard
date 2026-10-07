@@ -10,6 +10,7 @@ use App\Modules\Connector\Contracts\EgressRequest;
 use App\Modules\Connector\Contracts\EgressResponse;
 use App\Modules\Connector\Contracts\EgressTransport;
 use App\Modules\Connector\Contracts\EgressVerdict;
+use App\Modules\Connector\Contracts\ReservedHeaders;
 use App\Modules\Connector\Contracts\SsrfBlocked;
 use Illuminate\Contracts\Config\Repository;
 use InvalidArgumentException;
@@ -100,7 +101,7 @@ final class CurlEgressTransport implements EgressTransport
             }
 
             // These belong to the transport: a caller's Host would reach another virtual host on the pinned address.
-            if (preg_match('/\A(?:host|content-length|transfer-encoding|connection|expect|te|upgrade|proxy-.*)\z/Di', (string) $name) === 1) {
+            if (ReservedHeaders::transport((string) $name)) {
                 throw new InvalidArgumentException('A request header is reserved for the transport.');
             }
 

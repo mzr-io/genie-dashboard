@@ -55,11 +55,13 @@ final class ShellNavigation
 
     /**
      * Admin page routes that are not navigation items (a view of a parent item): route name => the permission it needs.
-     * The Groups view of User configuration (Story 1.23) and the Host allowlist of System settings (Story 2.1) are such pages; their parents link to them.
+     * The Groups view of User configuration (Story 1.23), the Host allowlist of System settings (Story 2.1) and the Data source form (Story 2.3) are such pages; their parents link to them.
      */
     public const ADMIN_PAGES = [
         'admin.users.groups' => Permission::UsersManage,
         'admin.settings.host-allowlist' => Permission::SettingsManage,
+        'admin.data-sources.create' => Permission::DataSourcesManage,
+        'admin.data-sources.edit' => Permission::DataSourcesManage,
     ];
 
     /**
@@ -85,6 +87,11 @@ final class ShellNavigation
         'api.admin.host-allowlist.store' => Permission::SettingsManage,
         'api.admin.host-allowlist.destroy' => Permission::SettingsManage,
         'api.admin.host-allowlist.dependents' => Permission::SettingsManage,
+        'api.admin.data-sources.index' => Permission::DataSourcesManage,
+        'api.admin.data-sources.store' => Permission::DataSourcesManage,
+        'api.admin.data-sources.check-url' => Permission::DataSourcesManage,
+        'api.admin.data-sources.show' => Permission::DataSourcesManage,
+        'api.admin.data-sources.update' => Permission::DataSourcesManage,
     ];
 
     /** Whether the route name is an Admin item or Admin API route (the gate fails closed for any other route without a key). */

@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\DataSourceController;
 use App\Http\Controllers\Admin\GroupController;
 use App\Http\Controllers\Admin\HostAllowlistController;
 use App\Http\Controllers\Admin\InvitationController;
@@ -52,4 +53,11 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('host-allowlist', [HostAllowlistController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.host-allowlist.store');
     Route::delete('host-allowlist/{entry}', [HostAllowlistController::class, 'destroy'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.host-allowlist.destroy');
     Route::get('host-allowlist/{entry}/dependents', [HostAllowlistController::class, 'dependents'])->middleware('admin')->name('api.admin.host-allowlist.dependents');
+
+    // Data Sources (Story 2.3): `data_sources.manage`, mapped in ShellNavigation::ADMIN_API_ROUTES. `check-url` is the Base URL blur check.
+    Route::get('data-sources', [DataSourceController::class, 'index'])->middleware('admin')->name('api.admin.data-sources.index');
+    Route::post('data-sources', [DataSourceController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.data-sources.store');
+    Route::post('data-sources/check-url', [DataSourceController::class, 'checkUrl'])->middleware(['admin', 'throttle:60,1,data-source-check'])->name('api.admin.data-sources.check-url');
+    Route::get('data-sources/{dataSource}', [DataSourceController::class, 'show'])->middleware('admin')->name('api.admin.data-sources.show');
+    Route::put('data-sources/{dataSource}', [DataSourceController::class, 'update'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.data-sources.update');
 });

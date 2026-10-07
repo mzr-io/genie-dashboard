@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-06-2026 11:46
-last_updated: 10-07-2026 21:00
+last_updated: 10-07-2026 23:00
 project: rmg-dashboard-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -66,7 +66,7 @@ development_status:
   epic-2: in-progress
   2-1-manage-the-workspace-host-allowlist: review
   2-2-guard-every-outbound-url-with-egressguard-and-operator-priva: review
-  2-3-register-and-edit-a-data-source: backlog
+  2-3-register-and-edit-a-data-source: review
   2-4-add-authentication-and-write-only-secrets-to-a-data-source: backlog
   2-5-test-a-data-source-connection: backlog
   2-6-accept-only-json-losslessly-and-within-limits: backlog

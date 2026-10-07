@@ -45,6 +45,10 @@ enum AuditAction: string
     case ConnectorHostAllowlistEntryCreated = 'connector.host_allowlist_entry.created';
     case ConnectorHostAllowlistEntryRemoved = 'connector.host_allowlist_entry.removed';
 
+    // Connector: Data Sources (Story 2.3).
+    case ConnectorDataSourceCreated = 'connector.data_source.created';
+    case ConnectorDataSourceUpdated = 'connector.data_source.updated';
+
     // Connector: outbound guard (Story 2.2). A block is a security event; a grant is an operator action mirrored here.
     case ConnectorEgressBlocked = 'connector.egress.blocked';
     case ConnectorEgressGrantCreated = 'connector.egress_grant.created';
