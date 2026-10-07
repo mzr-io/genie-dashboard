@@ -36,6 +36,11 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->encryptCookies(except: ['sidebar_state']);
 
+        // The host allowlist refuses whitespace instead of silently trimming it (Story 2.1).
+        $middleware->trimStrings(except: [fn (Request $request): bool => $request->is('api/v1/admin/host-allowlist', 'api/v1/admin/host-allowlist/*')]);
+        // An empty scheme or host reaches the validation as the empty string and is refused, never repaired to a default.
+        $middleware->convertEmptyStringsToNull(except: [fn (Request $request): bool => $request->is('api/v1/admin/host-allowlist', 'api/v1/admin/host-allowlist/*')]);
+
         $middleware->web(append: [
             HandleInertiaRequests::class,
             AddLinkHeadersForPreloadedAssets::class,

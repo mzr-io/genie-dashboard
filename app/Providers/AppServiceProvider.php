@@ -12,6 +12,7 @@ use App\Modules\Access\Contracts\MemberAccess;
 use App\Modules\Access\Contracts\MemberActivation;
 use App\Modules\Access\Contracts\MemberDirectory;
 use App\Modules\Access\Contracts\MemberInvitations;
+use App\Modules\Access\Contracts\MemberNames;
 use App\Modules\Access\Contracts\MembershipLookup;
 use App\Modules\Access\Contracts\MembershipPermissions;
 use App\Modules\Access\Infrastructure\AccessAuditSerializer;
@@ -21,6 +22,12 @@ use App\Modules\Access\Infrastructure\SecurityDefinerMembershipLookup;
 use App\Modules\Access\Infrastructure\SignInMembershipsAdapter;
 use App\Modules\Access\Infrastructure\SqlGroupDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberDirectory;
+use App\Modules\Access\Infrastructure\SqlMemberNames;
+use App\Modules\Connector\Application\ManageHostAllowlist;
+use App\Modules\Connector\Contracts\HostAllowlist;
+use App\Modules\Connector\Contracts\HostAllowlistDependents;
+use App\Modules\Connector\Infrastructure\ConnectorAuditSerializer;
+use App\Modules\Connector\Infrastructure\NoHostAllowlistDependents;
 use App\Modules\Identity\Application\IssueInvitation;
 use App\Modules\Identity\Application\QueuedInvitationCourier;
 use App\Modules\Identity\Contracts\InvitationCourier;
@@ -80,6 +87,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SessionRevocation::class, DatabaseSessionRevocation::class);
         $this->app->bind(GroupDirectory::class, SqlGroupDirectory::class);
         $this->app->bind(GroupManager::class, ManageGroups::class);
+        $this->app->bind(MemberNames::class, SqlMemberNames::class);
+        $this->app->bind(HostAllowlist::class, ManageHostAllowlist::class);
+        // Story 2.3 binds the Data Source implementation; until then nothing depends on an entry.
+        $this->app->bind(HostAllowlistDependents::class, NoHostAllowlistDependents::class);
         $this->app->bind(SignInMemberships::class, SignInMembershipsAdapter::class);
         $this->app->bind(TenantCache::class, fn ($app) => new TenantCache($app['cache']->store()));
         $this->app->singleton(JobSigner::class, fn ($app) => new JobSigner((string) $app['config']->get('app.key')));
@@ -103,6 +114,7 @@ class AppServiceProvider extends ServiceProvider
         // Each module registers its audit allowlist with the kernel (the kernel calls no module).
         $serializers = $this->app->make(AuditSerializers::class);
         $serializers->register(new AccessAuditSerializer);
+        $serializers->register(new ConnectorAuditSerializer);
         $serializers->register(new IdentityAuditSerializer);
         $serializers->register(new PlatformAuditSerializer);
 

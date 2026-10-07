@@ -226,6 +226,8 @@ final class Cluster
             'workspace_settings' => self::seedSettings($workspaceId),
             'user_groups' => self::seedGroup($workspaceId),
             'group_members' => self::seedGroupMember($workspaceId),
+            'host_allowlist_entries' => self::seedHostEntry($workspaceId),
+            'host_allowlist_versions' => self::seedHostVersion($workspaceId),
             default => null,
         };
     }
@@ -273,6 +275,24 @@ final class Cluster
             ->execute([$id, $workspaceId, $name ?? 'Group '.$id]);
 
         return $id;
+    }
+
+    public static function seedHostEntry(string $workspaceId, string $host = '', int $port = 443, string $scheme = 'https'): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO host_allowlist_entries (id, workspace_id, host, scheme, port, added_by_membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $host === '' ? 'host-'.$id.'.example.test' : $host, $scheme, $port, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /** The Workspace's list-level version row; its generated `id` is the Workspace ID. */
+    public static function seedHostVersion(string $workspaceId, int $revision = 0): string
+    {
+        self::superuser()->prepare('INSERT INTO host_allowlist_versions (workspace_id, revision, created_at, updated_at) VALUES (?, ?, now(), now()) ON CONFLICT (workspace_id) DO NOTHING')
+            ->execute([$workspaceId, $revision]);
+
+        return $workspaceId;
     }
 
     private static function seedGroupMember(string $workspaceId): string

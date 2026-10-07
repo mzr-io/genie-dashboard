@@ -9,6 +9,7 @@ export enum ErrorCode {
     AccessRevisionConflict = 'access.revision_conflict',
     AccessSelfChangeForbidden = 'access.self_change_forbidden',
     AccessWorkspaceForbidden = 'access.workspace_forbidden',
+    ConnectorRevisionConflict = 'connector.revision_conflict',
     IdentityInvitationDeliveryFailed = 'identity.invitation_delivery_failed',
     IdentityInvitationInvalid = 'identity.invitation_invalid',
     PlatformCsrfTokenMismatch = 'platform.csrf_token_mismatch',

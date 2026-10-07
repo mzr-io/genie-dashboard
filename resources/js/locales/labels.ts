@@ -562,6 +562,107 @@ export const groupLabels = {
     emptyCell: '—',
 } as const;
 
+// Labels of System settings and its Host allowlist (Story 2.1; UX-DR-262, 263). The messages for the standard
+// states (`list-empty`, `msg:saved`, `msg:perm-denied`, the load failure) come from the catalogue and `shellLabels`.
+export const settingsLabels = {
+    pageTitle: 'System settings',
+    pageSubtitle: 'Settings that apply to the whole workspace.',
+    sections: 'Settings',
+    hostAllowlist: 'Host allowlist',
+    hostAllowlistSummary:
+        'The hosts this workspace may call. Dashflow contacts only hosts you approve here.',
+} as const;
+
+export const hostAllowlistLabels = {
+    pageTitle: 'Host allowlist',
+    pageSubtitle:
+        'Dashflow only contacts hosts on this list. Adding a host does not contact it.',
+    items: 'hosts',
+    action: '+ Add host',
+    back: 'Back to System settings',
+    caption:
+        'Hosts this workspace may call, with scheme, port and who added them',
+    tableRegion: 'Host allowlist table',
+    toolbar: 'Host allowlist tools',
+    search: 'Search hosts',
+    searchPlaceholder: 'Search by host',
+    clearSearch: 'Clear search',
+    count: (matched: number, total: number) =>
+        `${matched} of ${total} ${total === 1 ? 'host' : 'hosts'}`,
+    sorted: (column: string, descending: boolean) =>
+        `Sorted by ${column}, ${descending ? 'descending' : 'ascending'}`,
+    columns: {
+        host: 'Host',
+        scheme: 'Scheme',
+        port: 'Port',
+        added_by: 'Added by',
+        added: 'Added on',
+    },
+    actions: 'Actions',
+    notEncrypted: 'Not encrypted',
+    notEncryptedNote: 'Calls to this host are sent over plain http.',
+    unknownMember: 'Unknown member',
+    // The inline add form.
+    add: '+ Add host',
+    addTitle: 'Add a host',
+    addRegion: 'Add a host',
+    save: 'Add host',
+    cancel: 'Cancel',
+    host: 'Host',
+    hostHelper:
+        'A host name or IP address, with a port if it is not the default, such as api.example.com:8443. No scheme, path or wildcard.',
+    scheme: 'Scheme',
+    schemeHttps: 'https',
+    schemeHttp: 'http',
+    schemeHelper:
+        'https is encrypted. Plain http is allowed for now and is marked Not encrypted.',
+    schemeNotice: 'Plain http is not encrypted.',
+    // Field errors by the server's reason.
+    reasons: {
+        empty: 'Enter a host.',
+        whitespace:
+            'The host cannot contain spaces. Remove them and try again.',
+        forbidden_character:
+            'Enter a host name only: no scheme, path, query, user name, wildcard or percent sign.',
+        non_ascii:
+            'Use the ASCII (punycode) form of the host name, such as xn--bcher-kva.example.',
+        malformed:
+            'Enter a host, or a host and port such as api.example.com:8443. Put an IPv6 address in square brackets.',
+        invalid_label:
+            'Each part of a host name uses letters, digits and inner hyphens only.',
+        too_long: 'The host name is too long.',
+        numeric_address:
+            'Write an IP address as four numbers separated by dots, or as an IPv6 address in square brackets.',
+        blocked_address: 'This address is in a range that cannot be allowed.',
+        invalid_port: 'The port must be a number from 1 to 65535.',
+        invalid_scheme: 'Choose https or http.',
+        duplicate: 'This host and port are already on the allowlist.',
+    } as Record<string, string>,
+    hostInvalid: 'This host is not valid. Check it and try again.',
+    // Changes.
+    added: (host: string) => `${host} added to the host allowlist.`,
+    removed: (host: string) => `${host} removed from the host allowlist.`,
+    // The list changed under the Admin (409): the page shows the fresh list and keeps what was typed.
+    conflict:
+        'The host allowlist was changed by someone else. The list below is up to date. Check your entry, then add it again.',
+    conflictRemove:
+        'The host allowlist was changed by someone else. The list is up to date. Remove the host again if you still want to.',
+    gone: 'This host is no longer on the allowlist. The list has been refreshed.',
+    // Removal (UX-DR-262: alertdialog, focus on Cancel, the destructive button repeats the host).
+    remove: 'Remove',
+    removeFor: (host: string) => `Remove ${host}`,
+    removeTitle: (host: string) => `Remove ${host}?`,
+    removeImpact: (host: string) =>
+        `${host} will no longer be an approved host. Calls to it are refused from now on.`,
+    removeDependents: (names: string[]) =>
+        `${names.length === 1 ? 'This data source' : 'These data sources'} will be blocked on the next call: ${names.join(', ')}.`,
+    removeNoDependents: 'No data sources use this host.',
+    removeDependentsFailed:
+        "We couldn't check which data sources use this host. They may be blocked on their next call.",
+    removeObject: (host: string) => host,
+    removeVerb: 'Remove',
+} as const;
+
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after
 // signing back in (`session-expired`) come from the catalogue.
 export const sessionLabels = {

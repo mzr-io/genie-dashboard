@@ -66,7 +66,9 @@ Route::middleware(['auth'])->group(function () {
         Route::inertia('users', 'admin/Users')->name('admin.users.index');
         // The Groups view of User configuration (Story 1.23): same permission, mapped in ShellNavigation::ADMIN_PAGES.
         Route::inertia('users/groups', 'admin/UserGroups')->name('admin.users.groups');
-        Route::inertia('settings', 'Placeholder', ['page' => 'system-settings'])->name('admin.settings.index');
+        Route::inertia('settings', 'admin/SystemSettings')->name('admin.settings.index');
+        // The Host allowlist of System settings (Story 2.1): a view of the settings item, not a navigation item.
+        Route::inertia('settings/host-allowlist', 'admin/HostAllowlist')->name('admin.settings.host-allowlist');
         Route::inertia('audit', 'Placeholder', ['page' => 'audit-log'])->name('admin.audit.index');
     });
 });

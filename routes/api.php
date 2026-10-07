@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\GroupController;
+use App\Http\Controllers\Admin\HostAllowlistController;
 use App\Http\Controllers\Admin\InvitationController;
 use App\Http\Controllers\Admin\MemberController;
 use App\Modules\Identity\Http\SessionController;
@@ -45,4 +46,10 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::delete('groups/{group}', [GroupController::class, 'destroy'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.groups.destroy');
     Route::post('groups/{group}/members/{membership}', [GroupController::class, 'addMember'])->middleware(['admin', 'throttle:60,1'])->name('api.admin.groups.members.store');
     Route::delete('groups/{group}/members/{membership}', [GroupController::class, 'removeMember'])->middleware(['admin', 'throttle:60,1'])->name('api.admin.groups.members.destroy');
+
+    // The Workspace host allowlist (Story 2.1): `settings.manage`, mapped in ShellNavigation::ADMIN_API_ROUTES.
+    Route::get('host-allowlist', [HostAllowlistController::class, 'index'])->middleware('admin')->name('api.admin.host-allowlist.index');
+    Route::post('host-allowlist', [HostAllowlistController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.host-allowlist.store');
+    Route::delete('host-allowlist/{entry}', [HostAllowlistController::class, 'destroy'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.host-allowlist.destroy');
+    Route::get('host-allowlist/{entry}/dependents', [HostAllowlistController::class, 'dependents'])->middleware('admin')->name('api.admin.host-allowlist.dependents');
 });

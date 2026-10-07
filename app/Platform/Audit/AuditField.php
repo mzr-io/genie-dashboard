@@ -11,6 +11,9 @@ enum AuditField
     /** A short enum-style slug, stored as is. */
     case Enum;
 
+    /** A host name or IP literal (lower case letters, digits, dots, hyphens, colons and brackets), stored as is. */
+    case Host;
+
     /** A non-negative integer count, stored as is. */
     case Count;
 

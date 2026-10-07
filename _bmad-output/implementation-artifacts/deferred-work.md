@@ -115,3 +115,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-25-verify-security-and-load-readiness-with-test-suites-and-a-load-test-skeleton.md`
   summary: Add a negative run for `bin/test-restore` (a scratch copy with FORCE RLS removed or DELETE granted to `app` must fail), real-browser axe with contrast, layout and error-state coverage, and the full backup and restore drill.
   evidence: The restore check has only been seen passing; axe runs in happy-dom without layout, so contrast, reflow and dialog or error states are unchecked; the full drill is Epic 9.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-manage-the-workspace-host-allowlist.md`
+  summary: Test the host-allowlist version-row lock with two live connections.
+  evidence: The stale tests run sequentially; dropping `for update` in `ManageHostAllowlist::lockVersion` would pass them. Needs the two-connection helper already deferred in Story 1.23.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-manage-the-workspace-host-allowlist.md`
+  summary: Story 2.2 must review `BlockedAddress` for documentation and benchmark ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24, 198.18.0.0/15, 2001:db8::/32) and decide about reserved host names (`localhost`, `*.internal`).
+  evidence: Story 2.1 blocks only the classes the spec names and accepts any non-IP name; the EgressGuard classifier reuses `BlockedAddress` as the single list.

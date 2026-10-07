@@ -112,9 +112,36 @@ it('maps the Groups page and the group API routes to users.manage and no other p
 
     expect($page)->not->toBeNull()
         ->and(ShellNavigation::permissionForRoute('admin.users.groups'))->toBe(Permission::UsersManage)
-        ->and(ShellNavigation::ADMIN_PAGES)->toBe(['admin.users.groups' => Permission::UsersManage])
+        ->and(ShellNavigation::ADMIN_PAGES['admin.users.groups'])->toBe(Permission::UsersManage)
         ->and(adminMiddlewareKeys($page))->toBe([null])
         ->and(array_key_exists('admin.users.groups', array_column(array_values(ShellNavigation::ADMIN_ITEMS), 0)))->toBeFalse();
+});
+
+it('maps the Host allowlist page and API routes to settings.manage and no other permission', function () {
+    $api = [
+        'api.admin.host-allowlist.index' => ['GET', 'api/v1/admin/host-allowlist'],
+        'api.admin.host-allowlist.store' => ['POST', 'api/v1/admin/host-allowlist'],
+        'api.admin.host-allowlist.destroy' => ['DELETE', 'api/v1/admin/host-allowlist/{entry}'],
+        'api.admin.host-allowlist.dependents' => ['GET', 'api/v1/admin/host-allowlist/{entry}/dependents'],
+    ];
+
+    foreach ($api as $name => [$method, $uri]) {
+        $route = Router::getRoutes()->getByName($name);
+
+        expect($route)->not->toBeNull($name)
+            ->and($route->methods())->toContain($method)
+            ->and($route->uri())->toBe($uri)
+            ->and(ShellNavigation::ADMIN_API_ROUTES[$name])->toBe(Permission::SettingsManage)
+            ->and(adminMiddlewareKeys($route))->toBe([null]);
+    }
+
+    $page = Router::getRoutes()->getByName('admin.settings.host-allowlist');
+
+    expect($page)->not->toBeNull()
+        ->and($page->uri())->toBe('admin/settings/host-allowlist')
+        ->and(ShellNavigation::permissionForRoute('admin.settings.host-allowlist'))->toBe(Permission::SettingsManage)
+        ->and(adminMiddlewareKeys($page))->toBe([null])
+        ->and(array_key_exists('admin.settings.host-allowlist', array_column(array_values(ShellNavigation::ADMIN_ITEMS), 0)))->toBeFalse();
 });
 
 it('registers every ADMIN_API_ROUTES entry as a route that uses the admin middleware', function () {

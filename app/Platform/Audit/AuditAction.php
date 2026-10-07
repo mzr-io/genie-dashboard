@@ -41,6 +41,10 @@ enum AuditAction: string
     case AccessAttributeChanged = 'access.attribute.changed';
     case AccessAttributeKeyCreated = 'access.attribute_key.created';
 
+    // Connector: the Workspace host allowlist.
+    case ConnectorHostAllowlistEntryCreated = 'connector.host_allowlist_entry.created';
+    case ConnectorHostAllowlistEntryRemoved = 'connector.host_allowlist_entry.removed';
+
     // Platform: operator actions mirrored into the Workspace audit log.
     case PlatformWorkspaceCreated = 'platform.workspace.created';
 

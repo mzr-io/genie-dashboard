@@ -50,3 +50,26 @@ it('refuses an ID or enum field holding free text, and a module without a serial
     expect(fn () => serializers()->serialize(AuditAction::AccessRoleChanged, ['role' => 'Some Free Text']))->toThrow(InvalidArgumentException::class);
     expect(fn () => serializers()->serialize(AuditAction::IdentitySigninFailed, []))->toThrow(InvalidArgumentException::class);
 });
+
+it('stores a host field as is when it is a lower-case host name or IP literal, and refuses anything else', function () {
+    $registry = new AuditSerializers(new AuditHasher('base64:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA='));
+    $registry->register(new class implements AuditSerializer
+    {
+        public function module(): string
+        {
+            return 'connector';
+        }
+
+        public function fields(): array
+        {
+            return ['host' => AuditField::Host];
+        }
+    });
+
+    expect($registry->serialize(AuditAction::ConnectorHostAllowlistEntryCreated, ['host' => 'api.example.com']))->toBe(['host' => 'api.example.com'])
+        ->and($registry->serialize(AuditAction::ConnectorHostAllowlistEntryCreated, ['host' => '[2606:4700::1111]']))->toBe(['host' => '[2606:4700::1111]'])
+        ->and($registry->serialize(AuditAction::ConnectorHostAllowlistEntryCreated, ['host' => null]))->toBe(['host' => null])
+        ->and(fn () => $registry->serialize(AuditAction::ConnectorHostAllowlistEntryCreated, ['host' => 'ada@example.test']))->toThrow(InvalidArgumentException::class)
+        ->and(fn () => $registry->serialize(AuditAction::ConnectorHostAllowlistEntryCreated, ['host' => 'Mixed.Case']))->toThrow(InvalidArgumentException::class)
+        ->and(fn () => $registry->serialize(AuditAction::ConnectorHostAllowlistEntryCreated, ['host' => 'a.example/path']))->toThrow(InvalidArgumentException::class);
+});

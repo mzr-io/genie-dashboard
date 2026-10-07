@@ -17,6 +17,9 @@ final class AuditSerializers
     /** @var array<string, AuditSerializer> */
     private array $serializers = [];
 
+    /** A host name or IP literal, stored as is. */
+    public const HOST = '/\A[a-z0-9.:\[\]-]{1,255}\z/D';
+
     public function __construct(private readonly AuditHasher $hasher) {}
 
     public function register(AuditSerializer $serializer): void
@@ -62,6 +65,7 @@ final class AuditSerializers
                 $value === null => null,
                 $kind === AuditField::Id => $this->id($name, $value),
                 $kind === AuditField::Enum => $this->slug($name, $value),
+                $kind === AuditField::Host => $this->host($name, $value),
                 $kind === AuditField::Count => $this->count($name, $value),
                 $kind === AuditField::EnumList => $this->slugs($name, $value),
                 default => $this->hasher->hash($value),
@@ -107,6 +111,15 @@ final class AuditSerializers
         sort($slugs);
 
         return $slugs;
+    }
+
+    private function host(string $name, mixed $value): string
+    {
+        if (is_string($value) && preg_match(self::HOST, $value) === 1) {
+            return $value;
+        }
+
+        throw new InvalidArgumentException("Audit field {$name} is declared a host and must be a lower-case host name or IP literal.");
     }
 
     private function slug(string $name, mixed $value): string
