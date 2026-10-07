@@ -3,11 +3,13 @@
 namespace App\Providers;
 
 use App\Modules\Access\Application\ChangeMemberAccess;
+use App\Modules\Access\Application\ChangeMemberStatus;
 use App\Modules\Access\Application\InviteMembers;
 use App\Modules\Access\Application\ManageGroups;
 use App\Modules\Access\Contracts\GroupDirectory;
 use App\Modules\Access\Contracts\GroupManager;
 use App\Modules\Access\Contracts\MemberAccess;
+use App\Modules\Access\Contracts\MemberActivation;
 use App\Modules\Access\Contracts\MemberDirectory;
 use App\Modules\Access\Contracts\MemberInvitations;
 use App\Modules\Access\Contracts\MembershipLookup;
@@ -24,7 +26,9 @@ use App\Modules\Identity\Application\QueuedInvitationCourier;
 use App\Modules\Identity\Contracts\InvitationCourier;
 use App\Modules\Identity\Contracts\InvitationIssuer;
 use App\Modules\Identity\Contracts\InvitedMembershipGranter;
+use App\Modules\Identity\Contracts\SessionRevocation;
 use App\Modules\Identity\Contracts\SignInMemberships;
+use App\Modules\Identity\Infrastructure\DatabaseSessionRevocation;
 use App\Modules\Identity\Infrastructure\IdentityAuditSerializer;
 use App\Platform\Audit\AuditHasher;
 use App\Platform\Audit\AuditSerializers;
@@ -72,6 +76,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(InvitationCourier::class, QueuedInvitationCourier::class);
         $this->app->bind(MemberInvitations::class, InviteMembers::class);
         $this->app->bind(MemberAccess::class, ChangeMemberAccess::class);
+        $this->app->bind(MemberActivation::class, ChangeMemberStatus::class);
+        $this->app->bind(SessionRevocation::class, DatabaseSessionRevocation::class);
         $this->app->bind(GroupDirectory::class, SqlGroupDirectory::class);
         $this->app->bind(GroupManager::class, ManageGroups::class);
         $this->app->bind(SignInMemberships::class, SignInMembershipsAdapter::class);

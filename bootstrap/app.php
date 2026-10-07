@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Middleware\HandleInertiaRequests;
+use App\Http\Middleware\RequireActiveMembership;
 use App\Http\Middleware\RequireAdminAccess;
 use App\Modules\Identity\Http\IdleTimeout;
 use App\Modules\Identity\Http\SendInvitationsAfterCommit;
@@ -40,11 +41,13 @@ return Application::configure(basePath: dirname(__DIR__))
             AddLinkHeadersForPreloadedAssets::class,
             // After the session starts: signs out an idle session, then opens the request transaction and sets the Workspace context.
             IdleTimeout::class,
+            // Every authenticated request re-checks that the session's Workspace membership is still active (Story 1.24).
+            RequireActiveMembership::class,
             WorkspaceTransaction::class,
         ]);
 
         // Invitation emails go out after the transaction of the next middleware has committed.
-        $middleware->api(append: [IdleTimeout::class, SendInvitationsAfterCommit::class, WorkspaceTransaction::class]);
+        $middleware->api(append: [IdleTimeout::class, RequireActiveMembership::class, SendInvitationsAfterCommit::class, WorkspaceTransaction::class]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->render(ApiErrorRenderer::render(...));

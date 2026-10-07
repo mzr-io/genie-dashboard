@@ -142,6 +142,18 @@ it('maps the member update route (PATCH) to users.manage and no other permission
         ->and(adminMiddlewareKeys($route))->toBe([null]);
 });
 
+it('maps the member deactivate and reactivate routes (POST) to users.manage and no other permission', function () {
+    foreach (['api.admin.members.deactivate' => 'deactivate', 'api.admin.members.reactivate' => 'reactivate'] as $name => $action) {
+        $route = Router::getRoutes()->getByName($name);
+
+        expect($route)->not->toBeNull($name)
+            ->and($route->methods())->toContain('POST')
+            ->and($route->uri())->toBe('api/v1/admin/members/{membership}/'.$action)
+            ->and(ShellNavigation::ADMIN_API_ROUTES[$name])->toBe(Permission::UsersManage)
+            ->and(adminMiddlewareKeys($route))->toBe([null]);
+    }
+});
+
 it('maps the invitation routes (create, resend, revoke) to users.manage and no other permission', function () {
     $routes = ['api.admin.invitations.store' => 'POST', 'api.admin.invitations.resend' => 'POST', 'api.admin.invitations.destroy' => 'DELETE'];
 

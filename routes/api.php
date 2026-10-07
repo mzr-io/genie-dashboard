@@ -29,6 +29,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::get('members', [MemberController::class, 'index'])->middleware('admin')->name('api.admin.members');
     Route::get('members/{membership}', [MemberController::class, 'show'])->middleware('admin')->name('api.admin.members.show');
     Route::patch('members/{membership}', [MemberController::class, 'update'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.members.update');
+    // Deactivate and reactivate (Story 1.24): only the membership status changes.
+    Route::post('members/{membership}/deactivate', [MemberController::class, 'deactivate'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.members.deactivate');
+    Route::post('members/{membership}/reactivate', [MemberController::class, 'reactivate'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.members.reactivate');
 
     // Invitations (Story 1.21): create, re-send (replaces the token) and revoke. Same mapping, permission `users.manage`.
     Route::post('invitations', [InvitationController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.invitations.store');

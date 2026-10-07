@@ -245,11 +245,11 @@ it('fails closed when the permission lookup breaks', function () {
     Log::shouldHaveReceived('error')->with('shell.permissions.failed')->once();
 });
 
-it('ignores a malformed Workspace ID in the session', function () {
+it('ends a session whose Workspace ID is malformed (it names no membership)', function () {
     $user = User::factory()->create();
     $this->actingAs($user)->withSession(['area' => 'user', 'workspace_id' => 'not-a-uuid'])
-        ->get(route('overview'))->assertOk()
-        ->assertInertia(fn (AssertableInertia $inertia) => $inertia->where('shell.workspace', null));
+        ->get(route('overview'))->assertRedirect(route('login'));
+    expect(session('workspace_id'))->toBeNull();
 });
 
 it('signs out: rotates the session ID, destroys the session, lands on sign-in and clears the CSRF token', function () {

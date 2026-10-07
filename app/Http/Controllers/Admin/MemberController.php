@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\ListMembersRequest;
+use App\Http\Requests\Admin\MemberStatusRequest;
 use App\Http\Requests\Admin\UpdateMemberRequest;
 use App\Http\Resources\MemberResource;
 use App\Http\Responses\AdminApiError;
@@ -14,6 +15,7 @@ use App\Modules\Access\Contracts\ErrorCode;
 use App\Modules\Access\Contracts\InvalidMemberCursor;
 use App\Modules\Access\Contracts\LastUsersManageHolder;
 use App\Modules\Access\Contracts\MemberAccess;
+use App\Modules\Access\Contracts\MemberActivation;
 use App\Modules\Access\Contracts\MemberDirectory;
 use App\Modules\Access\Contracts\MemberEditor;
 use App\Modules\Access\Contracts\MemberRow;
@@ -25,10 +27,12 @@ use App\Modules\Access\Contracts\PermissionNotHeld;
 use App\Modules\Access\Contracts\PermissionsOnUserRole;
 use App\Modules\Access\Contracts\RevisionConflict;
 use App\Modules\Access\Contracts\SelfChangeForbidden;
+use App\Modules\Access\Contracts\StatusChange;
 use App\Platform\Audit\Audit;
 use App\Platform\Audit\AuditAction;
 use App\Platform\Contracts\ErrorCode as PlatformErrorCode;
 use App\Platform\Tenancy\WorkspaceTransaction;
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -55,6 +59,7 @@ final class MemberController extends Controller
     public function __construct(
         private readonly MemberDirectory $members,
         private readonly MemberAccess $access,
+        private readonly MemberActivation $activation,
         private readonly MembershipLookup $memberships,
         private readonly Audit $audit,
     ) {}
@@ -119,11 +124,11 @@ final class MemberController extends Controller
         } catch (MembershipNotFound) {
             abort(404);
         } catch (EditorNotAuthorized) {
-            $this->recordRefusal($request, $editor, $membership, 'not_authorized');
+            $this->recordRefusal($request, $editor, $membership, 'api.admin.members.update', 'not_authorized');
 
             return AdminApiError::json($request, ErrorCode::NotAuthorized->value, 403);
         } catch (SelfChangeForbidden) {
-            $this->recordRefusal($request, $editor, $membership, 'self_change');
+            $this->recordRefusal($request, $editor, $membership, 'api.admin.members.update', 'self_change');
 
             return AdminApiError::json($request, ErrorCode::SelfChangeForbidden->value, 403, 'Nobody edits their own role or permissions.');
         } catch (MembershipInactive) {
@@ -135,16 +140,16 @@ final class MemberController extends Controller
         } catch (PermissionsOnUserRole) {
             return AdminApiError::json($request, PlatformErrorCode::ValidationFailed->value, 422, errors: ['permissions' => ['A User holds no permissions.']]);
         } catch (PermissionNotHeld $e) {
-            $this->recordRefusal($request, $editor, $membership, 'permission_not_held');
+            $this->recordRefusal($request, $editor, $membership, 'api.admin.members.update', 'permission_not_held');
 
             return AdminApiError::json($request, ErrorCode::PermissionNotHeld->value, 403, extra: ['permissions' => implode(',', $e->permissions)]);
         } catch (LastUsersManageHolder) {
-            $this->recordRefusal($request, $editor, $membership, 'last_users_manage_holder');
+            $this->recordRefusal($request, $editor, $membership, 'api.admin.members.update', 'last_users_manage_holder');
 
             return AdminApiError::json($request, ErrorCode::LastUsersManageHolder->value, 409, 'This member is the last person who can manage users, so their role and that permission cannot be changed.');
         } catch (PasswordNotConfirmed) {
             if ($wrongPassword) {
-                $this->recordRefusal($request, $editor, $membership, 'wrong_password');
+                $this->recordRefusal($request, $editor, $membership, 'api.admin.members.update', 'wrong_password');
             }
 
             return AdminApiError::json($request, PlatformErrorCode::ValidationFailed->value, 422, errors: ['confirm_password' => ['The password is incorrect.']]);
@@ -163,11 +168,64 @@ final class MemberController extends Controller
         ]], 200, ['Cache-Control' => self::NO_STORE]);
     }
 
+    /** Deactivate a member (Story 1.24): their sessions for this Workspace end and their next request fails. */
+    public function deactivate(MemberStatusRequest $request, string $membership): JsonResponse
+    {
+        return $this->changeStatus($request, $membership, 'api.admin.members.deactivate', fn (MemberEditor $editor): StatusChange => $this->activation->deactivate($editor, $membership, $request->revision()));
+    }
+
+    /** Reactivate a member (Story 1.24): their previous role, permissions and groups come back. */
+    public function reactivate(MemberStatusRequest $request, string $membership): JsonResponse
+    {
+        return $this->changeStatus($request, $membership, 'api.admin.members.reactivate', fn (MemberEditor $editor): StatusChange => $this->activation->reactivate($editor, $membership, $request->revision()));
+    }
+
+    /**
+     * Refusals leave nothing changed (the request's transaction rolls back on any 4xx): one's own row (403), a lost
+     * authority (403), the last `users.manage` holder (409), a stale revision (409 with the current state) and another
+     * Workspace's member (404). Probing refusals are recorded as `access.admin.denied` on their own connection.
+     *
+     * @param  Closure(MemberEditor): StatusChange  $run
+     */
+    private function changeStatus(MemberStatusRequest $request, string $membership, string $route, Closure $run): JsonResponse
+    {
+        $editor = $this->editor($request, $this->workspaceId($request));
+
+        try {
+            $change = $run($editor);
+        } catch (MembershipNotFound) {
+            abort(404);
+        } catch (EditorNotAuthorized) {
+            $this->recordRefusal($request, $editor, $membership, $route, 'not_authorized');
+
+            return AdminApiError::json($request, ErrorCode::NotAuthorized->value, 403);
+        } catch (SelfChangeForbidden) {
+            $this->recordRefusal($request, $editor, $membership, $route, 'self_change');
+
+            return AdminApiError::json($request, ErrorCode::SelfChangeForbidden->value, 403, 'Nobody changes their own access.');
+        } catch (RevisionConflict $e) {
+            return AdminApiError::json($request, ErrorCode::RevisionConflict->value, 409, 'This member was changed by someone else.', extra: [
+                'current' => ['role' => $e->current->role, 'permissions' => $e->current->permissions, 'revision' => $e->current->revision, 'status' => $e->current->status],
+            ]);
+        } catch (LastUsersManageHolder) {
+            $this->recordRefusal($request, $editor, $membership, $route, 'last_users_manage_holder');
+
+            return AdminApiError::json($request, ErrorCode::LastUsersManageHolder->value, 409, 'This member is the last person who can manage users, so they cannot be deactivated.');
+        }
+
+        return response()->json(['data' => [
+            'kind' => MemberRow::MEMBER,
+            'membership_id' => $change->membershipId,
+            'status' => $change->status,
+            'revision' => $change->revision,
+        ]], 200, ['Cache-Control' => self::NO_STORE]);
+    }
+
     /** A refused attempt as a security event on its own connection (it outlives the rolled-back request); the target ID only, never an email. */
-    private function recordRefusal(Request $request, MemberEditor $editor, string $target, string $reason): void
+    private function recordRefusal(Request $request, MemberEditor $editor, string $target, string $route, string $reason): void
     {
         try {
-            $values = ['route' => 'api.admin.members.update', 'reason' => $reason, 'user_id' => $editor->userId, 'membership_id' => $editor->membershipId, 'area' => 'admin'];
+            $values = ['route' => $route, 'reason' => $reason, 'user_id' => $editor->userId, 'membership_id' => $editor->membershipId, 'area' => 'admin'];
             $subject = Str::isUuid($target) ? 'membership:'.strtolower($target) : null;
 
             $this->audit->recordSecurityEvent(AuditAction::AccessAdminDenied, $values, $editor->workspaceId, subject: $subject, actor: $editor->membershipId);

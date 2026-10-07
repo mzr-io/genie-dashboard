@@ -69,6 +69,8 @@ final class ShellNavigation
         'api.admin.members' => Permission::UsersManage,
         'api.admin.members.show' => Permission::UsersManage,
         'api.admin.members.update' => Permission::UsersManage,
+        'api.admin.members.deactivate' => Permission::UsersManage,
+        'api.admin.members.reactivate' => Permission::UsersManage,
         'api.admin.invitations.store' => Permission::UsersManage,
         'api.admin.invitations.resend' => Permission::UsersManage,
         'api.admin.invitations.destroy' => Permission::UsersManage,

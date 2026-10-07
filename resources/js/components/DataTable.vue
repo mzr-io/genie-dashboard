@@ -29,9 +29,11 @@ const props = defineProps<{
     busy?: boolean;
     // The key of the row whose `detail` slot is expanded inline, in a row of its own under it.
     expanded?: string | null;
+    // The key of the row to highlight after a save (accent-soft fill, leading bar). The row is focusable so the page can focus it.
+    highlighted?: string | null;
 }>();
 
-const emit = defineEmits<{ sort: [key: string] }>();
+const emit = defineEmits<{ sort: [key: string]; rowBlur: [key: string] }>();
 
 function ariaSort(
     column: DataTableColumn,
@@ -116,7 +118,19 @@ const columnsWithState = computed(() =>
                 <template v-for="row in rows" :key="rowKey(row)">
                     <tr
                         data-slot="data-row"
-                        class="border-b border-border-default last:border-b-0"
+                        :data-row-key="rowKey(row)"
+                        @blur="emit('rowBlur', rowKey(row))"
+                        :data-highlighted="
+                            highlighted != null && highlighted === rowKey(row)
+                                ? 'true'
+                                : undefined
+                        "
+                        :tabindex="
+                            highlighted != null && highlighted === rowKey(row)
+                                ? -1
+                                : undefined
+                        "
+                        class="border-b border-border-default last:border-b-0 focus:outline-2 focus:-outline-offset-2 focus:outline-(--df-focus-ring) data-[highlighted=true]:bg-accent-soft data-[highlighted=true]:*:first:shadow-[inset_4px_0_0_var(--color-accent-ink-strong)]"
                     >
                         <template v-for="column in columns" :key="column.key">
                             <component

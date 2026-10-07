@@ -11,6 +11,7 @@ import {
 } from 'vue';
 import type { Component } from 'vue';
 import { useI18n } from 'vue-i18n';
+import ConfirmDialog from '@/components/ConfirmDialog.vue';
 import DataTable from '@/components/DataTable.vue';
 import type { DataTableColumn } from '@/components/DataTable.vue';
 import InviteUserForm from '@/components/InviteUserForm.vue';
@@ -29,9 +30,12 @@ import {
     InvitationRequestError,
     memberKey,
     MembersRequestError,
+    MemberUpdateError,
     resendInvitation,
     revokeInvitation,
+    setMemberStatus,
 } from '@/lib/members';
+import type { MemberStatusAction } from '@/lib/members';
 import type { Member, MembersMeta, MemberSortKey } from '@/lib/members';
 import { groups as groupsPage } from '@/routes/admin/users';
 import { SIGN_IN_URL } from '@/lib/session';
@@ -40,6 +44,7 @@ import {
     groupLabels,
     inviteLabels,
     shellPages,
+    statusLabels,
     userListLabels as labels,
 } from '@/locales/labels';
 import { useToasts } from '@/stores/toasts';
@@ -82,6 +87,13 @@ const heldPermissions = computed(() =>
 );
 // The member whose Roles & permissions editor is expanded under its row (Story 1.22), if any.
 const editing = ref<string | null>(null);
+// Deactivate and Reactivate (Story 1.24): the member awaiting confirmation, the row highlighted after a save and the
+// inline reasons of refused changes (409 and 403), by row key.
+const confirming = ref<Member | null>(null);
+const confirmOpen = ref(false);
+const confirmInvoker = ref<HTMLElement | null>(null);
+const highlighted = ref<string | null>(null);
+const rowReasons = ref<Record<string, string>>({});
 
 let controller: AbortController | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -221,6 +233,7 @@ function applySearch(): void {
         return;
     }
 
+    highlighted.value = null;
     appliedSearch.value = search.value;
     cursors.value = [null];
     pending = { kind: 'count' };
@@ -251,6 +264,7 @@ function sortBy(key: string): void {
         direction.value = 'asc';
     }
 
+    highlighted.value = null;
     cursors.value = [null];
     // Spoken only once the new order has arrived.
     pending = {
@@ -267,6 +281,7 @@ function nextPage(): void {
         return;
     }
 
+    highlighted.value = null;
     cursors.value = [...cursors.value, cursor];
     pending = { kind: 'page' };
     void load();
@@ -277,9 +292,16 @@ function previousPage(): void {
         return;
     }
 
+    highlighted.value = null;
     cursors.value = cursors.value.slice(0, -1);
     pending = { kind: 'page' };
     void load();
+}
+
+function clearHighlight(key: string): void {
+    if (highlighted.value === key) {
+        highlighted.value = null;
+    }
 }
 
 function toggleInvite(): void {
@@ -317,6 +339,7 @@ function editBlock(row: Member): string | null {
 function toggleEdit(row: Member): void {
     const key = memberKey(row);
 
+    highlighted.value = null;
     editing.value = editing.value === key ? null : key;
 }
 
@@ -345,6 +368,181 @@ function accessSaved(updated: Member): void {
     );
 }
 
+// Why Deactivate or Reactivate is not offered on a row, or null when it is: never on the Admin's own row (and not
+// while the person's own membership ID is unknown, which fails closed).
+function statusBlocked(row: Member): boolean {
+    return (
+        membershipId.value === null || row.membership_id === membershipId.value
+    );
+}
+
+function askDeactivate(row: Member, event: Event): void {
+    confirming.value = row;
+    confirmInvoker.value =
+        event.currentTarget instanceof HTMLElement ? event.currentTarget : null;
+    confirmOpen.value = true;
+}
+
+// A row key inside an attribute selector.
+function esc(key: string): string {
+    return typeof CSS !== 'undefined' && typeof CSS.escape === 'function'
+        ? CSS.escape(key)
+        : key.replace(/["\\]/g, '\\$&');
+}
+
+function rowElement(key: string): HTMLElement | null {
+    return document.querySelector<HTMLElement>(`[data-row-key="${esc(key)}"]`);
+}
+
+function rowFallback(row: Member): HTMLElement | null {
+    const key = esc(memberKey(row));
+
+    return document.querySelector<HTMLElement>(
+        `[data-test="status-action"][data-member="${key}"], [data-row-key="${key}"]`,
+    );
+}
+
+// The inline reason of a refused change (409, 403 and 429), or null for any other failure.
+function reasonFor(error: MemberUpdateError): string | null {
+    if (error.code === 'access.last_users_manage_holder') {
+        return statusLabels.lastHolder;
+    }
+
+    if (error.code === 'access.self_change_forbidden') {
+        return statusLabels.self;
+    }
+
+    if (error.code === 'access.revision_conflict') {
+        return statusLabels.conflict;
+    }
+
+    if (error.status === 429) {
+        return t('throttled');
+    }
+
+    return error.status === 403 ? statusLabels.forbidden : null;
+}
+
+// Rewrites one row of the CURRENT list by key (the list may have been reloaded since the click).
+function patchRow(key: string, changes: Partial<Member>): void {
+    members.value = members.value.map((item) =>
+        memberKey(item) === key ? { ...item, ...changes } : item,
+    );
+}
+
+// Applies the change to the row at once, then asks the server. On success the list refreshes, the row is highlighted
+// and focused (when it is still listed) and `saved` is announced politely; on failure the row rolls back and a rollback
+// toast (an alert, never auto-dismissed) appears, with the reason inline for a 409, 403 or 429.
+async function changeStatus(
+    row: Member,
+    action: MemberStatusAction,
+): Promise<void> {
+    const key = memberKey(row);
+    const id = row.membership_id;
+    const name = row.name || row.email;
+
+    if (isBusy(row)) {
+        return;
+    }
+
+    highlighted.value = null;
+
+    if (!id || row.revision === undefined) {
+        toasts.add({
+            kind: 'rollback',
+            message: statusLabels.rollback(action, name),
+        });
+
+        return;
+    }
+
+    const previous = row.status;
+    const next: Member['status'] =
+        action === 'deactivate' ? 'deactivated' : 'active';
+
+    busyRows.value = [...busyRows.value, key];
+    const reasons = { ...rowReasons.value };
+    delete reasons[key];
+    rowReasons.value = reasons;
+    patchRow(key, { status: next });
+
+    try {
+        const updated = await setMemberStatus(id, action, row.revision);
+
+        patchRow(key, {
+            status: next,
+            revision: updated.revision ?? row.revision + 1,
+        });
+    } catch (error) {
+        if (
+            error instanceof MemberUpdateError &&
+            (error.status === 401 || error.status === 419)
+        ) {
+            window.location.assign(SIGN_IN_URL);
+
+            return;
+        }
+
+        // Back to the previous state, in place, on the list as it is now.
+        patchRow(key, { status: previous });
+        const failure = error instanceof MemberUpdateError ? error : null;
+        const reason = failure ? reasonFor(failure) : null;
+
+        if (reason !== null) {
+            rowReasons.value = { ...rowReasons.value, [key]: reason };
+        }
+
+        toasts.add({
+            kind: 'rollback',
+            message:
+                failure?.status === 404
+                    ? statusLabels.gone
+                    : failure?.status === 429
+                      ? t('throttled')
+                      : statusLabels.rollback(action, name),
+        });
+
+        // The server's truth: a stale revision, a vanished member or a lost authority.
+        if (
+            failure !== null &&
+            (failure.status === 404 ||
+                failure.code === 'access.revision_conflict' ||
+                failure.code === 'access.not_authorized')
+        ) {
+            await load();
+        }
+
+        return;
+    } finally {
+        busyRows.value = busyRows.value.filter((item) => item !== key);
+    }
+
+    // Saved, whether or not the refresh below succeeds.
+    announce(
+        `${action === 'deactivate' ? statusLabels.deactivated(name) : statusLabels.reactivated(name)} ${t('saved')}`,
+        'polite',
+    );
+    await load();
+    await nextTick();
+
+    const element = rowElement(key);
+
+    // Highlight and focus only a row that is still listed after the refresh.
+    if (element !== null) {
+        highlighted.value = key;
+        await nextTick();
+        rowElement(key)?.focus();
+    }
+}
+
+function confirmDeactivate(): void {
+    const row = confirming.value;
+
+    if (row) {
+        void changeStatus(row, 'deactivate');
+    }
+}
+
 function isBusy(row: Member): boolean {
     return busyRows.value.includes(memberKey(row));
 }
@@ -360,6 +558,7 @@ async function rowAction(
         return;
     }
 
+    highlighted.value = null;
     busyRows.value = [...busyRows.value, memberKey(row)];
 
     try {
@@ -546,6 +745,8 @@ onBeforeUnmount(() => {
                 :sort-direction="direction"
                 :busy="refreshing"
                 :expanded="editing"
+                :highlighted="highlighted"
+                @row-blur="clearHighlight"
                 @sort="sortBy"
             >
                 <template #detail="{ row }">
@@ -647,6 +848,64 @@ onBeforeUnmount(() => {
                         >
                             {{ editBlock(row) }}
                         </p>
+                        <Button
+                            v-if="
+                                !statusBlocked(row) && row.status === 'active'
+                            "
+                            type="button"
+                            variant="destructive-soft"
+                            size="sm"
+                            :disabled="isBusy(row)"
+                            :aria-label="
+                                statusLabels.deactivateFor(
+                                    row.name || row.email,
+                                )
+                            "
+                            :aria-describedby="
+                                rowReasons[memberKey(row)]
+                                    ? `reason-${memberKey(row)}`
+                                    : undefined
+                            "
+                            :data-member="memberKey(row)"
+                            data-test="status-action"
+                            @click="askDeactivate(row, $event)"
+                        >
+                            {{ statusLabels.deactivate }}
+                        </Button>
+                        <Button
+                            v-else-if="
+                                !statusBlocked(row) &&
+                                row.status === 'deactivated'
+                            "
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            :disabled="isBusy(row)"
+                            :aria-label="
+                                statusLabels.reactivateFor(
+                                    row.name || row.email,
+                                )
+                            "
+                            :aria-describedby="
+                                rowReasons[memberKey(row)]
+                                    ? `reason-${memberKey(row)}`
+                                    : undefined
+                            "
+                            :data-member="memberKey(row)"
+                            data-test="status-action"
+                            @click="changeStatus(row, 'reactivate')"
+                        >
+                            {{ statusLabels.reactivate }}
+                        </Button>
+                        <p
+                            v-if="rowReasons[memberKey(row)]"
+                            :id="`reason-${memberKey(row)}`"
+                            role="alert"
+                            class="type-caption text-text-secondary"
+                            data-test="status-reason"
+                        >
+                            {{ rowReasons[memberKey(row)] }}
+                        </p>
                     </span>
                     <span
                         v-if="row.kind === 'invitation'"
@@ -709,5 +968,21 @@ onBeforeUnmount(() => {
                 </Button>
             </nav>
         </template>
+
+        <ConfirmDialog
+            v-if="confirming"
+            v-model:open="confirmOpen"
+            :title="
+                statusLabels.dialogTitle(confirming.name || confirming.email)
+            "
+            :description="
+                statusLabels.dialogImpact(confirming.name || confirming.email)
+            "
+            :object-name="confirming.name || confirming.email"
+            :verb="statusLabels.dialogVerb"
+            :invoker="confirmInvoker"
+            :fallback="() => (confirming ? rowFallback(confirming) : null)"
+            @confirm="confirmDeactivate"
+        />
     </div>
 </template>

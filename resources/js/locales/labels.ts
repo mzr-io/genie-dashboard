@@ -459,6 +459,30 @@ export const accessLabels = {
     unchanged: 'Nothing to save: the role and permissions are as they were.',
 } as const;
 
+// Labels of Deactivate and Reactivate on a member row (Story 1.24). Its messages are the catalogue's `saved` and
+// `throttled`; the rollback toast is a `rollback` toast (an alert, never auto-dismissed) with the wording here.
+export const statusLabels = {
+    deactivate: 'Deactivate',
+    reactivate: 'Reactivate',
+    deactivateFor: (name: string) => `Deactivate ${name}`,
+    reactivateFor: (name: string) => `Reactivate ${name}`,
+    dialogTitle: (name: string) => `Deactivate ${name}?`,
+    dialogImpact: (name: string) =>
+        `${name} will lose access to this workspace and their open sessions here end now. Their role, permissions and groups are kept, and you can reactivate them later.`,
+    dialogVerb: 'Deactivate',
+    deactivated: (name: string) => `${name} deactivated.`,
+    reactivated: (name: string) => `${name} reactivated.`,
+    rollback: (action: 'deactivate' | 'reactivate', name: string) =>
+        `We couldn't ${action} ${name}. Their access is unchanged. Try again.`,
+    lastHolder:
+        'This person is the last one who can manage users. Give Manage users to another Admin first.',
+    self: "You can't deactivate your own membership.",
+    conflict:
+        'Someone else changed this member. The latest state is shown. Try again.',
+    forbidden: "You can't change this member.",
+    gone: 'This member is no longer in the workspace. The list has been refreshed.',
+} as const;
+
 // Labels of the Groups view of User configuration (Story 1.23). Its messages are the catalogue's `list-empty`,
 // `list-no-match`, `saved`, `save-failed.form`, `throttled` and `perm-denied`; the rest is vocabulary.
 export const groupLabels = {

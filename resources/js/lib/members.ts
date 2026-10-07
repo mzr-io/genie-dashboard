@@ -253,31 +253,29 @@ type UpdateBody = {
     data?: Member;
     error?: { code?: string };
     errors?: Record<string, string[]>;
-    current?: MemberAccess;
+    current?: MemberAccess & { status?: string | null };
     reason?: string | null;
 };
 
-export async function updateMember(
-    membershipId: string,
-    payload: MemberUpdate,
+async function memberCall(
+    method: 'PATCH' | 'POST',
+    path: string,
+    payload: unknown,
 ): Promise<Member> {
     let response: Response;
 
     try {
-        response = await fetch(
-            `${MEMBER_URL}/${encodeURIComponent(membershipId)}`,
-            {
-                method: 'PATCH',
-                credentials: 'same-origin',
-                headers: {
-                    Accept: 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'X-XSRF-TOKEN': xsrfToken(),
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(payload),
+        response = await fetch(path, {
+            method,
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-XSRF-TOKEN': xsrfToken(),
+                'Content-Type': 'application/json',
             },
-        );
+            body: JSON.stringify(payload),
+        });
     } catch {
         throw new MemberUpdateError(0);
     }
@@ -301,4 +299,34 @@ export async function updateMember(
     }
 
     return json.data;
+}
+
+export function updateMember(
+    membershipId: string,
+    payload: MemberUpdate,
+): Promise<Member> {
+    return memberCall(
+        'PATCH',
+        `${MEMBER_URL}/${encodeURIComponent(membershipId)}`,
+        payload,
+    );
+}
+
+// ---- Deactivate and reactivate (Story 1.24) --------------------------------------------------------------------
+
+export type MemberStatusAction = 'deactivate' | 'reactivate';
+
+// Changes only the membership status. The answer carries the member's new `status` and `revision`. A refusal is a
+// MemberUpdateError: 403 `access.self_change_forbidden`, 409 `access.last_users_manage_holder` or
+// `access.revision_conflict` (with the member's `current` state), 404 when the member is gone.
+export function setMemberStatus(
+    membershipId: string,
+    action: MemberStatusAction,
+    revision: number,
+): Promise<Member> {
+    return memberCall(
+        'POST',
+        `${MEMBER_URL}/${encodeURIComponent(membershipId)}/${action}`,
+        { revision },
+    );
 }

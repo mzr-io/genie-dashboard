@@ -423,13 +423,16 @@ it('lets a signed-in user, with another Workspace active in the session, open an
     $other = Cluster::workspace('Other');
     $user = User::factory()->create(['email' => 'first.admin@example.test']);
     [$workspace, $token] = provisionWorkspace();
+    // The person is an active member of the other Workspace (a session naming one without a membership is ended).
+    Cluster::superuser()->prepare("INSERT INTO workspace_memberships (id, workspace_id, user_id, role, status, created_at, updated_at) VALUES (?, ?, ?, 'user', 'active', now(), now())")
+        ->execute([(string) Str::uuid7(), $other, $user->id]);
 
     $this->actingAs($user)->withSession(['workspace_id' => $other]);
 
     $this->get("/invitations/{$token}")->assertOk()->assertInertia(fn ($page) => $page->component('auth/AcceptInvitation'));
     $this->post("/invitations/{$token}", acceptPayload())->assertRedirect(route('login'));
 
-    expect(Cluster::rows(Cluster::superuser(), 'select workspace_id from workspace_memberships')[0]['workspace_id'])->toBe($workspace);
+    expect(Cluster::rows(Cluster::superuser(), 'select workspace_id from workspace_memberships where workspace_id = ?', [$workspace]))->toHaveCount(1);
 });
 
 it('sends Referrer-Policy and Cache-Control no-store on every invitation response', function () {

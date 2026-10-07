@@ -489,6 +489,9 @@ it('refuses acceptance, with the neutral response and a security event, when the
         'deactivated' => "UPDATE workspace_memberships SET status = 'suspended'",
         'removed' => "UPDATE workspace_memberships SET status = 'removed'",
     });
+    // The inviter's own session ends with a non-active membership; the invitee opens the link as a guest.
+    $this->app['auth']->forgetGuards();
+    $this->flushSession();
 
     $this->get("/invitations/{$token}")->assertOk();
     acceptInvite($token, 'bo@example.test')->assertStatus(410);
@@ -504,6 +507,8 @@ it('refuses a user invitation too when its inviter is gone', function () {
     inviteAdmin($workspace);
     invitePost(['email' => 'bo@example.test', 'role' => 'user'])->assertCreated();
     Cluster::superuser()->exec("UPDATE workspace_memberships SET status = 'removed'");
+    $this->app['auth']->forgetGuards();
+    $this->flushSession();
 
     acceptInvite(inviteToken(), 'bo@example.test')->assertStatus(410);
 

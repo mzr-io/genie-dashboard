@@ -44,6 +44,7 @@ final class ChangeMemberAccess implements MemberAccess
         private readonly MembershipPermissions $held,
         private readonly Audit $audit,
         private readonly Outbox $outbox,
+        private readonly MembershipLocks $locks,
     ) {}
 
     public function update(MemberEditor $editor, string $membershipId, int $revision, ?string $role, ?array $permissions, Closure $confirmPassword): AccessChange
@@ -69,7 +70,7 @@ final class ChangeMemberAccess implements MemberAccess
         $permissions = $permissions === null ? null : self::sorted($permissions);
 
         return $this->transactions->run($editor->workspaceId, function () use ($editor, $membershipId, $revision, $role, $permissions, $confirmPassword): AccessChange {
-            $locked = $this->lock($editor->workspaceId, $membershipId);
+            $locked = $this->locks->lock($editor->workspaceId, $membershipId);
 
             // The editor's own authority, seen under the lock: an active Admin holding users.manage is among the locked rows.
             if (! in_array(strtolower($editor->membershipId), $locked, true)) {
@@ -80,7 +81,7 @@ final class ChangeMemberAccess implements MemberAccess
                 throw new MembershipNotFound;
             }
 
-            $target = $this->read($membershipId);
+            $target = $this->locks->read($membershipId);
 
             if ($target === null) {
                 throw new MembershipNotFound;
@@ -147,46 +148,6 @@ final class ChangeMemberAccess implements MemberAccess
     }
 
     /**
-     * Locks the target and every active Admin holding `users.manage`, in id order.
-     *
-     * @return list<string> the locked membership IDs (lower case)
-     */
-    private function lock(string $workspaceId, string $membershipId): array
-    {
-        $rows = DB::select(
-            <<<'SQL'
-                select m.id
-                from workspace_memberships m
-                where m.workspace_id = ?
-                  and (m.id = ?
-                       or (m.status = 'active' and m.role = 'admin'
-                           and exists (select 1 from membership_permissions p where p.membership_id = m.id and p.permission = ?)))
-                order by m.id
-                for update of m
-                SQL,
-            [$workspaceId, $membershipId, Permission::UsersManage->value],
-        );
-
-        /** @var list<object{id: string}> $rows */
-        return array_map(fn (object $row): string => strtolower((string) $row->id), $rows);
-    }
-
-    private function read(string $membershipId): ?AccessSnapshot
-    {
-        /** @var object{role: string, status: string, revision: int|string}|null $row */
-        $row = DB::selectOne('select role, status, revision from workspace_memberships where id = ?', [$membershipId]);
-
-        if ($row === null) {
-            return null;
-        }
-
-        /** @var list<string> $held */
-        $held = DB::table('membership_permissions')->where('membership_id', $membershipId)->pluck('permission')->all();
-
-        return new AccessSnapshot($row->role, $row->status, (int) $row->revision, self::sorted(array_values(array_intersect($held, Permission::values()))));
-    }
-
-    /**
      * The granter cap in both directions: every permission added or removed must be one the editor holds now.
      *
      * @param  list<string>  $old
@@ -216,22 +177,14 @@ final class ChangeMemberAccess implements MemberAccess
      */
     private function assertNotLastHolder(string $workspaceId, string $membershipId, AccessSnapshot $target, string $newRole, array $newPermissions): void
     {
-        $wasHolder = $target->status === 'active' && $target->role === 'admin' && in_array(Permission::UsersManage->value, $target->permissions, true);
-        $stillHolder = $target->status === 'active' && $newRole === 'admin' && in_array(Permission::UsersManage->value, $newPermissions, true);
+        $wasHolder = $this->locks->isActiveHolder($target->role, $target->status, $target->permissions);
+        $stillHolder = $this->locks->isActiveHolder($newRole, $target->status, $newPermissions);
 
         if (! $wasHolder || $stillHolder) {
             return;
         }
 
-        $others = DB::select(
-            <<<'SQL'
-                select m.id
-                from workspace_memberships m
-                where m.workspace_id = ? and m.id <> ? and m.status = 'active' and m.role = 'admin'
-                  and exists (select 1 from membership_permissions p where p.membership_id = m.id and p.permission = ?)
-                SQL,
-            [$workspaceId, $membershipId, Permission::UsersManage->value],
-        );
+        $others = $this->locks->otherHolders($workspaceId, $membershipId);
 
         if ($others === []) {
             throw new LastUsersManageHolder;

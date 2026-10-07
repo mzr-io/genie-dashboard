@@ -21,6 +21,7 @@ final class AccessAuditSerializer implements AuditSerializer
             'invitation_id' => AuditField::Id,
             'permission_count' => AuditField::Count,
             'member_count' => AuditField::Count,
+            'session_count' => AuditField::Count,
             'change' => AuditField::Enum,
             'inviter_id' => AuditField::Id,
             'group_id' => AuditField::Id,

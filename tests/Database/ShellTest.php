@@ -153,15 +153,15 @@ it('shows the User navigation to an Admin session whose membership was demoted t
     $this->get(route('admin.overview'))->assertForbidden();
 });
 
-it('shows no items to an Admin session whose membership was deactivated', function () {
+it('ends an Admin session whose membership was deactivated with a redirect to sign-in', function () {
     $workspace = Cluster::workspace('Acme');
     [, $membership] = shellMember($workspace, 'root@example.test', 'admin', ['users.manage']);
 
     shellSignIn('root@example.test', 'admin');
     Cluster::superuser()->prepare("UPDATE workspace_memberships SET status = 'suspended' WHERE id = ?")->execute([$membership]);
 
-    $shell = shellProps(route('help'));
-    expect($shell['items'])->toBe([])->and($shell['workspace'])->toBeNull()->and($shell['role'])->toBeNull();
+    $this->get(route('help'))->assertRedirect(route('login'));
+    expect(session('workspace_id'))->toBeNull()->and(session('area'))->toBeNull();
 });
 
 it('shows no items when the session names no Workspace', function () {

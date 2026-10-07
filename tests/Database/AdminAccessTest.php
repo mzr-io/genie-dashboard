@@ -140,7 +140,13 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
 
         $denied("{$name}: User area", $both, 'user');
         $denied("{$name}: demoted to user", $demoted, 'admin');
-        $denied("{$name}: suspended membership", $suspended, 'admin');
+
+        // A membership that is not active ends the session before the gate: 401, no denial row.
+        Cache::flush();
+        $before = $denials();
+        gateAs($suspended, $workspace, 'admin');
+        expect(gateCall($method, $uri)->status())->toBe(401, "{$name}: suspended membership")
+            ->and($denials())->toBe($before, "{$name}: suspended is signed out, not denied");
 
         // A route with no permission needs the Admin area only.
         if ($permission !== null) {
@@ -159,6 +165,8 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
         expect($status)->toBe(match (true) {
             // The member update validates its body (the revision) before it looks for the member.
             $name === 'api.admin.members.update' => 422,
+            // Deactivate and reactivate validate the revision first, too.
+            in_array($name, ['api.admin.members.deactivate', 'api.admin.members.reactivate'], true) => 422,
             // A group name is validated before the group is looked up.
             in_array($name, ['api.admin.groups.store', 'api.admin.groups.update'], true) => 422,
             str_contains($uri, '{') => 404,
@@ -253,8 +261,10 @@ it('denies an Admin-area session whose membership was demoted, suspended or whos
     Cluster::superuser()->prepare("UPDATE workspace_memberships SET role = 'user' WHERE id = ?")->execute([$membership]);
     $this->get(route('admin.users.index'))->assertForbidden();
     Cluster::superuser()->prepare("UPDATE workspace_memberships SET role = 'admin', status = 'suspended' WHERE id = ?")->execute([$membership]);
-    $this->get(route('admin.users.index'))->assertForbidden();
+    // Not active: the session ends (redirect to sign-in) before the gate.
+    $this->get(route('admin.users.index'))->assertRedirect(route('login'));
     Cluster::superuser()->prepare("UPDATE workspace_memberships SET status = 'active' WHERE id = ?")->execute([$membership]);
+    gateAs($user, $workspace, 'admin');
     $this->get(route('admin.users.index'))->assertOk();
     Cluster::superuser()->prepare("UPDATE workspaces SET status = 'suspended' WHERE id = ?")->execute([$workspace]);
     $this->get(route('admin.users.index'))->assertForbidden();
@@ -267,7 +277,8 @@ it('never trusts a session Workspace the person is not a member of', function ()
     gateMember($other, 'bob@example.test', 'admin', Permission::values());
 
     gateAs($user, $other, 'admin');
-    $this->get(route('admin.overview'))->assertForbidden();
+    // No membership there: the session ends before the gate (and nothing is audited in the other Workspace).
+    $this->get(route('admin.overview'))->assertRedirect(route('login'));
     expect(gateDenials())->toBe([]);
 });
 
