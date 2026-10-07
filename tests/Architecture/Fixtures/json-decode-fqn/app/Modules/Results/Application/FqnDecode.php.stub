@@ -1,0 +1,11 @@
+<?php
+
+namespace App\Modules\Results\Application;
+
+final class FqnDecode
+{
+    public function parse(string $body): mixed
+    {
+        return \json_decode($body, true);
+    }
+}

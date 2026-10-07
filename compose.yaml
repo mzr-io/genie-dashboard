@@ -1,0 +1,331 @@
+# Local, demo and production-like stack: one image, five process roles.
+#   docker compose up --build
+# APP_KEY is required (generate one with: bin/tools php artisan key:generate --show).
+
+name: dashflow
+
+x-app-env: &app-env
+    APP_NAME: Dashflow
+    APP_ENV: ${DASHFLOW_ENV:-production}
+    APP_DEBUG: ${DASHFLOW_DEBUG:-false}
+    APP_KEY: '${APP_KEY:?APP_KEY is required - run bin/tools php artisan key:generate --show, then export it or add it to .env}'
+    APP_URL: ${DASHFLOW_APP_URL:-http://localhost:8080}
+    LOG_CHANNEL: stdout
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+    DB_CONNECTION: pgsql
+    DB_HOST: postgres
+    DB_PORT: '5432'
+    DB_DATABASE: ${POSTGRES_DB:-dashflow}
+    # Every service connects as the least-privilege `app` role (no BYPASSRLS, no DELETE).
+    DB_USERNAME: app
+    DB_PASSWORD: ${POSTGRES_APP_PASSWORD:-dashflow-dev-app}
+    REDIS_CLIENT: phpredis
+    # Valkey: two instances over TLS. Each role adds its own VALKEY_USERNAME / VALKEY_PASSWORD.
+    VALKEY_QUEUE_HOST: valkey-queue
+    VALKEY_QUEUE_PORT: '6379'
+    VALKEY_QUEUE_SCHEME: tls
+    VALKEY_CACHE_HOST: valkey-cache
+    VALKEY_CACHE_PORT: '6379'
+    VALKEY_CACHE_SCHEME: tls
+    VALKEY_TLS_CA: /run/valkey-tls/ca.crt
+    QUEUE_CONNECTION: redis
+    CACHE_STORE: redis
+    SESSION_DRIVER: database
+    BROADCAST_CONNECTION: reverb
+    REVERB_APP_ID: ${REVERB_APP_ID:-dashflow-dev}
+    REVERB_APP_KEY: ${REVERB_APP_KEY:-dashflow-dev-key}
+    REVERB_APP_SECRET: ${REVERB_APP_SECRET:-dashflow-dev-secret}
+    REVERB_HOST: ${REVERB_HOST:-localhost}
+    REVERB_PORT: ${REVERB_PORT:-8081}
+    REVERB_SCHEME: ${REVERB_SCHEME:-http}
+    REVERB_SERVER_HOST: 0.0.0.0
+    REVERB_SERVER_PORT: '8081'
+    REVERB_SCALING_ENABLED: 'true'
+    DB_PGBOUNCER: ${DB_PGBOUNCER:-false}
+    # Security audit events use their own `app` connection, straight to PostgreSQL (not through a pooler).
+    DB_SECURITY_HOST: postgres
+    DB_SECURITY_PORT: '5432'
+    MAIL_MAILER: log
+    # Sign-in tunables (pending_input; empty = unset, so Fortify's 5 attempts per minute applies and Remember me adds nothing).
+    DASHFLOW_SIGN_IN_MAX_ATTEMPTS: ${DASHFLOW_SIGN_IN_MAX_ATTEMPTS:-}
+    DASHFLOW_SIGN_IN_DECAY_SECONDS: ${DASHFLOW_SIGN_IN_DECAY_SECONDS:-}
+    DASHFLOW_RESET_LINK_LIFETIME: ${DASHFLOW_RESET_LINK_LIFETIME:-}
+    DASHFLOW_RESET_REQUEST_MAX_ATTEMPTS: ${DASHFLOW_RESET_REQUEST_MAX_ATTEMPTS:-}
+    DASHFLOW_RESET_REQUEST_DECAY_SECONDS: ${DASHFLOW_RESET_REQUEST_DECAY_SECONDS:-}
+    DASHFLOW_REMEMBER_ME_DURATION: ${DASHFLOW_REMEMBER_ME_DURATION:-}
+    # Largest list page in rows (pending_input; empty = unset, so lists page by 15).
+    DASHFLOW_LISTS_MAX_PAGE_SIZE: ${DASHFLOW_LISTS_MAX_PAGE_SIZE:-}
+    # Largest avatar upload in bytes (pending_input; empty = unset, so PHP's upload_max_filesize applies).
+    DASHFLOW_AVATAR_MAX_BYTES: ${DASHFLOW_AVATAR_MAX_BYTES:-}
+    # Whole hours an invitation link stays valid (pending_input; empty = unset, so inviting from the Admin UI answers
+    # 422 `access.invitations_not_configured` and `dashflow:workspace:create` refuses to run). Every role gets it
+    # because the web role creates invitations and the operator service shares this block.
+    DASHFLOW_INVITATION_LIFETIME: ${DASHFLOW_INVITATION_LIFETIME:-}
+    # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
+    OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
+    OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
+    OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: ${OTEL_EXPORTER_OTLP_TRACES_ENDPOINT:-}
+    OTEL_EXPORTER_OTLP_PROTOCOL: ${OTEL_EXPORTER_OTLP_PROTOCOL:-http/protobuf}
+    OTEL_EXPORTER_OTLP_HEADERS: ${OTEL_EXPORTER_OTLP_HEADERS:-}
+    OTEL_RESOURCE_ATTRIBUTES: ${OTEL_RESOURCE_ATTRIBUTES:-}
+
+x-valkey: &valkey
+    image: valkey/valkey:9-alpine
+    entrypoint: ['/bin/sh', '/entrypoint.sh']
+    init: true
+    restart: unless-stopped
+    user: '999:1000'
+    read_only: true
+    tmpfs:
+        - /tmp
+    cap_drop:
+        - ALL
+    depends_on:
+        valkey-tls:
+            condition: service_completed_successfully
+    healthcheck:
+        test:
+            [
+                'CMD-SHELL',
+                'valkey-cli --tls --cacert /tls-ca/ca.crt --user health --pass "$$VALKEY_PASSWORD_HEALTH" --no-auth-warning ping | grep -q PONG',
+            ]
+        interval: 5s
+        timeout: 3s
+        retries: 20
+
+# Per-role Valkey passwords (development defaults; set real ones in the environment).
+x-valkey-passwords: &valkey-passwords
+    VALKEY_PASSWORD_WEB: ${VALKEY_PASSWORD_WEB:-dashflow-dev-web}
+    VALKEY_PASSWORD_REALTIME: ${VALKEY_PASSWORD_REALTIME:-dashflow-dev-realtime}
+    VALKEY_PASSWORD_SCHEDULER: ${VALKEY_PASSWORD_SCHEDULER:-dashflow-dev-scheduler}
+    VALKEY_PASSWORD_WORKER_CONNECTOR: ${VALKEY_PASSWORD_WORKER_CONNECTOR:-dashflow-dev-worker-connector}
+    VALKEY_PASSWORD_WORKER_COMPUTE: ${VALKEY_PASSWORD_WORKER_COMPUTE:-dashflow-dev-worker-compute}
+    VALKEY_PASSWORD_HEALTH: ${VALKEY_PASSWORD_HEALTH:-dashflow-dev-health}
+
+x-app: &app
+    image: ${DASHFLOW_IMAGE:-dashflow-app:local}
+    build:
+        context: .
+        dockerfile: docker/Dockerfile
+    init: true
+    restart: unless-stopped
+    volumes:
+        - valkey-ca:/run/valkey-tls:ro
+    depends_on:
+        postgres:
+            condition: service_healthy
+        valkey-queue:
+            condition: service_healthy
+        valkey-cache:
+            condition: service_healthy
+        migrator:
+            condition: service_completed_successfully
+
+services:
+    postgres:
+        image: postgres:18-alpine
+        environment:
+            POSTGRES_DB: ${POSTGRES_DB:-dashflow}
+            POSTGRES_USER: ${POSTGRES_USER:-dashflow}
+            POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dashflow}
+            # Role passwords for docker/postgres/initdb.sh (development values; set real ones in the environment).
+            POSTGRES_MIGRATOR_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:-dashflow-dev-migrator}
+            POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:-dashflow-dev-app}
+            POSTGRES_MAINTENANCE_PASSWORD: ${POSTGRES_MAINTENANCE_PASSWORD:-dashflow-dev-maintenance}
+            POSTGRES_SYSTEM_PASSWORD: ${POSTGRES_SYSTEM_PASSWORD:-dashflow-dev-system}
+            POSTGRES_OPERATOR_PASSWORD: ${POSTGRES_OPERATOR_PASSWORD:-dashflow-dev-operator}
+        volumes:
+            - postgres-data:/var/lib/postgresql
+            - ./docker/postgres/initdb.sh:/docker-entrypoint-initdb.d/10-roles.sh:ro
+        healthcheck:
+            test:
+                [
+                    'CMD-SHELL',
+                    'pg_isready -h 127.0.0.1 -U $${POSTGRES_USER} -d $${POSTGRES_DB}',
+                ]
+            interval: 5s
+            timeout: 5s
+            retries: 20
+
+    # One-shot: throwaway CA and server certificate for both Valkey instances (development only).
+    valkey-tls:
+        image: alpine/openssl
+        entrypoint: ['/bin/sh', '/tls.sh']
+        restart: 'no'
+        volumes:
+            - ./docker/valkey/tls.sh:/tls.sh:ro
+            - valkey-server-tls:/tls-server
+            - valkey-ca:/tls-ca
+
+    # maxmemory-policy is per instance, hence two instances. Neither persists data.
+    valkey-queue:
+        <<: *valkey
+        command: ['queue']
+        environment:
+            <<: *valkey-passwords
+            VALKEY_MAXMEMORY_POLICY: noeviction
+            VALKEY_MAXMEMORY: ${VALKEY_QUEUE_MAXMEMORY:-}
+        volumes:
+            - ./docker/valkey/entrypoint.sh:/entrypoint.sh:ro
+            - ./docker/valkey/queue.acl:/etc/valkey/queue.acl:ro
+            - valkey-server-tls:/tls:ro
+            - valkey-ca:/tls-ca:ro
+
+    valkey-cache:
+        <<: *valkey
+        command: ['cache']
+        environment:
+            <<: *valkey-passwords
+            VALKEY_MAXMEMORY_POLICY: allkeys-lru
+            VALKEY_MAXMEMORY: ${VALKEY_CACHE_MAXMEMORY:-256mb}
+        volumes:
+            - ./docker/valkey/entrypoint.sh:/entrypoint.sh:ro
+            - ./docker/valkey/cache.acl:/etc/valkey/cache.acl:ro
+            - valkey-server-tls:/tls:ro
+            - valkey-ca:/tls-ca:ro
+
+    migrator:
+        <<: *app
+        command: ['migrate']
+        restart: 'no'
+        # Only this service holds the `migrator` credentials; it runs `migrate --database=migrator`.
+        environment:
+            <<: *app-env
+            DB_MIGRATOR_USERNAME: migrator
+            DB_MIGRATOR_PASSWORD: ${POSTGRES_MIGRATOR_PASSWORD:-dashflow-dev-migrator}
+        # migrate needs PostgreSQL only; it holds no Valkey credentials.
+        depends_on:
+            postgres:
+                condition: service_healthy
+
+    web:
+        <<: *app
+        command: ['web']
+        environment:
+            <<: *app-env
+            VALKEY_USERNAME: web
+            VALKEY_PASSWORD: ${VALKEY_PASSWORD_WEB:-dashflow-dev-web}
+        ports:
+            - '127.0.0.1:${DASHFLOW_WEB_HOST_PORT:-8080}:8080'
+        secrets:
+            - key-data
+            - key-digest
+        healthcheck:
+            test: ['CMD', 'php', 'artisan', 'dashflow:health', 'web']
+            interval: 15s
+            timeout: 10s
+            retries: 3
+            start_period: 20s
+
+    realtime:
+        <<: *app
+        command: ['realtime']
+        environment:
+            <<: *app-env
+            VALKEY_USERNAME: realtime
+            # Reverb's Valkey client cannot send a username: on the queue store this role is `default`.
+            VALKEY_QUEUE_USERNAME: default
+            VALKEY_PASSWORD: ${VALKEY_PASSWORD_REALTIME:-dashflow-dev-realtime}
+        ports:
+            - '127.0.0.1:${DASHFLOW_REALTIME_HOST_PORT:-8081}:8081'
+        healthcheck:
+            test: ['CMD', 'php', 'artisan', 'dashflow:health', 'realtime']
+            interval: 15s
+            timeout: 10s
+            retries: 3
+            start_period: 20s
+
+    scheduler:
+        <<: *app
+        command: ['scheduler']
+        environment:
+            <<: *app-env
+            VALKEY_USERNAME: scheduler
+            VALKEY_PASSWORD: ${VALKEY_PASSWORD_SCHEDULER:-dashflow-dev-scheduler}
+        healthcheck:
+            test: ['CMD', 'php', 'artisan', 'dashflow:health', 'scheduler']
+            interval: 15s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+
+    worker-connector:
+        <<: *app
+        command: ['worker-connector']
+        environment:
+            <<: *app-env
+            VALKEY_USERNAME: worker-connector
+            VALKEY_PASSWORD: ${VALKEY_PASSWORD_WORKER_CONNECTOR:-dashflow-dev-worker-connector}
+        secrets:
+            - key-cred
+            - key-token
+            - key-data
+        healthcheck:
+            test:
+                ['CMD', 'php', 'artisan', 'dashflow:health', 'worker-connector']
+            interval: 15s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+
+    worker-compute:
+        <<: *app
+        command: ['worker-compute']
+        environment:
+            <<: *app-env
+            VALKEY_USERNAME: worker-compute
+            VALKEY_PASSWORD: ${VALKEY_PASSWORD_WORKER_COMPUTE:-dashflow-dev-worker-compute}
+            # Only this service holds the `system` credentials: the outbox relay runs as that role.
+            DB_SYSTEM_HOST: postgres
+            DB_SYSTEM_PORT: '5432'
+            DB_SYSTEM_USERNAME: system
+            DB_SYSTEM_PASSWORD: ${POSTGRES_SYSTEM_PASSWORD:-dashflow-dev-system}
+        secrets:
+            - key-data
+        healthcheck:
+            test: ['CMD', 'php', 'artisan', 'dashflow:health', 'worker-compute']
+            interval: 15s
+            timeout: 10s
+            retries: 3
+            start_period: 30s
+
+    # One-off operator commands, not started by `docker compose up` (profile `operator`). The only service
+    # holding the `operator` database credentials. Create a Workspace and invite its first Admin with:
+    #   docker compose run --rm operator php artisan dashflow:workspace:create "Name" label admin@example.com
+    operator:
+        <<: *app
+        profiles: ['operator']
+        restart: 'no'
+        command: ['php', 'artisan', 'dashflow:workspace:create', '--help']
+        environment:
+            <<: *app-env
+            # The command touches PostgreSQL and the mailer only.
+            CACHE_STORE: array
+            QUEUE_CONNECTION: sync
+            BROADCAST_CONNECTION: 'null'
+            DB_OPERATOR_HOST: postgres
+            DB_OPERATOR_PORT: '5432'
+            DB_OPERATOR_USERNAME: operator
+            DB_OPERATOR_PASSWORD: ${POSTGRES_OPERATOR_PASSWORD:-dashflow-dev-operator}
+            DASHFLOW_INVITATION_LIFETIME: ${DASHFLOW_INVITATION_LIFETIME:-}
+        depends_on:
+            postgres:
+                condition: service_healthy
+            migrator:
+                condition: service_completed_successfully
+
+# Key purposes (AR-50) as placeholder files only; real keys never enter the repo.
+secrets:
+    key-data:
+        file: ./docker/dev-keys/data.placeholder
+    key-digest:
+        file: ./docker/dev-keys/digest.placeholder
+    key-cred:
+        file: ./docker/dev-keys/cred.placeholder
+    key-token:
+        file: ./docker/dev-keys/token.placeholder
+
+volumes:
+    postgres-data:
+    valkey-server-tls:
+    valkey-ca:

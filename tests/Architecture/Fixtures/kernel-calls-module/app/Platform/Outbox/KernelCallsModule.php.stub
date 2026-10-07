@@ -1,0 +1,10 @@
+<?php
+
+namespace App\Platform\Outbox;
+
+use App\Modules\Blocks\Contracts\ActivateVersion;
+
+final class KernelCallsModule
+{
+    public function __construct(private ActivateVersion $activate) {}
+}

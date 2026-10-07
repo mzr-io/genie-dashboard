@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Starts or stops the throwaway PostgreSQL 18 and PgBouncer used by the Database test suite.
+# Usage: bin/test-db up|down
+# bin/tools runs this around `composer ci:check` and `composer test:database`.
+# Exits non-zero when either container cannot start and become healthy: there is no skip.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COMPOSE=(docker compose -f "$ROOT/compose.test.yaml")
+
+case "${1:-}" in
+    up)
+        "${COMPOSE[@]}" up -d --wait --force-recreate --remove-orphans
+        ;;
+    down)
+        "${COMPOSE[@]}" down --volumes --remove-orphans
+        ;;
+    *)
+        echo "usage: bin/test-db up|down" >&2
+        exit 2
+        ;;
+esac

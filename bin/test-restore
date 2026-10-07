@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+# Restore check (Story 1.25, AR-56): dumps the migrated test database with pg_dump, restores it into a fresh
+# database and asserts through SQL that row-level security, the five roles and the grants survive.
+# Usage: bin/test-restore      (the test containers must be up and migrated; bin/tools runs it after the
+#                               Database suite). It is not the restore drill: that is delivered in Epic 9
+#                               (docs/backup-restore.md). Exits non-zero on any drift: there is no skip.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+COMPOSE=(docker compose -f "$ROOT/compose.test.yaml")
+SOURCE="dashflow_test"
+RUN_ID="$$-$(date +%s)"
+RESTORED="dashflow_restore_${RUN_ID//-/_}"
+DUMP="/tmp/dashflow-restore-$RUN_ID.dump"
+
+psql_in() { "${COMPOSE[@]}" exec -T postgres psql -v ON_ERROR_STOP=1 -U postgres -X -q -At "$@"; }
+
+fail() { echo "restore check FAILED: $*" >&2; exit 1; }
+
+# Registered before the first CREATE: drops the restored database (WITH FORCE ends stray connections) and the dump.
+cleanup() {
+    psql_in -d postgres -c "DROP DATABASE IF EXISTS $RESTORED WITH (FORCE)" >/dev/null 2>&1 || true
+    "${COMPOSE[@]}" exec -T postgres rm -f "$DUMP" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+"${COMPOSE[@]}" ps --status running --services 2>/dev/null | grep -qx postgres \
+    || fail "the test PostgreSQL container is not running (start it with bin/test-db up)"
+
+migrated="$(psql_in -d "$SOURCE" -c "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relname = 'workspace_memberships'")"
+[[ "$migrated" == "1" ]] || fail "$SOURCE is not migrated (run the Database suite first)"
+
+# Tenant tables: every table with workspace_id that is not listed as global. The list comes from the PHP source
+# of truth (tests/Architecture/dependencies.php): bin/tools passes it in DASHFLOW_GLOBAL_TABLES, else it is read here.
+if [[ -z "${DASHFLOW_GLOBAL_TABLES:-}" ]]; then
+    DASHFLOW_GLOBAL_TABLES="$("$ROOT/bin/tools" php -r 'echo implode(",", (require "tests/Architecture/dependencies.php")["global_tables"]);')" \
+        || fail "could not read the global table list"
+fi
+[[ -n "$DASHFLOW_GLOBAL_TABLES" ]] || fail "the global table list is empty"
+GLOBAL_SQL="$(printf '%s' "$DASHFLOW_GLOBAL_TABLES" | sed "s/,/','/g")"
+
+psql_in -d postgres -c "CREATE DATABASE $RESTORED TEMPLATE template0"
+
+# Dump to a file, then restore it: each step's failure fails the check (no pipe to hide a failed pg_dump).
+# Roles are cluster-global: pg_dump does not carry them, so the restored database uses the same roles as
+# the source cluster. The dump does carry owners, privileges, default privileges and policies.
+"${COMPOSE[@]}" exec -T postgres pg_dump -U postgres -d "$SOURCE" --format=custom -f "$DUMP" \
+    || fail "pg_dump failed"
+"${COMPOSE[@]}" exec -T postgres pg_restore -U postgres -d "$RESTORED" --exit-on-error "$DUMP" \
+    || fail "pg_restore failed"
+
+TENANT_SQL="select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace join pg_attribute a on a.attrelid = c.oid and a.attname = 'workspace_id' and not a.attisdropped where n.nspname = 'public' and c.relkind in ('r','p') and c.relname not in ('$GLOBAL_SQL')"
+
+source_tenants="$(psql_in -d "$SOURCE" -c "$TENANT_SQL order by 1" | paste -sd, -)"
+restored_tenants="$(psql_in -d "$RESTORED" -c "$TENANT_SQL order by 1" | paste -sd, -)"
+[[ -n "$source_tenants" ]] || fail "no tenant tables found in $SOURCE"
+[[ "$source_tenants" == "$restored_tenants" ]] || fail "tenant tables differ after restore: [$source_tenants] vs [$restored_tenants]"
+
+problems="$(psql_in -d "$RESTORED" <<SQL
+with tenant as ($TENANT_SQL)
+select 'RLS not enabled and forced on ' || t.relname
+  from tenant t join pg_class c on c.relname = t.relname and c.relnamespace = 'public'::regnamespace
+ where not (c.relrowsecurity and c.relforcerowsecurity)
+union all
+select 'no row-level security policy on ' || t.relname
+  from tenant t join pg_class c on c.relname = t.relname and c.relnamespace = 'public'::regnamespace
+ where not exists (select 1 from pg_policy p where p.polrelid = c.oid and p.polcmd in ('*', 'r'))
+union all
+select 'role ' || r || ' is missing'
+  from unnest(array['migrator','app','maintenance','system','operator']) r
+ where not exists (select 1 from pg_roles where rolname = r)
+union all
+select 'role ' || rolname || ' has BYPASSRLS or is a superuser'
+  from pg_roles where rolname in ('migrator','app','maintenance','system','operator') and (rolbypassrls or rolsuper)
+union all
+select 'app can DELETE from ' || t.relname
+  from tenant t where has_table_privilege('app', format('public.%I', t.relname), 'DELETE')
+union all
+select 'app lost SELECT on ' || t.relname
+  from tenant t where not has_table_privilege('app', format('public.%I', t.relname), 'SELECT')
+union all
+select 'SECURITY DEFINER function ' || p.proname || ' is owned by ' || pg_get_userbyid(p.proowner) || ', not migrator'
+  from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef and pg_get_userbyid(p.proowner) <> 'migrator'
+union all
+select 'no SECURITY DEFINER function survived the restore'
+ where not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef)
+SQL
+)"
+
+# Everything below must equal the source, not just exist: a changed policy expression, role list, grant,
+# default privilege or function privilege is drift.
+ROLES="'app','maintenance','system','operator','migrator'"
+declare -A COMPARE=(
+    ["row-level security flags"]="select c.relname, c.relrowsecurity, c.relforcerowsecurity from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind in ('r','p') order by 1"
+    ["policies (name, command, roles, USING, WITH CHECK)"]="select tablename, policyname, cmd, roles::text, qual, with_check from pg_policies where schemaname = 'public' order by 1, 2"
+    ["roles and attributes"]="select rolname, rolsuper, rolbypassrls, rolcanlogin from pg_roles where rolname in ($ROLES) order by 1"
+    ["table grants"]="select grantee, table_name, privilege_type from information_schema.role_table_grants where table_schema = 'public' and grantee in ($ROLES) order by 1, 2, 3"
+    ["default privileges"]="select pg_get_userbyid(defaclrole), defaclnamespace::regnamespace::text, defaclobjtype, defaclacl::text from pg_default_acl order by 1, 2, 3"
+    ["function owners and EXECUTE grants"]="select p.proname, p.prosecdef, pg_get_userbyid(p.proowner), coalesce(p.proacl::text, '') from pg_proc p where p.pronamespace = 'public'::regnamespace order by 1, 2"
+)
+for label in "${!COMPARE[@]}"; do
+    if ! diff <(psql_in -d "$SOURCE" -c "${COMPARE[$label]}") <(psql_in -d "$RESTORED" -c "${COMPARE[$label]}") >/dev/null; then
+        problems="${problems:+$problems$'\n'}$label differ between $SOURCE and the restored database"
+    fi
+done
+
+if [[ -n "$problems" ]]; then
+    echo "restore check FAILED after dump and restore of $SOURCE:" >&2
+    echo "$problems" | sed 's/^/  - /' >&2
+    exit 1
+fi
+
+echo "restore check passed: $(echo "$source_tenants" | tr ',' '\n' | wc -l) tenant tables keep RLS, the five roles, app grants and function owners."

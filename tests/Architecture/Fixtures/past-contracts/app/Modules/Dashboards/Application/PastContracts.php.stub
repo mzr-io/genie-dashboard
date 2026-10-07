@@ -1,0 +1,10 @@
+<?php
+
+namespace App\Modules\Dashboards\Application;
+
+use App\Modules\Results\Domain\BlockResult;
+
+final class PastContracts
+{
+    public function __construct(private BlockResult $result) {}
+}

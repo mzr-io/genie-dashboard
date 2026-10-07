@@ -1,0 +1,10 @@
+<?php
+
+namespace App\Modules\Dashboards\Application;
+
+use App\Modules\Identity\Contracts\UserLookup;
+
+final class BadEdge
+{
+    public function __construct(private UserLookup $users) {}
+}

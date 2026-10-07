@@ -1,0 +1,7 @@
+<?php
+
+namespace App\Modules\Dashboards\Application;
+
+use App\Modules\{Blocks\Contracts\BlockLookup, Results\Contracts\ResultsFor};
+
+final class GroupImport {}

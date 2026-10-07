@@ -1,0 +1,11 @@
+<?php
+
+namespace App\Modules\Blocks\Application;
+
+final class DecodesJson
+{
+    public function parse(string $body): mixed
+    {
+        return json_decode($body, true);
+    }
+}

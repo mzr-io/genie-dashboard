@@ -1,0 +1,502 @@
+@import 'tailwindcss' source('../');
+
+@import 'tw-animate-css';
+
+@import './tokens.css';
+
+@source '../views';
+
+@theme inline {
+    --font-sans: var(--df-font-sans);
+    --font-mono: var(--df-font-mono);
+
+    --radius-xs: var(--df-radius-xs);
+    --radius-sm: var(--df-radius-sm);
+    --radius-md: var(--df-radius-md);
+    --radius-lg: var(--df-radius-lg);
+    --radius-xl: var(--df-radius-xl);
+
+    --color-background: var(--background);
+    --color-foreground: var(--foreground);
+
+    --color-card: var(--card);
+    --color-card-foreground: var(--card-foreground);
+
+    --color-popover: var(--popover);
+    --color-popover-foreground: var(--popover-foreground);
+
+    --color-primary: var(--primary);
+    --color-primary-foreground: var(--primary-foreground);
+
+    --color-secondary: var(--secondary);
+    --color-secondary-foreground: var(--secondary-foreground);
+
+    --color-muted: var(--muted);
+    --color-muted-foreground: var(--muted-foreground);
+
+    --color-accent: var(--accent);
+    --color-accent-foreground: var(--accent-foreground);
+
+    --color-destructive: var(--destructive);
+    --color-destructive-foreground: var(--destructive-foreground);
+
+    --color-border: var(--border);
+    --color-input: var(--input);
+    --color-ring: var(--ring);
+
+    --color-sidebar: var(--sidebar-background);
+    --color-sidebar-foreground: var(--sidebar-foreground);
+    --color-sidebar-primary: var(--sidebar-primary);
+    --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+    --color-sidebar-accent: var(--sidebar-accent);
+    --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+    --color-sidebar-border: var(--sidebar-border);
+    --color-sidebar-ring: var(--sidebar-ring);
+
+    /* Dashflow tokens as utilities (bg-surface-card, text-text-muted, border-border-default ...).
+       The shadcn --color-accent above is the hover surface; the brand accent is bg-brand. */
+    --color-brand: var(--df-accent);
+    --color-accent-strong: var(--df-accent-strong);
+    --color-accent-border: var(--df-accent-border);
+    --color-accent-soft: var(--df-accent-soft);
+    --color-accent-wash: var(--df-accent-wash);
+    --color-accent-ink: var(--df-accent-ink);
+    --color-accent-ink-strong: var(--df-accent-ink-strong);
+    --color-accent-ink-inverse: var(--df-accent-ink-inverse);
+    --color-on-accent: var(--df-on-accent);
+    --color-logo-tile: var(--df-logo-tile);
+    --color-logo-mark: var(--df-logo-mark);
+    --color-surface-canvas: var(--df-surface-canvas);
+    --color-surface-card: var(--df-surface-card);
+    --color-surface-sunken: var(--df-surface-sunken);
+    --color-surface-muted: var(--df-surface-muted);
+    --color-border-default: var(--df-border-default);
+    --color-border-strong: var(--df-border-strong);
+    --color-border-control: var(--df-border-control);
+    --color-text-primary: var(--df-text-primary);
+    --color-text-secondary: var(--df-text-secondary);
+    --color-text-muted: var(--df-text-muted);
+    --color-text-subtle: var(--df-text-subtle);
+    --color-text-inverse: var(--df-text-inverse);
+    --color-surface-inverse: var(--df-surface-inverse);
+    --color-scrim: var(--df-scrim);
+    --color-shadow-color: var(--df-shadow-color);
+    --color-focus-ring: var(--df-focus-ring);
+    --color-on-status: var(--df-on-status);
+    --color-success: var(--df-success);
+    --color-success-text: var(--df-success-text);
+    --color-success-soft: var(--df-success-soft);
+    --color-success-wash: var(--df-success-wash);
+    --color-success-border: var(--df-success-border);
+    --color-error: var(--df-error);
+    --color-error-text: var(--df-error-text);
+    --color-error-soft: var(--df-error-soft);
+    --color-error-border: var(--df-error-border);
+    --color-warning: var(--df-warning);
+    --color-warning-bar: var(--df-warning-bar);
+    --color-warning-soft: var(--df-warning-soft);
+    --color-warning-border: var(--df-warning-border);
+    --color-info: var(--df-info);
+    --color-info-strong: var(--df-info-strong);
+    --color-info-soft: var(--df-info-soft);
+    --color-hero-surface: var(--df-hero-surface);
+    --color-hero-surface-raised: var(--df-hero-surface-raised);
+    --color-hero-card: var(--df-hero-card);
+    --color-hero-border: var(--df-hero-border);
+    --color-hero-text: var(--df-hero-text);
+    --color-hero-text-muted: var(--df-hero-text-muted);
+    --color-hero-chip: var(--df-hero-chip);
+    --color-role-label-text: var(--df-role-label-text);
+    --color-role-label-fill: var(--df-role-label-fill);
+    --color-role-label-border: var(--df-role-label-border);
+    --color-role-value-text: var(--df-role-value-text);
+    --color-role-value-fill: var(--df-role-value-fill);
+    --color-role-value-border: var(--df-role-value-border);
+    --color-role-dimension-text: var(--df-role-dimension-text);
+    --color-role-dimension-fill: var(--df-role-dimension-fill);
+    --color-role-dimension-border: var(--df-role-dimension-border);
+    --color-role-measure-text: var(--df-role-measure-text);
+    --color-role-measure-fill: var(--df-role-measure-fill);
+    --color-role-measure-border: var(--df-role-measure-border);
+    --color-role-time-text: var(--df-role-time-text);
+    --color-role-time-fill: var(--df-role-time-fill);
+    --color-role-time-border: var(--df-role-time-border);
+    --color-role-filter-text: var(--df-role-filter-text);
+    --color-role-filter-fill: var(--df-role-filter-fill);
+    --color-role-filter-border: var(--df-role-filter-border);
+    --color-chart-1: var(--df-chart-1);
+    --color-chart-1-stroke: var(--df-chart-1-stroke);
+    --color-chart-1-fill: var(--df-chart-1-fill);
+    --color-chart-2: var(--df-chart-2);
+    --color-chart-3: var(--df-chart-3);
+    --color-chart-4: var(--df-chart-4);
+    --color-chart-5: var(--df-chart-5);
+    --color-chart-6: var(--df-chart-6);
+    --color-chart-grid: var(--df-chart-grid);
+}
+
+/*
+  shadcn-vue variables bound to the Dashflow tokens (UX-DR-287). They are declared on
+  :root and on [data-workspace] so a brand override recomputes them inside its scope.
+*/
+:root,
+[data-workspace] {
+    --background: var(--df-surface-canvas);
+    --foreground: var(--df-text-primary);
+    --card: var(--df-surface-card);
+    --card-foreground: var(--df-text-primary);
+    --popover: var(--df-surface-card);
+    --popover-foreground: var(--df-text-primary);
+    --primary: var(--df-accent);
+    --primary-foreground: var(--df-on-accent);
+    --secondary: var(--df-surface-muted);
+    --secondary-foreground: var(--df-text-primary);
+    --muted: var(--df-surface-muted);
+    --muted-foreground: var(--df-text-muted);
+    --accent: var(--df-accent-soft);
+    --accent-foreground: var(--df-text-primary);
+    --destructive: var(--df-error);
+    --destructive-foreground: var(--df-on-status);
+    --border: var(--df-border-default);
+    --input: var(--df-border-control);
+    --ring: var(--df-focus-ring);
+    --chart-1: var(--df-chart-1);
+    --chart-2: var(--df-chart-2);
+    --chart-3: var(--df-chart-3);
+    --chart-4: var(--df-chart-4);
+    --chart-5: var(--df-chart-5);
+    --chart-6: var(--df-chart-6);
+    --radius: var(--df-radius-md);
+    --sidebar-background: var(--df-surface-card);
+    --sidebar: var(--df-surface-card);
+    --sidebar-foreground: var(--df-text-secondary);
+    --sidebar-primary: var(--df-accent);
+    --sidebar-primary-foreground: var(--df-on-accent);
+    --sidebar-accent: var(--df-accent-soft);
+    --sidebar-accent-foreground: var(--df-text-primary);
+    --sidebar-border: var(--df-border-default);
+    --sidebar-ring: var(--df-focus-ring);
+}
+
+@layer base {
+    * {
+        @apply border-border;
+    }
+
+    html {
+        /* Sticky topbar plus a gap, so a focused element is never hidden (UX-DR-268). */
+        scroll-padding-top: calc(var(--df-topbar-height) + var(--df-space-4));
+        scroll-padding-bottom: var(--df-space-4);
+        scroll-padding-left: var(--df-sidebar-width);
+    }
+
+    body {
+        @apply bg-background text-foreground;
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-body-md-size);
+        line-height: var(--df-type-body-md-leading);
+    }
+
+    /* Figures line up in columns (UX-DR-7). */
+    table,
+    time,
+    output,
+    [data-figure] {
+        font-variant-numeric: tabular-nums;
+    }
+
+    code,
+    kbd,
+    samp,
+    pre {
+        font-family: var(--df-font-mono);
+    }
+}
+
+/* Focus (UX-DR-12): 3px solid focus-ring, 2px offset, on every interactive element.
+   Unlayered so it wins over component utilities. Never yellow. */
+:focus-visible {
+    outline: var(--df-focus-width) solid var(--df-focus-ring);
+    outline-offset: var(--df-focus-offset);
+}
+
+/* Typography scale (UX-DR-7, UX-DR-8) */
+@layer components {
+    .type-display-hero {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-display-hero-size);
+        font-weight: var(--df-type-display-hero-weight);
+        line-height: var(--df-type-display-hero-leading);
+        letter-spacing: var(--df-type-display-hero-tracking);
+    }
+    .type-headline-lg {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-headline-lg-size);
+        font-weight: var(--df-type-headline-lg-weight);
+        line-height: var(--df-type-headline-lg-leading);
+        letter-spacing: var(--df-type-headline-lg-tracking);
+    }
+    .type-headline-md {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-headline-md-size);
+        font-weight: var(--df-type-headline-md-weight);
+        line-height: var(--df-type-headline-md-leading);
+        letter-spacing: var(--df-type-headline-md-tracking);
+    }
+    .type-title-md {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-title-md-size);
+        font-weight: var(--df-type-title-md-weight);
+        line-height: var(--df-type-title-md-leading);
+        letter-spacing: var(--df-type-title-md-tracking);
+    }
+    .type-title-sm {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-title-sm-size);
+        font-weight: var(--df-type-title-sm-weight);
+        line-height: var(--df-type-title-sm-leading);
+        letter-spacing: var(--df-type-title-sm-tracking);
+    }
+    .type-body-md {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-body-md-size);
+        font-weight: var(--df-type-body-md-weight);
+        line-height: var(--df-type-body-md-leading);
+        letter-spacing: var(--df-type-body-md-tracking);
+    }
+    .type-body-sm {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-body-sm-size);
+        font-weight: var(--df-type-body-sm-weight);
+        line-height: var(--df-type-body-sm-leading);
+        letter-spacing: var(--df-type-body-sm-tracking);
+    }
+    .type-caption {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-caption-size);
+        font-weight: var(--df-type-caption-weight);
+        line-height: var(--df-type-caption-leading);
+        letter-spacing: var(--df-type-caption-tracking);
+    }
+    .type-label-caps {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-label-caps-size);
+        font-weight: var(--df-type-label-caps-weight);
+        line-height: var(--df-type-label-caps-leading);
+        letter-spacing: var(--df-type-label-caps-tracking);
+    }
+    .type-kpi-headline {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-kpi-headline-size);
+        font-weight: var(--df-type-kpi-headline-weight);
+        line-height: var(--df-type-kpi-headline-leading);
+        letter-spacing: var(--df-type-kpi-headline-tracking);
+    }
+    .type-kpi-card {
+        font-family: var(--df-font-sans);
+        font-size: var(--df-type-kpi-card-size);
+        font-weight: var(--df-type-kpi-card-weight);
+        line-height: var(--df-type-kpi-card-leading);
+        letter-spacing: var(--df-type-kpi-card-tracking);
+    }
+    .type-mono {
+        font-family: var(--df-font-mono);
+        font-size: var(--df-type-mono-size);
+        font-weight: var(--df-type-mono-weight);
+        line-height: var(--df-type-mono-leading);
+        letter-spacing: var(--df-type-mono-tracking);
+    }
+    .type-label-caps {
+        text-transform: uppercase;
+    }
+
+    .tabular,
+    .type-kpi-headline,
+    .type-kpi-card {
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Resting cards: 1px border, no shadow (UX-DR-11) */
+    .surface-card {
+        background: var(--df-surface-card);
+        border: 1px solid var(--df-border-default);
+        border-radius: var(--df-radius-lg);
+        box-shadow: var(--df-shadow-card);
+    }
+
+    /* Selected-state cues that never rely on fill alone (UX-DR-14) */
+    .cue-bar {
+        position: relative;
+    }
+    .cue-bar[data-active='true']::before,
+    .cue-bar[aria-selected='true']::before,
+    .cue-bar[aria-current='page']::before {
+        content: '';
+        position: absolute;
+        inset-block: var(--df-space-1);
+        inset-inline-start: 0;
+        width: 3px;
+        border-radius: var(--df-radius-full);
+        background: var(--df-accent-ink-strong);
+    }
+    .cue-border[aria-checked='true'],
+    .cue-border[data-state='checked'],
+    .cue-border[data-selected='true'] {
+        border: 2px solid var(--df-accent-ink-strong);
+        background: var(--df-accent-soft);
+    }
+    .cue-segmented {
+        background: var(--df-surface-sunken);
+        border: 1px solid var(--df-border-control);
+        border-radius: var(--df-radius-md);
+    }
+    .cue-segmented [aria-checked='true'],
+    .cue-segmented [data-state='on'],
+    .cue-segmented [data-state='active'] {
+        background: var(--df-surface-card);
+        border: 1px solid var(--df-border-control);
+        font-weight: 600;
+    }
+    .cue-chip[aria-pressed='true'],
+    .cue-chip[aria-checked='true'],
+    .cue-chip[data-selected='true'] {
+        background: var(--df-accent-soft);
+        color: var(--df-accent-ink-strong);
+        border: 1px solid var(--df-accent-ink-strong);
+        font-weight: 700;
+    }
+    .cue-chip[aria-pressed='true']::before,
+    .cue-chip[aria-checked='true']::before,
+    .cue-chip[data-selected='true']::before,
+    .cue-check[aria-selected='true']::before,
+    .cue-check[data-selected='true']::before {
+        content: '\2713';
+        margin-inline-end: var(--df-space-1);
+        color: var(--df-accent-ink-strong);
+    }
+    .cue-option-active[data-highlighted],
+    .cue-option-active[data-active='true'] {
+        background: var(--df-accent-soft);
+        outline: 2px solid var(--df-focus-ring);
+        outline-offset: -2px;
+    }
+    /* Popover list options (UX-DR-75, 144): active (keyboard) and selected (chosen) differ */
+    .listbox-option-active,
+    [role='option'][data-highlighted],
+    [role='menuitem'][data-highlighted] {
+        background: var(--df-accent-soft);
+        outline: 2px solid var(--df-focus-ring);
+        outline-offset: -2px;
+    }
+    .listbox-option-selected {
+        position: relative;
+    }
+    .listbox-option-selected::before {
+        content: '\2713';
+        color: var(--df-accent-ink-strong);
+        font-weight: 700;
+    }
+    [data-tree='true'].listbox-option-selected::before {
+        content: '';
+        position: absolute;
+        inset-block: 0;
+        inset-inline-start: 0;
+        width: 3px;
+        background: var(--df-accent-ink-strong);
+    }
+}
+
+/* Hit areas (UX-DR-33, 278): small controls keep their drawn size and grow an invisible target
+   of at least 24px, 44px on touch layouts. */
+.hit-area {
+    position: relative;
+}
+.hit-area::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, var(--df-target-min));
+    height: max(100%, var(--df-target-min));
+    transform: translate(-50%, -50%);
+}
+
+/* Touch layouts: 44px targets (UX-DR-278). */
+@media (pointer: coarse) {
+    .hit-area::after {
+        width: max(100%, var(--df-target-touch));
+        height: max(100%, var(--df-target-touch));
+    }
+
+    [data-slot='button']:not([data-variant='link']),
+    [data-slot='input'],
+    [data-slot='textarea'],
+    [data-slot='select-trigger'],
+    [data-slot='chip'],
+    [data-slot='segmented-item'] {
+        min-height: var(--df-target-touch);
+    }
+
+    [data-slot='button'][data-size='icon'],
+    [data-slot='button'][data-size='icon-sm'],
+    [data-slot='button'][data-size='icon-lg'] {
+        min-width: var(--df-target-touch);
+    }
+}
+
+/* Skeleton shimmer: a surface-sunken sweep that stops after 5 s (set by the component) and
+   is static under reduced motion (UX-DR-36). */
+@keyframes df-shimmer {
+    from {
+        background-position: 200% 0;
+    }
+    to {
+        background-position: -200% 0;
+    }
+}
+.skeleton[data-shimmer='true'] {
+    background-image: linear-gradient(
+        90deg,
+        transparent 0%,
+        var(--df-surface-sunken) 50%,
+        transparent 100%
+    );
+    background-size: 200% 100%;
+    animation: df-shimmer 1.6s linear infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .skeleton[data-shimmer='true'] {
+        animation: none;
+        background-image: none;
+    }
+}
+
+/* Toasts slide in from the right; under reduced motion they just appear (UX-DR-277). */
+.toast-enter-active,
+.toast-leave-active {
+    transition:
+        transform 200ms ease,
+        opacity 200ms ease;
+}
+.toast-enter-from,
+.toast-leave-to {
+    opacity: 0;
+    transform: translateX(1rem);
+}
+
+/* Reduced motion: toasts do not slide; dialogs and sheets do not animate (UX-DR-277). */
+@media (prefers-reduced-motion: reduce) {
+    .toast-enter-active,
+    .toast-leave-active {
+        transition: none;
+    }
+    [data-slot='dialog-content'],
+    [data-slot='dialog-overlay'],
+    [data-slot='alert-dialog-content'],
+    [data-slot='alert-dialog-overlay'],
+    [data-slot='sheet-content'],
+    [data-slot='sheet-overlay'] {
+        animation: none !important;
+        transition: none !important;
+    }
+}

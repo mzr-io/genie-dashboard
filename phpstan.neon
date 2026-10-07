@@ -1,0 +1,19 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - vendor/nesbot/carbon/extension.neon
+
+parameters:
+    paths:
+        - app/
+        - bootstrap/app.php
+        - config/
+        - database/
+        - routes/
+
+    level: 7
+
+    ignoreErrors:
+        # Job middleware for the jobs of later stories; the Database suite exercises it through a fixture job.
+        -
+            identifier: trait.unused
+            path: app/Platform/Tenancy/RunsInWorkspace.php

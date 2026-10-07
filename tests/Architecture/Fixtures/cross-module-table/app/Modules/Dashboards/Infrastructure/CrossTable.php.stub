@@ -1,0 +1,13 @@
+<?php
+
+namespace App\Modules\Dashboards\Infrastructure;
+
+use Illuminate\Support\Facades\DB;
+
+final class CrossTable
+{
+    public function blocks(): array
+    {
+        return DB::table('blocks')->get()->all();
+    }
+}
