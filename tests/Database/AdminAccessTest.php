@@ -173,7 +173,7 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
             // A host and revision are validated before the allowlist is touched; a removal validates its revision before the entry.
             in_array($name, ['api.admin.host-allowlist.store', 'api.admin.host-allowlist.destroy'], true) => 422,
             // A Data source is validated before it is looked up (the revision first), and the blur check validates its URL.
-            in_array($name, ['api.admin.data-sources.store', 'api.admin.data-sources.update', 'api.admin.data-sources.check-url'], true) => 422,
+            in_array($name, ['api.admin.data-sources.store', 'api.admin.data-sources.update', 'api.admin.data-sources.check-url', 'api.admin.data-sources.test-connection'], true) => 422,
             // The edit page renders whatever Data source it names; the form loads it through the API.
             $name === 'admin.data-sources.edit' => 200,
             str_contains($uri, '{') => 404,

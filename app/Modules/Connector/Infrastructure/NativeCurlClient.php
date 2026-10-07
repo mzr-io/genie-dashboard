@@ -52,7 +52,7 @@ final class NativeCurlClient implements CurlClient
 
         if (curl_exec($handle) === false) {
             // The error number only: curl's text can name the address it tried.
-            throw new EgressTransportFailed('The request failed (curl error '.curl_errno($handle).').');
+            throw new EgressTransportFailed('The request failed (curl error '.curl_errno($handle).').', curl_errno($handle));
         }
 
         return new CurlResult((int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE), $headers, $body);

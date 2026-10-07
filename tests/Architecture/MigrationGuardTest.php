@@ -46,3 +46,28 @@ it('fails raw create table SQL without workspace_id', function () use ($fixtures
         ->and($violations[0])->toContain('create_gizmos_table.php.stub')
         ->and($violations[0])->toContain('gizmos');
 });
+
+it('passes a partitioned table that carries workspace_id and row-level security on the parent and every partition', function () use ($fixtures) {
+    expect((new Scanner)->migrationViolations("{$fixtures}/migrations-partition-good"))->toBe([])
+        ->and((new Scanner)->partitionViolations("{$fixtures}/migrations-partition-good"))->toBe([]);
+});
+
+it('does not ask a partition for its own workspace_id, but fails a partitioned table without one and names it', function () use ($fixtures) {
+    $violations = (new Scanner)->migrationViolations("{$fixtures}/migrations-partition-no-workspace");
+
+    expect($violations)->toHaveCount(1)
+        ->and($violations[0])->toContain('create_events.php.stub')
+        ->and($violations[0])->toContain('events');
+});
+
+it('fails a migration that partitions a table without forcing row-level security and a policy, and names the file', function () use ($fixtures) {
+    $violations = (new Scanner)->partitionViolations("{$fixtures}/migrations-partition-bad");
+
+    expect($violations)->toHaveCount(2)
+        ->and($violations[0])->toContain('create_runs.php.stub')->toContain('force row level security')
+        ->and($violations[1])->toContain('create policy');
+});
+
+it('keeps every real partitioned table under row-level security', function () {
+    expect((new Scanner)->partitionViolations(dirname(__DIR__, 2).'/database/migrations'))->toBe([]);
+});

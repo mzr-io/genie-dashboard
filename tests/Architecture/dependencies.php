@@ -47,8 +47,10 @@ return [
         'Connector' => [
             'data_sources', 'endpoints', 'endpoint_revisions', 'secrets',
             'host_allowlist_entries', 'host_allowlist_versions', 'egress_grants', 'endpoint_usage',
+            // Connector writes the run history until Ingestion exists (Story 2.5): the first partitioned table.
+            'sync_runs',
         ],
-        'Ingestion' => ['sync_targets', 'sync_subscriptions', 'sync_generations', 'sync_runs'],
+        'Ingestion' => ['sync_targets', 'sync_subscriptions', 'sync_generations'],
         'RawStore' => ['raw_bodies', 'raw_observations'],
         'Datasets' => ['datasets', 'dataset_fields'],
         'Results' => ['block_results', 'block_viewers', 'mapping_health_incidents'],

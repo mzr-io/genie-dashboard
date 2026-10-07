@@ -28,11 +28,15 @@ use App\Modules\Connector\Application\ManageDataSources;
 use App\Modules\Connector\Application\ManageEgressGrants;
 use App\Modules\Connector\Application\ManageHostAllowlist;
 use App\Modules\Connector\Application\RecordEgressBlock;
+use App\Modules\Connector\Application\RunConnectionTest;
+use App\Modules\Connector\Application\StartConnectionTest;
+use App\Modules\Connector\Contracts\ConnectionTests;
 use App\Modules\Connector\Contracts\DataSources;
 use App\Modules\Connector\Contracts\EgressBlockLog;
 use App\Modules\Connector\Contracts\EgressGrants;
 use App\Modules\Connector\Contracts\EgressGuard;
 use App\Modules\Connector\Contracts\EgressTransport;
+use App\Modules\Connector\Contracts\FetchTransport;
 use App\Modules\Connector\Contracts\HostAllowlist;
 use App\Modules\Connector\Contracts\HostAllowlistDependents;
 use App\Modules\Connector\Contracts\HostResolver;
@@ -40,6 +44,7 @@ use App\Modules\Connector\Contracts\SecretVault;
 use App\Modules\Connector\Infrastructure\ConnectorAuditSerializer;
 use App\Modules\Connector\Infrastructure\CurlClient;
 use App\Modules\Connector\Infrastructure\CurlEgressTransport;
+use App\Modules\Connector\Infrastructure\DirectFetchTransport;
 use App\Modules\Connector\Infrastructure\DnsHostResolver;
 use App\Modules\Connector\Infrastructure\LocalSecretVault;
 use App\Modules\Connector\Infrastructure\NativeCurlClient;
@@ -56,6 +61,8 @@ use App\Modules\Identity\Infrastructure\IdentityAuditSerializer;
 use App\Platform\Audit\AuditHasher;
 use App\Platform\Audit\AuditSerializers;
 use App\Platform\Audit\PlatformAuditSerializer;
+use App\Platform\Operations\OperationKind;
+use App\Platform\Operations\OperationKinds;
 use App\Platform\Outbox\OutboxConsumers;
 use App\Platform\Tenancy\TenantCache;
 use App\Platform\Tenancy\WorkspaceContext;
@@ -116,6 +123,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(EgressGuard::class, GuardEgressUrl::class);
         $this->app->bind(CurlClient::class, NativeCurlClient::class);
         $this->app->bind(EgressTransport::class, CurlEgressTransport::class);
+        // The `direct` driver: the worker calls the source itself, through the guard (the `agent` driver comes later).
+        $this->app->bind(FetchTransport::class, DirectFetchTransport::class);
+        $this->app->bind(ConnectionTests::class, StartConnectionTest::class);
+        $this->app->singleton(OperationKinds::class);
         $this->app->singleton(MetricEmitter::class, OtelMetricEmitter::class);
         $this->app->bind(SignInMemberships::class, SignInMembershipsAdapter::class);
         $this->app->bind(TenantCache::class, fn ($app) => new TenantCache($app['cache']->store()));
@@ -143,6 +154,10 @@ class AppServiceProvider extends ServiceProvider
         $serializers->register(new ConnectorAuditSerializer);
         $serializers->register(new IdentityAuditSerializer);
         $serializers->register(new PlatformAuditSerializer);
+
+        // Each module registers its Operation kinds with the kernel (the kernel calls no module). A connection test runs on
+        // `fetch-interactive`, which only `worker-connector` consumes.
+        $this->app->make(OperationKinds::class)->register(new OperationKind(ConnectionTests::KIND, ConnectionTests::QUEUE, 600, RunConnectionTest::class));
 
         QueueContext::register($this->app->make(RequestContext::class), $this->app->make('events'));
         JobSignatureGuard::register($this->app, $this->app->make('events'));

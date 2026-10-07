@@ -158,7 +158,8 @@ final class Cluster
 
     /**
      * Tables in `public` that carry a `workspace_id` column and are not listed as global
-     * (`invitations` names the Workspace an invitee joins but is a global table).
+     * (`invitations` names the Workspace an invitee joins but is a global table). A partition is not listed:
+     * its partitioned parent stands for it here, and {@see self::partitions()} covers it on its own.
      *
      * @return list<string>
      */
@@ -168,7 +169,7 @@ final class Cluster
             SELECT c.relname FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'workspace_id' AND NOT a.attisdropped
-            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition
             ORDER BY c.relname
             SQL);
 
@@ -178,7 +179,7 @@ final class Cluster
     }
 
     /**
-     * Every ordinary table in `public`.
+     * Every ordinary or partitioned table in `public`, a partition not listed (its parent stands for it).
      *
      * @return list<string>
      */
@@ -187,11 +188,31 @@ final class Cluster
         $rows = self::rows(self::superuser(), <<<'SQL'
             SELECT c.relname FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition
             ORDER BY c.relname
             SQL);
 
         return array_column($rows, 'relname');
+    }
+
+    /**
+     * Every partition in `public`, with its partitioned parent.
+     *
+     * @return list<array{partition: string, parent: string}>
+     */
+    public static function partitions(): array
+    {
+        /** @var list<array{partition: string, parent: string}> $rows */
+        $rows = self::rows(self::superuser(), <<<'SQL'
+            SELECT c.relname AS partition, p.relname AS parent FROM pg_class c
+            JOIN pg_inherits i ON i.inhrelid = c.oid
+            JOIN pg_class p ON p.oid = i.inhparent
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relispartition
+            ORDER BY p.relname, c.relname
+            SQL);
+
+        return $rows;
     }
 
     public static function workspace(string $name, string $status = 'active', ?string $label = null): string
@@ -231,6 +252,8 @@ final class Cluster
             'egress_grants' => self::seedEgressGrant($workspaceId),
             'data_sources' => self::seedDataSource($workspaceId),
             'secrets' => self::seedSecret($workspaceId),
+            'operations' => self::seedOperation($workspaceId),
+            'sync_runs' => self::seedSyncRun($workspaceId),
             default => null,
         };
     }
@@ -306,6 +329,26 @@ final class Cluster
         $dataSourceId ??= self::seedDataSource($workspaceId);
         self::superuser()->prepare("INSERT INTO secrets (id, workspace_id, data_source_id, slot, purpose, key_version, key_ref, ciphertext, created_at, updated_at) VALUES (?, ?, ?, ?, 'cred', 1, 'test-key-ref', decode('00ff', 'hex'), now(), now())")
             ->execute([$id, $workspaceId, $dataSourceId, $slot]);
+
+        return $id;
+    }
+
+    /** An Operation of the Workspace, started by a made-up membership (there is no foreign key across modules). */
+    public static function seedOperation(string $workspaceId, ?string $requester = null, string $status = 'queued', string $kind = 'connection_test', string $expires = '1 hour'): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO operations (id, workspace_id, kind, requester_membership_id, subject_type, status, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, 'data_source_draft', ?, now() + ?::interval, now(), now())")
+            ->execute([$id, $workspaceId, $kind, $requester ?? (string) Str::uuid7(), $status, $expires]);
+
+        return $id;
+    }
+
+    /** A run of the Workspace, started now (so it lands in the current month's partition). */
+    public static function seedSyncRun(string $workspaceId, string $startedAt = 'now()'): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO sync_runs (id, workspace_id, kind, url_template, status, started_at, created_at, updated_at) VALUES (?, ?, 'connection_test', 'https://api.example.com/v1', 'succeeded', {$startedAt}, now(), now())")
+            ->execute([$id, $workspaceId]);
 
         return $id;
     }

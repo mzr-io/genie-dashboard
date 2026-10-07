@@ -26,6 +26,29 @@ final class SecretSlots
         };
     }
 
+    /**
+     * The slots a form uses (its auth type's, and one per secret default header), each with the form field that holds it.
+     *
+     * @param  list<array{name: string, value?: string, secret?: true}>  $headers
+     * @return array<string, string> slot => field
+     */
+    public static function used(string $authType, array $headers): array
+    {
+        $used = [];
+
+        foreach (self::forAuth($authType) as $slot) {
+            $used[$slot] = "secrets.{$slot}";
+        }
+
+        foreach ($headers as $i => $header) {
+            if (($header['secret'] ?? false) === true) {
+                $used[self::header($header['name'])] = "headers.{$i}.value";
+            }
+        }
+
+        return $used;
+    }
+
     public static function header(string $name): string
     {
         return self::HEADER_PREFIX.strtolower($name);

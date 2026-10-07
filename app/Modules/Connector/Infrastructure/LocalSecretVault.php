@@ -2,9 +2,12 @@
 
 namespace App\Modules\Connector\Infrastructure;
 
+use App\Modules\Connector\Contracts\KeyringMismatch;
 use App\Modules\Connector\Contracts\KeyringUnavailable;
 use App\Modules\Connector\Contracts\SealedSecret;
 use App\Modules\Connector\Contracts\SecretContext;
+use App\Modules\Connector\Contracts\SecretMissing;
+use App\Modules\Connector\Contracts\SecretRef;
 use App\Modules\Connector\Contracts\SecretRefused;
 use App\Modules\Connector\Contracts\SecretsNotConfigured;
 use App\Modules\Connector\Contracts\SecretStatus;
@@ -54,13 +57,71 @@ final class LocalSecretVault implements SecretVault
             }
         }
 
-        return new SealedSecret($sealed, $version, 'sha256:'.substr(hash('sha256', $publicKey), 0, 32));
+        return new SealedSecret($sealed, $version, self::fingerprint($publicKey));
     }
 
     public function open(SecretContext $context, #[\SensitiveParameter] string $ciphertext): string
     {
+        return $this->unseal($this->keyPair(), $context, $ciphertext);
+    }
+
+    public function resolve(SecretRef $ref, SecretContext $context): string
+    {
+        // A transient row past its expiry is as good as gone, whether or not the purge has run yet.
+        $row = DB::selectOne(
+            "select slot, purpose, key_version, key_ref, encode(ciphertext, 'base64') as sealed from secrets where id = ? and workspace_id = ? and (not ephemeral or expires_at > now())",
+            [$ref->id, $context->workspaceId],
+        );
+
+        if ($row === null) {
+            throw new SecretMissing;
+        }
+
+        /** @var object{slot: string, purpose: string, key_version: int|string, key_ref: string, sealed: string} $row */
+        if ($row->slot !== $context->slot || $row->purpose !== $context->purpose) {
+            throw new SecretRefused;
+        }
+
         $pair = $this->keyPair();
 
+        // The row says which key it was sealed to: opening with another one can only fail, so say why.
+        if (! hash_equals($row->key_ref, self::fingerprint(sodium_crypto_box_publickey($pair)))) {
+            sodium_memzero($pair);
+
+            throw new KeyringMismatch;
+        }
+
+        try {
+            $configured = $this->settings->keyVersion();
+        } catch (SecretsNotConfigured) {
+            $configured = null;
+        }
+
+        if ($configured !== null && $configured !== (int) $row->key_version) {
+            sodium_memzero($pair);
+
+            throw new KeyringMismatch;
+        }
+
+        $ciphertext = base64_decode($row->sealed, true);
+
+        if ($ciphertext === false) {
+            sodium_memzero($pair);
+
+            throw new SecretRefused;
+        }
+
+        return $this->unseal($pair, $context, $ciphertext);
+    }
+
+    /** The fingerprint a sealed row records for the public key it was sealed to. */
+    private static function fingerprint(string $publicKey): string
+    {
+        return 'sha256:'.substr(hash('sha256', $publicKey), 0, 32);
+    }
+
+    private function unseal(string $pair, SecretContext $context, #[\SensitiveParameter] string $ciphertext): string
+    {
         try {
             $plain = sodium_crypto_box_seal_open($ciphertext, $pair);
         } catch (\SodiumException) {

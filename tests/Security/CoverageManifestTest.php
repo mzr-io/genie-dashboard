@@ -23,6 +23,10 @@ function securityManifest(): array
             'Database/PoolingTest.php' => ['keeps interleaved requests for Workspaces A and B apart on one server connection'],
             'Database/WorkspaceSwitchTest.php' => ['answers 404 for an object ID of another Workspace in every tenant table that exists, and 200 for its own'],
             'Database/TenantLeakCoverageTest.php' => ['passes the context-free and cross-Workspace leak checks for every tenant table'],
+            'Database/PartitionsTest.php' => [
+                'holds ENABLE and FORCE ROW LEVEL SECURITY and the Workspace policy on the parent and on every partition, owned by migrator',
+                'returns nothing from any partition with no context, and never another Workspace\'s rows, even when the partition is queried directly',
+            ],
         ]],
         'CSRF on sign-in' => ['tests' => [
             'Security/CsrfTest.php' => [
@@ -112,6 +116,23 @@ function securityManifest(): array
                 'leaves no canary in logs, audit rows, outbox, responses or the page props across every credential flow',
                 'opens a stored secret only where the private key is mounted: on web it fails with KeyringUnavailable',
                 'builds a FetchRequest with secret_refs and the credential scheme only, never a value or ciphertext',
+            ],
+        ]],
+        'Operations: only the requesting membership reads an Operation, and its summary holds no body or secret' => ['tests' => [
+            'Database/ConnectionTestTest.php' => [
+                'shows an Operation only to the membership that started it: anyone else gets a 404 with no body',
+                'uses typed secrets from an unsaved form through a transient row, deletes it at completion and saves nothing',
+                'records one sync_runs row for the attempt with a sanitised URL template, the numbers and no body',
+            ],
+            'Database/OperationsTest.php' => [
+                'cleans up in a finally when the handler throws, fails the Operation with a generic code and logs the class only',
+                'answers status only to the membership that asked, in the Workspace it was asked in',
+            ],
+        ]],
+        'connection test: a failure never shows a resolved address and a block is audited' => ['tests' => [
+            'Database/ConnectionTestTest.php' => [
+                'answers a host that is not on the allowlist with host-not-allowlisted, audits it and counts it towards the alert',
+                'answers a host that resolves to a blocked address with blocked-address and never shows the address',
             ],
         ]],
         'fail closed on missing context' => ['tests' => [

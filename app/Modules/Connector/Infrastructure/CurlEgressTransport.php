@@ -150,6 +150,11 @@ final class CurlEgressTransport implements EgressTransport
             }
         }
 
+        // The Data Source's own timeout may only shorten the total timeout.
+        if ($request->timeoutSeconds !== null && $request->timeoutSeconds > 0) {
+            $options[CURLOPT_TIMEOUT] = min($request->timeoutSeconds, $options[CURLOPT_TIMEOUT] ?? $request->timeoutSeconds);
+        }
+
         return $options;
     }
 

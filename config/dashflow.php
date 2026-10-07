@@ -155,6 +155,16 @@ return [
         'cred_key_path' => $tunable('DASHFLOW_SECRETS_CRED_KEY_PATH', '/run/secrets/key-cred'),
     ],
 
+    // Connection-test rate limits (Story 2.5), kept outside `tunables` like `egress`. Every one is `pending_input` with no
+    // default: at most `membership_limit` tests per person and `workspace_limit` per Workspace in any `window` seconds. A
+    // limit that is unset does not apply, and with no window nothing is limited. Over a limit the API answers 429 with
+    // `retry_after` and enqueues nothing.
+    'connection_test' => [
+        'membership_limit' => $tunable('DASHFLOW_CONNECTION_TEST_MEMBERSHIP_LIMIT'),
+        'workspace_limit' => $tunable('DASHFLOW_CONNECTION_TEST_WORKSPACE_LIMIT'),
+        'window' => $tunable('DASHFLOW_CONNECTION_TEST_WINDOW'),
+    ],
+
     // Load-test harness targets (Story 1.25), read by `npm run load` (load/config.mjs) from the environment.
     // Each is `pending_input` with no default: the harness exits non-zero naming every variable that is unset.
     // Kept outside `tunables`, which is the closed AR-57 list. tests/Feature/LoadSettingsTest.php keeps this list

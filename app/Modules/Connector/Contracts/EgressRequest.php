@@ -18,5 +18,7 @@ final readonly class EgressRequest
         public array $headers = [],
         public array $credentials = [],
         public ?string $body = null,
+        /** The Data Source's own timeout in seconds: it can only shorten the platform's, never lengthen it. */
+        public ?int $timeoutSeconds = null,
     ) {}
 }

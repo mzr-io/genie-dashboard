@@ -23,6 +23,18 @@ interface SecretVault
     public function open(SecretContext $context, #[\SensitiveParameter] string $ciphertext): string;
 
     /**
+     * Opens the secret a reference points to, at egress time, in the caller's Workspace transaction: reads the row, ignores
+     * a transient row that has expired, checks the key it was sealed to against the key mounted here and opens it with the
+     * context check. The plaintext goes to the caller that applies it to a request and nowhere else.
+     *
+     * @throws SecretMissing when the row is not there (or is an expired transient row)
+     * @throws KeyringUnavailable on any role without the key (`web`)
+     * @throws KeyringMismatch when the row was sealed to another key than the mounted one
+     * @throws SecretRefused when the value is damaged or was sealed for another context
+     */
+    public function resolve(SecretRef $ref, SecretContext $context): string;
+
+    /**
      * The status of every slot of a Data Source, keyed by slot (only the slots that hold a value), in the caller's
      * Workspace transaction. Never a value or ciphertext.
      *

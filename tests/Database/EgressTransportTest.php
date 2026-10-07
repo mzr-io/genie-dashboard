@@ -288,6 +288,19 @@ it('sets the connect and total timeouts only from numeric settings and invents n
         ->and(array_key_exists(CURLOPT_CONNECTTIMEOUT, $curl->calls[2]) || array_key_exists(CURLOPT_TIMEOUT, $curl->calls[2]))->toBeFalse();
 });
 
+it('lets the Data Source timeout only shorten the total timeout: min(source, platform), or the source alone when there is no platform one', function (?int $platform, int $source, int $expected) {
+    [$workspace, , $curl] = transportWorld(answers: [FakeCurl::answer()]);
+    config(['dashflow.tunables.timeouts.total_timeout.value' => $platform]);
+
+    app(EgressTransport::class)->send($workspace, new EgressRequest('https://api.example.com/', timeoutSeconds: $source));
+
+    expect($curl->calls[0][CURLOPT_TIMEOUT])->toBe($expected);
+})->with([
+    'source below platform' => [20, 5, 5],
+    'source above platform' => [20, 50, 20],
+    'no platform timeout' => [null, 5, 5],
+]);
+
 // ---- the real curl handler, against a throwaway server on 127.0.0.1 (never through the guard)
 
 /** @return array{0: resource, 1: int, 2: string} */

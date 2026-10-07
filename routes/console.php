@@ -11,6 +11,9 @@ Artisan::command('inspire', function () {
 
 // Every scheduled task uses onOneServer() so several schedulers run each task once.
 Schedule::command('dashflow:heartbeat')->everyMinute()->onOneServer();
+// Connection tests (Story 2.5): transient secrets that outlived their Operation, and the monthly sync_runs partitions.
+Schedule::command('dashflow:secrets:purge-expired')->everyFiveMinutes()->onOneServer();
+Schedule::command('dashflow:partitions:ensure')->daily()->onOneServer();
 // The outbox relay runs on queue `outbox` (worker-compute holds the `system` database role).
 Schedule::job(new RelayOutboxJob, 'outbox')->everyMinute()->onOneServer();
 

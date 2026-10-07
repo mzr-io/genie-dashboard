@@ -60,6 +60,9 @@ enum AuditAction: string
     // Platform: operator actions mirrored into the Workspace audit log.
     case PlatformWorkspaceCreated = 'platform.workspace.created';
 
+    // Platform: an asynchronous Operation ended (Story 2.5). An outbox event only: IDs and enums, never the summary.
+    case PlatformOperationCompleted = 'platform.operation.completed';
+
     /** The case for `$action`, or an exception: an unknown string never reaches storage. */
     public static function fromString(string $action): self
     {

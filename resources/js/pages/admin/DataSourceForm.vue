@@ -8,9 +8,11 @@ import {
     reactive,
     ref,
     useId,
+    watch,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
 import BlockedReason from '@/components/BlockedReason.vue';
+import FetchErrorCard from '@/components/FetchErrorCard.vue';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import FormField from '@/components/FormField.vue';
 import PageHeader from '@/components/PageHeader.vue';
@@ -30,12 +32,16 @@ import {
     createDataSource,
     DataSourceError,
     fetchDataSource,
+    PollTimeout,
+    pollOperation,
+    startConnectionTest,
     updateDataSource,
 } from '@/lib/dataSources';
 import { SECRET_SLOTS } from '@/lib/dataSources';
 import type {
     AuthType,
     Ceilings,
+    ConnectionTestCode,
     DataSource,
     DataSourceInput,
     OneDataSource,
@@ -113,6 +119,27 @@ const saveReasonId = useId();
 const leaveOpen = ref(false);
 const technicalStatus = ref<number | null>(null);
 
+// Test connection (Story 2.5): one test at a time; the result is the real status and latency, or the error card.
+type TestFailure = {
+    code: ConnectionTestCode;
+    status: number | null;
+    requestId: string | null;
+    host: string | null;
+    reason: string | null;
+};
+const testing = ref(false);
+const testOk = ref<{ status: number; ms: number } | null>(null);
+const testFailure = ref<TestFailure | null>(null);
+const testCardRef = ref<InstanceType<typeof FetchErrorCard> | null>(null);
+// After a 429 the button stays blocked until the server says another test may start.
+const testWaitSeconds = ref<number | null>(null);
+const testReasonId = useId();
+
+// Used only when a throttled answer names no wait at all.
+const THROTTLE_FALLBACK_SECONDS = 10;
+
+let testController: AbortController | null = null;
+let testWaitTimer: ReturnType<typeof setTimeout> | null = null;
 let checkController: AbortController | null = null;
 let leaveTarget: string | null = null;
 let leaving = false;
@@ -812,6 +839,176 @@ async function reloadLatest(): Promise<void> {
     document.getElementById(fieldId('name'))?.focus();
 }
 
+// ---- Test connection -----------------------------------------------------------------------------------------------
+
+const testReason = computed(() =>
+    testing.value
+        ? labels.testRunning
+        : testWaitSeconds.value !== null
+          ? labels.testThrottled(testWaitSeconds.value)
+          : undefined,
+);
+
+// What the form holds now, secrets included, but never the password: a test saves nothing.
+function testPayload(): DataSourceInput {
+    const body = payload();
+
+    delete body.confirm_password;
+
+    return body;
+}
+
+function clearTestResult(): void {
+    testOk.value = null;
+    testFailure.value = null;
+}
+
+function throttleTest(seconds: number): void {
+    testWaitSeconds.value = Math.max(1, Math.ceil(seconds));
+
+    if (testWaitTimer) {
+        clearTimeout(testWaitTimer);
+    }
+
+    testWaitTimer = setTimeout(() => {
+        testWaitSeconds.value = null;
+        testWaitTimer = null;
+    }, testWaitSeconds.value * 1000);
+}
+
+async function showTestFailure(failure: TestFailure): Promise<void> {
+    testFailure.value = failure;
+    await nextTick();
+    testCardRef.value?.focus();
+}
+
+async function testConnection(): Promise<void> {
+    if (
+        state.value !== 'ready' ||
+        testing.value ||
+        testWaitSeconds.value !== null
+    ) {
+        return;
+    }
+
+    clearErrors();
+    clearTestResult();
+    testController?.abort();
+    testController = new AbortController();
+    const mine = testController;
+    // What was tested: a result for other values (the form changed during the test) is not shown.
+    const tested = snapshot();
+    let accepted = false;
+    testing.value = true;
+
+    try {
+        const started = await startConnectionTest(
+            testPayload(),
+            props.dataSourceId,
+        );
+
+        accepted = true;
+        const operation = await pollOperation(
+            started.operation_id,
+            mine.signal,
+        );
+        const result = operation.result;
+
+        if (snapshot() !== tested) {
+            return;
+        }
+
+        if (operation.status === 'succeeded' && result?.ok) {
+            testOk.value = {
+                status: result.status ?? 200,
+                ms: result.latency_ms ?? 0,
+            };
+
+            return;
+        }
+
+        // A result that never came (expired, stale) is a failed call like any other.
+        await showTestFailure({
+            code: result?.code ?? 'fetch-failed',
+            status: result?.status ?? null,
+            requestId: result?.request_id ?? null,
+            host: result?.host ?? null,
+            reason: result?.reason ?? operation.status,
+        });
+    } catch (error) {
+        if (mine.signal.aborted || authExpired(error)) {
+            return;
+        }
+
+        if (error instanceof DataSourceError) {
+            if (error.status === 422 && (await showServerErrors(error))) {
+                return;
+            }
+
+            // A throttled start without the wait in its body still names it in `Retry-After`.
+            if (error.status === 429 && !accepted) {
+                throttleTest(error.retryAfter ?? THROTTLE_FALLBACK_SECONDS);
+
+                return;
+            }
+
+            if (
+                !accepted &&
+                error.status === 404 &&
+                error.code === null &&
+                props.dataSourceId
+            ) {
+                state.value = 'missing';
+
+                return;
+            }
+
+            if (
+                error.status === 503 &&
+                error.code === 'connector.secrets_not_configured'
+            ) {
+                await failWith('unconfigured');
+
+                return;
+            }
+        }
+
+        if (snapshot() !== tested) {
+            return;
+        }
+
+        await showTestFailure({
+            code: 'fetch-failed',
+            status:
+                error instanceof DataSourceError && error.status > 0
+                    ? error.status
+                    : null,
+            requestId:
+                error instanceof DataSourceError ? error.requestId : null,
+            host: null,
+            reason: error instanceof PollTimeout ? 'no_worker_responded' : null,
+        });
+    } finally {
+        if (testController === mine) {
+            testing.value = false;
+        }
+    }
+}
+
+// What was tested is no longer what the form holds once it changes: the old result goes.
+watch(
+    () => snapshot(),
+    () => {
+        if (!testing.value) {
+            clearTestResult();
+        }
+    },
+);
+
+const testSource = computed(
+    () => form.name.trim() || original.value?.name || labels.testSourceFallback,
+);
+
 // ---- Leaving with unsaved edits ------------------------------------------------------------------------------------
 
 const stopBefore = router.on('before', (event) => {
@@ -867,6 +1064,12 @@ onMounted(() => {
 onBeforeUnmount(() => {
     window.removeEventListener('beforeunload', onBeforeUnload);
     checkController?.abort();
+    testController?.abort();
+
+    if (testWaitTimer) {
+        clearTimeout(testWaitTimer);
+    }
+
     stopBefore();
     stopRegistry();
 });
@@ -1447,6 +1650,20 @@ const ceilingHelper = (value: number | null): string | undefined =>
                     >
                         {{ editing ? labels.save : labels.create }}
                     </Button>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        :disabled="!ready"
+                        :blocked="ready && testReason !== undefined"
+                        :blocked-reason="testReason"
+                        :aria-describedby="
+                            testReason ? testReasonId : undefined
+                        "
+                        data-test="test-connection"
+                        @click="testConnection"
+                    >
+                        {{ labels.testConnection }}
+                    </Button>
                     <Button as-child variant="secondary">
                         <Link :href="index().url" data-test="cancel">{{
                             labels.cancel
@@ -1456,6 +1673,45 @@ const ceilingHelper = (value: number | null): string | undefined =>
                 <BlockedReason v-if="saveReason" :id="saveReasonId">{{
                     saveReason
                 }}</BlockedReason>
+                <BlockedReason v-if="testReason" :id="testReasonId">{{
+                    testReason
+                }}</BlockedReason>
+                <p class="type-caption text-text-muted">
+                    {{ labels.testHint }}
+                </p>
+                <!-- One polite status region: "Testing…" while a test runs, then the real result. -->
+                <div role="status" aria-live="polite" data-test="test-status">
+                    <p
+                        v-if="testing"
+                        class="type-body-sm text-text-secondary"
+                        data-test="testing"
+                    >
+                        {{ labels.testing }}
+                    </p>
+                    <p
+                        v-else-if="testOk"
+                        class="type-body-sm font-medium text-success-text"
+                        data-test="test-ok"
+                    >
+                        {{
+                            t('test-ok', {
+                                status: testOk.status,
+                                ms: testOk.ms,
+                            })
+                        }}
+                    </p>
+                </div>
+                <FetchErrorCard
+                    v-if="testFailure"
+                    ref="testCardRef"
+                    :code="testFailure.code"
+                    :source="testSource"
+                    :status="testFailure.status"
+                    :request-id="testFailure.requestId"
+                    :host="testFailure.host"
+                    :reason="testFailure.reason"
+                    @retry="testConnection"
+                />
             </div>
         </form>
 

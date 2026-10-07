@@ -4,6 +4,8 @@ export const technicalDetailsLabels = {
     title: 'Technical details',
     status: 'HTTP status',
     path: 'Field path',
+    host: 'Host',
+    reason: 'Reason code',
     requestId: 'Request ID',
     copy: 'Copy request ID',
     copied: 'Copied',
@@ -852,6 +854,17 @@ export const dataSourceLabels = {
     confirmPasswordWrong: 'The password is incorrect.',
     credentialsUnavailable:
         'Credentials cannot be saved until the platform key is configured. Ask an operator to set it, then try again.',
+    // Test connection (Story 2.5; UX-DR-135, 207, 22, 70, 276). The result text itself is the catalogue's `test-ok`,
+    // `fetch-failed`, `host-not-allowlisted` and `blocked-address`.
+    testConnection: 'Test connection',
+    testing: 'Testing…',
+    testRunning: 'A test is already running. Wait for its result.',
+    testThrottled: (seconds: number) =>
+        `Too many tests. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`,
+    testFailedTitle: 'Connection test failed',
+    testSourceFallback: 'this data source',
+    testHint:
+        'Calls the base URL once with these headers and credentials. Nothing is saved.',
 } as const;
 
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after

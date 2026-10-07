@@ -13,8 +13,14 @@ enum CredentialScheme: string
 
     public static function forSource(DataSource $source): self
     {
-        return match ($source->authType) {
-            'api_key' => $source->apiKeyPlacement === 'query' ? self::ApiKeyQuery : self::ApiKeyHeader,
+        return self::fromAuth($source->authType, $source->apiKeyPlacement);
+    }
+
+    /** The scheme of an authentication type and, for an API key, where it travels (`header` or `query`). */
+    public static function fromAuth(string $authType, ?string $apiKeyPlacement = null): self
+    {
+        return match ($authType) {
+            'api_key' => $apiKeyPlacement === 'query' ? self::ApiKeyQuery : self::ApiKeyHeader,
             'bearer' => self::Bearer,
             'basic' => self::Basic,
             default => self::None,

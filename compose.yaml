@@ -73,6 +73,12 @@ x-app-env: &app-env
     DASHFLOW_SECRETS_CRED_KEY_VERSION: ${DASHFLOW_SECRETS_CRED_KEY_VERSION:-}
     # Where worker-connector reads the private key (a path, not key material; empty = the default /run/secrets/key-cred).
     DASHFLOW_SECRETS_CRED_KEY_PATH: ${DASHFLOW_SECRETS_CRED_KEY_PATH:-}
+    # Connection-test rate limits (Story 2.5; pending_input, empty = unset): at most the membership limit per person and the
+    # workspace limit per Workspace in any `window` seconds. A limit that is unset does not apply, and with no window nothing
+    # is limited. The web role enforces them when a test is requested.
+    DASHFLOW_CONNECTION_TEST_MEMBERSHIP_LIMIT: ${DASHFLOW_CONNECTION_TEST_MEMBERSHIP_LIMIT:-}
+    DASHFLOW_CONNECTION_TEST_WORKSPACE_LIMIT: ${DASHFLOW_CONNECTION_TEST_WORKSPACE_LIMIT:-}
+    DASHFLOW_CONNECTION_TEST_WINDOW: ${DASHFLOW_CONNECTION_TEST_WINDOW:-}
     # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
     OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}

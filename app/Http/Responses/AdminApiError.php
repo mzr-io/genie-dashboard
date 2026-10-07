@@ -17,15 +17,16 @@ final class AdminApiError
     /**
      * @param  array<string, list<string>>  $errors  field errors
      * @param  array<string, mixed>  $extra  further top-level members (`reason`, `invitation_id`, `data`)
+     * @param  array<string, mixed>  $errorExtra  further members of the `error` object itself (`retry_after`)
      */
-    public static function json(Request $request, string $code, int $status, ?string $message = null, array $errors = [], array $extra = []): JsonResponse
+    public static function json(Request $request, string $code, int $status, ?string $message = null, array $errors = [], array $extra = [], array $errorExtra = []): JsonResponse
     {
         $body = [
             'error' => [
                 'code' => $code,
                 'message' => $message ?? Response::$statusTexts[$status] ?? 'Error',
                 'request_id' => $request->attributes->get('request_id') ?? app(RequestContext::class)->requestId(),
-            ],
+            ] + $errorExtra,
         ];
 
         if ($errors !== []) {

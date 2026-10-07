@@ -18,9 +18,9 @@ use Illuminate\Http\Exceptions\HttpResponseException;
  * and the refusal is a 422 with a field error and the `reason` the page maps to its message. The `admin` middleware has
  * already authorised the request (`data_sources.manage`).
  */
-final class DataSourceRequest extends FormRequest
+class DataSourceRequest extends FormRequest
 {
-    private ?DataSourceInput $parsed = null;
+    protected ?DataSourceInput $parsed = null;
 
     public function authorize(): bool
     {
@@ -58,7 +58,7 @@ final class DataSourceRequest extends FormRequest
     }
 
     /** @var array<string, string> */
-    private array $reasons = [];
+    protected array $reasons = [];
 
     public function revision(): int
     {

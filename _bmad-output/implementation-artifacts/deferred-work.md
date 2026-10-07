@@ -151,3 +151,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-4-add-authentication-and-write-only-secrets-to-a-data-source.md`
   summary: Story 2.5 must add `SecretVault::resolve(SecretRef, SecretContext)` that reads the secrets row and opens it, and key-version selection with a distinct KeyringMismatch for rotation.
   evidence: FetchRequest carries only SecretRef(id, slot) but `open()` takes a ciphertext, and `open()` always uses the single mounted key regardless of the stored key_version or key_ref.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-5-test-a-data-source-connection.md`
+  summary: Commit an Operation's `running` status first and run the handler and its network call outside the Workspace transaction.
+  evidence: `RunsInWorkspace` wraps the whole job, so `running` is never observable by pollers and a row lock is held for the outbound call.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-5-test-a-data-source-connection.md`
+  summary: Move the expired-secrets purge and `sync_runs` partition upkeep to the `maintenance` role, drop UPDATE on `sync_runs` from `app`, and add retention for `operations` and `sync_runs`.
+  evidence: `connector_purge_expired_secrets()` is executable by `app` and crosses Workspaces; `operations` has no sweep; a non-empty DEFAULT partition has no repair or alert path.

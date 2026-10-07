@@ -101,6 +101,8 @@ export class DataSourceError extends Error {
         readonly reasons: Record<string, string> = {},
         readonly current: OneDataSource | null = null,
         readonly requestId: string | null = null,
+        // On a 429 from a rate limit: the seconds until the next attempt may be made.
+        readonly retryAfter: number | null = null,
     ) {
         super(`data source request failed: ${status}`);
     }
@@ -109,7 +111,7 @@ export class DataSourceError extends Error {
 type Body = {
     data?: unknown;
     meta?: unknown;
-    error?: { code?: string; request_id?: string };
+    error?: { code?: string; request_id?: string; retry_after?: number };
     errors?: Record<string, string[]>;
     reasons?: Record<string, string>;
     current?: OneDataSource;
@@ -131,6 +133,13 @@ function isOne(body: unknown): body is OneDataSource {
         typeof one.data === 'object' &&
         !!one.meta
     );
+}
+
+// The `Retry-After` header of a throttled answer, in whole seconds, when the body did not say.
+function retryAfterHeader(response: Response): number | null {
+    const value = response.headers?.get?.('Retry-After');
+
+    return value && /^\d{1,6}$/.test(value) ? Number(value) : null;
 }
 
 async function call(
@@ -180,6 +189,9 @@ async function call(
             json?.reasons ?? {},
             json && isOne(json.current) ? json.current : null,
             json?.error?.request_id ?? null,
+            typeof json?.error?.retry_after === 'number'
+                ? json.error.retry_after
+                : retryAfterHeader(response),
         );
     }
 
@@ -274,4 +286,163 @@ export async function checkBaseUrl(
         { base_url: baseUrl },
         signal,
     );
+}
+
+// ---- Test connection (Story 2.5) --------------------------------------------------------------------------------
+// The test starts an Operation that `worker-connector` runs; the page polls it until it ends. What it shows is only
+// what the summary holds: the user code, the status, the latency, the host and the request ID.
+export const OPERATIONS_URL = '/api/v1/operations';
+
+// How often the Operation is asked about, and how many failed reads in a row end the wait.
+export const POLL_INTERVAL_MS = 1000;
+// How long the page waits for a worker before it gives up (the server keeps the Operation for longer).
+export const POLL_DEADLINE_MS = 90_000;
+
+// No worker answered within the deadline.
+export class PollTimeout extends Error {
+    constructor() {
+        super('no worker responded');
+    }
+}
+const POLL_TOLERATED_FAILURES = 3;
+
+export type OperationStatus =
+    | 'queued'
+    | 'running'
+    | 'succeeded'
+    | 'failed'
+    | 'stale'
+    | 'expired';
+
+// The three things an Admin is told about a failed test; they are message catalogue keys.
+export type ConnectionTestCode =
+    | 'host-not-allowlisted'
+    | 'blocked-address'
+    | 'fetch-failed';
+
+export type ConnectionTestSummary = {
+    ok: boolean;
+    status: number | null;
+    latency_ms: number | null;
+    code: ConnectionTestCode | null;
+    reason: string | null;
+    host: string | null;
+    request_id: string | null;
+};
+
+export type OperationSummary = {
+    id: string;
+    kind: string;
+    status: OperationStatus;
+    result: ConnectionTestSummary | null;
+    expires_at: string;
+};
+
+export function operationEnded(status: OperationStatus): boolean {
+    return status !== 'queued' && status !== 'running';
+}
+
+// Starts a test of the form as it stands (`202` with the Operation). Nothing is saved; typed secrets travel in this one
+// request only. Throws the 422 with its field errors, the 429 with `retryAfter`, the 503 when credentials cannot be sealed.
+export async function startConnectionTest(
+    input: DataSourceInput,
+    dataSourceId?: string | null,
+): Promise<{ operation_id: string; status: OperationStatus }> {
+    const body = await call('POST', `${DATA_SOURCES_URL}/test-connection`, {
+        ...input,
+        ...(dataSourceId ? { data_source_id: dataSourceId } : {}),
+    });
+    const data = body.data as
+        | { operation_id?: unknown; status?: unknown }
+        | undefined;
+
+    if (!data || typeof data.operation_id !== 'string') {
+        throw new DataSourceError(500);
+    }
+
+    return {
+        operation_id: data.operation_id,
+        status: data.status as OperationStatus,
+    };
+}
+
+export async function fetchOperation(
+    id: string,
+    signal?: AbortSignal,
+): Promise<OperationSummary> {
+    const body = await call(
+        'GET',
+        `${OPERATIONS_URL}/${encodeURIComponent(id)}`,
+        undefined,
+        signal,
+    );
+    const data = body.data as Partial<OperationSummary> | undefined;
+
+    if (!data || typeof data.status !== 'string') {
+        throw new DataSourceError(500);
+    }
+
+    return data as OperationSummary;
+}
+
+function wait(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+            reject(new DOMException('aborted', 'AbortError'));
+
+            return;
+        }
+
+        const timer = setTimeout(() => {
+            signal?.removeEventListener('abort', onAbort);
+            resolve();
+        }, ms);
+        const onAbort = (): void => {
+            clearTimeout(timer);
+            reject(new DOMException('aborted', 'AbortError'));
+        };
+
+        signal?.addEventListener('abort', onAbort, { once: true });
+    });
+}
+
+// Asks about the Operation until it ends. A read that fails for a moment (the network, a 5xx) is tried again a few times
+// in a row; a refusal that will not change (401, 404) ends the wait at once.
+export async function pollOperation(
+    id: string,
+    signal?: AbortSignal,
+    intervalMs: number = POLL_INTERVAL_MS,
+    deadlineMs: number = POLL_DEADLINE_MS,
+): Promise<OperationSummary> {
+    let failures = 0;
+    const until = Date.now() + deadlineMs;
+
+    for (;;) {
+        if (Date.now() >= until) {
+            throw new PollTimeout();
+        }
+
+        try {
+            const operation = await fetchOperation(id, signal);
+
+            failures = 0;
+
+            if (operationEnded(operation.status)) {
+                return operation;
+            }
+        } catch (error) {
+            // A throttled read (429) is waited out, not counted: the deadline still ends the wait.
+            if (
+                signal?.aborted ||
+                !(error instanceof DataSourceError) ||
+                (error.status !== 429 &&
+                    ((error.status !== 0 && error.status < 500) ||
+                        ++failures >= POLL_TOLERATED_FAILURES))
+            ) {
+                throw error;
+            }
+        }
+
+        await wait(intervalMs, signal);
+    }
 }

@@ -1,0 +1,21 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        DB::unprepared(<<<'SQL'
+            CREATE TABLE runs (id uuid NOT NULL, workspace_id uuid NOT NULL, started_at timestamptz NOT NULL, PRIMARY KEY (id, started_at)) PARTITION BY RANGE (started_at);
+            ALTER TABLE runs ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE runs FORCE ROW LEVEL SECURITY;
+            CREATE POLICY workspace_isolation ON runs USING (workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid);
+            CREATE TABLE runs_default PARTITION OF runs DEFAULT;
+            ALTER TABLE runs_default ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE runs_default FORCE ROW LEVEL SECURITY;
+            CREATE POLICY workspace_isolation ON runs_default USING (workspace_id = nullif(current_setting('app.workspace_id', true), '')::uuid);
+            SQL);
+    }
+};

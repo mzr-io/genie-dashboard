@@ -212,8 +212,41 @@ final class Scanner
                 $end = $segments[$i + 1][1] ?? strlen($code);
                 $body = substr($code, $offset, $end - $offset);
 
+                // A partition takes its columns, `workspace_id` included, from its partitioned parent.
+                if (preg_match('/\A\w+"?\s+partition\s+of\b/i', $body) === 1) {
+                    continue;
+                }
+
                 if (! in_array(strtolower($table), $this->rules['global_tables'], true) && ! str_contains($body, 'workspace_id')) {
                     $violations[] = "{$file} creates table {$table} without workspace_id";
+                }
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * A migration that creates a partitioned table or a partition must also switch on row-level security: a partition queried
+     * directly is checked by its own policy, not its parent's, so `ENABLE` and `FORCE ROW LEVEL SECURITY` and a policy
+     * have to appear in the same migration (Story 2.5).
+     *
+     * @return list<string>
+     */
+    public function partitionViolations(string $migrationsDir): array
+    {
+        $violations = [];
+
+        foreach ($this->files($migrationsDir) as $file) {
+            $code = $this->stripComments((string) file_get_contents($file));
+
+            if (preg_match('/\bpartition\s+(?:by|of)\b/i', $code) !== 1) {
+                continue;
+            }
+
+            foreach (['enable row level security', 'force row level security', 'create policy'] as $needed) {
+                if (stripos($code, $needed) === false) {
+                    $violations[] = "{$file} creates a partitioned table or a partition without `{$needed}`";
                 }
             }
         }

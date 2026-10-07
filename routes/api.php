@@ -5,6 +5,7 @@ use App\Http\Controllers\Admin\GroupController;
 use App\Http\Controllers\Admin\HostAllowlistController;
 use App\Http\Controllers\Admin\InvitationController;
 use App\Http\Controllers\Admin\MemberController;
+use App\Http\Controllers\OperationController;
 use App\Http\Middleware\RejectsSecretValues;
 use App\Modules\Identity\Http\SessionController;
 use Illuminate\Support\Facades\Route;
@@ -59,6 +60,11 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::get('data-sources', [DataSourceController::class, 'index'])->middleware('admin')->name('api.admin.data-sources.index');
     Route::post('data-sources', [DataSourceController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.data-sources.store');
     Route::post('data-sources/check-url', [DataSourceController::class, 'checkUrl'])->middleware(['admin', RejectsSecretValues::class, 'throttle:60,1,data-source-check'])->name('api.admin.data-sources.check-url');
+    // Test connection (Story 2.5): starts an Operation; nothing is saved, nothing is called from this tier. Typed secrets are accepted here.
+    Route::post('data-sources/test-connection', [DataSourceController::class, 'testConnection'])->middleware(['admin', 'throttle:30,1,data-source-test'])->name('api.admin.data-sources.test-connection');
     Route::get('data-sources/{dataSource}', [DataSourceController::class, 'show'])->middleware('admin')->name('api.admin.data-sources.show');
     Route::put('data-sources/{dataSource}', [DataSourceController::class, 'update'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.data-sources.update');
 });
+
+// Operations (Story 2.5): the summary of an asynchronous Operation, for the membership that started it and nobody else.
+Route::middleware(['auth:sanctum', 'throttle:120,1,operation-status'])->get('operations/{operation}', [OperationController::class, 'show'])->name('api.operations.show');

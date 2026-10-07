@@ -1,0 +1,18 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        DB::unprepared(<<<'SQL'
+            CREATE TABLE events (id uuid NOT NULL, started_at timestamptz NOT NULL, PRIMARY KEY (id, started_at)) PARTITION BY RANGE (started_at);
+            ALTER TABLE events ENABLE ROW LEVEL SECURITY;
+            ALTER TABLE events FORCE ROW LEVEL SECURITY;
+            CREATE POLICY p ON events USING (true);
+            CREATE TABLE events_default PARTITION OF events DEFAULT;
+            SQL);
+    }
+};

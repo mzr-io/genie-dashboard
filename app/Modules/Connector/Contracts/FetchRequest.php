@@ -6,28 +6,36 @@ use JsonSerializable;
 
 /**
  * What the fetch pipeline is asked to call (AR-26): the Workspace, Data Source and Endpoint, a sanitized URL template, the
- * parameter names, the credential scheme and the `secret_ref`s. Never a value, a ciphertext or a resolved parameter:
- * `worker-connector` resolves the refs through {@see SecretVault::open} at call time. Versioned, so a later change to the
- * shape is explicit.
+ * parameter names, the credential scheme and the `secret_ref`s, plus (since version 2) the plain request settings of the
+ * Data Source: its non-secret default headers (a secret one is only a name, its value a `header:{name}` ref), the API
+ * key's name and placement, the timeout and the method. Never a secret value, a ciphertext or a resolved parameter:
+ * {@see FetchTransport} resolves the refs through {@see SecretVault::resolve} at egress. Versioned, so a later change to
+ * the shape is explicit. A connection test has no Endpoint (`endpointId` is null), and an unsaved form no Data Source.
  */
 final readonly class FetchRequest implements JsonSerializable
 {
-    public const VERSION = 1;
+    public const VERSION = 2;
 
     public string $urlTemplate;
 
     /**
      * @param  list<string>  $parameterNames
      * @param  list<SecretRef>  $secretRefs
+     * @param  list<array{name: string, value: string, secret?: true}>  $headers  the default headers; a secret one has an empty value
      */
     public function __construct(
         public string $workspaceId,
-        public string $dataSourceId,
-        public string $endpointId,
+        public ?string $dataSourceId,
+        public ?string $endpointId,
         string $urlTemplate,
         public array $parameterNames,
         public CredentialScheme $scheme,
         public array $secretRefs,
+        public array $headers = [],
+        public ?string $apiKeyName = null,
+        public ?string $apiKeyPlacement = null,
+        public ?int $timeoutSeconds = null,
+        public string $method = 'GET',
     ) {
         // The template is kept without userinfo, query and fragment: a credential placed in a URL never travels here.
         $url = (string) preg_replace('/[?#].*\z/s', '', $urlTemplate);
@@ -48,7 +56,11 @@ final readonly class FetchRequest implements JsonSerializable
             }
         }
 
-        return new self($workspaceId, $source->id, $endpointId, $urlTemplate, $parameterNames, CredentialScheme::forSource($source), $refs);
+        return new self(
+            $workspaceId, $source->id, $endpointId, $urlTemplate, $parameterNames, CredentialScheme::forSource($source), $refs,
+            array_map(fn (array $header): array => ($header['secret'] ?? false) === true ? ['name' => $header['name'], 'value' => '', 'secret' => true] : $header, $source->headers),
+            $source->apiKeyName, $source->apiKeyPlacement, $source->timeoutSeconds,
+        );
     }
 
     /** @return array<string, mixed> */
@@ -63,6 +75,11 @@ final readonly class FetchRequest implements JsonSerializable
             'parameter_names' => $this->parameterNames,
             'credential_scheme' => $this->scheme->value,
             'secret_refs' => array_map(fn (SecretRef $ref): array => $ref->toArray(), $this->secretRefs),
+            'headers' => $this->headers,
+            'api_key_name' => $this->apiKeyName,
+            'api_key_placement' => $this->apiKeyPlacement,
+            'timeout_seconds' => $this->timeoutSeconds,
+            'method' => $this->method,
         ];
     }
 

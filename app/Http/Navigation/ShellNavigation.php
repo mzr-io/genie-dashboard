@@ -90,6 +90,7 @@ final class ShellNavigation
         'api.admin.data-sources.index' => Permission::DataSourcesManage,
         'api.admin.data-sources.store' => Permission::DataSourcesManage,
         'api.admin.data-sources.check-url' => Permission::DataSourcesManage,
+        'api.admin.data-sources.test-connection' => Permission::DataSourcesManage,
         'api.admin.data-sources.show' => Permission::DataSourcesManage,
         'api.admin.data-sources.update' => Permission::DataSourcesManage,
     ];

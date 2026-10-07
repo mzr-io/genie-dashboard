@@ -40,4 +40,8 @@ pest()->group('security')->in(
     'Unit/LocalSecretVaultTest.php',
     'Unit/FetchRequestTest.php',
     'Unit/RejectsSecretValuesTest.php',
+    'Unit/DirectFetchTransportTest.php',
+    'Database/ConnectionTestTest.php',
+    'Database/OperationsTest.php',
+    'Database/PartitionsTest.php',
 );

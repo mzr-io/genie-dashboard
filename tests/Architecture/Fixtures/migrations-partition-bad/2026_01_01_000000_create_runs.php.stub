@@ -1,0 +1,16 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\DB;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        DB::unprepared(<<<'SQL'
+            CREATE TABLE runs (id uuid NOT NULL, workspace_id uuid NOT NULL, started_at timestamptz NOT NULL, PRIMARY KEY (id, started_at)) PARTITION BY RANGE (started_at);
+            ALTER TABLE runs ENABLE ROW LEVEL SECURITY;
+            CREATE TABLE runs_default PARTITION OF runs DEFAULT;
+            SQL);
+    }
+};

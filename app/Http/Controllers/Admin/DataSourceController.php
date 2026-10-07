@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\DataSourceRequest;
 use App\Http\Requests\Admin\ListDataSourcesRequest;
+use App\Http\Requests\Admin\TestConnectionRequest;
 use App\Http\Resources\DataSourceResource;
 use App\Http\Responses\AdminApiError;
 use App\Models\User;
@@ -12,6 +13,8 @@ use App\Modules\Access\Contracts\ConfirmationThrottled;
 use App\Modules\Access\Contracts\MembershipLookup;
 use App\Modules\Connector\Application\ValidateDataSourceInput;
 use App\Modules\Connector\Contracts\ConfirmationRefused;
+use App\Modules\Connector\Contracts\ConnectionTests;
+use App\Modules\Connector\Contracts\ConnectionTestThrottled;
 use App\Modules\Connector\Contracts\DataSource;
 use App\Modules\Connector\Contracts\DataSourceActor;
 use App\Modules\Connector\Contracts\DataSourceNotFound;
@@ -51,6 +54,7 @@ final class DataSourceController extends Controller
         private readonly DataSources $sources,
         private readonly ValidateDataSourceInput $validator,
         private readonly MembershipLookup $memberships,
+        private readonly ConnectionTests $tests,
     ) {}
 
     public function index(ListDataSourcesRequest $request): JsonResponse
@@ -117,6 +121,34 @@ final class DataSourceController extends Controller
         }
 
         return response()->json(['data' => ['allowed' => true]], 200, ['Cache-Control' => self::NO_STORE]);
+    }
+
+    /**
+     * Starts a connection test of the form as it stands (Story 2.5): `202` with the Operation to poll, nothing saved. The
+     * request is validated like a save, minus the unique name and the revision, and typed secrets are accepted (they are sealed
+     * into transient rows of the Operation). Nothing is called here: `worker-connector` makes the request. Over the rate
+     * limit it is a 429 with `retry_after` and nothing is enqueued.
+     */
+    public function testConnection(TestConnectionRequest $request): JsonResponse
+    {
+        try {
+            $operation = $this->tests->start($this->actor($request), $request->dataSourceInput(), $request->dataSourceId());
+        } catch (InvalidDataSource $e) {
+            return $this->invalid($request, $e);
+        } catch (DataSourceNotFound) {
+            abort(404);
+        } catch (ConnectionTestThrottled $e) {
+            return AdminApiError::json($request, PlatformErrorCode::TooManyRequests->value, 429, 'Too many connection tests.', extra: ['reason' => 'connection-test-throttled'], errorExtra: ['retry_after' => $e->retryAfter])
+                ->header('Retry-After', (string) $e->retryAfter);
+        } catch (SecretsNotConfigured $e) {
+            return $this->refused($request, $e);
+        }
+
+        return response()->json(
+            ['data' => ['operation_id' => $operation->id, 'status' => $operation->status->value, 'expires_at' => $operation->expiresAt]],
+            202,
+            ['Cache-Control' => self::NO_STORE],
+        );
     }
 
     /** A wrong password is a 422 on `confirm_password`, too many wrong ones a 429, an unset platform key a 503. */

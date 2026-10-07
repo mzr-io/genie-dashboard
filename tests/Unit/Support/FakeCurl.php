@@ -12,14 +12,20 @@ final class FakeCurl implements CurlClient
     /** @var list<array<int, mixed>> */
     public array $calls = [];
 
-    /** @param  list<CurlResult>  $queue */
+    /** @param  list<CurlResult|\Throwable>  $queue  a Throwable in the queue is thrown, as a failed transfer would be */
     public function __construct(public array $queue = []) {}
 
     public function execute(array $options): CurlResult
     {
         $this->calls[] = $options;
 
-        return array_shift($this->queue) ?? throw new LogicException('No scripted answer left.');
+        $next = array_shift($this->queue) ?? throw new LogicException('No scripted answer left.');
+
+        if ($next instanceof \Throwable) {
+            throw $next;
+        }
+
+        return $next;
     }
 
     /** @param  array<string, list<string>>  $headers */
