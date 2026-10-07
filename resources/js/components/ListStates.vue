@@ -13,8 +13,10 @@ withDefaults(
         items: string;
         // The action that starts the list, as a phrase ("Create a dashboard").
         action: string;
+        // Whether the loading state draws its own toolbar skeleton (off when the page keeps its real toolbar).
+        toolbar?: boolean;
     }>(),
-    {},
+    { toolbar: true },
 );
 
 defineEmits<{ retry: [] }>();
@@ -36,7 +38,11 @@ const SKELETON_ROWS = 5;
             class="flex flex-col gap-3 p-4"
         >
             <span class="sr-only">{{ shellLabels.loadingItems(items) }}</span>
-            <Skeleton class="h-9 w-full max-w-xs" :caption="false" />
+            <Skeleton
+                v-if="toolbar"
+                class="h-9 w-full max-w-xs"
+                :caption="false"
+            />
             <Skeleton
                 v-for="row in SKELETON_ROWS"
                 :key="row"
@@ -66,12 +72,15 @@ const SKELETON_ROWS = 5;
             </Button>
         </div>
 
-        <p
-            v-else
-            data-slot="list-empty"
-            class="type-body-md p-6 text-center text-text-secondary"
-        >
-            {{ t('list-empty', { items, action }) }}
-        </p>
+        <div v-else class="flex flex-col items-center gap-4 p-6">
+            <p
+                data-slot="list-empty"
+                class="type-body-md text-center text-text-secondary"
+            >
+                {{ t('list-empty', { items, action }) }}
+            </p>
+            <!-- The page's primary action, where it has one. -->
+            <slot />
+        </div>
     </section>
 </template>

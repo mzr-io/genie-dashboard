@@ -53,7 +53,16 @@ final class ShellNavigation
         'audit-log' => ['admin.audit.index', Permission::AuditView],
     ];
 
-    /** Whether the route name is an Admin item (the gate fails closed for any other route without a key). */
+    /**
+     * Admin API routes (`/api/v1/admin/*`) that take their permission from the route name rather than from a
+     * key on the middleware: route name => the permission it needs. They are not navigation items.
+     */
+    public const ADMIN_API_ROUTES = [
+        'api.admin.members' => Permission::UsersManage,
+        'api.admin.members.show' => Permission::UsersManage,
+    ];
+
+    /** Whether the route name is an Admin item or Admin API route (the gate fails closed for any other route without a key). */
     public static function hasRoute(string $route): bool
     {
         foreach (self::ADMIN_ITEMS as [$name]) {
@@ -62,7 +71,7 @@ final class ShellNavigation
             }
         }
 
-        return false;
+        return array_key_exists($route, self::ADMIN_API_ROUTES);
     }
 
     /** The permission an Admin route needs (null: the Admin area only, or not an Admin item). */
@@ -74,7 +83,7 @@ final class ShellNavigation
             }
         }
 
-        return null;
+        return self::ADMIN_API_ROUTES[$route] ?? null;
     }
 
     public function __construct(

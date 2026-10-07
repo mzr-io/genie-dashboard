@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\MemberController;
 use App\Modules\Identity\Http\SessionController;
 use Illuminate\Support\Facades\Route;
 
@@ -21,4 +22,8 @@ Route::middleware('auth')->prefix('session')->group(function () {
 Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::get('ping', fn () => response()->json(['status' => 'ok']))->middleware('admin:audit.view')->name('api.admin.ping');
     Route::post('ping', fn () => response()->json(['status' => 'ok']))->middleware('admin:settings.manage')->name('api.admin.ping.store');
+
+    // User configuration (Story 1.20). The permission comes from ShellNavigation::ADMIN_API_ROUTES by route name.
+    Route::get('members', [MemberController::class, 'index'])->middleware('admin')->name('api.admin.members');
+    Route::get('members/{membership}', [MemberController::class, 'show'])->middleware('admin')->name('api.admin.members.show');
 });

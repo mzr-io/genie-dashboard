@@ -27,6 +27,7 @@ export const controlLabels = {
     stillLoading: 'Still loading…',
     locked: 'Locked',
     lockedAnnounce: 'required by your admin and cannot be removed',
+    sortBy: (column: string) => `Sort by ${column}`,
 } as const;
 
 // Labels of dialogs, toasts, banners and landmarks (Story 1.9). Buttons repeat across screens,
@@ -318,6 +319,49 @@ export const shellLabels = {
     // The 403 page (Story 1.19); its message is `perm-denied` in the catalogue.
     forbiddenTitle: 'Access denied',
     forbiddenBack: 'Back to your overview',
+} as const;
+
+// Labels of User configuration, the Workspace's users table (Story 1.20; UX-DR-37, 261, 263, 273, 279, 282).
+// Its messages are the catalogue's `list-empty`, `list-no-match` and `perm-denied`; the rest is table vocabulary.
+// Until Story 1.21 the "Invite user" action is disabled with its reason (perm-denied-style copy).
+export const userListLabels = {
+    caption:
+        'Users with access to this workspace, with their role, status and when they were last active',
+    toolbar: 'User list tools',
+    search: 'Search users',
+    searchPlaceholder: 'Search by name or email',
+    clearSearch: 'Clear search',
+    invite: 'Invite user',
+    inviteReason: 'Invitations arrive with the next release',
+    columns: {
+        name: 'Name',
+        email: 'Email',
+        role: 'Role',
+        status: 'Status',
+        groups: 'Groups',
+        last_active: 'Last active',
+    },
+    roles: { admin: 'Admin', user: 'User' },
+    statuses: {
+        active: 'Active',
+        invited: 'Invited',
+        deactivated: 'Deactivated',
+    },
+    noGroups: 'No groups',
+    noName: 'No name yet',
+    noLastActive: 'Not active yet',
+    sorted: (column: string, descending: boolean) =>
+        `Sorted by ${column}, ${descending ? 'descending' : 'ascending'}`,
+    count: (matched: number, total: number) =>
+        `${matched} of ${total} ${total === 1 ? 'user' : 'users'}`,
+    tableRegion: 'Users table',
+    emptyCell: '—',
+    pagination: 'User list pages',
+    previous: 'Previous',
+    next: 'Next',
+    pageNumber: (page: number) => `Page ${page}`,
+    pageChanged: (page: number, shown: number) =>
+        `Page ${page}, ${shown} ${shown === 1 ? 'user' : 'users'}`,
 } as const;
 
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after

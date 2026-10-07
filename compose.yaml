@@ -53,6 +53,8 @@ x-app-env: &app-env
     DASHFLOW_RESET_REQUEST_MAX_ATTEMPTS: ${DASHFLOW_RESET_REQUEST_MAX_ATTEMPTS:-}
     DASHFLOW_RESET_REQUEST_DECAY_SECONDS: ${DASHFLOW_RESET_REQUEST_DECAY_SECONDS:-}
     DASHFLOW_REMEMBER_ME_DURATION: ${DASHFLOW_REMEMBER_ME_DURATION:-}
+    # Largest list page in rows (pending_input; empty = unset, so lists page by 15).
+    DASHFLOW_LISTS_MAX_PAGE_SIZE: ${DASHFLOW_LISTS_MAX_PAGE_SIZE:-}
     # Largest avatar upload in bytes (pending_input; empty = unset, so PHP's upload_max_filesize applies).
     DASHFLOW_AVATAR_MAX_BYTES: ${DASHFLOW_AVATAR_MAX_BYTES:-}
     # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.

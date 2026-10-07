@@ -63,7 +63,7 @@ Route::middleware(['auth'])->group(function () {
         Route::inertia('categories', 'Placeholder', ['page' => 'block-categories'])->name('admin.categories.index');
         Route::inertia('templates', 'Placeholder', ['page' => 'dashboard-templates'])->name('admin.templates.index');
         Route::inertia('data-sources', 'Placeholder', ['page' => 'data-sources'])->name('admin.data-sources.index');
-        Route::inertia('users', 'Placeholder', ['page' => 'user-configuration'])->name('admin.users.index');
+        Route::inertia('users', 'admin/Users')->name('admin.users.index');
         Route::inertia('settings', 'Placeholder', ['page' => 'system-settings'])->name('admin.settings.index');
         Route::inertia('audit', 'Placeholder', ['page' => 'audit-log'])->name('admin.audit.index');
     });

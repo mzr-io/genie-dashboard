@@ -77,6 +77,9 @@ function gateRoutes(): array
 /** Requests a route the way its client does: a page as an Inertia visit, an API route as JSON. */
 function gateCall(string $method, string $uri)
 {
+    // A route parameter is a member that does not exist (the allowed case then answers 404, the gate's 403 is what matters).
+    $uri = str_replace('{membership}', (string) Str::uuid7(), $uri);
+
     if (str_starts_with($uri, '/api/')) {
         $headers = ['Referer' => 'http://localhost:8000'];
 
@@ -114,8 +117,8 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
     $routes = gateRoutes();
     $denials = fn (): int => count(gateDenials());
 
-    // Eleven pages (ADMIN_ITEMS) plus the two API probes.
-    expect($routes)->toHaveCount(count(ShellNavigation::ADMIN_ITEMS) + 2);
+    // Eleven pages (ADMIN_ITEMS), the two API probes and the two member endpoints (ADMIN_API_ROUTES).
+    expect($routes)->toHaveCount(count(ShellNavigation::ADMIN_ITEMS) + 2 + count(ShellNavigation::ADMIN_API_ROUTES));
 
     foreach ($routes as $n => [$method, $uri, $name, $permission]) {
         // Each denied case must add exactly one audit row, so the per-minute de-duplication is reset.
@@ -143,7 +146,7 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
         Cache::flush();
         $before = $denials();
         gateAs($both, $workspace, 'admin');
-        expect(gateCall($method, $uri)->status())->toBe(200, "{$name}: Admin with permission")
+        expect(gateCall($method, $uri)->status())->toBe(str_contains($uri, '{') ? 404 : 200, "{$name}: Admin with permission")
             ->and($denials())->toBe($before, "{$name}: allowed is not audited");
     }
 });

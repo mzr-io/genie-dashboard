@@ -86,3 +86,18 @@ it('maps every admin.* page route in ShellNavigation::ADMIN_ITEMS, and every ite
 
     expect($named)->toEqualCanonicalizing($mapped)->and($named)->toHaveCount(count(ShellNavigation::ADMIN_ITEMS));
 });
+
+it('registers every ADMIN_API_ROUTES entry as a route that uses the admin middleware', function () {
+    $registered = [];
+
+    foreach (Router::getRoutes()->getRoutes() as $route) {
+        if (array_key_exists((string) $route->getName(), ShellNavigation::ADMIN_API_ROUTES)) {
+            $registered[] = $route->getName();
+            expect(adminMiddlewareKeys($route))->not->toBe([], (string) $route->getName());
+        }
+    }
+
+    expect($registered)->toEqualCanonicalizing(array_keys(ShellNavigation::ADMIN_API_ROUTES))
+        ->and(ShellNavigation::ADMIN_API_ROUTES['api.admin.members'])->toBe(Permission::UsersManage)
+        ->and(ShellNavigation::ADMIN_API_ROUTES['api.admin.members.show'])->toBe(Permission::UsersManage);
+});

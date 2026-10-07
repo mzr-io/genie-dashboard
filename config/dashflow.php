@@ -110,6 +110,12 @@ return [
             'invitation_lifetime' => $tunable('DASHFLOW_INVITATION_LIFETIME'),
         ],
 
+        'lists' => [
+            // Largest page a list may return (a requested size above it is clamped). Unset: lists page by the
+            // framework's default of 15 rows and a requested size is ignored, so no number is invented.
+            'max_page_size' => $tunable('DASHFLOW_LISTS_MAX_PAGE_SIZE'),
+        ],
+
         'profile' => [
             // Largest avatar upload, in bytes. Unset: PHP's own `upload_max_filesize` applies, so no number is invented.
             'avatar_max_bytes' => $tunable('DASHFLOW_AVATAR_MAX_BYTES'),
