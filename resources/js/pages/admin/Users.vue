@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, Link } from '@inertiajs/vue3';
 import { Ban, CircleCheck, Mail } from '@lucide/vue';
 import {
     computed,
@@ -33,9 +33,11 @@ import {
     revokeInvitation,
 } from '@/lib/members';
 import type { Member, MembersMeta, MemberSortKey } from '@/lib/members';
+import { groups as groupsPage } from '@/routes/admin/users';
 import { SIGN_IN_URL } from '@/lib/session';
 import {
     accessLabels,
+    groupLabels,
     inviteLabels,
     shellPages,
     userListLabels as labels,
@@ -45,8 +47,8 @@ import { useToasts } from '@/stores/toasts';
 // User configuration (Story 1.20): the Workspace's members and pending invitations in a sortable, searchable
 // data table paged by cursor. The server owns the rows, the sort whitelist and the page-size cap; the page
 // shows the generic list states (UX-DR-263): the toolbar stays while 5 skeleton rows load or a failure row
-// with Retry shows, `list-empty` with "Invite user", and `list-no-match` with Clear search. Groups arrive with
-// Story 1.23, so the column shows "No groups". "Invite user" expands the inline invite form (Story 1.21); an
+// with Retry shows, `list-empty` with "Invite user", and `list-no-match` with Clear search. The Groups column
+// lists each member's groups (Story 1.23; "No groups" when none) and "Groups" opens the Groups view. "Invite user" expands the inline invite form (Story 1.21); an
 // Invited row carries Resend and Revoke.
 const { t } = useI18n();
 const { can, membershipId } = useShell();
@@ -421,6 +423,11 @@ onBeforeUnmount(() => {
 
     <div class="flex flex-col gap-6 px-4 py-6 sm:px-7">
         <PageHeader :title="config.title">
+            <Button as-child variant="secondary" data-test="open-groups">
+                <Link :href="groupsPage().url">{{
+                    groupLabels.openGroups
+                }}</Link>
+            </Button>
             <!-- In the empty state the action sits in the empty region instead. -->
             <InviteUserLink
                 v-if="!isEmpty"
@@ -577,7 +584,7 @@ onBeforeUnmount(() => {
                 </template>
                 <template #cell-groups="{ row }">
                     <template v-if="row.groups.length > 0">{{
-                        row.groups.join(', ')
+                        row.groups.map((group) => group.name).join(', ')
                     }}</template>
                     <span v-else class="text-text-muted">{{
                         labels.noGroups

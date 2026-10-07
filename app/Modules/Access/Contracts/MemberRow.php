@@ -17,7 +17,7 @@ final readonly class MemberRow
      * @param  string  $kind  `member` or `invitation`
      * @param  string  $role  `user` or `admin`
      * @param  string  $status  `active`, `invited` or `deactivated`
-     * @param  list<string>  $groups  always empty until Story 1.23
+     * @param  list<array{id: string, name: string}>  $groups  the member's groups ordered by name (Story 1.23); always empty for an invitation row
      * @param  string|null  $lastActiveAt  ISO 8601, UTC
      * @param  list<string>  $permissions  catalogue values a member holds (sorted); always empty for an invitation row
      * @param  int|null  $revision  the member's revision (Story 1.22); null for an invitation row

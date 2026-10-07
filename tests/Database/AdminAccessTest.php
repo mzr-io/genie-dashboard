@@ -78,7 +78,7 @@ function gateRoutes(): array
 function gateCall(string $method, string $uri)
 {
     // A route parameter is a member that does not exist (the allowed case then answers 404, the gate's 403 is what matters).
-    $uri = str_replace(['{membership}', '{invitation}'], (string) Str::uuid7(), $uri);
+    $uri = str_replace(['{membership}', '{invitation}', '{group}'], (string) Str::uuid7(), $uri);
 
     if (str_starts_with($uri, '/api/')) {
         $headers = ['Referer' => 'http://localhost:8000'];
@@ -124,8 +124,9 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
     $routes = gateRoutes();
     $denials = fn (): int => count(gateDenials());
 
-    // Eleven pages (ADMIN_ITEMS), the two API probes and the member and invitation endpoints (ADMIN_API_ROUTES).
-    expect($routes)->toHaveCount(count(ShellNavigation::ADMIN_ITEMS) + 2 + count(ShellNavigation::ADMIN_API_ROUTES));
+    // Eleven pages (ADMIN_ITEMS), the pages that are views of an item (ADMIN_PAGES), the two API probes and the member,
+    // invitation and group endpoints (ADMIN_API_ROUTES).
+    expect($routes)->toHaveCount(count(ShellNavigation::ADMIN_ITEMS) + count(ShellNavigation::ADMIN_PAGES) + 2 + count(ShellNavigation::ADMIN_API_ROUTES));
 
     foreach ($routes as $n => [$method, $uri, $name, $permission]) {
         // Each denied case must add exactly one audit row, so the per-minute de-duplication is reset.
@@ -158,6 +159,8 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
         expect($status)->toBe(match (true) {
             // The member update validates its body (the revision) before it looks for the member.
             $name === 'api.admin.members.update' => 422,
+            // A group name is validated before the group is looked up.
+            in_array($name, ['api.admin.groups.store', 'api.admin.groups.update'], true) => 422,
             str_contains($uri, '{') => 404,
             $name === 'api.admin.invitations.store' => 422,
             default => 200,

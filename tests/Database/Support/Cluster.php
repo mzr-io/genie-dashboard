@@ -224,6 +224,8 @@ final class Cluster
             'outbox_consumptions' => self::seedConsumption($workspaceId),
             'membership_permissions' => self::seedPermission($workspaceId),
             'workspace_settings' => self::seedSettings($workspaceId),
+            'user_groups' => self::seedGroup($workspaceId),
+            'group_members' => self::seedGroupMember($workspaceId),
             default => null,
         };
     }
@@ -260,6 +262,24 @@ final class Cluster
         $id = (string) Str::uuid7();
         self::superuser()->prepare('INSERT INTO workspace_settings (id, workspace_id, help_links, contact_href, created_at, updated_at) VALUES (?, ?, ?::jsonb, ?, now(), now())')
             ->execute([$id, $workspaceId, $links, $contact]);
+
+        return $id;
+    }
+
+    public static function seedGroup(string $workspaceId, ?string $name = null): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO user_groups (id, workspace_id, name, created_at, updated_at) VALUES (?, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $name ?? 'Group '.$id]);
+
+        return $id;
+    }
+
+    private static function seedGroupMember(string $workspaceId): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO group_members (id, workspace_id, group_id, membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, self::seedGroup($workspaceId), self::seedMembership($workspaceId)]);
 
         return $id;
     }

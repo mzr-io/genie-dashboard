@@ -64,6 +64,8 @@ Route::middleware(['auth'])->group(function () {
         Route::inertia('templates', 'Placeholder', ['page' => 'dashboard-templates'])->name('admin.templates.index');
         Route::inertia('data-sources', 'Placeholder', ['page' => 'data-sources'])->name('admin.data-sources.index');
         Route::inertia('users', 'admin/Users')->name('admin.users.index');
+        // The Groups view of User configuration (Story 1.23): same permission, mapped in ShellNavigation::ADMIN_PAGES.
+        Route::inertia('users/groups', 'admin/UserGroups')->name('admin.users.groups');
         Route::inertia('settings', 'Placeholder', ['page' => 'system-settings'])->name('admin.settings.index');
         Route::inertia('audit', 'Placeholder', ['page' => 'audit-log'])->name('admin.audit.index');
     });

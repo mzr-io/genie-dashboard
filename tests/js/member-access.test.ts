@@ -25,13 +25,24 @@ const page = vi.hoisted(() => ({
     },
 }));
 
-vi.mock('@inertiajs/vue3', () => ({
-    Head: { render: () => null },
-    usePage: () => ({
-        url: '/admin/users',
-        props: { shell: page.shell },
-    }),
-}));
+vi.mock('@inertiajs/vue3', async () => {
+    const { defineComponent, h } = await import('vue');
+
+    return {
+        Link: defineComponent({
+            props: ['href'],
+            setup:
+                (props, { slots, attrs }) =>
+                () =>
+                    h('a', { ...attrs, href: props.href }, slots.default?.()),
+        }),
+        Head: { render: () => null },
+        usePage: () => ({
+            url: '/admin/users',
+            props: { shell: page.shell },
+        }),
+    };
+});
 
 const { default: Users } =
     await import('../../resources/js/pages/admin/Users.vue');

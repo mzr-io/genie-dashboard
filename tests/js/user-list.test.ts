@@ -8,13 +8,24 @@ import { resetAnnouncer } from '../../resources/js/lib/announce';
 import { userListLabels } from '../../resources/js/locales/labels';
 import type { Member } from '../../resources/js/lib/members';
 
-vi.mock('@inertiajs/vue3', () => ({
-    Head: { render: () => null },
-    usePage: () => ({
-        url: '/admin/users',
-        props: { shell: { can: { 'users.manage': true }, items: [] } },
-    }),
-}));
+vi.mock('@inertiajs/vue3', async () => {
+    const { defineComponent, h } = await import('vue');
+
+    return {
+        Link: defineComponent({
+            props: ['href'],
+            setup:
+                (props, { slots, attrs }) =>
+                () =>
+                    h('a', { ...attrs, href: props.href }, slots.default?.()),
+        }),
+        Head: { render: () => null },
+        usePage: () => ({
+            url: '/admin/users',
+            props: { shell: { can: { 'users.manage': true }, items: [] } },
+        }),
+    };
+});
 
 const { default: Users } =
     await import('../../resources/js/pages/admin/Users.vue');

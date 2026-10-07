@@ -74,7 +74,7 @@ final class SqlMemberDirectory implements MemberDirectory
             $last = $found === [] ? null : $found[array_key_last($found)];
 
             return new MemberPage(
-                rows: $this->withPermissions($found),
+                rows: $this->withPermissions($workspaceId, $found),
                 nextCursor: $more && $last !== null ? $this->encode($query, $last->sort_key, $last->id) : null,
                 total: (int) $counts->total,
                 matched: (int) $counts->matched,
@@ -97,7 +97,7 @@ final class SqlMemberDirectory implements MemberDirectory
                 [$workspaceId, strtolower($membershipId)],
             );
 
-            return $found === null ? null : $this->withPermissions([$found])[0];
+            return $found === null ? null : $this->withPermissions($workspaceId, [$found])[0];
         });
     }
 
@@ -127,25 +127,37 @@ final class SqlMemberDirectory implements MemberDirectory
      * @param  list<object{id: string, kind: string, name: string, email: string, role: string, status: string, last_active: string|null, revision?: int|string|null}>  $found
      * @return list<MemberRow>
      */
-    private function withPermissions(array $found): array
+    private function withPermissions(string $workspaceId, array $found): array
     {
         $ids = array_values(array_map(fn (object $row): string => $row->id, array_filter($found, fn (object $row): bool => $row->kind === MemberRow::MEMBER)));
         $held = [];
+        $groups = [];
 
         if ($ids !== []) {
+            // The groups of these members, ordered by name (a Workspace's rows only, by row-level security).
+            $marks = implode(', ', array_fill(0, count($ids), '?'));
+
+            foreach (DB::select(
+                "SELECT gm.membership_id, g.id, g.name FROM group_members gm JOIN user_groups g ON g.id = gm.group_id WHERE gm.workspace_id = ? AND gm.membership_id IN ({$marks}) ORDER BY lower(g.name), g.name, g.id",
+                [$workspaceId, ...$ids],
+            ) as $group) {
+                $groups[strtolower((string) $group->membership_id)][] = ['id' => strtolower((string) $group->id), 'name' => (string) $group->name];
+            }
+
             foreach (DB::table('membership_permissions')->whereIn('membership_id', $ids)->orderBy('permission')->get(['membership_id', 'permission']) as $permission) {
                 $held[strtolower((string) $permission->membership_id)][] = (string) $permission->permission;
             }
         }
 
-        return array_map(fn (object $row): MemberRow => $this->row($row, $held[strtolower($row->id)] ?? []), $found);
+        return array_map(fn (object $row): MemberRow => $this->row($row, $held[strtolower($row->id)] ?? [], $groups[strtolower($row->id)] ?? []), $found);
     }
 
     /**
      * @param  object{id: string, kind: string, name: string, email: string, role: string, status: string, last_active: string|null, revision?: int|string|null}  $found
      * @param  list<string>  $permissions
+     * @param  list<array{id: string, name: string}>  $groups
      */
-    private function row(object $found, array $permissions = []): MemberRow
+    private function row(object $found, array $permissions = [], array $groups = []): MemberRow
     {
         return new MemberRow(
             id: $found->id,
@@ -154,7 +166,7 @@ final class SqlMemberDirectory implements MemberDirectory
             email: $found->email,
             role: $found->role,
             status: $found->status,
-            groups: [],
+            groups: $groups,
             lastActiveAt: $found->last_active,
             permissions: $permissions,
             revision: isset($found->revision) ? (int) $found->revision : null,

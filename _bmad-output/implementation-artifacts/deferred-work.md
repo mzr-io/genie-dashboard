@@ -107,3 +107,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-22-assign-roles-and-admin-permissions.md`
   summary: Make the Admin password-confirmation throttles (Stories 1.21 and 1.22) independent of the request transaction (a counter outside the transaction, or a boot-time check that the cache store is not the database connection) and add a two-connection concurrency helper to `Cluster` to test the `FOR UPDATE` and last-holder recount.
   evidence: With `CACHE_STORE=database` the failed-attempt count is written inside the request's PostgreSQL transaction that rolls back on 4xx, so the limit never accumulates; Compose uses Valkey so it works there. The row-lock and last-holder guarantees are only exercised sequentially.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-1-23-organise-users-into-groups.md`
+  summary: Paginate the Groups list and its embedded members (cursor, with a per-group member cap), add group add/remove from the member's row in User configuration, and test the concurrent duplicate-name and duplicate-add races once `Cluster` has a two-connection helper.
+  evidence: `SqlGroupDirectory::list` returns every group with every member in one response; the epic's "or from the member's row" entry point is not built; the 23505 mapping and the group-row lock are exercised only sequentially.

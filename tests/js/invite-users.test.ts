@@ -17,23 +17,34 @@ import type { Member } from '../../resources/js/lib/members';
 // the Resend and Revoke actions on an Invited row.
 const held = ['users.manage', 'blocks.edit', 'audit.view'];
 
-vi.mock('@inertiajs/vue3', () => ({
-    Head: { render: () => null },
-    usePage: () => ({
-        url: '/admin/users',
-        props: {
-            shell: {
-                can: {
-                    'users.manage': true,
-                    'blocks.edit': true,
-                    'audit.view': true,
-                    'blocks.publish': false,
+vi.mock('@inertiajs/vue3', async () => {
+    const { defineComponent, h } = await import('vue');
+
+    return {
+        Link: defineComponent({
+            props: ['href'],
+            setup:
+                (props, { slots, attrs }) =>
+                () =>
+                    h('a', { ...attrs, href: props.href }, slots.default?.()),
+        }),
+        Head: { render: () => null },
+        usePage: () => ({
+            url: '/admin/users',
+            props: {
+                shell: {
+                    can: {
+                        'users.manage': true,
+                        'blocks.edit': true,
+                        'audit.view': true,
+                        'blocks.publish': false,
+                    },
+                    items: [],
                 },
-                items: [],
             },
-        },
-    }),
-}));
+        }),
+    };
+});
 
 const { default: Users } =
     await import('../../resources/js/pages/admin/Users.vue');

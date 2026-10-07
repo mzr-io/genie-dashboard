@@ -54,6 +54,14 @@ final class ShellNavigation
     ];
 
     /**
+     * Admin page routes that are not navigation items (a view of a parent item): route name => the permission it needs.
+     * The Groups view of User configuration (Story 1.23) is one; User configuration links to it.
+     */
+    public const ADMIN_PAGES = [
+        'admin.users.groups' => Permission::UsersManage,
+    ];
+
+    /**
      * Admin API routes (`/api/v1/admin/*`) that take their permission from the route name rather than from a
      * key on the middleware: route name => the permission it needs. They are not navigation items.
      */
@@ -64,6 +72,12 @@ final class ShellNavigation
         'api.admin.invitations.store' => Permission::UsersManage,
         'api.admin.invitations.resend' => Permission::UsersManage,
         'api.admin.invitations.destroy' => Permission::UsersManage,
+        'api.admin.groups.index' => Permission::UsersManage,
+        'api.admin.groups.store' => Permission::UsersManage,
+        'api.admin.groups.update' => Permission::UsersManage,
+        'api.admin.groups.destroy' => Permission::UsersManage,
+        'api.admin.groups.members.store' => Permission::UsersManage,
+        'api.admin.groups.members.destroy' => Permission::UsersManage,
     ];
 
     /** Whether the route name is an Admin item or Admin API route (the gate fails closed for any other route without a key). */
@@ -75,7 +89,7 @@ final class ShellNavigation
             }
         }
 
-        return array_key_exists($route, self::ADMIN_API_ROUTES);
+        return array_key_exists($route, self::ADMIN_PAGES) || array_key_exists($route, self::ADMIN_API_ROUTES);
     }
 
     /** The permission an Admin route needs (null: the Admin area only, or not an Admin item). */
@@ -87,7 +101,7 @@ final class ShellNavigation
             }
         }
 
-        return self::ADMIN_API_ROUTES[$route] ?? null;
+        return self::ADMIN_PAGES[$route] ?? self::ADMIN_API_ROUTES[$route] ?? null;
     }
 
     public function __construct(

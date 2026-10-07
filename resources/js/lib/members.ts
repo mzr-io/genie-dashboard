@@ -11,6 +11,9 @@ export type MemberSortKey =
     | 'status'
     | 'last_active';
 
+// A group the member belongs to (Story 1.23), ordered by name.
+export type MemberGroup = { id: string; name: string };
+
 export type Member = {
     kind: 'member' | 'invitation';
     // Exactly one of the two, by kind.
@@ -20,7 +23,7 @@ export type Member = {
     email: string;
     role: 'user' | 'admin';
     status: 'active' | 'invited' | 'deactivated';
-    groups: string[];
+    groups: MemberGroup[];
     last_active_at: string | null;
     // Story 1.22 (members only): the catalogue permissions held and the revision the editor must send back.
     permissions?: string[];

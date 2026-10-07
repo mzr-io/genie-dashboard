@@ -4,6 +4,9 @@ namespace App\Providers;
 
 use App\Modules\Access\Application\ChangeMemberAccess;
 use App\Modules\Access\Application\InviteMembers;
+use App\Modules\Access\Application\ManageGroups;
+use App\Modules\Access\Contracts\GroupDirectory;
+use App\Modules\Access\Contracts\GroupManager;
 use App\Modules\Access\Contracts\MemberAccess;
 use App\Modules\Access\Contracts\MemberDirectory;
 use App\Modules\Access\Contracts\MemberInvitations;
@@ -14,6 +17,7 @@ use App\Modules\Access\Infrastructure\AdminMembershipGranter;
 use App\Modules\Access\Infrastructure\EloquentMembershipPermissions;
 use App\Modules\Access\Infrastructure\SecurityDefinerMembershipLookup;
 use App\Modules\Access\Infrastructure\SignInMembershipsAdapter;
+use App\Modules\Access\Infrastructure\SqlGroupDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberDirectory;
 use App\Modules\Identity\Application\IssueInvitation;
 use App\Modules\Identity\Application\QueuedInvitationCourier;
@@ -68,6 +72,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(InvitationCourier::class, QueuedInvitationCourier::class);
         $this->app->bind(MemberInvitations::class, InviteMembers::class);
         $this->app->bind(MemberAccess::class, ChangeMemberAccess::class);
+        $this->app->bind(GroupDirectory::class, SqlGroupDirectory::class);
+        $this->app->bind(GroupManager::class, ManageGroups::class);
         $this->app->bind(SignInMemberships::class, SignInMembershipsAdapter::class);
         $this->app->bind(TenantCache::class, fn ($app) => new TenantCache($app['cache']->store()));
         $this->app->singleton(JobSigner::class, fn ($app) => new JobSigner((string) $app['config']->get('app.key')));

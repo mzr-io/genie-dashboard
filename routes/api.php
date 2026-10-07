@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\Admin\GroupController;
 use App\Http\Controllers\Admin\InvitationController;
 use App\Http\Controllers\Admin\MemberController;
 use App\Modules\Identity\Http\SessionController;
@@ -33,4 +34,12 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('invitations', [InvitationController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.invitations.store');
     Route::post('invitations/{invitation}/resend', [InvitationController::class, 'resend'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.invitations.resend');
     Route::delete('invitations/{invitation}', [InvitationController::class, 'destroy'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.invitations.destroy');
+
+    // Groups (Story 1.23): list, create, rename, delete and add or remove members. Permission `users.manage`.
+    Route::get('groups', [GroupController::class, 'index'])->middleware('admin')->name('api.admin.groups.index');
+    Route::post('groups', [GroupController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.groups.store');
+    Route::patch('groups/{group}', [GroupController::class, 'update'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.groups.update');
+    Route::delete('groups/{group}', [GroupController::class, 'destroy'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.groups.destroy');
+    Route::post('groups/{group}/members/{membership}', [GroupController::class, 'addMember'])->middleware(['admin', 'throttle:60,1'])->name('api.admin.groups.members.store');
+    Route::delete('groups/{group}/members/{membership}', [GroupController::class, 'removeMember'])->middleware(['admin', 'throttle:60,1'])->name('api.admin.groups.members.destroy');
 });

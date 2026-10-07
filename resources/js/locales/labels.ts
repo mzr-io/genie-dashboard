@@ -459,6 +459,85 @@ export const accessLabels = {
     unchanged: 'Nothing to save: the role and permissions are as they were.',
 } as const;
 
+// Labels of the Groups view of User configuration (Story 1.23). Its messages are the catalogue's `list-empty`,
+// `list-no-match`, `saved`, `save-failed.form`, `throttled` and `perm-denied`; the rest is vocabulary.
+export const groupLabels = {
+    title: 'Groups',
+    pageTitle: 'User groups',
+    items: 'groups',
+    action: 'Create a group',
+    back: 'Back to User configuration',
+    openGroups: 'Groups',
+    caption: 'Groups in this workspace, with their member counts',
+    tableRegion: 'Groups table',
+    toolbar: 'Group list tools',
+    search: 'Search groups',
+    searchPlaceholder: 'Search by group name',
+    clearSearch: 'Clear search',
+    create: 'Create group',
+    createTitle: 'Create a group',
+    createRegion: 'Create a group',
+    name: 'Group name',
+    nameHelper:
+        'Up to 64 characters. Each group in the workspace needs its own name.',
+    nameRequired: 'Enter a group name.',
+    nameTooLong: 'Use 64 characters or fewer.',
+    nameInvalid:
+        "Use letters, numbers and punctuation only. Don't use control characters.",
+    nameTaken: 'A group with this name already exists. Choose another name.',
+    save: 'Save',
+    cancel: 'Cancel',
+    retry: 'Retry',
+    close: 'Close',
+    columns: { name: 'Name', members: 'Members', created: 'Created' },
+    actions: 'Actions',
+    manage: 'Manage',
+    manageFor: (name: string) => `Manage the group ${name}`,
+    closeFor: (name: string) => `Close the editor for ${name}`,
+    editorRegion: (name: string) => `Group ${name}`,
+    editorTitle: (name: string) => `Group ${name}`,
+    sorted: (column: string, descending: boolean) =>
+        `Sorted by ${column}, ${descending ? 'descending' : 'ascending'}`,
+    count: (matched: number, total: number) =>
+        `${matched} of ${total} ${total === 1 ? 'group' : 'groups'}`,
+    memberCount: (count: number) =>
+        `${count} ${count === 1 ? 'member' : 'members'}`,
+    created: (name: string) => `Group ${name} created.`,
+    renamed: (name: string) => `Group renamed to ${name}.`,
+    deleted: (name: string) => `Group ${name} deleted.`,
+    added: (member: string, group: string) => `${member} added to ${group}.`,
+    removed: (member: string, group: string) =>
+        `${member} removed from ${group}.`,
+    rename: 'Rename group',
+    renameSave: 'Save name',
+    members: 'Members',
+    noMembers: 'No members yet. Search below to add some.',
+    membersOf: (name: string) => `Members of ${name}`,
+    deactivated: 'Deactivated',
+    deactivatedNote: 'Deactivated members keep their groups.',
+    remove: 'Remove',
+    removeFor: (member: string, group: string) =>
+        `Remove ${member} from ${group}`,
+    addMembers: 'Add members',
+    memberSearch: 'Search members to add',
+    memberSearchPlaceholder: 'Search by name or email',
+    add: 'Add',
+    addFor: (member: string, group: string) => `Add ${member} to ${group}`,
+    searchResults: (count: number) =>
+        `${count} ${count === 1 ? 'member' : 'members'} found`,
+    searchNone: 'No members to add match this search.',
+    searchHint: 'Type a name or an email to find members to add.',
+    searchFailed: "We couldn't search members. Try again.",
+    delete: 'Delete group',
+    deleteTitle: (name: string) => `Delete ${name}?`,
+    deleteImpact: (name: string, count: number) =>
+        `${name} has ${count} ${count === 1 ? 'member' : 'members'}. Deleting the group removes ${count === 1 ? 'that membership' : 'those memberships'} only; the people stay in the workspace.`,
+    deleteObject: (name: string) => `group ${name}`,
+    gone: 'This group no longer exists. The list has been refreshed.',
+    unchanged: 'Nothing to save: the name is as it was.',
+    emptyCell: '—',
+} as const;
+
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after
 // signing back in (`session-expired`) come from the catalogue.
 export const sessionLabels = {

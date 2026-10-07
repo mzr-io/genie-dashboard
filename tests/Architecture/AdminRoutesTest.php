@@ -82,9 +82,39 @@ it('maps every admin.* page route in ShellNavigation::ADMIN_ITEMS, and every ite
         }
     }
 
-    $mapped = array_column(array_values(ShellNavigation::ADMIN_ITEMS), 0);
+    // The navigation items plus the pages that are views of an item (the Groups view of User configuration).
+    $mapped = [...array_column(array_values(ShellNavigation::ADMIN_ITEMS), 0), ...array_keys(ShellNavigation::ADMIN_PAGES)];
 
-    expect($named)->toEqualCanonicalizing($mapped)->and($named)->toHaveCount(count(ShellNavigation::ADMIN_ITEMS));
+    expect($named)->toEqualCanonicalizing($mapped)->and($named)->toHaveCount(count(ShellNavigation::ADMIN_ITEMS) + count(ShellNavigation::ADMIN_PAGES));
+});
+
+it('maps the Groups page and the group API routes to users.manage and no other permission', function () {
+    $api = [
+        'api.admin.groups.index' => 'GET',
+        'api.admin.groups.store' => 'POST',
+        'api.admin.groups.update' => 'PATCH',
+        'api.admin.groups.destroy' => 'DELETE',
+        'api.admin.groups.members.store' => 'POST',
+        'api.admin.groups.members.destroy' => 'DELETE',
+    ];
+
+    foreach ($api as $name => $method) {
+        $route = Router::getRoutes()->getByName($name);
+
+        expect($route)->not->toBeNull($name)
+            ->and($route->methods())->toContain($method)
+            ->and(str_starts_with($route->uri(), 'api/v1/admin/groups'))->toBeTrue($name)
+            ->and(ShellNavigation::ADMIN_API_ROUTES[$name])->toBe(Permission::UsersManage)
+            ->and(adminMiddlewareKeys($route))->toBe([null]);
+    }
+
+    $page = Router::getRoutes()->getByName('admin.users.groups');
+
+    expect($page)->not->toBeNull()
+        ->and(ShellNavigation::permissionForRoute('admin.users.groups'))->toBe(Permission::UsersManage)
+        ->and(ShellNavigation::ADMIN_PAGES)->toBe(['admin.users.groups' => Permission::UsersManage])
+        ->and(adminMiddlewareKeys($page))->toBe([null])
+        ->and(array_key_exists('admin.users.groups', array_column(array_values(ShellNavigation::ADMIN_ITEMS), 0)))->toBeFalse();
 });
 
 it('registers every ADMIN_API_ROUTES entry as a route that uses the admin middleware', function () {
