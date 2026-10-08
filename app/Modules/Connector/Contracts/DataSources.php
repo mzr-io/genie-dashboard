@@ -10,6 +10,9 @@ namespace App\Modules\Connector\Contracts;
  */
 interface DataSources
 {
+    /** The resource type a Data Source's soft edit lock is kept under (Platform\EditLock, Story 2.8). */
+    public const LOCK_TYPE = 'data_source';
+
     public function list(string $workspaceId, DataSourceQuery $query): DataSourcePage;
 
     /** @throws DataSourceNotFound */
@@ -35,14 +38,17 @@ interface DataSources
 
     /**
      * @param  (\Closure(): bool)|null  $confirm  asked when a secret value is set, replaced or removed, or the auth type changes
+     * @param  int|null  $lockEpoch  the soft lock's epoch the caller was granted (Story 2.8): compared with the row's under the same row lock as `$revision`
+     * @param  (\Closure(): bool)|null  $holdsLock  asked after the epoch matches: whether the caller's lock token still holds the lock
      *
+     * @throws DataSourceLockLost when the epoch is stale or the lock is no longer held; nothing is sealed or written
      * @throws ConfirmationRefused
      * @throws SecretsNotConfigured
      * @throws DataSourceNotFound
      * @throws DataSourceRevisionConflict
      * @throws InvalidDataSource
      */
-    public function update(DataSourceActor $actor, string $id, #[\SensitiveParameter] DataSourceInput $input, int $revision, ?\Closure $confirm = null): DataSource;
+    public function update(DataSourceActor $actor, string $id, #[\SensitiveParameter] DataSourceInput $input, int $revision, ?\Closure $confirm = null, ?int $lockEpoch = null, ?\Closure $holdsLock = null): DataSource;
 
     /** The platform ceilings the limits are checked against. */
     public function ceilings(): DataSourceCeilings;

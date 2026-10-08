@@ -63,6 +63,12 @@ enum AuditAction: string
     // Platform: an asynchronous Operation ended (Story 2.5). An outbox event only: IDs and enums, never the summary.
     case PlatformOperationCompleted = 'platform.operation.completed';
 
+    // Platform: someone asked the holder of an edit lock to flush its work before a take-over (Story 2.8). An outbox event only: IDs and enums.
+    case PlatformEditLockFlushRequested = 'platform.edit_lock.flush_requested';
+
+    // Platform: an edit lock was taken over (Story 2.8): the epoch rose and the lock changed hands. An outbox event only: IDs, an enum and a boolean.
+    case PlatformEditLockTaken = 'platform.edit_lock.taken';
+
     /** The case for `$action`, or an exception: an unknown string never reaches storage. */
     public static function fromString(string $action): self
     {

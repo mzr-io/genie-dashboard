@@ -17,6 +17,7 @@ use App\Modules\Connector\Contracts\ConnectionTests;
 use App\Modules\Connector\Contracts\ConnectionTestThrottled;
 use App\Modules\Connector\Contracts\DataSource;
 use App\Modules\Connector\Contracts\DataSourceActor;
+use App\Modules\Connector\Contracts\DataSourceLockLost;
 use App\Modules\Connector\Contracts\DataSourceNotFound;
 use App\Modules\Connector\Contracts\DataSourcePage;
 use App\Modules\Connector\Contracts\DataSourceQuery;
@@ -26,6 +27,7 @@ use App\Modules\Connector\Contracts\ErrorCode;
 use App\Modules\Connector\Contracts\InvalidDataSource;
 use App\Modules\Connector\Contracts\SecretsNotConfigured;
 use App\Platform\Contracts\ErrorCode as PlatformErrorCode;
+use App\Platform\EditLock\EditLock;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -55,6 +57,7 @@ final class DataSourceController extends Controller
         private readonly ValidateDataSourceInput $validator,
         private readonly MembershipLookup $memberships,
         private readonly ConnectionTests $tests,
+        private readonly EditLock $lock,
     ) {}
 
     public function index(ListDataSourcesRequest $request): JsonResponse
@@ -92,9 +95,16 @@ final class DataSourceController extends Controller
     public function update(DataSourceRequest $request, string $dataSource): JsonResponse
     {
         try {
-            $updated = $this->sources->update($this->actor($request), $dataSource, $request->dataSourceInput(), $request->revision(), fn (): bool => $this->confirmPassword($request));
+            $actor = $this->actor($request);
+            [$epoch, $holds] = $this->lockClaim($request, $actor, $dataSource);
+            $updated = $this->sources->update($actor, $dataSource, $request->dataSourceInput(), $request->revision(), fn (): bool => $this->confirmPassword($request), $epoch, $holds);
         } catch (DataSourceNotFound) {
             abort(404);
+        } catch (DataSourceLockLost $e) {
+            // 423: the soft lock was taken over, expired or never held. Nothing was written and no secret was sealed.
+            return AdminApiError::json($request, PlatformErrorCode::EditLockLost->value, 423, 'You no longer hold the edit lock on this data source.', extra: [
+                'current' => ['data' => (new DataSourceResource($e->current))->resolve($request), 'meta' => $this->meta()],
+            ]);
         } catch (DataSourceRevisionConflict $e) {
             return AdminApiError::json($request, ErrorCode::RevisionConflict->value, 409, 'This data source was changed by someone else.', extra: [
                 'current' => ['data' => (new DataSourceResource($e->current))->resolve($request), 'meta' => $this->meta()],
@@ -151,6 +161,30 @@ final class DataSourceController extends Controller
             202,
             ['Cache-Control' => self::NO_STORE],
         );
+    }
+
+    /**
+     * What the save claims about the soft lock (Story 2.8): the epoch it was granted, and a check that its token still holds the
+     * lock now. With the lock enabled the claim is required, and the server never trusts it: the token is checked against the
+     * lock itself. A save that carries an epoch is compared with the row's even when the lock is off.
+     *
+     * @return array{0: int|null, 1: (\Closure(): bool)|null}
+     */
+    private function lockClaim(DataSourceRequest $request, DataSourceActor $actor, string $id): array
+    {
+        $epoch = $request->lockEpoch();
+
+        if (! $this->lock->enabled()) {
+            return [$epoch, null];
+        }
+
+        $token = $request->lockToken();
+
+        if ($epoch === null || $token === '') {
+            throw new DataSourceLockLost($this->sources->find($actor->workspaceId, $id));
+        }
+
+        return [$epoch, fn (): bool => $this->lock->holds($actor->workspaceId, DataSources::LOCK_TYPE, $id, $actor->membershipId, $token, $epoch)];
     }
 
     /** A wrong password is a 422 on `confirm_password`, too many wrong ones a 429, an unset platform key a 503. */

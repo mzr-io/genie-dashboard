@@ -45,6 +45,7 @@ use App\Modules\Connector\Contracts\TokenRequestLog;
 use App\Modules\Connector\Infrastructure\ConnectorAuditSerializer;
 use App\Modules\Connector\Infrastructure\CurlClient;
 use App\Modules\Connector\Infrastructure\CurlEgressTransport;
+use App\Modules\Connector\Infrastructure\DataSourceLockEpochs;
 use App\Modules\Connector\Infrastructure\DirectFetchTransport;
 use App\Modules\Connector\Infrastructure\DnsHostResolver;
 use App\Modules\Connector\Infrastructure\LocalSecretVault;
@@ -64,6 +65,7 @@ use App\Modules\Identity\Infrastructure\IdentityAuditSerializer;
 use App\Platform\Audit\AuditHasher;
 use App\Platform\Audit\AuditSerializers;
 use App\Platform\Audit\PlatformAuditSerializer;
+use App\Platform\EditLock\EditLockResources;
 use App\Platform\Operations\OperationKind;
 use App\Platform\Operations\OperationKinds;
 use App\Platform\Outbox\OutboxConsumers;
@@ -80,11 +82,14 @@ use App\Support\Queue\SignedRedisConnector;
 use App\Support\Queue\TtlEnforcingStore;
 use Carbon\CarbonImmutable;
 use Illuminate\Cache\CacheManager;
+use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Cache\RedisStore;
+use Illuminate\Http\Request;
 use Illuminate\Queue\QueueManager;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Date;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Validation\Rules\Password;
 
@@ -100,6 +105,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(AuditHasher::class, fn ($app) => new AuditHasher((string) $app['config']->get('app.key')));
         $this->app->singleton(AuditSerializers::class);
         $this->app->singleton(OutboxConsumers::class);
+        $this->app->singleton(EditLockResources::class);
         $this->app->bind(MembershipLookup::class, SecurityDefinerMembershipLookup::class);
         $this->app->bind(MembershipPermissions::class, EloquentMembershipPermissions::class);
         $this->app->bind(MemberDirectory::class, SqlMemberDirectory::class);
@@ -154,12 +160,19 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
+        // The Data source soft lock (Story 2.8) has its own bucket, per person: several tabs polling and heartbeating once a
+        // second must not exhaust it, and exhausting it must not throttle anything else.
+        RateLimiter::for('data-source-lock', fn (Request $request): Limit => Limit::perMinute(600)->by('data-source-lock|'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+
         // Each module registers its audit allowlist with the kernel (the kernel calls no module).
         $serializers = $this->app->make(AuditSerializers::class);
         $serializers->register(new AccessAuditSerializer);
         $serializers->register(new ConnectorAuditSerializer);
         $serializers->register(new IdentityAuditSerializer);
         $serializers->register(new PlatformAuditSerializer);
+
+        // Each module registers the lockable resources it owns with the kernel's edit lock (the kernel calls no module).
+        $this->app->make(EditLockResources::class)->register(DataSourceLockEpochs::TYPE, new DataSourceLockEpochs);
 
         // Each module registers its Operation kinds with the kernel (the kernel calls no module). A connection test runs on
         // `fetch-interactive`, which only `worker-connector` consumes.

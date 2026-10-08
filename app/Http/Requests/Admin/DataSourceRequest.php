@@ -32,7 +32,8 @@ class DataSourceRequest extends FormRequest
      */
     public function rules(): array
     {
-        return ($this->isMethod('PUT') ? ['revision' => ['required', 'integer', 'min:1']] : []) + ['confirm_password' => ['nullable', 'string', 'max:255']];
+        return ($this->isMethod('PUT') ? ['revision' => ['required', 'integer', 'min:1'], 'lock_epoch' => ['nullable', 'integer', 'min:1'], 'lock_token' => ['nullable', 'string', 'max:128']] : [])
+            + ['confirm_password' => ['nullable', 'string', 'max:255']];
     }
 
     /**
@@ -63,6 +64,22 @@ class DataSourceRequest extends FormRequest
     public function revision(): int
     {
         return (int) $this->input('revision');
+    }
+
+    /** The soft lock's epoch the form was granted (Story 2.8), or null when it sent none. */
+    public function lockEpoch(): ?int
+    {
+        $value = $this->input('lock_epoch');
+
+        return is_int($value) || (is_string($value) && ctype_digit($value)) ? (int) $value : null;
+    }
+
+    /** The form's lock token; an empty string when it sent none. */
+    public function lockToken(): string
+    {
+        $value = $this->input('lock_token');
+
+        return is_string($value) ? $value : '';
     }
 
     /** The Admin's password for a change of credentials; an empty string when none was given. */

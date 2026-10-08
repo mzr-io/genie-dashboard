@@ -19,6 +19,7 @@ export enum ErrorCode {
     IdentityInvitationDeliveryFailed = 'identity.invitation_delivery_failed',
     IdentityInvitationInvalid = 'identity.invitation_invalid',
     PlatformCsrfTokenMismatch = 'platform.csrf_token_mismatch',
+    PlatformEditLockLost = 'platform.edit_lock_lost',
     PlatformForbidden = 'platform.forbidden',
     PlatformHttpError = 'platform.http_error',
     PlatformMethodNotAllowed = 'platform.method_not_allowed',

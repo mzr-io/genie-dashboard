@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\DataSourceController;
+use App\Http\Controllers\Admin\DataSourceLockController;
 use App\Http\Controllers\Admin\GroupController;
 use App\Http\Controllers\Admin\HostAllowlistController;
 use App\Http\Controllers\Admin\InvitationController;
@@ -64,6 +65,15 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('data-sources/test-connection', [DataSourceController::class, 'testConnection'])->middleware(['admin', 'throttle:30,1,data-source-test'])->name('api.admin.data-sources.test-connection');
     Route::get('data-sources/{dataSource}', [DataSourceController::class, 'show'])->middleware('admin')->name('api.admin.data-sources.show');
     Route::put('data-sources/{dataSource}', [DataSourceController::class, 'update'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.data-sources.update');
+
+    // The Data source soft lock (Story 2.8): acquire, heartbeat, release (also by beacon), take over (request, then poll) and
+    // the holder's flush acknowledgement. Same permission; none of them takes a secret value; the heartbeat and the polls send `X-Background: 1`.
+    Route::post('data-sources/{dataSource}/lock', [DataSourceLockController::class, 'acquire'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.acquire');
+    Route::put('data-sources/{dataSource}/lock', [DataSourceLockController::class, 'heartbeat'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.heartbeat');
+    Route::post('data-sources/{dataSource}/lock/release', [DataSourceLockController::class, 'release'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.release');
+    Route::post('data-sources/{dataSource}/lock/takeover', [DataSourceLockController::class, 'takeover'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.takeover');
+    Route::get('data-sources/{dataSource}/lock/takeover', [DataSourceLockController::class, 'takeoverStatus'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.takeover.status');
+    Route::post('data-sources/{dataSource}/lock/flush', [DataSourceLockController::class, 'flush'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.flush');
 });
 
 // Operations (Story 2.5): the summary of an asynchronous Operation, for the membership that started it and nobody else.

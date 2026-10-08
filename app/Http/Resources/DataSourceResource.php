@@ -51,6 +51,8 @@ final class DataSourceResource extends JsonResource
             'max_pages' => $source->maxPages,
             'live_capable' => $source->liveCapable,
             'revision' => $source->revision,
+            // The soft lock's epoch (Story 2.8): public state, a form echoes it back with its lock token.
+            'lock_epoch' => $source->lockEpoch,
             'health' => DataSource::HEALTH_PENDING,
             'last_successful_call_at' => null,
             'blocks_using' => 0,

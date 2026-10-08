@@ -7,6 +7,7 @@ use App\Modules\Connector\Contracts\DataSource;
 use App\Modules\Connector\Contracts\DataSourceActor;
 use App\Modules\Connector\Contracts\DataSourceCeilings;
 use App\Modules\Connector\Contracts\DataSourceInput;
+use App\Modules\Connector\Contracts\DataSourceLockLost;
 use App\Modules\Connector\Contracts\DataSourceNotFound;
 use App\Modules\Connector\Contracts\DataSourcePage;
 use App\Modules\Connector\Contracts\DataSourceQuery;
@@ -43,7 +44,7 @@ final class ManageDataSources implements DataSources
 {
     private const STAMP = "'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'";
 
-    private const COLUMNS = 'd.id, d.name, d.base_url, d.scheme, d.host, d.port, d.auth_type, d.default_headers, d.timeout_seconds, d.max_response_bytes, d.max_pages, d.live_capable, d.api_key_name, d.api_key_placement, d.oauth_token_url, d.oauth_client_id, d.oauth_scope, d.revision, '
+    private const COLUMNS = 'd.id, d.name, d.base_url, d.scheme, d.host, d.port, d.auth_type, d.default_headers, d.timeout_seconds, d.max_response_bytes, d.max_pages, d.live_capable, d.api_key_name, d.api_key_placement, d.oauth_token_url, d.oauth_client_id, d.oauth_scope, d.revision, d.lock_epoch, '
         .'to_char(d.created_at, '.self::STAMP.') AS created, to_char(d.updated_at, '.self::STAMP.') AS updated';
 
     public function __construct(
@@ -140,10 +141,17 @@ final class ManageDataSources implements DataSources
         });
     }
 
-    public function update(DataSourceActor $actor, string $id, #[\SensitiveParameter] DataSourceInput $input, int $revision, ?\Closure $confirm = null): DataSource
+    public function update(DataSourceActor $actor, string $id, #[\SensitiveParameter] DataSourceInput $input, int $revision, ?\Closure $confirm = null, ?int $lockEpoch = null, ?\Closure $holdsLock = null): DataSource
     {
-        return $this->transactions->run($actor->workspaceId, function () use ($actor, $id, $input, $revision, $confirm): DataSource {
+        return $this->transactions->run($actor->workspaceId, function () use ($actor, $id, $input, $revision, $confirm, $lockEpoch, $holdsLock): DataSource {
             $before = $this->fetch($actor->workspaceId, $id, true) ?? throw new DataSourceNotFound;
+
+            // The edit lock first (Story 2.8), before anything is sealed or written: a stale epoch, or a token that no longer
+            // holds the lock, is refused with the current state, so a lost holder never stores a secret. It outranks the
+            // revision check because a take-over saves the holder's work first and so raises the revision as well.
+            if (($lockEpoch !== null && $before->lockEpoch !== $lockEpoch) || ($holdsLock !== null && $holdsLock() !== true)) {
+                throw new DataSourceLockLost($before);
+            }
 
             if ($before->revision !== $revision) {
                 throw new DataSourceRevisionConflict($before);
@@ -455,7 +463,7 @@ final class ManageDataSources implements DataSources
     /** @param  array<string, SecretStatus>  $secrets */
     private function source(object $row, array $secrets = []): DataSource
     {
-        /** @var object{id: string, name: string, base_url: string, scheme: string, host: string, port: int|string, auth_type: string, default_headers: string, timeout_seconds: int|string|null, max_response_bytes: int|string|null, max_pages: int|string|null, live_capable: bool|string|int, api_key_name: string|null, api_key_placement: string|null, oauth_token_url: string|null, oauth_client_id: string|null, oauth_scope: string|null, revision: int|string, created: string, updated: string} $row */
+        /** @var object{id: string, name: string, base_url: string, scheme: string, host: string, port: int|string, auth_type: string, default_headers: string, timeout_seconds: int|string|null, max_response_bytes: int|string|null, max_pages: int|string|null, live_capable: bool|string|int, api_key_name: string|null, api_key_placement: string|null, oauth_token_url: string|null, oauth_client_id: string|null, oauth_scope: string|null, revision: int|string, lock_epoch: int|string, created: string, updated: string} $row */
         $decoded = json_decode($row->default_headers, true);
         $headers = [];
 
@@ -489,6 +497,7 @@ final class ManageDataSources implements DataSources
             $row->oauth_token_url,
             $row->oauth_client_id,
             $row->oauth_scope,
+            (int) $row->lock_epoch,
         );
     }
 

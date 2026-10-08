@@ -140,6 +140,16 @@ beforeEach(() => {
         'fetch',
         vi.fn(
             async (url: string, init?: { method?: string; body?: string }) => {
+                // Story 2.8: the soft lock is off here (`{enabled: false}`), and its calls are not part of these tests' traffic.
+                if (/\/lock(\/|\?|$)/.test(url)) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        headers: { get: () => null },
+                        json: async () => ({ data: { enabled: false } }),
+                    };
+                }
+
                 calls.push({
                     url,
                     method: init?.method ?? 'GET',

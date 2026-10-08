@@ -57,6 +57,8 @@ export type DataSource = {
     max_pages: number | null;
     live_capable: boolean;
     revision: number;
+    // The soft lock's epoch (Story 2.8): sent back with an edit, with the lock token.
+    lock_epoch?: number;
     // Placeholders the later stories fill: 'checking', null and 0.
     health: string;
     last_successful_call_at: string | null;
@@ -105,7 +107,7 @@ export type DataSourceInput = {
 };
 
 // A request the server refused (or that never arrived: status 0): 403 no permission, 404 not in the Workspace, 409 a
-// stale revision (with the `current` state), 422 with field `errors` and the `reasons`, 429 throttled.
+// stale revision (with the `current` state), 423 the edit lock was lost (with the `current` state), 422 with field `errors` and the `reasons`, 429 throttled.
 export class DataSourceError extends Error {
     constructor(
         readonly status: number,
@@ -269,15 +271,25 @@ export async function createDataSource(
     return body;
 }
 
+// What an edit says about the soft lock (Story 2.8): the epoch it was granted and the token that holds it.
+export type LockClaim = { epoch: number; token: string };
+
 export async function updateDataSource(
     id: string,
     input: DataSourceInput,
     revision: number,
+    claim?: LockClaim | null,
 ): Promise<OneDataSource> {
     const body = await call(
         'PUT',
         `${DATA_SOURCES_URL}/${encodeURIComponent(id)}`,
-        { ...input, revision },
+        {
+            ...input,
+            revision,
+            ...(claim
+                ? { lock_epoch: claim.epoch, lock_token: claim.token }
+                : {}),
+        },
     );
 
     if (!isOne(body)) {

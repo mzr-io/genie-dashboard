@@ -118,6 +118,14 @@ function securityManifest(): array
                 'builds a FetchRequest with secret_refs and the credential scheme only, never a value or ciphertext',
             ],
         ]],
+        'soft lock: a holder whose lock was lost or taken over never saves, and never stores a secret' => ['tests' => [
+            'Database/EditLockTest.php' => [
+                'takes over after the holder flushes: its work is saved, the epoch rises, it is told, and its later save gets 423 with no secret stored',
+                'refuses a save that carries no claim, a stale epoch or a token that does not hold the lock, and writes nothing',
+                'never lets a lock grant access: 403 without data_sources.manage, 404 for a Data Source of another Workspace',
+                'keeps the lock token out of logs, audit and the stored Data Source',
+            ],
+        ]],
         'Operations: only the requesting membership reads an Operation, and its summary holds no body or secret' => ['tests' => [
             'Database/ConnectionTestTest.php' => [
                 'shows an Operation only to the membership that started it: anyone else gets a 404 with no body',

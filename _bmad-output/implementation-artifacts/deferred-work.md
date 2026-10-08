@@ -167,3 +167,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-7-use-oauth2-client-credentials.md`
   summary: Add single-flight locking for OAuth token refresh and restrict the 401 retry to idempotent requests when Story 2.9 adds read-only POST.
   evidence: DirectFetchTransport::token() does get, request, put with no lock, so parallel jobs stampede the token endpoint; the retry resends the whole request.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-8-prevent-overwriting-with-a-soft-lock.md`
+  summary: Back the edit lock with a DB-recorded token (or re-grant by token when the cache entry is lost and the epoch is unchanged) and make completion transactional with the cache write.
+  evidence: The lock lives only in the cache; a rollback after completion or an eviction leaves the cache and lock_epoch out of step, so the holder's next save is a 423 and typed work is lost, though no overwrite can occur.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-8-prevent-overwriting-with-a-soft-lock.md`
+  summary: Add the Reverb private-channel push (and its Echo client and channel auth) for the edit-lock flush request as a consumer of platform.edit_lock.flush_requested.
+  evidence: The architecture names a realtime push with polling as the same-semantics fallback; only polling exists because no Reverb or Echo wiring is in the app.

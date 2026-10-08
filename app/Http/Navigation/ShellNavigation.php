@@ -93,6 +93,12 @@ final class ShellNavigation
         'api.admin.data-sources.test-connection' => Permission::DataSourcesManage,
         'api.admin.data-sources.show' => Permission::DataSourcesManage,
         'api.admin.data-sources.update' => Permission::DataSourcesManage,
+        'api.admin.data-sources.lock.acquire' => Permission::DataSourcesManage,
+        'api.admin.data-sources.lock.heartbeat' => Permission::DataSourcesManage,
+        'api.admin.data-sources.lock.release' => Permission::DataSourcesManage,
+        'api.admin.data-sources.lock.takeover' => Permission::DataSourcesManage,
+        'api.admin.data-sources.lock.takeover.status' => Permission::DataSourcesManage,
+        'api.admin.data-sources.lock.flush' => Permission::DataSourcesManage,
     ];
 
     /** Whether the route name is an Admin item or Admin API route (the gate fails closed for any other route without a key). */

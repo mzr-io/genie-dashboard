@@ -61,6 +61,11 @@ x-app-env: &app-env
     # 422 `access.invitations_not_configured` and `dashflow:workspace:create` refuses to run). Every role gets it
     # because the web role creates invitations and the operator service shares this block.
     DASHFLOW_INVITATION_LIFETIME: ${DASHFLOW_INVITATION_LIFETIME:-}
+    # The Data source soft lock (Story 2.8; pending_input, empty = unset): the lock's TTL in seconds (unset = the lock is
+    # disabled and the form is protected by its `revision` only) and how long a take-over waits for the holder's flush
+    # in seconds (unset = it does not wait).
+    DASHFLOW_EDIT_LOCK_TTL: ${DASHFLOW_EDIT_LOCK_TTL:-}
+    DASHFLOW_EDIT_LOCK_FLUSH_TIMEOUT_SECONDS: ${DASHFLOW_EDIT_LOCK_FLUSH_TIMEOUT_SECONDS:-}
     # Outbound guard (Story 2.2; pending_input, empty = unset): the deployment's own CIDRs (never reachable) and the SSRF
     # alert threshold and window in seconds (the alert is off unless both are set).
     DASHFLOW_EGRESS_DEPLOYMENT_CIDRS: ${DASHFLOW_EGRESS_DEPLOYMENT_CIDRS:-}

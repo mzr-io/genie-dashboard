@@ -905,6 +905,27 @@ export const dataSourceLabels = {
         `Authentication failed. ${source} did not accept these credentials. Check the client ID, the client secret and the scope, then test again.`,
 } as const;
 
+// The soft lock on the Data source form (Story 2.8). The banner (`draft-locked`) and the notice (`draft-taken-over`) come from
+// the catalogue, which is pinned; what it does not cover lives here, among it the notice for a holder whose changes were
+// not saved before the take-over.
+export const editLockLabels = {
+    takeOver: 'Take over editing',
+    close: 'Close',
+    waiting: (name: string) =>
+        `Waiting for ${name} to save their changes. This form becomes editable as soon as they have.`,
+    takingOver: 'Taking over…',
+    // The notice for a holder that did not confirm its flush: no claim that anything was saved.
+    takenOverUnsaved: (name: string, time: string) =>
+        `${name} took over editing at ${time}. Changes you had not saved were not kept.`,
+    lost: 'You no longer hold the edit lock on this data source, so nothing was saved. Reload the page to edit again.',
+    takeOverFailed: "We couldn't take over editing. Try again.",
+    readOnly: 'This form is read-only while it is locked.',
+    someone: 'Another admin',
+    unavailable:
+        "We couldn't check whether someone else is editing this data source, so it is read-only for now.",
+    retry: 'Try again',
+} as const;
+
 // Units of a size for people (Story 2.6), smallest first, 1024 apart.
 export const byteUnitLabels = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
 

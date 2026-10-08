@@ -18,4 +18,6 @@ enum ErrorCode: string
     case TooManyRequests = 'platform.too_many_requests';
     case ServerError = 'platform.server_error';
     case HttpError = 'platform.http_error';
+    /** A write was made with an old edit-lock epoch or by someone who no longer holds the lock (HTTP 423; Story 2.8). */
+    case EditLockLost = 'platform.edit_lock_lost';
 }

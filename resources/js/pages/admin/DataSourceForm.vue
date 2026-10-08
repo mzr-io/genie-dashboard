@@ -11,6 +11,7 @@ import {
     watch,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
+import Banner from '@/components/Banner.vue';
 import BlockedReason from '@/components/BlockedReason.vue';
 import FetchErrorCard from '@/components/FetchErrorCard.vue';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
@@ -45,11 +46,27 @@ import type {
     ConnectionTestCode,
     DataSource,
     DataSourceInput,
+    DefaultHeader,
+    LockClaim,
     OneDataSource,
 } from '@/lib/dataSources';
+import {
+    acknowledgeFlush,
+    acquireLock,
+    heartbeatLock,
+    pollTakeover,
+    releaseLock,
+    requestTakeover,
+} from '@/lib/editLock';
+import type { Granted, LockAnswer, LockHolder } from '@/lib/editLock';
+import { formatTime } from '@/lib/formatDate';
 import { SIGN_IN_URL } from '@/lib/session';
 import { registerUnsavedForm } from '@/lib/unsavedForms';
-import { dataSourceLabels as labels, shellLabels } from '@/locales/labels';
+import {
+    dataSourceLabels as labels,
+    editLockLabels,
+    shellLabels,
+} from '@/locales/labels';
 import { index } from '@/routes/admin/data-sources';
 
 // Register and edit a Data Source (Story 2.3; UX-DR-207, 23, 26, 22, 37, 39, 274, 282). One form for both: `novalidate`,
@@ -58,6 +75,12 @@ import { index } from '@/routes/admin/data-sources';
 // a failure shows "We couldn't load these settings. Try again." with Retry and never stale values). Leaving the form
 // with unsaved edits asks first. The Base URL is checked against the host allowlist on blur: nothing shows on success;
 // a miss shows `host-not-allowlisted` inline and Save is `aria-disabled` with its reason beside it.
+//
+// The soft lock (Story 2.8): an edit form takes the Data Source's lock once it has loaded. Holding it, the form is
+// editable and sends a heartbeat; without it the form is read-only with the `draft-locked` banner, "Take over editing"
+// and Close. A take-over asks the holder's heartbeat to flush: the holder saves its valid non-secret fields through the
+// normal update, never a secret and never an invalid field, and acknowledges. This form registers no form draft and
+// keeps secrets in memory only, so nothing is restored after a session expires.
 const props = defineProps<{ dataSourceId?: string | null }>();
 
 const { t } = useI18n();
@@ -107,6 +130,8 @@ const form = reactive({
 const secretValues = reactive<Record<string, string>>({});
 const replacing = reactive<Record<string, boolean>>({});
 let baseline = snapshot();
+// What a flush would save when nothing was edited: a flush saves only when the form differs from it.
+let flushBaseline = '';
 
 const errors = reactive<Record<string, string | null>>({});
 const urlRequestId = ref<string | null>(null);
@@ -176,7 +201,11 @@ function snapshot(): string {
 }
 
 const dirty = computed(
-    () => state.value === 'ready' && !saving.value && snapshot() !== baseline,
+    () =>
+        state.value === 'ready' &&
+        !saving.value &&
+        !readOnly.value &&
+        snapshot() !== baseline,
 );
 
 function fill(source: DataSource): void {
@@ -222,6 +251,7 @@ function fill(source: DataSource): void {
     original.value = source;
     revision.value = source.revision;
     baseline = snapshot();
+    flushBaseline = JSON.stringify(flushPayload(new Set()));
 }
 
 function clearSecretInputs(): void {
@@ -810,7 +840,7 @@ async function failWith(
 }
 
 async function submit(): Promise<void> {
-    if (saving.value || state.value !== 'ready') {
+    if (saving.value || state.value !== 'ready' || readOnly.value) {
         return;
     }
 
@@ -886,6 +916,7 @@ async function submit(): Promise<void> {
                   props.dataSourceId as string,
                   payload(),
                   revision.value,
+                  claim(),
               )
             : await createDataSource(payload());
 
@@ -908,6 +939,13 @@ async function refused(error: unknown): Promise<void> {
     }
 
     if (error instanceof DataSourceError) {
+        if (error.status === 423) {
+            // The lock was taken over, expired or never held: nothing was saved, and no secret was stored.
+            endLock(null);
+
+            return;
+        }
+
         if (error.status === 409 && error.current) {
             // Someone saved first: what was typed stays; the next save is against the latest revision.
             revision.value = error.current.data.revision;
@@ -1143,6 +1181,533 @@ const testSource = computed(
     () => form.name.trim() || original.value?.name || labels.testSourceFallback,
 );
 
+// ---- The soft lock (Story 2.8) --------------------------------------------------------------------------------------
+
+// `off`: no lock (the soft lock is disabled, or this is the create form). `pending`: the edit form has not had its first
+// answer yet. `unavailable`: the lock could not be asked (read-only, with Retry). `holding`: this tab holds it. `blocked`:
+// someone else does. `waiting`: a take-over was requested. `ended`: this tab held it and lost it.
+type LockMode =
+    | 'off'
+    | 'pending'
+    | 'unavailable'
+    | 'holding'
+    | 'blocked'
+    | 'waiting'
+    | 'ended';
+type TakenOver = Extract<LockAnswer, { status: 'taken_over' }>;
+
+const LOCK_POLL_MS = 1000;
+const lock = reactive({
+    mode: (editing.value ? 'pending' : 'off') as LockMode,
+    token: null as string | null,
+    epoch: null as number | null,
+    csrf: null as string | null,
+    holder: null as LockHolder | null,
+    // Who took the lock over, when, and whether this tab's flush was confirmed first; null when it was simply lost.
+    ended: null as {
+        by: string | null;
+        at: string | null;
+        saved: boolean;
+    } | null,
+    takeoverFailed: false,
+});
+const readOnly = computed(
+    () => editing.value && lock.mode !== 'off' && lock.mode !== 'holding',
+);
+
+let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let takerToken: string | null = null;
+let beating = false;
+let polling = false;
+let flushing = false;
+
+function stopLockTimers(): void {
+    if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+    }
+
+    if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
+}
+
+// What a save says about the lock; the server checks it against the lock itself and never trusts it.
+function claim(): LockClaim | null {
+    return lock.mode === 'holding' && lock.token && lock.epoch !== null
+        ? { epoch: lock.epoch, token: lock.token }
+        : null;
+}
+
+async function start(): Promise<void> {
+    await load();
+
+    if (state.value === 'ready' && editing.value && lock.mode === 'pending') {
+        await acquire();
+    }
+}
+
+// The lock could not be asked: read-only until it can (the server would refuse a save without it anyway).
+async function retryAcquire(): Promise<void> {
+    lock.mode = 'pending';
+    await acquire();
+}
+
+async function acquire(): Promise<void> {
+    try {
+        applyHeld(await acquireLock(props.dataSourceId as string));
+    } catch (error) {
+        if (!authExpired(error)) {
+            lock.mode = 'unavailable';
+        }
+    }
+}
+
+function applyHeld(answer: LockAnswer): void {
+    if (!answer.enabled) {
+        stopLockTimers();
+        lock.mode = 'off';
+
+        return;
+    }
+
+    if (answer.status === 'granted') {
+        hold(answer);
+    } else if (answer.status === 'held') {
+        lock.holder = answer.holder;
+        lock.mode = 'blocked';
+    } else {
+        lock.mode = 'unavailable';
+    }
+}
+
+function hold(answer: Granted): void {
+    stopLockTimers();
+    lock.mode = 'holding';
+    lock.token = answer.token;
+    lock.epoch = answer.epoch;
+    lock.csrf = answer.csrf_token ?? lock.csrf;
+    lock.holder = null;
+    lock.ended = null;
+    // A heartbeat three times within the TTL, so one missed call does not lose the lock.
+    heartbeatTimer = setInterval(
+        () => void heartbeat(),
+        Math.max(1, Math.floor((answer.ttl_seconds * 1000) / 3)),
+    );
+}
+
+async function heartbeat(): Promise<void> {
+    const token = lock.token;
+
+    if (!token || beating) {
+        return;
+    }
+
+    beating = true;
+
+    try {
+        const answer = await heartbeatLock(props.dataSourceId as string, token);
+
+        if (lock.token !== token) {
+            return;
+        }
+
+        if (!answer.enabled) {
+            stopLockTimers();
+            lock.mode = 'off';
+        } else if (answer.status === 'taken_over') {
+            endLock(answer);
+        } else if (answer.status === 'lost') {
+            endLock(null);
+        } else if (answer.status === 'granted' && answer.flush_requested) {
+            await flush();
+        }
+    } catch (error) {
+        // A failed call is not a verdict: the next tick asks again.
+        authExpired(error);
+    } finally {
+        beating = false;
+    }
+}
+
+// The lock is gone: the form is read-only with the notice, and nothing typed is kept, least of all a secret.
+function endLock(answer: TakenOver | null): void {
+    stopLockTimers();
+    lock.token = null;
+    lock.epoch = null;
+    lock.mode = 'ended';
+    lock.ended = answer
+        ? {
+              by: answer.taken_over_by?.name ?? null,
+              at: answer.taken_over_by?.at ?? null,
+              saved: answer.flush_acknowledged,
+          }
+        : null;
+    clearSecretInputs();
+    form.confirm_password = '';
+}
+
+// Someone asked to take over: save what is valid and not secret, then say so. Nothing is acknowledged unless it was saved,
+// so a failed save leaves the taker to wait for the flush timeout rather than lose this tab's work silently.
+async function flush(): Promise<void> {
+    const token = lock.token;
+
+    if (flushing || saving.value || !token || state.value !== 'ready') {
+        return;
+    }
+
+    flushing = true;
+
+    try {
+        if (JSON.stringify(flushPayload(new Set())) !== flushBaseline) {
+            if (!(await flushSave())) {
+                return;
+            }
+        }
+
+        const answer = await acknowledgeFlush(
+            props.dataSourceId as string,
+            token,
+        );
+
+        if (answer.enabled && answer.status === 'taken_over') {
+            endLock(answer);
+        } else if (answer.enabled && answer.status === 'lost') {
+            endLock(null);
+        }
+    } catch (error) {
+        authExpired(error);
+    } finally {
+        flushing = false;
+    }
+}
+
+// Saves the valid non-secret fields. A field the server refuses keeps its saved value and the rest is saved; credentials,
+// secret values and the password are never part of it.
+async function flushSave(): Promise<boolean> {
+    const invalid = new Set<string>();
+    let conflicted = false;
+
+    for (let attempt = 0; attempt < 4; attempt++) {
+        try {
+            const body = flushPayload(invalid);
+            const sent = flushRows;
+
+            try {
+                const saved = await updateDataSource(
+                    props.dataSourceId as string,
+                    body,
+                    revision.value,
+                    claim(),
+                );
+
+                revision.value = saved.data.revision;
+                original.value = saved.data;
+                // What was just saved is the new baseline: a later flush saves only what changed since.
+                flushBaseline = JSON.stringify(flushPayload(new Set()));
+
+                return true;
+            } catch (error) {
+                // Someone saved in between (a second tab): take their revision and try once more.
+                if (
+                    error instanceof DataSourceError &&
+                    error.status === 409 &&
+                    error.current &&
+                    !conflicted
+                ) {
+                    conflicted = true;
+                    revision.value = error.current.data.revision;
+                    original.value = error.current.data;
+
+                    continue;
+                }
+
+                if (
+                    !(error instanceof DataSourceError) ||
+                    error.status !== 422
+                ) {
+                    return false;
+                }
+
+                const fresh = Object.keys(error.errors).filter(
+                    (field) => error.errors[field]?.length,
+                );
+                let added = false;
+
+                for (const field of fresh) {
+                    const row = /^headers\.(\d+)\./.exec(field);
+                    const key =
+                        row && sent[Number(row[1])] !== undefined
+                            ? `headers.row.${sent[Number(row[1])]}`
+                            : field;
+
+                    if (!invalid.has(key)) {
+                        invalid.add(key);
+                        added = true;
+                    }
+                }
+
+                if (!added) {
+                    return false;
+                }
+            }
+        } catch {
+            return false;
+        }
+    }
+
+    return false;
+}
+
+// Which form row each header of the last flush payload came from (a saved secret header has none).
+let flushRows: number[] = [];
+
+function flushPayload(invalid: Set<string>): DataSourceInput {
+    const saved = original.value as DataSource;
+    const body = payload();
+    const nonSecret = (value: number | null): string | null =>
+        value === null ? null : String(value);
+
+    delete body.secrets;
+    delete body.confirm_password;
+
+    // Credentials stay as saved: changing them needs the password, and a secret value is never flushed.
+    body.auth_type = (saved?.auth_type ?? 'none') as AuthType;
+    delete body.api_key_name;
+    delete body.api_key_placement;
+    delete body.oauth_token_url;
+    delete body.oauth_client_id;
+    delete body.oauth_scope;
+
+    if (saved?.auth_type === 'api_key') {
+        body.api_key_name = saved.api_key_name ?? '';
+        body.api_key_placement = saved.api_key_placement ?? 'header';
+    }
+
+    if (saved?.auth_type === 'oauth2_client_credentials') {
+        body.oauth_token_url = saved.oauth_token_url ?? '';
+        body.oauth_client_id = saved.oauth_client_id ?? '';
+
+        if (saved.oauth_scope) {
+            body.oauth_scope = saved.oauth_scope;
+        }
+    }
+
+    // A field the server refused goes back to its saved value.
+    if (invalid.has('name')) body.name = saved.name;
+    if (invalid.has('base_url')) body.base_url = saved.base_url;
+    if (invalid.has('timeout_seconds'))
+        body.timeout_seconds = nonSecret(saved.timeout_seconds);
+    if (invalid.has('max_response_bytes'))
+        body.max_response_bytes = nonSecret(saved.max_response_bytes);
+    if (invalid.has('max_pages')) body.max_pages = nonSecret(saved.max_pages);
+    if (invalid.has('live_capable')) body.live_capable = saved.live_capable;
+
+    // Plain headers as typed (a refused row dropped); a secret header only as saved, by name and flag.
+    const rows: number[] = [];
+    const headers: DefaultHeader[] = [];
+
+    form.headers.forEach((row, i) => {
+        if (
+            row.secret ||
+            (row.name === '' && row.value === '') ||
+            invalid.has(`headers.row.${i}`)
+        ) {
+            return;
+        }
+
+        rows.push(i);
+        headers.push({ name: row.name, value: row.value });
+    });
+
+    if (invalid.has('headers')) {
+        headers.length = 0;
+        rows.length = 0;
+
+        for (const header of saved.headers.filter((h) => !h.secret)) {
+            rows.push(-1);
+            headers.push({ name: header.name, value: header.value ?? '' });
+        }
+    }
+
+    for (const header of saved.headers.filter((h) => h.secret)) {
+        rows.push(-1);
+        headers.push({ name: header.name, secret: true });
+    }
+
+    flushRows = rows;
+    body.headers = headers;
+
+    return body;
+}
+
+async function takeOver(): Promise<void> {
+    if (lock.mode !== 'blocked') {
+        return;
+    }
+
+    lock.takeoverFailed = false;
+    lock.mode = 'waiting';
+
+    try {
+        const answer = await requestTakeover(props.dataSourceId as string);
+
+        if (!answer.enabled) {
+            lock.mode = 'off';
+            await load();
+        } else if (answer.status === 'granted') {
+            await becomeHolder(answer);
+        } else if (answer.status === 'waiting') {
+            takerToken = answer.token;
+            pollTimer = setInterval(() => void poll(), LOCK_POLL_MS);
+        } else {
+            applyHeld(answer);
+            lock.mode = 'blocked';
+        }
+    } catch (error) {
+        if (authExpired(error)) {
+            return;
+        }
+
+        lock.mode = 'blocked';
+        lock.takeoverFailed = true;
+    }
+}
+
+async function poll(): Promise<void> {
+    const token = takerToken;
+
+    if (!token || polling) {
+        return;
+    }
+
+    polling = true;
+
+    try {
+        const answer = await pollTakeover(props.dataSourceId as string, token);
+
+        if (takerToken !== token) {
+            return;
+        }
+
+        if (!answer.enabled) {
+            stopLockTimers();
+            takerToken = null;
+            lock.mode = 'off';
+            await load();
+        } else if (answer.status === 'granted') {
+            await becomeHolder(answer);
+        } else if (answer.status === 'held') {
+            stopLockTimers();
+            takerToken = null;
+            applyHeld(answer);
+        } else if (answer.status === 'free') {
+            // The holder let go: a poll never grants, so take the lock the ordinary way.
+            stopLockTimers();
+            takerToken = null;
+
+            const fresh = await acquireLock(props.dataSourceId as string);
+
+            if (fresh.enabled && fresh.status === 'granted') {
+                await becomeHolder(fresh);
+            } else {
+                applyHeld(fresh);
+            }
+        }
+    } catch (error) {
+        // A failed poll is asked again; only an ended session stops it.
+        authExpired(error);
+    } finally {
+        polling = false;
+    }
+}
+
+// The take-over completed: reload the Data Source (the holder's flush is in it) and edit.
+async function becomeHolder(answer: Granted): Promise<void> {
+    stopLockTimers();
+    takerToken = null;
+    await load();
+    hold(answer);
+    announce(labels.reloaded, 'polite');
+}
+
+// Closing the tab or leaving the page frees the lock (or withdraws a pending take-over) by beacon.
+// A page restored from the back-forward cache has no lock (it was released on pagehide): take it again.
+function onPageShow(event: PageTransitionEvent): void {
+    if (event.persisted && editing.value) {
+        stopLockTimers();
+        lock.token = null;
+        lock.epoch = null;
+        lock.mode = 'pending';
+        void start();
+    }
+}
+
+// Hidden tabs throttle timers, so a short TTL can pass unnoticed: ask at once when the tab is seen again.
+function onVisible(): void {
+    if (document.visibilityState === 'visible' && lock.mode === 'holding') {
+        void heartbeat();
+    }
+}
+
+function releaseNow(): void {
+    const id = props.dataSourceId;
+
+    if (!id) {
+        return;
+    }
+
+    const token = lock.mode === 'holding' ? lock.token : takerToken;
+
+    if (token) {
+        releaseLock(id, token, lock.csrf);
+
+        if (lock.mode === 'holding') {
+            lock.token = null;
+        }
+
+        takerToken = null;
+    }
+}
+
+const lockNotice = computed((): string | null => {
+    if (lock.mode === 'blocked' && lock.holder) {
+        return t('draft-locked', {
+            user: lock.holder.name,
+            time: formatTime(lock.holder.since),
+        });
+    }
+
+    if (lock.mode === 'unavailable') {
+        return editLockLabels.unavailable;
+    }
+
+    if (lock.mode === 'waiting') {
+        return editLockLabels.waiting(
+            lock.holder?.name ?? editLockLabels.someone,
+        );
+    }
+
+    if (lock.mode === 'ended') {
+        const ended = lock.ended;
+
+        if (!ended) {
+            return editLockLabels.lost;
+        }
+
+        const user = ended.by ?? editLockLabels.someone;
+        const time = ended.at ? formatTime(ended.at) : '';
+
+        return ended.saved
+            ? t('draft-taken-over', { user, time })
+            : editLockLabels.takenOverUnsaved(user, time);
+    }
+
+    return null;
+});
+
 // ---- Leaving with unsaved edits ------------------------------------------------------------------------------------
 
 const stopBefore = router.on('before', (event) => {
@@ -1192,11 +1757,19 @@ const stopRegistry = registerUnsavedForm({
 
 onMounted(() => {
     window.addEventListener('beforeunload', onBeforeUnload);
-    void load();
+    window.addEventListener('pagehide', releaseNow);
+    window.addEventListener('pageshow', onPageShow);
+    document.addEventListener('visibilitychange', onVisible);
+    void start();
 });
 
 onBeforeUnmount(() => {
     window.removeEventListener('beforeunload', onBeforeUnload);
+    window.removeEventListener('pagehide', releaseNow);
+    window.removeEventListener('pageshow', onPageShow);
+    document.removeEventListener('visibilitychange', onVisible);
+    stopLockTimers();
+    releaseNow();
     checkController?.abort();
     tokenController?.abort();
     testController?.abort();
@@ -1238,6 +1811,59 @@ const ceilingHelper = (value: number | null): string | undefined =>
             >
         </PageHeader>
 
+        <section
+            v-if="lockNotice"
+            role="status"
+            aria-live="polite"
+            class="grid max-w-2xl gap-3"
+            :data-mode="lock.mode"
+            data-test="lock-banner"
+        >
+            <Banner :variant="lock.mode === 'blocked' ? 'info' : 'warning'">
+                <span data-test="lock-notice">{{ lockNotice }}</span>
+            </Banner>
+            <div
+                v-if="
+                    lock.mode === 'blocked' ||
+                    lock.mode === 'ended' ||
+                    lock.mode === 'unavailable'
+                "
+                class="flex flex-wrap items-center gap-3"
+            >
+                <Button
+                    v-if="lock.mode === 'blocked'"
+                    type="button"
+                    variant="secondary"
+                    data-test="take-over"
+                    @click="takeOver"
+                >
+                    {{ editLockLabels.takeOver }}
+                </Button>
+                <Button
+                    v-if="lock.mode === 'unavailable'"
+                    type="button"
+                    variant="secondary"
+                    data-test="lock-retry"
+                    @click="retryAcquire"
+                >
+                    {{ editLockLabels.retry }}
+                </Button>
+                <Button as-child variant="secondary">
+                    <Link :href="index().url" data-test="lock-close">{{
+                        editLockLabels.close
+                    }}</Link>
+                </Button>
+            </div>
+            <p
+                v-if="lock.takeoverFailed"
+                role="alert"
+                class="type-body-sm text-error-text"
+                data-test="takeover-failed"
+            >
+                {{ editLockLabels.takeOverFailed }}
+            </p>
+        </section>
+
         <p
             v-if="state === 'forbidden'"
             role="alert"
@@ -1268,7 +1894,7 @@ const ceilingHelper = (value: number | null): string | undefined =>
                 variant="secondary"
                 size="sm"
                 data-test="retry"
-                @click="load"
+                @click="start"
             >
                 {{ shellLabels.retry }}
             </Button>
@@ -1298,7 +1924,13 @@ const ceilingHelper = (value: number | null): string | undefined =>
                 />
             </div>
 
-            <template v-else>
+            <fieldset
+                v-else
+                :disabled="readOnly"
+                :aria-label="readOnly ? editLockLabels.readOnly : undefined"
+                class="m-0 grid min-w-0 gap-6 border-0 p-0"
+                data-test="form-fields"
+            >
                 <div
                     v-if="failure"
                     ref="failureRef"
@@ -1840,13 +2472,13 @@ const ceilingHelper = (value: number | null): string | undefined =>
                         {{ labels.liveHelper }}
                     </p>
                 </fieldset>
-            </template>
+            </fieldset>
 
             <div class="grid gap-2">
                 <div class="flex flex-wrap items-center gap-3">
                     <Button
                         type="submit"
-                        :disabled="!ready || saving"
+                        :disabled="!ready || saving || readOnly"
                         :blocked="ready && saveReason !== undefined"
                         :blocked-reason="saveReason"
                         :aria-describedby="
@@ -1859,7 +2491,7 @@ const ceilingHelper = (value: number | null): string | undefined =>
                     <Button
                         type="button"
                         variant="secondary"
-                        :disabled="!ready"
+                        :disabled="!ready || readOnly"
                         :blocked="ready && testReason !== undefined"
                         :blocked-reason="testReason"
                         :aria-describedby="

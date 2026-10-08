@@ -45,5 +45,6 @@ pest()->group('security')->in(
     'Database/OAuthClientCredentialsTest.php',
     'Unit/OAuthClientCredentialsTest.php',
     'Database/OperationsTest.php',
+    'Database/EditLockTest.php',
     'Database/PartitionsTest.php',
 );

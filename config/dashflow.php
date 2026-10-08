@@ -145,6 +145,14 @@ return [
         'operator_password_hash' => $tunable('DASHFLOW_EGRESS_OPERATOR_PASSWORD_HASH'),
     ],
 
+    // The soft edit lock (Story 2.8), kept outside `tunables` like `egress`. The lock's TTL is `tunables.timeouts.edit_lock_ttl`
+    // (seconds; unset = the soft lock is disabled and a form is protected by its `revision` only). `flush_timeout_seconds` is
+    // `pending_input` with no default: how long a take-over waits for the holder to save and acknowledge before it completes
+    // anyway. Unset: a take-over does not wait and discards the holder's unsaved changes, with a notice.
+    'edit_lock' => [
+        'flush_timeout_seconds' => $tunable('DASHFLOW_EDIT_LOCK_FLUSH_TIMEOUT_SECONDS'),
+    ],
+
     // Write-only secrets (Story 2.4), kept outside `tunables` like `egress`. The platform's public key for the `cred`
     // purpose (base64 of a 32-byte X25519 key) and its version are `pending_input` with no default and are not secret:
     // every role may seal to it, only `worker-connector` holds the private key (the `key-cred` mount). Unset or invalid:
