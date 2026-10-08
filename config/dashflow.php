@@ -168,6 +168,10 @@ return [
         // read from the `key-data` mount (web and the workers hold it). Unlike a token, a sample is never kept in the clear:
         // with no usable key the test fails with `blob_unavailable` and nothing is stored.
         'data_key_path' => $tunable('DASHFLOW_SECRETS_DATA_KEY_PATH', '/run/secrets/key-data'),
+        // User attributes (Story 2.12): values are sealed under the same `data` key, and the 32-byte `digest` key (base64, the
+        // `key-digest` mount, `web` only) keys the blind index that lets equal values be found without decrypting. With either
+        // key unusable (as with the dev placeholders) saving or reading an attribute value answers 503 and nothing is stored.
+        'digest_key_path' => $tunable('DASHFLOW_SECRETS_DIGEST_KEY_PATH', '/run/secrets/key-digest'),
     ],
 
     // OAuth2 client credentials (Story 2.7), kept outside `tunables`. `token_skew_seconds` is `pending_input` with no

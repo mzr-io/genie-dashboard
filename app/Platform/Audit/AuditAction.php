@@ -40,6 +40,7 @@ enum AuditAction: string
     case AccessGroupChanged = 'access.group.changed';
     case AccessAttributeChanged = 'access.attribute.changed';
     case AccessAttributeKeyCreated = 'access.attribute_key.created';
+    case AccessAttributeKeyRenamed = 'access.attribute_key.renamed';
 
     // Connector: the Workspace host allowlist.
     case ConnectorHostAllowlistEntryCreated = 'connector.host_allowlist_entry.created';

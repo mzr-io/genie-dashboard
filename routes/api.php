@@ -1,11 +1,13 @@
 <?php
 
+use App\Http\Controllers\Admin\AttributeKeyController;
 use App\Http\Controllers\Admin\DataSourceController;
 use App\Http\Controllers\Admin\DataSourceLockController;
 use App\Http\Controllers\Admin\EndpointController;
 use App\Http\Controllers\Admin\GroupController;
 use App\Http\Controllers\Admin\HostAllowlistController;
 use App\Http\Controllers\Admin\InvitationController;
+use App\Http\Controllers\Admin\MemberAttributeController;
 use App\Http\Controllers\Admin\MemberController;
 use App\Http\Controllers\OperationController;
 use App\Http\Middleware\RejectsSecretValues;
@@ -51,6 +53,13 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::delete('groups/{group}', [GroupController::class, 'destroy'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.groups.destroy');
     Route::post('groups/{group}/members/{membership}', [GroupController::class, 'addMember'])->middleware(['admin', 'throttle:60,1'])->name('api.admin.groups.members.store');
     Route::delete('groups/{group}/members/{membership}', [GroupController::class, 'removeMember'])->middleware(['admin', 'throttle:60,1'])->name('api.admin.groups.members.destroy');
+
+    // User attributes (Story 2.12): the catalogue of keys (`settings.manage`) and a member's values (`users.manage`), mapped in ShellNavigation::ADMIN_API_ROUTES.
+    Route::get('user-attributes', [AttributeKeyController::class, 'index'])->middleware('admin')->name('api.admin.user-attributes.index');
+    Route::post('user-attributes', [AttributeKeyController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.user-attributes.store');
+    Route::put('user-attributes/{key}', [AttributeKeyController::class, 'update'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.user-attributes.update');
+    Route::get('members/{membership}/attributes', [MemberAttributeController::class, 'show'])->middleware('admin')->name('api.admin.members.attributes.show');
+    Route::put('members/{membership}/attributes', [MemberAttributeController::class, 'update'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.members.attributes.update');
 
     // The Workspace host allowlist (Story 2.1): `settings.manage`, mapped in ShellNavigation::ADMIN_API_ROUTES.
     Route::get('host-allowlist', [HostAllowlistController::class, 'index'])->middleware('admin')->name('api.admin.host-allowlist.index');

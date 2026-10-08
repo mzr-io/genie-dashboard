@@ -2,14 +2,20 @@
 
 namespace App\Providers;
 
+use App\Modules\Access\Application\AttributesOnMembershipRemoved;
 use App\Modules\Access\Application\ChangeMemberAccess;
 use App\Modules\Access\Application\ChangeMemberStatus;
 use App\Modules\Access\Application\InviteMembers;
+use App\Modules\Access\Application\ManageAttributeKeys;
 use App\Modules\Access\Application\ManageGroups;
+use App\Modules\Access\Application\ManageMemberAttributes;
+use App\Modules\Access\Contracts\AttributeKeys;
+use App\Modules\Access\Contracts\AttributeVault;
 use App\Modules\Access\Contracts\GroupDirectory;
 use App\Modules\Access\Contracts\GroupManager;
 use App\Modules\Access\Contracts\MemberAccess;
 use App\Modules\Access\Contracts\MemberActivation;
+use App\Modules\Access\Contracts\MemberAttributes;
 use App\Modules\Access\Contracts\MemberDirectory;
 use App\Modules\Access\Contracts\MemberInvitations;
 use App\Modules\Access\Contracts\MemberNames;
@@ -20,6 +26,7 @@ use App\Modules\Access\Infrastructure\AdminMembershipGranter;
 use App\Modules\Access\Infrastructure\EloquentMembershipPermissions;
 use App\Modules\Access\Infrastructure\SecurityDefinerMembershipLookup;
 use App\Modules\Access\Infrastructure\SignInMembershipsAdapter;
+use App\Modules\Access\Infrastructure\SodiumAttributeVault;
 use App\Modules\Access\Infrastructure\SqlGroupDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberNames;
@@ -129,6 +136,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(GroupDirectory::class, SqlGroupDirectory::class);
         $this->app->bind(GroupManager::class, ManageGroups::class);
         $this->app->bind(MemberNames::class, SqlMemberNames::class);
+        $this->app->bind(AttributeKeys::class, ManageAttributeKeys::class);
+        $this->app->bind(MemberAttributes::class, ManageMemberAttributes::class);
+        $this->app->bind(AttributeVault::class, SodiumAttributeVault::class);
         $this->app->bind(HostAllowlist::class, ManageHostAllowlist::class);
         $this->app->bind(HostAllowlistDependents::class, SqlHostAllowlistDependents::class);
         $this->app->bind(DataSources::class, ManageDataSources::class);
@@ -180,6 +190,9 @@ class AppServiceProvider extends ServiceProvider
         $serializers->register(new ConnectorAuditSerializer);
         $serializers->register(new IdentityAuditSerializer);
         $serializers->register(new PlatformAuditSerializer);
+
+        // Each module registers its outbox consumers with the kernel (the kernel calls no module).
+        $this->app->make(OutboxConsumers::class)->register(new AttributesOnMembershipRemoved);
 
         // Each module registers the lockable resources it owns with the kernel's edit lock (the kernel calls no module).
         $this->app->make(EditLockResources::class)->register(DataSourceLockEpochs::TYPE, new DataSourceLockEpochs);

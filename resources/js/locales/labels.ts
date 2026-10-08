@@ -573,6 +573,106 @@ export const settingsLabels = {
     hostAllowlist: 'Host allowlist',
     hostAllowlistSummary:
         'The hosts this workspace may call. Dashflow contacts only hosts you approve here.',
+    userAttributes: 'User attributes',
+    userAttributesSummary:
+        "The attributes, such as a region or an employee number, that endpoints can use to return only each user's own data.",
+} as const;
+
+// Labels of System settings > User attributes and of the member Attributes editor (Story 2.12; UX-DR-115, 23, 263, 282).
+// Its other messages are the catalogue's `saved`, `throttled`, `perm-denied` and `save-failed`.
+export const userAttributeLabels = {
+    pageTitle: 'User attributes',
+    pageSubtitle:
+        "Define the attributes that can be set for each member. Endpoints use them to return only a member's own data.",
+    items: 'attributes',
+    action: '+ Add attribute',
+    back: 'Back to System settings',
+    caption: 'User attributes with their key id, label and type',
+    tableRegion: 'User attributes table',
+    toolbar: 'User attributes tools',
+    search: 'Search attributes',
+    searchPlaceholder: 'Search by key id or label',
+    clearSearch: 'Clear search',
+    count: (matched: number, total: number) =>
+        `${matched} of ${total} ${total === 1 ? 'attribute' : 'attributes'}`,
+    columns: { key_id: 'Key id', label: 'Label', value_type: 'Type' },
+    actions: 'Actions',
+    types: {
+        text: 'Text',
+        identifier: 'Identifier',
+        integer: 'Whole number',
+    } as Record<string, string>,
+    typeHelpers: {
+        text: 'Up to 256 characters of visible text.',
+        identifier: 'Up to 128 letters, digits, dots, hyphens or underscores.',
+        integer: 'A whole number of up to 18 digits, such as 42 or -7.',
+    } as Record<string, string>,
+    // The inline add form.
+    addTitle: 'Add an attribute',
+    addRegion: 'Add an attribute',
+    save: 'Add attribute',
+    cancel: 'Cancel',
+    keyId: 'Key id',
+    keyIdHelper:
+        'Lower case letters, digits and underscores, starting with a letter, up to 48 characters. It cannot be changed later.',
+    label: 'Label',
+    labelHelper: 'Up to 64 characters. You can rename it later.',
+    type: 'Type',
+    typeHelper: 'Chosen once: the type cannot be changed later.',
+    added: (label: string) => `${label} added to the user attributes.`,
+    // Field errors by the server's reason.
+    reasons: {
+        duplicate: 'This is already used. Choose another.',
+    } as Record<string, string>,
+    keyIdTaken: 'This key id is already used. Choose another.',
+    labelTaken: 'This label is already used. Choose another.',
+    keyIdInvalid:
+        'Use lower case letters, digits and underscores, starting with a letter (up to 48 characters).',
+    labelInvalid:
+        'Enter a label of 1 to 64 characters, without control or invisible characters.',
+    typeInvalid: 'Choose a type.',
+    // Inline rename.
+    rename: 'Rename',
+    renameFor: (label: string) => `Rename ${label}`,
+    renameField: (keyId: string) => `Label for ${keyId}`,
+    renameSave: 'Save label',
+    renameSaveFor: (label: string) => `Save the new label for ${label}`,
+    renameCancel: 'Cancel',
+    renamed: (label: string) => `Label changed to ${label}.`,
+    conflict:
+        'Someone else changed this attribute. The latest label is shown. Check it, then save again if you still want to.',
+    gone: 'This attribute no longer exists. The list has been refreshed.',
+    // Member Attributes editor (User configuration).
+    attributes: 'Attributes',
+    attributesFor: (name: string) => `Edit attributes for ${name}`,
+    closeFor: (name: string) => `Close the attributes editor for ${name}`,
+    memberRegion: (name: string) => `Attributes for ${name}`,
+    memberTitle: (name: string) => `Attributes for ${name}`,
+    memberSubtitle:
+        'These values are stored encrypted. They are shown only here, to people who manage users.',
+    memberNone:
+        'No attributes are defined yet. Define them in System settings > User attributes.',
+    memberNoneAction: 'Open User attributes',
+    memberSave: 'Save attributes',
+    memberClose: 'Close',
+    memberLoading: 'Loading attributes',
+    memberNotSet: 'Not set',
+    memberHelper: (type: string) =>
+        `${type}. A value cannot be cleared once set.`,
+    memberSaved: (name: string) => `Attributes updated for ${name}.`,
+    memberUnchanged: 'Nothing to save: no value was changed.',
+    memberReasons: {
+        empty: 'Enter a value.',
+        too_long: 'This value is too long.',
+        invalid: 'This value is not valid for this type.',
+        undefined_key: 'This attribute is not defined any more.',
+    } as Record<string, string>,
+    memberUnavailable:
+        'Attributes are unavailable right now because the keys that protect them are not set up. Nothing was saved. Ask an operator to check them.',
+    memberSelf: "You can't change your own attributes.",
+    memberGone:
+        'This member is no longer in the workspace. The list has been refreshed.',
+    retry: 'Retry',
 } as const;
 
 export const hostAllowlistLabels = {
@@ -917,7 +1017,7 @@ export const dataSourceLabels = {
     placementHeader: 'A header (recommended)',
     placementQuery: 'The query string',
     queryWarning:
-        'A key in the query string can end up in the API’s logs and in proxies. Use a header if the API allows it.',
+        "A key in the query string can end up in the API's logs and in proxies. Use a header if the API allows it.",
     apiKey: 'API key',
     bearerToken: 'Token',
     basicUsername: 'User name',

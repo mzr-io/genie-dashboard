@@ -247,6 +247,8 @@ final class Cluster
             'workspace_settings' => self::seedSettings($workspaceId),
             'user_groups' => self::seedGroup($workspaceId),
             'group_members' => self::seedGroupMember($workspaceId),
+            'user_attribute_keys' => self::seedAttributeKey($workspaceId),
+            'user_attributes' => self::seedAttribute($workspaceId),
             'host_allowlist_entries' => self::seedHostEntry($workspaceId),
             'host_allowlist_versions' => self::seedHostVersion($workspaceId),
             'egress_grants' => self::seedEgressGrant($workspaceId),
@@ -301,6 +303,25 @@ final class Cluster
         $id = (string) Str::uuid7();
         self::superuser()->prepare('INSERT INTO user_groups (id, workspace_id, name, created_at, updated_at) VALUES (?, ?, ?, now(), now())')
             ->execute([$id, $workspaceId, $name ?? 'Group '.$id]);
+
+        return $id;
+    }
+
+    public static function seedAttributeKey(string $workspaceId, ?string $keyId = null, string $type = 'text'): string
+    {
+        $id = (string) Str::uuid7();
+        $keyId ??= 'k'.str_replace('-', '', substr($id, 24));
+        self::superuser()->prepare('INSERT INTO user_attribute_keys (id, workspace_id, key_id, label, value_type, revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, now(), now())')
+            ->execute([$id, $workspaceId, $keyId, 'Label '.$id, $type]);
+
+        return $id;
+    }
+
+    private static function seedAttribute(string $workspaceId): string
+    {
+        $id = (string) Str::uuid7();
+        $statement = self::superuser()->prepare("INSERT INTO user_attributes (id, workspace_id, membership_id, attribute_key_id, value_ciphertext, value_blind_index, blind_index_version, updated_at) VALUES (?, ?, ?, ?, decode('00', 'hex'), 'seed', 1, now())");
+        $statement->execute([$id, $workspaceId, self::seedMembership($workspaceId), self::seedAttributeKey($workspaceId)]);
 
         return $id;
     }

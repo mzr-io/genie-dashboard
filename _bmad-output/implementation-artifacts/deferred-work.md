@@ -195,3 +195,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-11-follow-pagination-up-to-the-limits.md`
   summary: Carry the Operation's expiry into FetchRequest as a run deadline for paged fetches and add a merged-size ceiling.
   evidence: Each page has its own timeout but nothing bounds the whole run; the merged records are held as a decoded tree and sealed into one cache value, so memory can exceed the byte cap.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-12-define-user-attributes-for-user-context-binding.md`
+  summary: Setting member attributes does not check the target membership's status (e.g. removed or invited).
+  evidence: ManageMemberAttributes::member() only matches id and workspace; unverified (maybe-false, medium if true) — settle by checking which membership statuses can exist and whether values on them matter.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-12-define-user-attributes-for-user-context-binding.md`
+  summary: AttributesOnMembershipRemoved subject-only (`membership:{id}`) fallback has no test.
+  evidence: The only consumer test supplies data.membership_id, so the fallback branch is unexercised; add a case when the removal flow emits the event.

@@ -79,6 +79,8 @@ Route::middleware(['auth'])->group(function () {
         Route::inertia('settings', 'admin/SystemSettings')->name('admin.settings.index');
         // The Host allowlist of System settings (Story 2.1): a view of the settings item, not a navigation item.
         Route::inertia('settings/host-allowlist', 'admin/HostAllowlist')->name('admin.settings.host-allowlist');
+        // User attributes of System settings (Story 2.12): a view of the settings item, mapped in ShellNavigation::ADMIN_PAGES.
+        Route::inertia('settings/user-attributes', 'admin/UserAttributes')->name('admin.settings.user-attributes');
         Route::inertia('audit', 'Placeholder', ['page' => 'audit-log'])->name('admin.audit.index');
     });
 });

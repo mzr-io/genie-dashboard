@@ -22,6 +22,7 @@ pest()->group('security')->in(
     'Database/InviteUsersTest.php',
     'Database/MemberAccessTest.php',
     'Database/MemberStatusTest.php',
+    'Database/UserAttributesTest.php',
     'Database/PasswordResetTest.php',
     'Database/AdminAccessTest.php',
     'Database/AuditTest.php',

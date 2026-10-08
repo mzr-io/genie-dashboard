@@ -96,6 +96,9 @@ x-app-env: &app-env
     DASHFLOW_SAMPLE_FETCH_WORKSPACE_LIMIT: ${DASHFLOW_SAMPLE_FETCH_WORKSPACE_LIMIT:-}
     DASHFLOW_SAMPLE_FETCH_WINDOW_SECONDS: ${DASHFLOW_SAMPLE_FETCH_WINDOW_SECONDS:-}
     DASHFLOW_SECRETS_DATA_KEY_PATH: ${DASHFLOW_SECRETS_DATA_KEY_PATH:-}
+    # User attributes (Story 2.12): where web reads the key that keys the blind index of attribute values (a path, not key
+    # material; empty = the default /run/secrets/key-digest). Values are sealed under the `data` key above.
+    DASHFLOW_SECRETS_DIGEST_KEY_PATH: ${DASHFLOW_SECRETS_DIGEST_KEY_PATH:-}
     # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
     OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
