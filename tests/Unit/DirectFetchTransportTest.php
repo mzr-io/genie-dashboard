@@ -233,3 +233,82 @@ it('asks for JSON unless the Data Source sets its own Accept (any case), and pas
 
     expect($own->sent->headers)->toBe(['accept' => 'application/vnd.api+json'])->and($own->sent->maxBytes)->toBeNull();
 });
+
+// Story 2.10: an Endpoint test sends the rendered URL, the query (one builder), the Endpoint's headers after the defaults and,
+// for a read-only POST, the body and an Idempotency-Key. Nothing else is ever sent.
+function dftEndpoint(string $method = 'GET', array $overrides = []): FetchRequest
+{
+    return new FetchRequest(
+        DFT_WS, DFT_SRC, 'e', 'https://api.example.com/v1/customers/{id}', ['id', 'q'], CredentialScheme::None, [],
+        $overrides['defaults'] ?? [['name' => 'X-Default', 'value' => 'd'], ['name' => 'X-Over', 'value' => 'default']], null, null, null, $method,
+        url: 'https://api.example.com/v1/customers/c-42', queryPairs: $overrides['query'] ?? [['q', 'a b&c=d#e'], ['ünï', '1']],
+        endpointHeaders: $overrides['headers'] ?? [['name' => 'x-over', 'value' => 'endpoint'], ['name' => 'X-Day', 'value' => '2026-01-01']],
+        body: $overrides['body'] ?? null, idempotencyKey: $overrides['key'] ?? null, readOnlyQuery: $overrides['readOnly'] ?? false,
+    );
+}
+
+it('sends the rendered URL with every query name and value percent-encoded, and the Endpoint headers after the defaults', function () {
+    $egress = dftEgress();
+
+    (dftTransport($egress, dftVault([])))->fetch(dftEndpoint());
+
+    expect($egress->sent->url)->toBe('https://api.example.com/v1/customers/c-42?q=a%20b%26c%3Dd%23e&%C3%BCn%C3%AF=1')
+        ->and($egress->sent->method)->toBe('GET')
+        ->and($egress->sent->body)->toBeNull()
+        ->and($egress->sent->headers)->toBe(['X-Default' => 'd', 'x-over' => 'endpoint', 'X-Day' => '2026-01-01', 'Accept' => 'application/json']);
+});
+
+it('adds the API key to the same query string', function () {
+    $egress = dftEgress();
+    $request = new FetchRequest(
+        DFT_WS, DFT_SRC, 'e', 'https://api.example.com/v1/x', [], CredentialScheme::ApiKeyQuery, [new SecretRef('s1', 'api_key')], [], 'key', 'query', null, 'GET',
+        url: 'https://api.example.com/v1/x', queryPairs: [['q', '1']],
+    );
+
+    (dftTransport($egress, dftVault(['api_key' => 'k&1'])))->fetch($request);
+
+    expect($egress->sent->url)->toBe('https://api.example.com/v1/x?q=1&key=k%261');
+});
+
+it('sends a read-only POST once with its body and an Idempotency-Key equal to the Operation id', function () {
+    $egress = dftEgress();
+
+    (dftTransport($egress, dftVault([])))->fetch(dftEndpoint('POST', [
+        'readOnly' => true, 'body' => '{"from":"2026-01-01"}', 'key' => DFT_OP,
+        'headers' => [['name' => 'Content-Type', 'value' => 'application/json'], ['name' => 'idempotency-key', 'value' => 'client-chosen']],
+    ]));
+
+    expect($egress->sent->method)->toBe('POST')
+        ->and($egress->sent->body)->toBe('{"from":"2026-01-01"}')
+        ->and($egress->sent->headers['Idempotency-Key'])->toBe(DFT_OP)
+        ->and(array_change_key_case($egress->sent->headers))->not->toHaveKey('client-chosen')
+        ->and(array_filter(array_keys($egress->sent->headers), fn ($name) => strcasecmp($name, 'idempotency-key') === 0))->toHaveCount(1);
+});
+
+it('refuses a POST that is not read-only and any method but GET and POST, and sends nothing', function (string $method, bool $readOnly) {
+    $egress = dftEgress();
+
+    expect(fn () => (dftTransport($egress, dftVault([])))->fetch(dftEndpoint($method, ['readOnly' => $readOnly, 'body' => '{}'])))->toThrow(InvalidArgumentException::class)
+        ->and($egress->sent)->toBeNull();
+})->with([['POST', false], ['PUT', true], ['PATCH', true], ['DELETE', true], ['get', false]]);
+
+it('does not send a body or an Idempotency-Key on a GET', function () {
+    $egress = dftEgress();
+
+    (dftTransport($egress, dftVault([])))->fetch(dftEndpoint('GET', ['body' => '{"a":1}', 'key' => DFT_OP]));
+
+    expect($egress->sent->body)->toBeNull()->and($egress->sent->headers)->not->toHaveKey('Idempotency-Key');
+});
+
+it('lets an Endpoint header replace a secret default header of the same name', function () {
+    $egress = dftEgress();
+    $request = new FetchRequest(
+        DFT_WS, DFT_SRC, 'e', 'https://api.example.com/v1', [], CredentialScheme::None, [new SecretRef('s1', 'header:x-token')],
+        [['name' => 'X-Token', 'value' => '', 'secret' => true]], null, null, null, 'GET',
+        endpointHeaders: [['name' => 'x-token', 'value' => 'endpoint']],
+    );
+
+    (dftTransport($egress, dftVault(['header:x-token' => 'secret'])))->fetch($request);
+
+    expect($egress->sent->credentials)->toBe([])->and($egress->sent->headers['x-token'])->toBe('endpoint');
+});

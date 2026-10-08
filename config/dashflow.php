@@ -164,6 +164,10 @@ return [
         // OAuth token cache (Story 2.7): the 32-byte key (base64) that seals cached access tokens is read, on worker-connector
         // only, from the `key-token` mount. A missing or placeholder key means a token is used for one call and never cached.
         'token_key_path' => $tunable('DASHFLOW_SECRETS_TOKEN_KEY_PATH', '/run/secrets/key-token'),
+        // Sample Responses (Story 2.10): the 32-byte key (base64) that seals the body of an Endpoint test in the Valkey cache is
+        // read from the `key-data` mount (web and the workers hold it). Unlike a token, a sample is never kept in the clear:
+        // with no usable key the test fails with `blob_unavailable` and nothing is stored.
+        'data_key_path' => $tunable('DASHFLOW_SECRETS_DATA_KEY_PATH', '/run/secrets/key-data'),
     ],
 
     // OAuth2 client credentials (Story 2.7), kept outside `tunables`. `token_skew_seconds` is `pending_input` with no
@@ -180,6 +184,16 @@ return [
         'membership_limit' => $tunable('DASHFLOW_CONNECTION_TEST_MEMBERSHIP_LIMIT'),
         'workspace_limit' => $tunable('DASHFLOW_CONNECTION_TEST_WORKSPACE_LIMIT'),
         'window' => $tunable('DASHFLOW_CONNECTION_TEST_WINDOW'),
+    ],
+
+    // Endpoint-test (Fetch sample) rate limits (Story 2.10), kept outside `tunables` like `connection_test`. Every one is
+    // `pending_input` with no default: at most `membership_limit` tests per person and `workspace_limit` per Workspace in any
+    // `window_seconds`. A limit that is unset does not apply, and with no window nothing is limited. Over a limit the API
+    // answers 429 with `retry_after` and enqueues nothing.
+    'sample_fetch' => [
+        'membership_limit' => $tunable('DASHFLOW_SAMPLE_FETCH_MEMBERSHIP_LIMIT'),
+        'workspace_limit' => $tunable('DASHFLOW_SAMPLE_FETCH_WORKSPACE_LIMIT'),
+        'window' => $tunable('DASHFLOW_SAMPLE_FETCH_WINDOW_SECONDS'),
     ],
 
     // Load-test harness targets (Story 1.25), read by `npm run load` (load/config.mjs) from the environment.

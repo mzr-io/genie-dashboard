@@ -372,6 +372,8 @@ export type ConnectionTestSummary = {
     limit_bytes?: number | null;
     host: string | null;
     request_id: string | null;
+    // An Endpoint test (Story 2.10): the Endpoint revision that was tested, or, for a stale result, the one that replaced it.
+    endpoint_revision?: number | null;
 };
 
 export type OperationSummary = {

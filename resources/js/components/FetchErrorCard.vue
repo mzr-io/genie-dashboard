@@ -32,6 +32,8 @@ const props = defineProps<{
     requestId?: string | null;
     host?: string | null;
     reason?: string | null;
+    // The card's title; the connection test's by default (an Endpoint test passes its own).
+    heading?: string;
 }>();
 
 const emit = defineEmits<{ (e: 'retry'): void }>();
@@ -78,7 +80,7 @@ defineExpose({ focus: () => title.value?.focus() });
             data-test="fetch-error-title"
             class="type-title-sm text-error-text focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
-            {{ dataSourceLabels.testFailedTitle }}
+            {{ heading ?? dataSourceLabels.testFailedTitle }}
         </h3>
         <p class="type-body-sm text-error-text" data-test="fetch-error-message">
             {{ message() }}

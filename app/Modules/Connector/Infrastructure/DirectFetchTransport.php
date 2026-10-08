@@ -7,6 +7,7 @@ use App\Modules\Connector\Contracts\CredentialScheme;
 use App\Modules\Connector\Contracts\EgressRequest;
 use App\Modules\Connector\Contracts\EgressResponse;
 use App\Modules\Connector\Contracts\EgressTransport;
+use App\Modules\Connector\Contracts\EndpointQuery;
 use App\Modules\Connector\Contracts\FetchRequest;
 use App\Modules\Connector\Contracts\FetchResponse;
 use App\Modules\Connector\Contracts\FetchTransport;
@@ -22,6 +23,11 @@ use InvalidArgumentException;
  * scheme is applied (a bearer or basic `Authorization` header, an OAuth2 token as a Bearer (cached encrypted per secret version, refreshed once on a 401), an API key in a header or in the query string, a secret
  * default header) and the request goes out through the {@see EgressTransport}: the guard decides every hop and the connection
  * is pinned to the address it checked. Credentials travel as credentials, so the transport drops them if the origin changes.
+ *
+ * An Endpoint test (Story 2.10) adds the rendered URL, the query (one builder, everything percent-encoded), the Endpoint's
+ * headers (after the defaults) and a body. Only a GET and a POST flagged read-only are ever sent. A POST carries an
+ * `Idempotency-Key` (the Operation id) and is sent once: it is never repeated automatically, so a 401 on a POST, OAuth2 included,
+ * is reported as {@see AuthFailed} without a second send (a GET is refreshed and repeated once, Story 2.7).
  */
 final class DirectFetchTransport implements FetchTransport
 {
@@ -35,9 +41,13 @@ final class DirectFetchTransport implements FetchTransport
 
     public function fetch(FetchRequest $request): FetchResponse
     {
+        if (! in_array($request->method, ['GET', 'POST'], true) || ($request->method === 'POST' && ! $request->readOnlyQuery)) {
+            throw new InvalidArgumentException('Only a GET and a read-only POST are sent.');
+        }
+
         $headers = [];
         $credentials = [];
-        $url = $request->urlTemplate;
+        $url = EndpointQuery::append($request->url ?? $request->urlTemplate, $request->queryPairs);
 
         foreach ($request->headers as $header) {
             if (($header['secret'] ?? false) === true) {
@@ -45,6 +55,18 @@ final class DirectFetchTransport implements FetchTransport
             } else {
                 $headers[$header['name']] = $header['value'];
             }
+        }
+
+        // The Endpoint's own headers come after the defaults and win over a default of the same name.
+        foreach ($request->endpointHeaders as $header) {
+            $headers = self::without($headers, $header['name']);
+            $credentials = self::without($credentials, $header['name']);
+            $headers[$header['name']] = $header['value'];
+        }
+
+        if ($request->method === 'POST' && $request->idempotencyKey !== null) {
+            $headers = self::without($headers, 'Idempotency-Key');
+            $headers['Idempotency-Key'] = $request->idempotencyKey;
         }
 
         switch ($request->scheme) {
@@ -93,12 +115,13 @@ final class DirectFetchTransport implements FetchTransport
      * @param  array<string, string>  $credentials */
     private function send(FetchRequest $request, string $url, array $headers, array $credentials): EgressResponse
     {
-        return $this->egress->send($request->workspaceId, new EgressRequest($url, $request->method, $headers, $credentials, null, $request->timeoutSeconds, $request->maxResponseBytes));
+        return $this->egress->send($request->workspaceId, new EgressRequest($url, $request->method, $headers, $credentials, $request->method === 'POST' ? $request->body : null, $request->timeoutSeconds, $request->maxResponseBytes));
     }
 
     /**
      * An OAuth2 call (Story 2.7): the cached token, or a fresh one, as the Bearer. A 401 drops the cache entry, asks for a new
-     * token once and repeats the call once; a second 401 is {@see AuthFailed} and nothing more is tried.
+     * token once and repeats the call once; a second 401 is {@see AuthFailed} and nothing more is tried. A POST is not repeated: its
+     * 401 is {@see AuthFailed} at once.
      *
      * @param  array<string, string>  $headers
      * @param  array<string, string>  $credentials
@@ -115,6 +138,12 @@ final class DirectFetchTransport implements FetchTransport
         }
 
         $this->forgetToken($request, $rejected);
+
+        // A POST is never repeated automatically: the first send may have been acted on, so no second one is made.
+        if ($request->method === 'POST') {
+            throw new AuthFailed('api_401');
+        }
+
         $token = $this->token($request, true);
         $response = $this->send($request, $url, $headers, $credentials + ['Authorization' => 'Bearer '.$token]);
 
@@ -123,6 +152,15 @@ final class DirectFetchTransport implements FetchTransport
         }
 
         return $response;
+    }
+
+    /**
+     * @param  array<string, string>  $set
+     * @return array<string, string>
+     */
+    private static function without(array $set, string $name): array
+    {
+        return array_filter($set, fn (string $key): bool => strcasecmp($key, $name) !== 0, ARRAY_FILTER_USE_KEY);
     }
 
     /** The access token: from the cache unless `$fresh`, else requested (and cached when it may be). */

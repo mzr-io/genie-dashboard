@@ -14,6 +14,7 @@ import DataSourceTabs from '@/components/DataSourceTabs.vue';
 import DataTable from '@/components/DataTable.vue';
 import type { DataTableColumn } from '@/components/DataTable.vue';
 import EndpointForm from '@/components/EndpointForm.vue';
+import EndpointTestPanel from '@/components/EndpointTestPanel.vue';
 import ListStates from '@/components/ListStates.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import Tag from '@/components/Tag.vue';
@@ -49,8 +50,10 @@ const appliedSearch = ref('');
 const refreshing = ref(false);
 const searchId = useId();
 const highlighted = ref<string | null>(null);
-// The form: closed, adding, or editing one Endpoint.
-const mode = ref<'list' | 'add' | { edit: Endpoint }>('list');
+// The form: closed, adding, or editing one Endpoint; or the test panel of one Endpoint (Story 2.10).
+const mode = ref<'list' | 'add' | { edit: Endpoint } | { test: Endpoint }>(
+    'list',
+);
 
 let controller: AbortController | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -61,7 +64,14 @@ const matched = computed(() => meta.value?.matched ?? 0);
 const searching = computed(() => appliedSearch.value.trim() !== '');
 const isEmpty = computed(() => state.value === 'ready' && total.value === 0);
 const editing = computed(() =>
-    typeof mode.value === 'object' ? mode.value.edit : null,
+    typeof mode.value === 'object' && 'edit' in mode.value
+        ? mode.value.edit
+        : null,
+);
+const testing = computed(() =>
+    typeof mode.value === 'object' && 'test' in mode.value
+        ? mode.value.test
+        : null,
 );
 const formOpen = computed(() => mode.value !== 'list');
 const showToolbar = computed(
@@ -73,6 +83,7 @@ const columns: DataTableColumn[] = [
     { key: 'path', label: labels.columns.path, rowHeader: true },
     { key: 'revision', label: labels.columns.revision, class: 'tabular-nums' },
     { key: 'updated', label: labels.columns.updated },
+    { key: 'actions', label: labels.testActions },
 ];
 
 function leaveForSignIn(error: unknown): boolean {
@@ -213,6 +224,32 @@ function openEdit(endpoint: Endpoint): void {
     void focusForm();
 }
 
+function openTest(endpoint: Endpoint): void {
+    highlighted.value = null;
+    mode.value = { test: endpoint };
+    void nextTick(() =>
+        document
+            .querySelector<HTMLElement>('[data-test="test-title"]')
+            ?.focus(),
+    );
+}
+
+// The Endpoint is gone (a 404 on the test): back to the list, reloaded.
+async function onTestGone(): Promise<void> {
+    mode.value = 'list';
+    await load();
+}
+
+async function closeTest(focusKey: string): Promise<void> {
+    mode.value = 'list';
+    await nextTick();
+    document
+        .querySelector<HTMLElement>(
+            `[data-test-focus="${CSS.escape(focusKey)}"]`,
+        )
+        ?.focus();
+}
+
 async function focusForm(): Promise<void> {
     await nextTick();
     document.querySelector<HTMLElement>('[data-test="path"]')?.focus();
@@ -297,6 +334,41 @@ onBeforeUnmount(() => {
         >
             {{ labels.missing }}
         </p>
+
+        <template v-else-if="testing && state === 'ready'">
+            <div class="grid gap-1">
+                <h2
+                    tabindex="-1"
+                    class="type-title-md text-text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    data-test="test-title"
+                >
+                    {{ labels.testTitle }}:
+                    <span class="font-mono"
+                        >{{ testing.method }} {{ testing.path }}</span
+                    >
+                </h2>
+                <p class="type-body-sm text-text-secondary">
+                    {{ labels.testSubtitle }}
+                </p>
+            </div>
+            <EndpointTestPanel
+                :key="testing.endpoint_id"
+                :data-source-id="dataSourceId"
+                :endpoint="testing"
+                :source-name="sourceName ?? labels.sourceFallback"
+                @gone="onTestGone"
+            />
+            <div>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    data-test="test-back"
+                    @click="closeTest(testing.endpoint_id)"
+                >
+                    {{ labels.testBack }}
+                </Button>
+            </div>
+        </template>
 
         <template v-else-if="formOpen && state === 'ready'">
             <h2 class="type-title-md text-text-primary" data-test="form-title">
@@ -425,6 +497,19 @@ onBeforeUnmount(() => {
                     <span data-test="updated">{{
                         formatDateTime(row.updated_at)
                     }}</span>
+                </template>
+                <template #cell-actions="{ row }">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        :aria-label="labels.testAction(row.method, row.path)"
+                        :data-test-focus="row.endpoint_id"
+                        data-test="test-endpoint"
+                        @click="openTest(row)"
+                    >
+                        {{ labels.testEndpoint }}
+                    </Button>
                 </template>
             </DataTable>
         </template>

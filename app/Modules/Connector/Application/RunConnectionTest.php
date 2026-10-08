@@ -45,7 +45,7 @@ use Throwable;
 final class RunConnectionTest implements OperationHandler
 {
     /** cURL errors that are a TLS or certificate problem, for the `tls` reason. */
-    private const TLS_ERRORS = [35, 51, 53, 54, 58, 59, 60, 64, 66, 77, 80, 82, 83, 90, 91];
+    public const TLS_ERRORS = [35, 51, 53, 54, 58, 59, 60, 64, 66, 77, 80, 82, 83, 90, 91];
 
     public function __construct(
         private readonly FetchTransport $transport,

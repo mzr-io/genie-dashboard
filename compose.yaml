@@ -89,6 +89,13 @@ x-app-env: &app-env
     DASHFLOW_CONNECTION_TEST_MEMBERSHIP_LIMIT: ${DASHFLOW_CONNECTION_TEST_MEMBERSHIP_LIMIT:-}
     DASHFLOW_CONNECTION_TEST_WORKSPACE_LIMIT: ${DASHFLOW_CONNECTION_TEST_WORKSPACE_LIMIT:-}
     DASHFLOW_CONNECTION_TEST_WINDOW: ${DASHFLOW_CONNECTION_TEST_WINDOW:-}
+    # Endpoint-test (Fetch sample) rate limits (Story 2.10; pending_input, empty = unset = not limited), counted like the
+    # connection test's, and where web and worker-connector read the key that seals a Sample Response (a path, not key
+    # material; empty = the default /run/secrets/key-data).
+    DASHFLOW_SAMPLE_FETCH_MEMBERSHIP_LIMIT: ${DASHFLOW_SAMPLE_FETCH_MEMBERSHIP_LIMIT:-}
+    DASHFLOW_SAMPLE_FETCH_WORKSPACE_LIMIT: ${DASHFLOW_SAMPLE_FETCH_WORKSPACE_LIMIT:-}
+    DASHFLOW_SAMPLE_FETCH_WINDOW_SECONDS: ${DASHFLOW_SAMPLE_FETCH_WINDOW_SECONDS:-}
+    DASHFLOW_SECRETS_DATA_KEY_PATH: ${DASHFLOW_SECRETS_DATA_KEY_PATH:-}
     # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
     OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}

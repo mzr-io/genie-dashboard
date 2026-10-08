@@ -72,6 +72,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('data-sources/{dataSource}/endpoints', [EndpointController::class, 'store'])->middleware(['admin', 'throttle:30,1,data-source-endpoints'])->name('api.admin.data-sources.endpoints.store');
     Route::get('data-sources/{dataSource}/endpoints/{endpoint}', [EndpointController::class, 'show'])->middleware('admin')->name('api.admin.data-sources.endpoints.show');
     Route::put('data-sources/{dataSource}/endpoints/{endpoint}', [EndpointController::class, 'update'])->middleware(['admin', 'throttle:30,1,data-source-endpoints'])->name('api.admin.data-sources.endpoints.update');
+    // Test an Endpoint (Story 2.10): starts a `sample_fetch` Operation; the Sample Response is read back by the requester alone. Nothing is called from this tier.
+    Route::post('data-sources/{dataSource}/endpoints/{endpoint}/test', [EndpointController::class, 'test'])->middleware(['admin', 'throttle:30,1,data-source-endpoint-test'])->name('api.admin.data-sources.endpoints.test');
+    Route::get('data-sources/{dataSource}/endpoints/{endpoint}/samples/{operation}', [EndpointController::class, 'sample'])->middleware(['admin', 'throttle:120,1,data-source-endpoint-sample'])->name('api.admin.data-sources.endpoints.samples.show');
 
     // The Data source soft lock (Story 2.8): acquire, heartbeat, release (also by beacon), take over (request, then poll) and
     // the holder's flush acknowledgement. Same permission; none of them takes a secret value; the heartbeat and the polls send `X-Background: 1`.

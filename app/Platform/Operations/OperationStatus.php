@@ -2,7 +2,7 @@
 
 namespace App\Platform\Operations;
 
-/** Where an Operation stands. `stale` is for a result whose subject changed afterwards (a later story sets it). */
+/** Where an Operation stands. `stale` is for a result whose subject changed while it ran (a handler reports it with {@see OperationOutcome::stale()}, Story 2.10). */
 enum OperationStatus: string
 {
     case Queued = 'queued';

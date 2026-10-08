@@ -940,6 +940,47 @@ export const endpointLabels = {
     revisionValue: (n: number) => `r${n}`,
     back: 'Back to Data sources',
     missing: 'This data source no longer exists.',
+    // Test endpoint (Story 2.10; UX-DR-135, 25, 26, 70, 276, 279, 282). The failure messages are the catalogue's (`fetch-failed`,
+    // `host-not-allowlisted`, `blocked-address`, `not-json`, `response-too-large`) and the auth-failed label; the success line
+    // is built here because the catalogue's `fetch-ok` reports a record count and a path that exist only after Mapping.
+    testEndpoint: 'Test endpoint',
+    testAction: (method: string, path: string) => `Test ${method} ${path}`,
+    testActions: 'Actions',
+    testTitle: 'Test endpoint',
+    testSubtitle:
+        'Sends this request once, with the values below, to the data source. The response is kept for a few minutes, only for you, and is never saved.',
+    testValues: 'Test values',
+    testValuesHelper:
+        'Each parameter needs a value. A fixed parameter starts with its saved value; a date or period parameter takes a date written YYYY-MM-DD.',
+    testValuesNone: 'This endpoint has no parameters. It is sent as it is.',
+    testFieldHeader: (name: string) => `${name} header`,
+    testFieldHint: (text: string) =>
+        `A date, written YYYY-MM-DD. Filled in as ${text} when fetched.`,
+    testRun: 'Run test',
+    testRetry: 'Run the test again',
+    testRunning: 'A test is already running. Wait for its result.',
+    testMissing: (name: string) => `Enter a value for ${name} to run the test.`,
+    testThrottled: (seconds: number) =>
+        `Too many tests. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`,
+    testing: 'Testing…',
+    testBack: 'Back to endpoints',
+    testFailedTitle: 'Endpoint test failed',
+    testOk: (status: number, ms: number) => `✓ ${status} · ${ms} ms`,
+    testGone: 'This endpoint no longer exists. Go back to the list.',
+    // The Endpoint changed while the test ran (or before it started): the result is for a revision that is no longer current.
+    testStale: (current: number | null) =>
+        current === null
+            ? 'This result is not current. The endpoint was changed while the test ran.'
+            : `This result is not current. The endpoint was changed to revision r${current} while the test ran.`,
+    testStaleRetry: 'Retry',
+    sampleExpired:
+        'The sample is no longer available. Run the test again to see it.',
+    sampleHeading: 'Sample response',
+    sampleRegion: 'Sample response body',
+    sampleStatus: (status: number, ms: number) => `Status ${status}, ${ms} ms`,
+    sampleCopy: 'Copy sample',
+    sampleCopied: 'Copied.',
+    sampleCopyFailed: "Couldn't copy. Select the text and copy it by hand.",
     // The form.
     addTitle: 'Add endpoint',
     editTitle: 'Edit endpoint',

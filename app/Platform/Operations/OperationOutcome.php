@@ -15,12 +15,33 @@ final readonly class OperationOutcome
 
     public const KEY = '/\A[a-z][a-z0-9_]{0,31}\z/D';
 
-    /** @param  array<string, string|int|bool|null>  $summary */
+    /**
+     * `$stale` is for a result whose subject changed while the handler ran (Story 2.10): the Operation ends as
+     * {@see OperationStatus::Stale}, never as a success.
+     *
+     * @param  array<string, string|int|bool|null>  $summary
+     */
     public function __construct(
         public bool $succeeded,
         public array $summary,
+        public bool $stale = false,
     ) {
         self::assertSummary($summary);
+
+        if ($stale && $succeeded) {
+            throw new InvalidArgumentException('A stale outcome is not a success.');
+        }
+    }
+
+    /** @param  array<string, string|int|bool|null>  $summary */
+    public static function stale(array $summary = []): self
+    {
+        return new self(false, $summary, true);
+    }
+
+    public function status(): OperationStatus
+    {
+        return $this->stale ? OperationStatus::Stale : ($this->succeeded ? OperationStatus::Succeeded : OperationStatus::Failed);
     }
 
     /**

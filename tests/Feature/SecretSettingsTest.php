@@ -20,6 +20,13 @@ it('maps every env name to dashflow.secrets.* as a pending_input value, outside 
         ->and(config("dashflow.tunables.{$key}"))->toBeNull();
 })->with(array_map(null, array_keys(SECRET_SETTINGS), SECRET_SETTINGS));
 
+// Story 2.10: the Sample Response key path is read from the `key-data` mount; it is a path, not key material.
+it('keeps the Sample Response key path outside tunables with the key-data mount as its default', function () {
+    expect(config('dashflow.secrets.data_key_path.env'))->toBe('DASHFLOW_SECRETS_DATA_KEY_PATH')
+        ->and(config('dashflow.secrets.data_key_path.pending_input'))->toBeTrue()
+        ->and(config('dashflow.secrets.data_key_path.value'))->toBe('/run/secrets/key-data');
+});
+
 it('has no default for the public key and version, and the Compose secret mount as the key path default', function () {
     expect(config('dashflow.secrets.cred_public_key.value'))->toBeNull()
         ->and(config('dashflow.secrets.cred_key_version.value'))->toBeNull()

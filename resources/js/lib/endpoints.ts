@@ -88,6 +88,8 @@ export class EndpointError extends Error {
         readonly reasons: Record<string, string> = {},
         readonly current: Endpoint | null = null,
         readonly requestId: string | null = null,
+        // On a 429 from a rate limit: the seconds until the next attempt may be made.
+        readonly retryAfter: number | null = null,
     ) {
         super(`endpoint request failed: ${status}`);
     }
@@ -96,11 +98,18 @@ export class EndpointError extends Error {
 type Body = {
     data?: unknown;
     meta?: unknown;
-    error?: { code?: string; request_id?: string };
+    error?: { code?: string; request_id?: string; retry_after?: number };
     errors?: Record<string, string[]>;
     reasons?: Record<string, string>;
     current?: { data?: Endpoint };
 };
+
+// The `Retry-After` header of a throttled answer, in whole seconds, when the body did not say.
+function retryAfterHeader(response: Response): number | null {
+    const value = response.headers?.get?.('Retry-After');
+
+    return value && /^\d{1,6}$/.test(value) ? Number(value) : null;
+}
 
 async function call(
     method: 'GET' | 'POST' | 'PUT',
@@ -149,6 +158,9 @@ async function call(
             json?.reasons ?? {},
             json?.current?.data ?? null,
             json?.error?.request_id ?? null,
+            typeof json?.error?.retry_after === 'number'
+                ? json.error.retry_after
+                : retryAfterHeader(response),
         );
     }
 
@@ -230,4 +242,118 @@ export function pathPlaceholders(path: string): string[] {
     }
 
     return names;
+}
+
+// ---- Test an Endpoint (Story 2.10) ----------------------------------------------------------------------------------
+// The client sends test values only; the server renders the request from the Endpoint's current revision and checks each
+// value with the rules of a save (a 422 names the parameter as `values.{name}`). The Sample Response is read back, for the
+// Admin who asked, from the Sample route once the `sample_fetch` Operation has succeeded.
+export const HEADER_VALUE_PREFIX = 'header:';
+
+export type TestField = {
+    // The key the server expects: the parameter name, or `header:{name}` for a header bound to a date.
+    key: string;
+    // The name shown on the label.
+    name: string;
+    // A bound date or period parameter takes a date, a fixed one text.
+    type: 'text' | 'date';
+    // The stored fixed value is the default; a bound one starts empty.
+    initial: string;
+    // Whether it fills a path segment, where an empty value stops the test.
+    path: boolean;
+    // What a bound field resolves to when the Endpoint is fetched, for its hint.
+    bound: string | null;
+    header: boolean;
+};
+
+// One field per parameter, and per header bound to a date or period: a fixed header is sent as stored.
+export function testFields(endpoint: Endpoint): TestField[] {
+    const fields: TestField[] = [];
+
+    for (const param of endpoint.params) {
+        fields.push({
+            key: param.name,
+            name: param.name,
+            type: param.binding === 'fixed' ? 'text' : 'date',
+            initial: param.binding === 'fixed' ? (param.value ?? '') : '',
+            path: param.kind === 'path',
+            bound:
+                param.binding === 'fixed' ? null : RESOLVED_TEXT[param.binding],
+            header: false,
+        });
+    }
+
+    for (const header of endpoint.headers) {
+        if (header.binding !== 'fixed') {
+            fields.push({
+                key: `${HEADER_VALUE_PREFIX}${header.name}`,
+                name: header.name,
+                type: 'date',
+                initial: '',
+                path: false,
+                bound: RESOLVED_TEXT[header.binding],
+                header: true,
+            });
+        }
+    }
+
+    return fields;
+}
+
+export type StartedTest = {
+    operation_id: string;
+    status: string;
+    expires_at: string;
+    endpoint_revision: number;
+};
+
+// Starts the test (`202` with the Operation to poll). Throws the 422 with its field errors (`values.{name}`), the 429 with
+// `retryAfter`, the 404 of an Endpoint that is gone.
+export async function startEndpointTest(
+    dataSourceId: string,
+    endpointId: string,
+    values: Record<string, string>,
+): Promise<StartedTest> {
+    const body = await call(
+        'POST',
+        `${endpointsUrl(dataSourceId)}/${encodeURIComponent(endpointId)}/test`,
+        { values },
+    );
+    const data = body.data as Partial<StartedTest> | undefined;
+
+    if (!data || typeof data.operation_id !== 'string') {
+        throw new EndpointError(500);
+    }
+
+    return data as StartedTest;
+}
+
+export type Sample = {
+    status: number;
+    latency_ms: number;
+    // The body exactly as received, as text: the only form that keeps every number's lexeme.
+    body: string;
+    expires_at: string;
+};
+
+// The Sample Response of a succeeded test. Throws a 404 for everything that is not the requester's current sample.
+export async function fetchSample(
+    dataSourceId: string,
+    endpointId: string,
+    operationId: string,
+    signal?: AbortSignal,
+): Promise<Sample> {
+    const body = await call(
+        'GET',
+        `${endpointsUrl(dataSourceId)}/${encodeURIComponent(endpointId)}/samples/${encodeURIComponent(operationId)}`,
+        undefined,
+        signal,
+    );
+    const data = body.data as Partial<Sample> | undefined;
+
+    if (!data || typeof data.body !== 'string') {
+        throw new EndpointError(500);
+    }
+
+    return data as Sample;
 }

@@ -535,3 +535,20 @@ it('does not delete a fresher cached token when the call with the old one is rej
         ->and($egress->apiRequests[1]->credentials)->toBe(['Authorization' => 'Bearer new-token'])
         ->and($cache->get(OA_WS, OA_SRC, 1, $binding))->toBe('new-token');
 });
+
+// Story 2.10: a POST is never repeated automatically, so the refresh-and-retry of a 401 is for a GET only.
+it('does not repeat a POST after a 401: AuthFailed at once, one send, the rejected token dropped from the cache', function () {
+    $egress = oaEgress([oaToken('first-token'), oaToken('second-token')], [oaApi(401), oaApi(200)]);
+    [$transport, , , $store] = oaStack($egress, $this->keyFile);
+    $get = oaRequest();
+    $post = new FetchRequest(
+        $get->workspaceId, $get->dataSourceId, 'e', OA_API_URL, [], CredentialScheme::OAuth2ClientCredentials, $get->secretRefs, [], null, null, null,
+        'POST', null, OA_TOKEN_URL, 'client-1', 'read write', 1, body: '{"a":1}', idempotencyKey: '018f0000-0000-7000-8000-0000000000aa', readOnlyQuery: true,
+    );
+
+    expect(fn () => $transport->fetch($post))->toThrow(AuthFailed::class)
+        ->and($egress->apiRequests)->toHaveCount(1)
+        ->and($egress->tokenRequests)->toHaveCount(1)
+        ->and($egress->apiRequests[0]->method)->toBe('POST')
+        ->and(oaRaw($store, OA_SRC, 1))->toBeNull();
+});

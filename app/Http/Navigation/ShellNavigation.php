@@ -98,6 +98,8 @@ final class ShellNavigation
         'api.admin.data-sources.endpoints.store' => Permission::DataSourcesManage,
         'api.admin.data-sources.endpoints.show' => Permission::DataSourcesManage,
         'api.admin.data-sources.endpoints.update' => Permission::DataSourcesManage,
+        'api.admin.data-sources.endpoints.test' => Permission::DataSourcesManage,
+        'api.admin.data-sources.endpoints.samples.show' => Permission::DataSourcesManage,
         'api.admin.data-sources.lock.acquire' => Permission::DataSourcesManage,
         'api.admin.data-sources.lock.heartbeat' => Permission::DataSourcesManage,
         'api.admin.data-sources.lock.release' => Permission::DataSourcesManage,

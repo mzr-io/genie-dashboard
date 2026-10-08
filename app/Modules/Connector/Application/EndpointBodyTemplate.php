@@ -106,7 +106,10 @@ final class EndpointBodyTemplate
         }
 
         if (is_array($value)) {
-            return array_map(fn (mixed $item): mixed => self::walk($item, $declared, $refs), $value);
+            // By reference: a parameter inside an array is a body parameter, too.
+            return array_map(static function (mixed $item) use ($declared, &$refs): mixed {
+                return self::walk($item, $declared, $refs);
+            }, $value);
         }
 
         return $value;

@@ -176,7 +176,7 @@ final class Operations
                 $this->cleanup($handler, $operation);
             }
 
-            $this->complete($workspaceId, $operation->id, $outcome->succeeded ? OperationStatus::Succeeded : OperationStatus::Failed, $outcome->summary);
+            $this->complete($workspaceId, $operation->id, $outcome->status(), $outcome->summary);
         });
     }
 

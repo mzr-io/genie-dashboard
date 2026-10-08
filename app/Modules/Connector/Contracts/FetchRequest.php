@@ -8,13 +8,13 @@ use JsonSerializable;
  * What the fetch pipeline is asked to call (AR-26): the Workspace, Data Source and Endpoint, a sanitized URL template, the
  * parameter names, the credential scheme and the `secret_ref`s, plus (since version 2) the plain request settings of the
  * Data Source: its non-secret default headers (a secret one is only a name, its value a `header:{name}` ref), the API
- * key's name and placement, the timeout, the method (version 3) the Data Source's own response size limit and (version 4) what an OAuth2 client-credentials call needs to get a token: the token URL, the scope, the plain client ID and the `secret_version` of the client secret (the token cache key). Never a secret value, a ciphertext or a resolved parameter:
+ * key's name and placement, the timeout, the method (version 3) the Data Source's own response size limit and (version 4) what an OAuth2 client-credentials call needs to get a token: the token URL, the scope, the plain client ID and the `secret_version` of the client secret (the token cache key). Version 5 (Story 2.10) adds what an Endpoint test sends: the rendered URL (the path with its values filled in), the query pairs, the rendered header pairs, the rendered body, the Idempotency-Key and the read-only flag. Those hold the Admin's test values, so they are never serialised ({@see self::toArray()} carries the template, the parameter names and counts only), never logged and never recorded. Never a secret value, a ciphertext or a resolved parameter:
  * {@see FetchTransport} resolves the refs through {@see SecretVault::resolve} at egress. Versioned, so a later change to
  * the shape is explicit. A connection test has no Endpoint (`endpointId` is null), and an unsaved form no Data Source.
  */
 final readonly class FetchRequest implements JsonSerializable
 {
-    public const VERSION = 4;
+    public const VERSION = 5;
 
     public string $urlTemplate;
 
@@ -24,6 +24,8 @@ final readonly class FetchRequest implements JsonSerializable
      * @param  list<string>  $parameterNames
      * @param  list<SecretRef>  $secretRefs
      * @param  list<array{name: string, value: string, secret?: true}>  $headers  the default headers; a secret one has an empty value
+     * @param  list<array{0: string, 1: string}>  $queryPairs  the query string as `[name, value]` pairs; {@see EndpointQuery::build()} percent-encodes them
+     * @param  list<array{name: string, value: string}>  $endpointHeaders  the Endpoint's rendered headers, applied after the default headers
      */
     public function __construct(
         public string $workspaceId,
@@ -43,6 +45,16 @@ final readonly class FetchRequest implements JsonSerializable
         public ?string $oauthClientId = null,
         public ?string $oauthScope = null,
         public ?int $secretVersion = null,
+        /** The URL to call, the base URL with the rendered path and no query (null: the template is the URL). Holds test values. */
+        public ?string $url = null,
+        public array $queryPairs = [],
+        public array $endpointHeaders = [],
+        /** The rendered JSON body of a POST. Holds test values. */
+        public ?string $body = null,
+        /** Sent as `Idempotency-Key` on a POST (the Operation id). */
+        public ?string $idempotencyKey = null,
+        /** True only for a POST whose Endpoint revision is flagged read-only; any other POST is refused by the transport. */
+        public bool $readOnlyQuery = false,
     ) {
         // The template is kept without userinfo, query and fragment: a credential placed in a URL never travels here.
         $url = (string) preg_replace('/[?#].*\z/s', '', $urlTemplate);
@@ -96,7 +108,18 @@ final readonly class FetchRequest implements JsonSerializable
             'oauth_client_id' => $this->oauthClientId,
             'oauth_scope' => $this->oauthScope,
             'secret_version' => $this->secretVersion,
+            // Counts and a flag only: the pairs, the rendered URL and the body hold the Admin's test values.
+            'query_count' => count($this->queryPairs),
+            'endpoint_header_count' => count($this->endpointHeaders),
+            'has_body' => $this->body !== null,
+            'read_only_query' => $this->readOnlyQuery,
         ];
+    }
+
+    /** @return array<string, mixed> */
+    public function __debugInfo(): array
+    {
+        return $this->toArray();
     }
 
     /** @return array<string, mixed> */

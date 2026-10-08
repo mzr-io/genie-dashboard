@@ -49,6 +49,8 @@ final class ConnectorAuditSerializer implements AuditSerializer
             'read_only_query' => AuditField::Enum,
             'path' => AuditField::Hashed,
             'bindings' => AuditField::Hashed,
+            // An Endpoint test (Story 2.10): the revision tested, in the clear (the id and the method are above); never a value, the path or a body.
+            'endpoint_revision' => AuditField::Count,
             'slot' => AuditField::Enum,
             'purpose' => AuditField::Enum,
             'key_version' => AuditField::Count,

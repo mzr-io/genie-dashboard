@@ -183,3 +183,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-9-register-endpoints-on-a-data-source.md`
   summary: Add a value type to Endpoint parameters so a fixed value can be a number or boolean at a typed body position, and test concurrent revises with two connections.
   evidence: Fixed values are stored as strings only; nothing renders a request yet, and the revise row lock is only tested sequentially.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-10-test-an-endpoint-and-see-the-sample-response.md`
+  summary: Decide whether a POST sample test should fetch a fresh OAuth token before the first send when the cached token may have expired.
+  evidence: A POST is never retried, so a POST sent with an expired cached token ends as auth-failed and needs a manual re-run; the token request itself is idempotent.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-10-test-an-endpoint-and-see-the-sample-response.md`
+  summary: Audit sample reads and consider consuming the sample blob after the first read.
+  evidence: ReadSample can be called repeatedly until the Operation expires and reads are not recorded.

@@ -28,9 +28,12 @@ use App\Modules\Connector\Application\ManageDataSources;
 use App\Modules\Connector\Application\ManageEgressGrants;
 use App\Modules\Connector\Application\ManageEndpoints;
 use App\Modules\Connector\Application\ManageHostAllowlist;
+use App\Modules\Connector\Application\ReadSample;
 use App\Modules\Connector\Application\RecordEgressBlock;
 use App\Modules\Connector\Application\RunConnectionTest;
+use App\Modules\Connector\Application\RunSampleFetch;
 use App\Modules\Connector\Application\StartConnectionTest;
+use App\Modules\Connector\Application\StartSampleFetch;
 use App\Modules\Connector\Contracts\ConnectionTests;
 use App\Modules\Connector\Contracts\DataSources;
 use App\Modules\Connector\Contracts\EgressBlockLog;
@@ -42,6 +45,8 @@ use App\Modules\Connector\Contracts\FetchTransport;
 use App\Modules\Connector\Contracts\HostAllowlist;
 use App\Modules\Connector\Contracts\HostAllowlistDependents;
 use App\Modules\Connector\Contracts\HostResolver;
+use App\Modules\Connector\Contracts\SampleFetches;
+use App\Modules\Connector\Contracts\Samples;
 use App\Modules\Connector\Contracts\SecretVault;
 use App\Modules\Connector\Contracts\TokenRequestLog;
 use App\Modules\Connector\Infrastructure\ConnectorAuditSerializer;
@@ -141,6 +146,8 @@ class AppServiceProvider extends ServiceProvider
         // One per process, so a missing token key is warned about once.
         $this->app->singleton(OAuthTokenCache::class);
         $this->app->bind(ConnectionTests::class, StartConnectionTest::class);
+        $this->app->bind(SampleFetches::class, StartSampleFetch::class);
+        $this->app->bind(Samples::class, ReadSample::class);
         $this->app->singleton(OperationKinds::class);
         $this->app->singleton(MetricEmitter::class, OtelMetricEmitter::class);
         $this->app->bind(SignInMemberships::class, SignInMembershipsAdapter::class);
@@ -180,6 +187,8 @@ class AppServiceProvider extends ServiceProvider
         // Each module registers its Operation kinds with the kernel (the kernel calls no module). A connection test runs on
         // `fetch-interactive`, which only `worker-connector` consumes.
         $this->app->make(OperationKinds::class)->register(new OperationKind(ConnectionTests::KIND, ConnectionTests::QUEUE, 600, RunConnectionTest::class));
+        // The `sample_fetch` kind (Story 2.10): registered by the Connector until an Ingestion module exists. Its lifetime is also the TTL of the sealed Sample Response.
+        $this->app->make(OperationKinds::class)->register(new OperationKind(SampleFetches::KIND, SampleFetches::QUEUE, 600, RunSampleFetch::class));
 
         QueueContext::register($this->app->make(RequestContext::class), $this->app->make('events'));
         JobSignatureGuard::register($this->app, $this->app->make('events'));

@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-06-2026 11:46
-last_updated: 10-09-2026 12:00
+last_updated: 10-09-2026 17:00
 project: rmg-dashboard-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -73,7 +73,7 @@ development_status:
   2-7-use-oauth2-client-credentials: review
   2-8-prevent-overwriting-on-the-data-source-form-with-a-soft-lock: review
   2-9-register-endpoints-on-a-data-source: review
-  2-10-test-an-endpoint-and-see-the-sample-response: backlog
+  2-10-test-an-endpoint-and-see-the-sample-response: review
   2-11-follow-pagination-up-to-the-limits: backlog
   2-12-define-user-attributes-for-user-context-binding: backlog
   2-13-bind-endpoint-parameters-and-headers-to-user-context: backlog

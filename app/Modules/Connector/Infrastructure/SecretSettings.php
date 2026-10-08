@@ -48,6 +48,14 @@ final class SecretSettings
         return is_string($value) && $value !== '' ? $value : '/run/secrets/key-token';
     }
 
+    /** Where the Sample Response key is read (`web` opens its requester's sample, `worker-connector` seals it). */
+    public function dataKeyPath(): string
+    {
+        $value = $this->config->get('dashflow.secrets.data_key_path.value');
+
+        return is_string($value) && $value !== '' ? $value : '/run/secrets/key-data';
+    }
+
     /**
      * Seconds taken off a token's `expires_in` before it is cached; unset means none (no number is invented).
      *

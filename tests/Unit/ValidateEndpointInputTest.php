@@ -265,3 +265,14 @@ describe('body template', function () {
         expect(EndpointBodyTemplate::text(json_decode(json_encode($input->bodyTemplate))))->toBe('{"0":"y","1":"x"}');
     });
 });
+
+// Story 2.10: a parameter inside a JSON array of the body template is a body parameter, too (it was once taken for a query one).
+it('classifies a parameter used inside an array of the body template as a body parameter', function () {
+    $input = (new ValidateEndpointInput)->validate([
+        'method' => 'POST', 'path' => '/search', 'read_only_query' => true, 'confirm_read_only' => true,
+        'params' => [['name' => 'team', 'binding' => 'fixed', 'value' => 'a'], ['name' => 'debug', 'binding' => 'fixed', 'value' => '1']],
+        'body_template' => '{"filters":[{"$param":"team"}]}',
+    ]);
+
+    expect(array_column($input->params, 'kind', 'name'))->toBe(['team' => 'body', 'debug' => 'query']);
+});
