@@ -25,14 +25,15 @@ use Illuminate\Support\Str;
  * moves the pointer and audits `connector.endpoint.revised`, all in one transaction. An older revision is never touched
  * (the table refuses it) and the Data Source's own `revision` is not changed. The first time a revision sets the read-only
  * flag, `connector.endpoint.read_only_flag_set` is audited in the same transaction. The audit state is ids, the method,
- * revision numbers, counts and keyed hashes of the path and bindings, never the path, a value or a header in the clear.
+ * revision numbers, counts, the `requires_user_context` and `scope_by_caller` flags (Story 2.13) and keyed hashes of the path and bindings,
+ * never the path, a value or a header in the clear.
  * Nothing here sends a request.
  */
 final class ManageEndpoints implements Endpoints
 {
     private const STAMP = "'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'";
 
-    private const SELECT = 'SELECT e.id, e.data_source_id, e.revision, e.current_revision_id, r.method, r.path_template, r.path_ast, r.params, r.headers, r.body_template, r.read_only_query, '
+    private const SELECT = 'SELECT e.id, e.data_source_id, e.revision, e.current_revision_id, r.method, r.path_template, r.path_ast, r.params, r.headers, r.body_template, r.read_only_query, r.requires_user_context, r.scope_by_caller, '
         .'to_char(e.created_at, '.self::STAMP.') AS created, to_char(e.updated_at, '.self::STAMP.') AS updated '
         .'FROM endpoints e JOIN endpoint_revisions r ON r.workspace_id = e.workspace_id AND r.id = e.current_revision_id';
 
@@ -147,15 +148,18 @@ final class ManageEndpoints implements Endpoints
     private function insertRevision(DataSourceActor $actor, string $endpointId, string $revisionId, int $number, EndpointInput $input): void
     {
         DB::insert(
-            'insert into endpoint_revisions (id, workspace_id, endpoint_id, revision, method, path_template, path_ast, params, headers, body_template, read_only_query, created_at, created_by_membership_id) '
-            .'values (?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?::boolean, ?, ?)',
+            'insert into endpoint_revisions (id, workspace_id, endpoint_id, revision, method, path_template, path_ast, params, headers, body_template, read_only_query, requires_user_context, scope_by_caller, created_at, created_by_membership_id) '
+            .'values (?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?::boolean, ?::boolean, ?::boolean, ?, ?)',
             [
                 $revisionId, $actor->workspaceId, $endpointId, $number, $input->method, $input->path->template,
                 json_encode($input->path->ast, JSON_THROW_ON_ERROR),
                 json_encode($input->params, JSON_THROW_ON_ERROR),
                 json_encode($input->headers, JSON_THROW_ON_ERROR),
                 $input->bodyTemplate === null ? null : json_encode($input->bodyTemplate, JSON_THROW_ON_ERROR),
-                $input->readOnlyQuery ? 'true' : 'false', now(), $actor->membershipId,
+                $input->readOnlyQuery ? 'true' : 'false',
+                // Derived here, never client-supplied: the validator has already refused a scope flag without a user binding.
+                $input->requiresUserContext() ? 'true' : 'false', $input->scopeByCaller ? 'true' : 'false',
+                now(), $actor->membershipId,
             ],
         );
     }
@@ -234,6 +238,9 @@ final class ManageEndpoints implements Endpoints
             'param_count' => count($params),
             'header_count' => count($headers),
             'read_only_query' => $endpoint->readOnlyQuery ? 'true' : 'false',
+            'requires_user_context' => $endpoint->requiresUserContext ? 'true' : 'false',
+            'scope_by_caller' => $endpoint->scopeByCaller ? 'true' : 'false',
+            'user_binding_count' => count(array_filter([...$params, ...$headers], fn (array $row): bool => Endpoint::isUserBound($row['binding']))),
             'path' => $endpoint->pathTemplate,
             'bindings' => json_encode([
                 array_map(fn (array $p): array => [$p['name'], $p['binding'], $p['value']], $params),
@@ -245,7 +252,7 @@ final class ManageEndpoints implements Endpoints
 
     private function endpoint(object $row): Endpoint
     {
-        /** @var object{id: string, data_source_id: string, revision: int|string, current_revision_id: string, method: string, path_template: string, path_ast: string, params: string, headers: string, body_template: string|null, read_only_query: bool|string|int, created: string, updated: string} $row */
+        /** @var object{id: string, data_source_id: string, revision: int|string, current_revision_id: string, method: string, path_template: string, path_ast: string, params: string, headers: string, body_template: string|null, read_only_query: bool|string|int, requires_user_context: bool|string|int, scope_by_caller: bool|string|int, created: string, updated: string} $row */
         $params = [];
 
         foreach ($this->asList(json_decode($row->params, true)) as $p) {
@@ -284,6 +291,8 @@ final class ManageEndpoints implements Endpoints
             filter_var($row->read_only_query, FILTER_VALIDATE_BOOLEAN),
             $row->created,
             $row->updated,
+            filter_var($row->requires_user_context, FILTER_VALIDATE_BOOLEAN),
+            filter_var($row->scope_by_caller, FILTER_VALIDATE_BOOLEAN),
         );
     }
 

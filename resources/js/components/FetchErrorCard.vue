@@ -7,6 +7,7 @@ import { copyText } from '@/lib/clipboard';
 import { formatBytes } from '@/lib/format';
 import {
     dataSourceLabels,
+    endpointLabels,
     shellLabels,
     technicalDetailsLabels,
 } from '@/locales/labels';
@@ -23,7 +24,8 @@ const props = defineProps<{
         | 'not-json'
         | 'response-too-large'
         | 'auth-failed'
-        | 'too-many-pages';
+        | 'too-many-pages'
+        | 'access.context_missing';
     // The name of the source, for `fetch-failed`.
     source: string;
     // The bytes read and the limit, for `response-too-large`.
@@ -38,6 +40,8 @@ const props = defineProps<{
     // A paged Endpoint test (Story 2.11): the page that failed or was reached, and the pages fetched (the cap, for `too-many-pages`).
     page?: number | null;
     pages?: number | null;
+    // A Fetch as user (Story 2.13), `access.context_missing`: the attribute key ids without a value (comma separated), never a value.
+    missing?: string | null;
 }>();
 
 const emit = defineEmits<{ (e: 'retry'): void }>();
@@ -52,6 +56,17 @@ function message(): string {
     // Story 2.7: the canonical catalogue is closed to EXPERIENCE.md's rows, which have none for this, so it is a label.
     if (props.code === 'auth-failed') {
         return dataSourceLabels.authFailed(props.source);
+    }
+
+    // Story 2.13: a Fetch as user that could not resolve the member's values names the missing attribute keys, never a value.
+    if (props.code === 'access.context_missing') {
+        if (props.reason === 'member_unavailable') {
+            return endpointLabels.contextMemberUnavailable;
+        }
+
+        return endpointLabels.contextMissing(
+            (props.missing ?? '').split(',').filter((key) => key !== ''),
+        );
     }
 
     // Story 2.11: the page-limit message is a label too, and says the cap that was reached.

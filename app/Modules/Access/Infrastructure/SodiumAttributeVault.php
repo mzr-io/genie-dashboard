@@ -34,6 +34,12 @@ final class SodiumAttributeVault implements AttributeVault
         sodium_memzero($digest);
     }
 
+    public function assertReadable(): void
+    {
+        $data = $this->dataKey();
+        sodium_memzero($data);
+    }
+
     public function seal(string $workspaceId, string $membershipId, string $keyId, #[\SensitiveParameter] string $value): string
     {
         $key = $this->dataKey();

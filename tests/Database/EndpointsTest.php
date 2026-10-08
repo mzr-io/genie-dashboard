@@ -411,14 +411,14 @@ it('refuses a bound header value with CR, LF or non-visible ASCII, or a reserved
     'Authorization' => [['name' => 'authorization', 'binding' => 'fixed', 'value' => 'x'], 'headers.0.name', 'header-name-reserved'],
 ]);
 
-it('offers the fixed, date range and period bindings and refuses user context', function () {
+it('offers the fixed, date range and period bindings and refuses a binding that is not one (user context is Story 2.13)', function () {
     $workspace = Cluster::workspace('Acme');
     epAdmin($workspace);
     $source = Cluster::seedDataSource($workspace, 'Sales API');
 
-    foreach (['user_id', 'user_email', 'user_group', 'user_attribute', 'user.id'] as $binding) {
-        epCreate($source, ['params' => [['name' => 'u', 'binding' => $binding]]])->assertStatus(422)->assertJsonPath('reasons', ['params.0.binding' => 'binding-user-context-unavailable']);
-        epCreate($source, ['headers' => [['name' => 'X-U', 'binding' => $binding]]])->assertStatus(422)->assertJsonPath('reasons', ['headers.0.binding' => 'binding-user-context-unavailable']);
+    foreach (['user_context', 'user.id', 'magic'] as $binding) {
+        epCreate($source, ['params' => [['name' => 'u', 'binding' => $binding]]])->assertStatus(422)->assertJsonPath('reasons', ['params.0.binding' => 'binding-invalid']);
+        epCreate($source, ['headers' => [['name' => 'X-U', 'binding' => $binding]]])->assertStatus(422)->assertJsonPath('reasons', ['headers.0.binding' => 'binding-invalid']);
     }
 
     $ok = epCreate($source, ['params' => [
@@ -581,8 +581,8 @@ it('rolls the Endpoints migration back and migrates forward again', function () 
     $tables = fn (): int => (int) Cluster::rows(Cluster::superuser(), "select count(*) as n from information_schema.tables where table_name in ('endpoints', 'endpoint_revisions')")[0]['n'];
 
     try {
-        // Three steps: the newest migrations are Story 2.12's (user attributes) and Story 2.11's (pagination), then this one.
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 3, '--force' => true]))->toBe(0)
+        // Four steps: the newest migrations are Story 2.13's (user context), Story 2.12's (user attributes) and Story 2.11's (pagination), then this one.
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 4, '--force' => true]))->toBe(0)
             ->and($tables())->toBe(0);
     } finally {
         Artisan::call('migrate', ['--database' => 'migrator', '--force' => true]);

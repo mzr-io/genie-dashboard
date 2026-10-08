@@ -1184,7 +1184,50 @@ export const endpointLabels = {
         date_range_to: 'Date range: to',
         period_start: 'Block period: start',
         period_end: 'Block period: end',
+        user_id: 'User ID',
+        user_email: 'User email',
+        user_group: 'User group',
+        user_attribute: 'User attribute',
     } as Record<string, string>,
+    // The Binding select (Story 2.13): the user-context group, the attribute options (by label) and the tag of a bound row.
+    userContextGroup: 'User context',
+    attributeOption: (label: string) => `Attribute: ${label}`,
+    attributeUnknown: (keyId: string) => `Attribute: ${keyId}`,
+    userContextTag: 'user context',
+    // The bound row's value text: never a value. Read out as one phrase.
+    userContextResolved: 'user context',
+    sharedData: 'shared data',
+    sharedDataHint:
+        'Everyone with access to a block that uses this endpoint sees the same data.',
+    userContextHint:
+        "Filled in from the signed-in user's own data. Users can't change it.",
+    dataColumn: 'Data',
+    scopeByCaller: "Keep each user's data separate",
+    scopeByCallerHelper:
+        'Fetches are kept per user instead of shared. Available when a parameter or header uses user context.',
+    // Fetch as user (Story 2.13). The failure messages are the catalogue's, plus `access.context_missing` (a label here).
+    fetchAsUser: 'Fetch as user',
+    fetchAsUserAction: (method: string, path: string) =>
+        `Fetch ${method} ${path} as a user`,
+    fetchAsUserTitle: 'Fetch as user',
+    fetchAsUserSubtitle:
+        'Sends this request once as the member you choose, using their own ID, email, group and attributes. The response is kept for a few minutes, only for you, and is never saved. The member is notified.',
+    fetchAsUserMember: 'Member',
+    fetchAsUserMemberSearch: 'Search members',
+    fetchAsUserMemberChoose: 'Choose a member',
+    fetchAsUserMemberNone: 'No active members match.',
+    fetchAsUserMemberRequired: 'Choose a member to fetch as.',
+    fetchAsUserRun: 'Fetch as user',
+    fetchAsUserFailedTitle: 'Fetch as user failed',
+    fetchAsUserNoPermission: "You don't have permission to fetch as a user.",
+    contextMemberUnavailable:
+        'This member is no longer active, so nothing was sent.',
+    contextMissing: (keys: string[]) =>
+        keys.length === 0
+            ? "This member's data can't be sent with this request, so nothing was sent."
+            : `This member has no value for ${keys.join(', ')}, so nothing was sent.`,
+    userBoundNotice:
+        'This endpoint uses user context. Use Fetch as user to see what a member would get.',
     boundPrefix: 'Filled in when fetched:',
     boundHint: (text: string) => `Filled in when fetched: ${text}`,
     body: 'Body template',
@@ -1250,8 +1293,11 @@ export const endpointLabels = {
             "A path value cannot be empty, '.', '..' or contain '/'. Other values cannot hold control characters.",
         'param-value-too-long': 'This value is too long.',
         'binding-invalid': 'Choose a binding.',
-        'binding-user-context-unavailable':
-            'Binding to user context is not available yet.',
+        'binding-attribute-unknown':
+            'Choose one of the attributes defined for this workspace.',
+        'scope-requires-user-context':
+            'Keeping data per user needs a parameter or header bound to user context.',
+        'scope-invalid': 'The setting is not valid.',
         'headers-invalid': 'The headers are not valid. Reload the page.',
         'too-many-headers': 'There are too many headers.',
         'header-name-invalid':

@@ -4,22 +4,36 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Admin\EndpointRequest;
+use App\Http\Requests\Admin\FetchAsUserRequest;
 use App\Http\Requests\Admin\ListEndpointsRequest;
 use App\Http\Requests\Admin\TestEndpointRequest;
 use App\Http\Resources\EndpointResource;
 use App\Http\Responses\AdminApiError;
 use App\Models\User;
+use App\Modules\Access\Contracts\AttributeKeyRow;
+use App\Modules\Access\Contracts\AttributeKeys;
+use App\Modules\Access\Contracts\ErrorCode as AccessErrorCode;
+use App\Modules\Access\Contracts\MemberDirectory;
+use App\Modules\Access\Contracts\MemberQuery;
+use App\Modules\Access\Contracts\MemberRow;
 use App\Modules\Access\Contracts\MembershipLookup;
+use App\Modules\Access\Contracts\MembershipNotFound;
+use App\Modules\Access\Contracts\MembershipPermissions;
+use App\Modules\Access\Contracts\Permission;
 use App\Modules\Connector\Contracts\DataSourceActor;
 use App\Modules\Connector\Contracts\DataSourceNotFound;
+use App\Modules\Connector\Contracts\DataSources;
 use App\Modules\Connector\Contracts\Endpoint;
+use App\Modules\Connector\Contracts\EndpointInput;
 use App\Modules\Connector\Contracts\EndpointNotFound;
 use App\Modules\Connector\Contracts\EndpointRevisionConflict;
 use App\Modules\Connector\Contracts\Endpoints;
 use App\Modules\Connector\Contracts\ErrorCode;
+use App\Modules\Connector\Contracts\FetchesAsUser;
 use App\Modules\Connector\Contracts\InvalidDataSource;
 use App\Modules\Connector\Contracts\SampleFetches;
 use App\Modules\Connector\Contracts\SampleFetchThrottled;
+use App\Modules\Connector\Contracts\SamplePreviewDenied;
 use App\Modules\Connector\Contracts\Samples;
 use App\Platform\Contracts\ErrorCode as PlatformErrorCode;
 use App\Platform\Tenancy\WorkspaceTransaction;
@@ -43,6 +57,11 @@ final class EndpointController extends Controller
         private readonly MembershipLookup $memberships,
         private readonly SampleFetches $tests,
         private readonly Samples $samples,
+        private readonly FetchesAsUser $asUser,
+        private readonly AttributeKeys $attributeKeys,
+        private readonly MemberDirectory $directory,
+        private readonly MembershipPermissions $permissions,
+        private readonly DataSources $sources,
     ) {}
 
     public function index(ListEndpointsRequest $request, string $dataSource): JsonResponse
@@ -122,6 +141,71 @@ final class EndpointController extends Controller
     }
 
     /**
+     * Fetch as user (Story 2.13): the Admin (who holds `data.preview_as_user`, checked by the request) chooses an active member of the
+     * Workspace; `202` with the Operation to poll. A target that is not an active member here is a 404, a `values` entry for a
+     * user-bound name is a 422 `values.{name}`, and nothing is called from this tier: the values of the member are resolved by the
+     * worker. The response is read back through {@see self::sample()} by the requester alone.
+     */
+    public function fetchAsUser(FetchAsUserRequest $request, string $dataSource, string $endpoint): JsonResponse
+    {
+        try {
+            $operation = $this->asUser->start($this->actor($request), $dataSource, $endpoint, $request->membership(), $request->values());
+        } catch (DataSourceNotFound|EndpointNotFound|MembershipNotFound) {
+            abort(404);
+        } catch (InvalidDataSource $e) {
+            return AdminApiError::json($request, PlatformErrorCode::ValidationFailed->value, 422, errors: $e->errors, extra: $e->reasons === [] ? [] : ['reasons' => $e->reasons]);
+        } catch (SampleFetchThrottled $e) {
+            return AdminApiError::json($request, PlatformErrorCode::TooManyRequests->value, 429, 'Too many endpoint tests.', extra: ['reason' => 'sample-fetch-throttled'], errorExtra: ['retry_after' => $e->retryAfter])
+                ->header('Retry-After', (string) $e->retryAfter);
+        }
+
+        return response()->json(
+            ['data' => ['operation_id' => $operation->id, 'status' => $operation->status->value, 'expires_at' => $operation->expiresAt, 'endpoint_revision' => $operation->subjectRevision]],
+            202,
+            ['Cache-Control' => self::NO_STORE],
+        );
+    }
+
+    /**
+     * What the Binding select lists (Story 2.13): the four user-context bindings and each attribute key the Workspace defines (id,
+     * label, type; never a value), and, for an Admin who holds `data.preview_as_user`, the active members a Fetch as user can target
+     * (`?search=` narrows them). Nothing here reads a member's attribute values.
+     */
+    public function bindingOptions(Request $request, string $dataSource): JsonResponse
+    {
+        $workspaceId = strtolower($this->workspaceId($request));
+
+        try {
+            $this->sources->find($workspaceId, $dataSource);
+        } catch (DataSourceNotFound) {
+            abort(404);
+        }
+
+        $user = $request->user();
+        $mayPreview = $user instanceof User && in_array(Permission::DataPreviewAsUser, $this->permissions->forUser($user->id, $workspaceId), true);
+        $search = $request->query('search');
+
+        $members = [];
+
+        if ($mayPreview) {
+            $page = $this->directory->page($workspaceId, new MemberQuery(is_string($search) && $search !== '' ? mb_substr($search, 0, 100) : null, pageSize: 50));
+
+            foreach ($page->rows as $row) {
+                if ($row->kind === MemberRow::MEMBER && $row->status === 'active') {
+                    $members[] = ['membership_id' => $row->id, 'name' => $row->name, 'email' => $row->email];
+                }
+            }
+        }
+
+        return response()->json(['data' => [
+            'bindings' => EndpointInput::USER_BINDINGS,
+            'attributes' => array_map(fn (AttributeKeyRow $key): array => ['key_id' => $key->keyId, 'label' => $key->label, 'value_type' => $key->valueType], $this->attributeKeys->list($workspaceId)),
+            'members' => $members,
+            'may_preview' => $mayPreview,
+        ]], 200, ['Cache-Control' => self::NO_STORE]);
+    }
+
+    /**
      * The Sample Response of a test (Story 2.10), only for the membership that asked and only while it is current. Everyone
      * else (another member, another Workspace, an expired, failed or stale Operation, a missing blob) gets a bare 404 with no body.
      */
@@ -130,9 +214,17 @@ final class EndpointController extends Controller
         $workspaceId = $request->session()->get(WorkspaceTransaction::SESSION_KEY);
         $membershipId = $this->membershipId($request);
 
-        $sample = is_string($workspaceId) && $membershipId !== null
-            ? $this->samples->read(strtolower($workspaceId), $membershipId, $dataSource, $endpoint, $operation)
-            : null;
+        $user = $request->user();
+        $mayPreview = is_string($workspaceId) && $user instanceof User
+            && in_array(Permission::DataPreviewAsUser, $this->permissions->forUser($user->id, strtolower($workspaceId)), true);
+
+        try {
+            $sample = is_string($workspaceId) && $membershipId !== null
+                ? $this->samples->read(strtolower($workspaceId), $membershipId, $dataSource, $endpoint, $operation, $mayPreview)
+                : null;
+        } catch (SamplePreviewDenied) {
+            return AdminApiError::json($request, AccessErrorCode::NotAuthorized->value, 403, 'Forbidden');
+        }
 
         if ($sample === null) {
             return response()->noContent(404);

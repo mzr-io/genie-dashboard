@@ -58,6 +58,9 @@ enum AuditAction: string
     // Connector: an Endpoint was tested (Story 2.10). The Endpoint id, the method and the revision tested only; never a value, the path or a body.
     case ConnectorEndpointTested = 'connector.endpoint.tested';
 
+    // Connector: an Admin fetched an Endpoint as a member (Story 2.13). The Endpoint id, the target membership id and the revision only; never a value.
+    case ConnectorFetchAsUserPerformed = 'connector.fetch_as_user.performed';
+
     // Connector: a credential set, replaced or removed (Story 2.4); the value is never part of the event, only its keyed hash.
     case ConnectorDataSourceSecretChanged = 'connector.data_source.secret_changed';
 

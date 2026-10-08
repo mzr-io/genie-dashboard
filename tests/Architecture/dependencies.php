@@ -28,7 +28,7 @@ return [
         'Operator' => ['Access', 'Connector'],
         'Access' => ['Identity'],
         'Identity' => [],
-        'Connector' => [],
+        'Connector' => ['Access'],
         'RawStore' => [],
         'BlockTypes' => [],
         'Settings' => [],

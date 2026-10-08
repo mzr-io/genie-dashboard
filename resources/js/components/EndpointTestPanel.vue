@@ -1,21 +1,34 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, reactive, ref, useId } from 'vue';
+import {
+    computed,
+    nextTick,
+    onBeforeUnmount,
+    onMounted,
+    reactive,
+    ref,
+    useId,
+} from 'vue';
 import BlockedReason from '@/components/BlockedReason.vue';
 import FetchErrorCard from '@/components/FetchErrorCard.vue';
 import FormField from '@/components/FormField.vue';
 import JsonSampleViewer from '@/components/JsonSampleViewer.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import NativeSelect from '@/components/NativeSelect.vue';
 import { DataSourceError, PollTimeout, pollOperation } from '@/lib/dataSources';
 import type { ConnectionTestCode } from '@/lib/dataSources';
 import {
     EndpointError,
+    fetchBindingOptions,
     fetchSample,
     startEndpointTest,
+    startFetchAsUser,
     testFields,
 } from '@/lib/endpoints';
-import type { Endpoint, Sample } from '@/lib/endpoints';
+import type { BindingOptions, Endpoint, Sample } from '@/lib/endpoints';
 import { SIGN_IN_URL } from '@/lib/session';
+import { useI18n } from 'vue-i18n';
+import { useShell } from '@/composables/useShell';
 import { endpointLabels as labels } from '@/locales/labels';
 
 // Test an Endpoint (Story 2.10; UX-DR-135, 25, 26, 70, 276, 279, 282). One labelled input per parameter (a date or period
@@ -25,10 +38,17 @@ import { endpointLabels as labels } from '@/locales/labels';
 // that is no longer current says so, with a Retry, and shows no body. The server renders the request and checks the values:
 // this component only sends them. An empty path parameter stops the test here (`aria-disabled`, naming the parameter) and
 // again on the server (422). The body lives only in this component's memory and goes with it.
+//
+// Fetch as user (Story 2.13; `as-user`): the same panel with a member picker. The server resolves the member's ID, email, group
+// and attributes itself, so the user-bound parameters have no input here and no value is ever sent for them; the response comes
+// back as the same sealed sample, and a member without a bound value ends in the error card naming the missing attribute keys.
+// Without `data.preview_as_user` the action is `aria-disabled` with `perm-denied`; a plain test of an Endpoint that uses user
+// context is `aria-disabled` and points to Fetch as user.
 const props = defineProps<{
     dataSourceId: string;
     endpoint: Endpoint;
     sourceName: string;
+    asUser?: boolean;
 }>();
 
 const emit = defineEmits<{ (e: 'gone'): void }>();
@@ -44,6 +64,8 @@ type Failure = {
     // A paged Data Source (Story 2.11): the page that failed or was reached, and the pages fetched.
     page: number | null;
     pages: number | null;
+    // A Fetch as user: the attribute keys without a value.
+    missing?: string | null;
 };
 
 type Outcome =
@@ -84,14 +106,76 @@ const missingPath = computed(
         ) ?? null,
 );
 
+const { can } = useShell();
+const { t } = useI18n();
+const mayPreview = computed(() => can.value['data.preview_as_user'] === true);
+const memberId = ref('');
+const memberSearch = ref('');
+const options = ref<BindingOptions | null>(null);
+const memberFieldId = `${prefix}-member`;
+const searchFieldId = `${prefix}-member-search`;
+let searchTimer: ReturnType<typeof setTimeout> | null = null;
+
+let loadCount = 0;
+
+async function loadMembers(): Promise<void> {
+    // Only the newest request may answer: an older, slower one is dropped.
+    const mine = ++loadCount;
+
+    try {
+        const loaded = await fetchBindingOptions(
+            props.dataSourceId,
+            memberSearch.value,
+        );
+
+        if (mine !== loadCount) {
+            return;
+        }
+
+        options.value = loaded;
+
+        // A member the reload dropped is no longer a choice.
+        if (
+            memberId.value !== '' &&
+            !loaded.members.some((m) => m.membership_id === memberId.value)
+        ) {
+            memberId.value = '';
+        }
+    } catch {
+        if (mine === loadCount) {
+            options.value = null;
+        }
+    }
+}
+
+function onMemberSearch(): void {
+    if (searchTimer) {
+        clearTimeout(searchTimer);
+    }
+
+    searchTimer = setTimeout(() => void loadMembers(), 300);
+}
+
+onMounted(() => {
+    if (props.asUser && mayPreview.value) {
+        void loadMembers();
+    }
+});
+
 const reason = computed<string | undefined>(() =>
     running.value
         ? labels.testRunning
         : waitSeconds.value !== null
           ? labels.testThrottled(waitSeconds.value)
-          : missingPath.value
-            ? labels.testMissing(missingPath.value.name)
-            : undefined,
+          : props.asUser && !mayPreview.value
+            ? t('perm-denied')
+            : !props.asUser && props.endpoint.requires_user_context
+              ? labels.userBoundNotice
+              : props.asUser && memberId.value === ''
+                ? labels.fetchAsUserMemberRequired
+                : missingPath.value
+                  ? labels.testMissing(missingPath.value.name)
+                  : undefined,
 );
 
 const okLine = computed(() =>
@@ -178,7 +262,12 @@ const generic = (
 });
 
 async function run(): Promise<void> {
-    if (running.value || waitSeconds.value !== null || missingPath.value) {
+    if (
+        running.value ||
+        waitSeconds.value !== null ||
+        missingPath.value ||
+        reason.value !== undefined
+    ) {
         // Retry on a card is not `aria-disabled` itself: say why nothing happened.
         notice.value = reason.value ?? null;
 
@@ -195,11 +284,18 @@ async function run(): Promise<void> {
     running.value = true;
 
     try {
-        const started = await startEndpointTest(
-            props.dataSourceId,
-            props.endpoint.endpoint_id,
-            { ...values },
-        );
+        const started = props.asUser
+            ? await startFetchAsUser(
+                  props.dataSourceId,
+                  props.endpoint.endpoint_id,
+                  memberId.value,
+                  { ...values },
+              )
+            : await startEndpointTest(
+                  props.dataSourceId,
+                  props.endpoint.endpoint_id,
+                  { ...values },
+              );
 
         accepted = true;
         // The earlier result stays until a new test is accepted: a refused start (422, 429) leaves it, and its Retry, in place.
@@ -261,6 +357,7 @@ async function run(): Promise<void> {
             limitBytes: result?.limit_bytes ?? null,
             page: result?.page ?? null,
             pages: result?.pages ?? null,
+            missing: result?.missing ?? null,
         });
     } catch (error) {
         if (mine.signal.aborted || leaveForSignIn(error)) {
@@ -323,6 +420,10 @@ onBeforeUnmount(() => {
     if (waitTimer) {
         clearTimeout(waitTimer);
     }
+
+    if (searchTimer) {
+        clearTimeout(searchTimer);
+    }
 });
 
 defineExpose({ run });
@@ -331,6 +432,60 @@ defineExpose({ run });
 <template>
     <div class="grid gap-6" data-test="endpoint-test">
         <form class="grid gap-6" novalidate @submit.prevent="run">
+            <fieldset
+                v-if="asUser"
+                class="grid gap-3"
+                data-test="member-picker"
+            >
+                <legend class="type-title-md mb-1 text-text-primary">
+                    {{ labels.fetchAsUserMember }}
+                </legend>
+                <label
+                    :for="searchFieldId"
+                    class="type-caption text-text-secondary"
+                    >{{ labels.fetchAsUserMemberSearch }}</label
+                >
+                <Input
+                    :id="searchFieldId"
+                    v-model="memberSearch"
+                    type="search"
+                    maxlength="100"
+                    autocomplete="off"
+                    class="max-w-md"
+                    data-test="member-search"
+                    @input="onMemberSearch"
+                    @keydown.enter.prevent="loadMembers"
+                />
+                <label
+                    :for="memberFieldId"
+                    class="type-caption text-text-secondary"
+                    >{{ labels.fetchAsUserMember }}</label
+                >
+                <NativeSelect
+                    :id="memberFieldId"
+                    v-model="memberId"
+                    class="max-w-md"
+                    data-test="member-select"
+                >
+                    <option value="">
+                        {{ labels.fetchAsUserMemberChoose }}
+                    </option>
+                    <option
+                        v-for="member in options?.members ?? []"
+                        :key="member.membership_id"
+                        :value="member.membership_id"
+                    >
+                        {{ member.name }} ({{ member.email }})
+                    </option>
+                </NativeSelect>
+                <p
+                    v-if="options && options.members.length === 0"
+                    class="type-caption text-text-muted"
+                    data-test="member-none"
+                >
+                    {{ labels.fetchAsUserMemberNone }}
+                </p>
+            </fieldset>
             <fieldset class="grid gap-3">
                 <legend class="type-title-md mb-1 text-text-primary">
                     {{ labels.testValues }}
@@ -387,7 +542,7 @@ defineExpose({ run });
                         :aria-describedby="reason ? reasonId : undefined"
                         data-test="run-test"
                     >
-                        {{ labels.testRun }}
+                        {{ asUser ? labels.fetchAsUserRun : labels.testRun }}
                     </Button>
                 </div>
                 <BlockedReason v-if="reason" :id="reasonId">{{
@@ -442,7 +597,9 @@ defineExpose({ run });
         <FetchErrorCard
             v-else-if="outcome?.kind === 'failure'"
             ref="cardRef"
-            :heading="labels.testFailedTitle"
+            :heading="
+                asUser ? labels.fetchAsUserFailedTitle : labels.testFailedTitle
+            "
             :code="outcome.failure.code"
             :source="sourceName"
             :status="outcome.failure.status"
@@ -453,6 +610,7 @@ defineExpose({ run });
             :limit-bytes="outcome.failure.limitBytes"
             :page="outcome.failure.page"
             :pages="outcome.failure.pages"
+            :missing="outcome.failure.missing"
             @retry="run"
         />
 

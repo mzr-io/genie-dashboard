@@ -26,5 +26,13 @@ final readonly class Endpoint
         public bool $readOnlyQuery,
         public string $createdAt,
         public string $updatedAt,
+        public bool $requiresUserContext = false,
+        public bool $scopeByCaller = false,
     ) {}
+
+    /** True when the parameter or header row is bound to the signed-in user's data (never a value the client may supply). */
+    public static function isUserBound(string $binding): bool
+    {
+        return in_array($binding, EndpointInput::USER_BINDINGS, true);
+    }
 }

@@ -54,6 +54,12 @@ final class ConnectorAuditSerializer implements AuditSerializer
             'method' => AuditField::Enum,
             'param_count' => AuditField::Count,
             'read_only_query' => AuditField::Enum,
+            // User-context bindings (Story 2.13): the two derived flags and the count of user-bound rows in the clear; the key ids stay inside the hashed bindings.
+            'requires_user_context' => AuditField::Enum,
+            'scope_by_caller' => AuditField::Enum,
+            'user_binding_count' => AuditField::Count,
+            // A Fetch as user (Story 2.13): the target member's id, never a value.
+            'target_membership_id' => AuditField::Id,
             'path' => AuditField::Hashed,
             'bindings' => AuditField::Hashed,
             // An Endpoint test (Story 2.10): the revision tested, in the clear (the id and the method are above); never a value, the path or a body.

@@ -236,3 +236,63 @@ it('leaves out an Endpoint query pair named like the pagination parameter or pag
 
     expect((new RenderEndpointRequest)->request('w', $plain, rerEndpoint(RER_PARAMS), $values, [])->queryPairs)->toBe([['from', '2026-02-28'], ['limit', '10']]);
 });
+
+// Story 2.13: a value for a user-bound name never comes from the client; resolved values obey the rules of a save.
+const RER_USER_PARAMS = [
+    ['name' => 'id', 'binding' => 'fixed', 'value' => 'c-42', 'kind' => 'path'],
+    ['name' => 'region', 'binding' => 'user_attribute', 'value' => 'region', 'kind' => 'query'],
+    ['name' => 'uid', 'binding' => 'user_id', 'value' => null, 'kind' => 'query'],
+];
+
+it('lists the user-bound parameters and headers by reference', function () {
+    $endpoint = rerEndpoint(RER_USER_PARAMS, [['name' => 'X-Mail', 'binding' => 'user_email', 'value' => null], ['name' => 'X-Fixed', 'binding' => 'fixed', 'value' => 'a']]);
+
+    expect((new RenderEndpointRequest)->userBindings($endpoint))->toBe([
+        'region' => ['binding' => 'user_attribute', 'key' => 'region'],
+        'uid' => ['binding' => 'user_id', 'key' => null],
+        'header:X-Mail' => ['binding' => 'user_email', 'key' => null],
+    ]);
+});
+
+it('refuses a client value for a user-bound name with values.{name}, before and after resolution', function (string $name) {
+    $endpoint = rerEndpoint(RER_USER_PARAMS, [['name' => 'X-Mail', 'binding' => 'user_email', 'value' => null]]);
+    $e = rerRefused($endpoint, [$name => 'forged']);
+
+    expect($e->reasons)->toBe(["values.{$name}" => 'value-not-accepted'])
+        ->and(json_encode($e->errors))->not->toContain('forged');
+    expect(fn () => (new RenderEndpointRequest)->values($endpoint, [$name => 'forged'], ['region' => 'emea', 'uid' => 'u', 'header:X-Mail' => 'a@b.c']))->toThrow(InvalidDataSource::class);
+})->with(['region', 'uid', 'header:X-Mail']);
+
+it('skips the user-bound rows before resolution and merges the resolved values after', function () {
+    $endpoint = rerEndpoint(RER_USER_PARAMS, [['name' => 'X-Mail', 'binding' => 'user_email', 'value' => null]]);
+    $renderer = new RenderEndpointRequest;
+
+    expect($renderer->values($endpoint, []))->toBe(['id' => 'c-42'])
+        ->and($renderer->values($endpoint, [], ['region' => 'emea', 'uid' => '018f', 'header:X-Mail' => 'a@b.c']))
+        ->toBe(['id' => 'c-42', 'region' => 'emea', 'uid' => '018f', 'header:X-Mail' => 'a@b.c']);
+});
+
+it('fails a resolved value that cannot be sent with the distinct reason and never echoes it', function (array $headers, array $resolved, string $field) {
+    $endpoint = rerEndpoint(RER_USER_PARAMS, $headers);
+
+    try {
+        (new RenderEndpointRequest)->values($endpoint, [], $resolved + ['region' => 'emea', 'uid' => 'u']);
+    } catch (InvalidDataSource $e) {
+        expect($e->reasons)->toBe(["values.{$field}" => 'context-value-invalid'])
+            ->and(json_encode($e->errors))->not->toContain('SECRET');
+
+        return;
+    }
+
+    throw new LogicException('The value was accepted.');
+})->with([
+    'CR/LF in a header' => [[['name' => 'X-Mail', 'binding' => 'user_email', 'value' => null]], ['header:X-Mail' => "SECRET\r\nX-Evil: 1"], 'header:X-Mail'],
+    'a non-visible header character' => [[['name' => 'X-Mail', 'binding' => 'user_email', 'value' => null]], ['header:X-Mail' => "SECRET\x01"], 'header:X-Mail'],
+    'a non-ASCII header value' => [[['name' => 'X-Mail', 'binding' => 'user_email', 'value' => null]], ['header:X-Mail' => 'SECRETé'], 'header:X-Mail'],
+]);
+
+it('refuses a resolved value that is not one path segment', function (string $value) {
+    $endpoint = rerEndpoint([['name' => 'id', 'binding' => 'user_attribute', 'value' => 'region', 'kind' => 'path']]);
+
+    expect(fn () => (new RenderEndpointRequest)->values($endpoint, [], ['id' => $value]))->toThrow(InvalidDataSource::class);
+})->with(['a/b', '.', '..', '']);

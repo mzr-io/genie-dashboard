@@ -294,6 +294,8 @@ services:
             <<: *app-env
             VALKEY_USERNAME: worker-connector
             VALKEY_PASSWORD: ${VALKEY_PASSWORD_WORKER_CONNECTOR:-dashflow-dev-worker-connector}
+        # `key-data` seals the Sample Response blob (Story 2.10) and opens the member attribute values a Fetch as user resolves
+        # (Story 2.13); `key-digest` is not mounted here, so the vault is checked with `assertReadable()`, never `assertAvailable()`.
         secrets:
             - key-cred
             - key-token

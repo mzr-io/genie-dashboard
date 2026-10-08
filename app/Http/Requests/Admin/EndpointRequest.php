@@ -3,10 +3,13 @@
 namespace App\Http\Requests\Admin;
 
 use App\Http\Responses\AdminApiError;
+use App\Modules\Access\Contracts\AttributeKeyRow;
+use App\Modules\Access\Contracts\AttributeKeys;
 use App\Modules\Connector\Application\ValidateEndpointInput;
 use App\Modules\Connector\Contracts\EndpointInput;
 use App\Modules\Connector\Contracts\InvalidDataSource;
 use App\Platform\Contracts\ErrorCode;
+use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -47,7 +50,7 @@ final class EndpointRequest extends FormRequest
     {
         return [function (Validator $validator): void {
             try {
-                $this->parsed = app(ValidateEndpointInput::class)->validate($this->all());
+                $this->parsed = app(ValidateEndpointInput::class)->validate($this->all(), $this->attributeKeyIds());
             } catch (InvalidDataSource $e) {
                 foreach ($e->errors as $field => $messages) {
                     foreach ($messages as $message) {
@@ -58,6 +61,22 @@ final class EndpointRequest extends FormRequest
                 $this->reasons = $e->reasons;
             }
         }];
+    }
+
+    /**
+     * The attribute key ids the session's Workspace defines (Story 2.12): a `user_attribute` binding must name one.
+     *
+     * @return list<string>
+     */
+    private function attributeKeyIds(): array
+    {
+        $workspaceId = $this->session()->get(WorkspaceTransaction::SESSION_KEY);
+
+        if (! is_string($workspaceId)) {
+            return [];
+        }
+
+        return array_map(fn (AttributeKeyRow $key): string => $key->keyId, app(AttributeKeys::class)->list(strtolower($workspaceId)));
     }
 
     public function revision(): int

@@ -9,14 +9,23 @@ export const endpointsUrl = (dataSourceId: string): string =>
 
 export type Method = 'GET' | 'POST';
 
-// Fixed value, Date Range from and to, Block Period Selector start and end. User-context bindings come in a later story.
+// Fixed value, Date Range from and to, Block Period Selector start and end, and (Story 2.13) the four user-context bindings:
+// the member's ID, email, group, or a defined attribute (whose key id is the row's value).
+export type UserBinding =
+    | 'user_id'
+    | 'user_email'
+    | 'user_group'
+    | 'user_attribute';
+
 export type Binding =
     | 'fixed'
     | 'date_range_from'
     | 'date_range_to'
     | 'period_start'
-    | 'period_end';
+    | 'period_end'
+    | UserBinding;
 
+// The bindings that are not user context, in the order the Binding select lists them.
 export const BINDINGS: Binding[] = [
     'fixed',
     'date_range_from',
@@ -25,12 +34,27 @@ export const BINDINGS: Binding[] = [
     'period_end',
 ];
 
-// The text a bound (not fixed) row shows in place of a value: what it will resolve to when the Endpoint is fetched.
+export const USER_BINDINGS: UserBinding[] = [
+    'user_id',
+    'user_email',
+    'user_group',
+    'user_attribute',
+];
+
+export const isUserBinding = (binding: Binding): binding is UserBinding =>
+    (USER_BINDINGS as string[]).includes(binding);
+
+// The text a bound (not fixed) row shows in place of a value: what it will resolve to when the Endpoint is fetched. A
+// user-bound row never shows a value, only that it is user context (UX-DR-134).
 export const RESOLVED_TEXT: Record<Exclude<Binding, 'fixed'>, string> = {
     date_range_from: 'date_range.from',
     date_range_to: 'date_range.to',
     period_start: 'period.start',
     period_end: 'period.end',
+    user_id: 'user context',
+    user_email: 'user context',
+    user_group: 'user context',
+    user_attribute: 'user context',
 };
 
 export type BindingRow = {
@@ -56,6 +80,9 @@ export type Endpoint = {
     // The template as JSON text, a parameter written {"$param": "name"}.
     body_template: string | null;
     read_only_query: boolean;
+    // Derived by the server: true when a parameter or header uses a user binding. `scope_by_caller` is stored for Story 2.14.
+    requires_user_context?: boolean;
+    scope_by_caller?: boolean;
     revision: number;
     created_at: string;
     updated_at: string;
@@ -76,6 +103,8 @@ export type EndpointInput = {
     read_only_query: boolean;
     // The risk confirmation of a POST.
     confirm_read_only: boolean;
+    // Only with a user binding (the server refuses it otherwise).
+    scope_by_caller?: boolean;
 };
 
 // A request the server refused (or that never arrived: status 0): 403 no permission, 404 not in the Workspace, 409 a
@@ -271,6 +300,11 @@ export function testFields(endpoint: Endpoint): TestField[] {
     const fields: TestField[] = [];
 
     for (const param of endpoint.params) {
+        // A user-bound value is never typed: the server resolves it from the chosen member.
+        if (isUserBinding(param.binding)) {
+            continue;
+        }
+
         fields.push({
             key: param.name,
             name: param.name,
@@ -284,7 +318,7 @@ export function testFields(endpoint: Endpoint): TestField[] {
     }
 
     for (const header of endpoint.headers) {
-        if (header.binding !== 'fixed') {
+        if (header.binding !== 'fixed' && !isUserBinding(header.binding)) {
             fields.push({
                 key: `${HEADER_VALUE_PREFIX}${header.name}`,
                 name: header.name,
@@ -356,4 +390,64 @@ export async function fetchSample(
     }
 
     return data as Sample;
+}
+
+export type BindingOptions = {
+    bindings: UserBinding[];
+    // The attribute keys the Workspace defines: id and label, never a value.
+    attributes: { key_id: string; label: string; value_type: string }[];
+    // The active members a Fetch as user can target; empty without `data.preview_as_user`.
+    members: { membership_id: string; name: string; email: string }[];
+    may_preview: boolean;
+};
+
+// What the Binding select lists (Story 2.13), and the members for the Fetch as user picker (`search` narrows them).
+export async function fetchBindingOptions(
+    dataSourceId: string,
+    search = '',
+    signal?: AbortSignal,
+): Promise<BindingOptions> {
+    const query =
+        search.trim() === ''
+            ? ''
+            : `?${new URLSearchParams({ search: search.trim() })}`;
+    const body = await call(
+        'GET',
+        `${DATA_SOURCES_URL}/${encodeURIComponent(dataSourceId)}/binding-options${query}`,
+        undefined,
+        signal,
+    );
+    const data = body.data as Partial<BindingOptions> | undefined;
+
+    if (
+        !data ||
+        !Array.isArray(data.attributes) ||
+        !Array.isArray(data.members)
+    ) {
+        throw new EndpointError(500);
+    }
+
+    return data as BindingOptions;
+}
+
+// Starts a Fetch as user (`202` with the Operation to poll). The body names the member and the non-bound values only: a
+// value for a user-bound name is refused by the server (422 `values.{name}`). Throws the 403, 404, 422 and 429.
+export async function startFetchAsUser(
+    dataSourceId: string,
+    endpointId: string,
+    membershipId: string,
+    values: Record<string, string>,
+): Promise<StartedTest> {
+    const body = await call(
+        'POST',
+        `${endpointsUrl(dataSourceId)}/${encodeURIComponent(endpointId)}/fetch-as-user`,
+        { membership: membershipId, values },
+    );
+    const data = body.data as Partial<StartedTest> | undefined;
+
+    if (!data || typeof data.operation_id !== 'string') {
+        throw new EndpointError(500);
+    }
+
+    return data as StartedTest;
 }

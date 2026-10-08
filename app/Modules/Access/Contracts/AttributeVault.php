@@ -14,6 +14,14 @@ interface AttributeVault
     public function assertAvailable(): void;
 
     /**
+     * The `data` key alone is usable: enough to open a stored value. `worker-connector` mounts no `digest` key (AR-50), so it
+     * checks this and never {@see self::assertAvailable()}.
+     *
+     * @throws AttributesUnavailable
+     */
+    public function assertReadable(): void;
+
+    /**
      * @return string the sealed value (binary)
      *
      * @throws AttributesUnavailable

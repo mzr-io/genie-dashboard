@@ -3,14 +3,17 @@ import { computed } from 'vue';
 import NativeSelect from '@/components/NativeSelect.vue';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { BINDINGS, RESOLVED_TEXT } from '@/lib/endpoints';
+import Tag from '@/components/Tag.vue';
+import { BINDINGS, RESOLVED_TEXT, isUserBinding } from '@/lib/endpoints';
 import type { Binding } from '@/lib/endpoints';
 import { endpointLabels as labels } from '@/locales/labels';
 
 // The rows of the Endpoint's parameters (`parameters-table`: Name in mono, Binding select, Value input, remove) and
 // headers (the same columns). A bound row (a date range or period binding) has no value to type: it shows what it
 // resolves to when fetched, in muted mono. The rows belong to the form; this component edits them in place and reports
-// adding and removing. Errors are keyed `params.0.name`, and each input's id is `{idPrefix}-{field with dashes}`.
+// adding and removing. The Binding select also lists "User context" (Story 2.13): the member's ID, email and group and each
+// attribute the Workspace defines. A user-bound row shows the "user context" tag and the text "user context" in muted mono,
+// never a value, and nothing that a screen reader reads holds one. Errors are keyed `params.0.name`, and each input's id is `{idPrefix}-{field with dashes}`.
 export type EditableRow = {
     key: number;
     name: string;
@@ -28,6 +31,8 @@ const props = defineProps<{
     caption: string;
     empty: string;
     addLabel: string;
+    // The attribute keys the Workspace defines, for the "User context" options (a key id and its label, never a value).
+    attributes?: { key_id: string; label: string }[];
 }>();
 
 const emit = defineEmits<{
@@ -63,6 +68,38 @@ const describedBy = (index: number, field: string): string | undefined =>
 
 const resolved = (binding: Binding): string =>
     binding === 'fixed' ? '' : RESOLVED_TEXT[binding];
+
+const USER_FIXED = ['user_id', 'user_email', 'user_group'] as const;
+const ATTRIBUTE = 'user_attribute:';
+
+// One select carries both the binding and, for an attribute, its key id.
+const selected = (row: EditableRow): string =>
+    row.binding === 'user_attribute' ? `${ATTRIBUTE}${row.value}` : row.binding;
+
+function choose(row: EditableRow, choice: string | undefined): void {
+    const value = choice ?? 'fixed';
+
+    if (value.startsWith(ATTRIBUTE)) {
+        row.binding = 'user_attribute';
+        row.value = value.slice(ATTRIBUTE.length);
+
+        return;
+    }
+
+    // Leaving an attribute drops its key id: only a fixed binding keeps a typed value.
+    if (row.binding === 'user_attribute') {
+        row.value = '';
+    }
+
+    row.binding = value as Binding;
+}
+
+// A saved attribute that is not in the list (it cannot be removed, but the list may not have loaded): still shown, by key id.
+const unlisted = (row: EditableRow): string | null =>
+    row.binding === 'user_attribute' &&
+    !(props.attributes ?? []).some((a) => a.key_id === row.value)
+        ? row.value
+        : null;
 </script>
 
 <template>
@@ -148,7 +185,7 @@ const resolved = (binding: Binding): string =>
                         <td class="pe-2 pb-2">
                             <NativeSelect
                                 :id="id(index, 'binding')"
-                                v-model="row.binding"
+                                :model-value="selected(row)"
                                 :aria-label="text.binding(index + 1)"
                                 :aria-invalid="
                                     errorOf(index, 'binding')
@@ -159,6 +196,9 @@ const resolved = (binding: Binding): string =>
                                     describedBy(index, 'binding')
                                 "
                                 :data-test="`${kind}-binding`"
+                                @update:model-value="
+                                    (choice) => choose(row, choice)
+                                "
                                 @change="
                                     emit('edited', `${kind}.${index}.binding`)
                                 "
@@ -170,6 +210,36 @@ const resolved = (binding: Binding): string =>
                                 >
                                     {{ labels.bindings[binding] }}
                                 </option>
+                                <optgroup :label="labels.userContextGroup">
+                                    <option
+                                        v-for="binding in USER_FIXED"
+                                        :key="binding"
+                                        :value="binding"
+                                    >
+                                        {{ labels.bindings[binding] }}
+                                    </option>
+                                    <option
+                                        v-for="attribute in attributes ?? []"
+                                        :key="attribute.key_id"
+                                        :value="`${ATTRIBUTE}${attribute.key_id}`"
+                                    >
+                                        {{
+                                            labels.attributeOption(
+                                                attribute.label,
+                                            )
+                                        }}
+                                    </option>
+                                    <option
+                                        v-if="unlisted(row)"
+                                        :value="`${ATTRIBUTE}${row.value}`"
+                                    >
+                                        {{
+                                            labels.attributeUnknown(
+                                                unlisted(row) ?? '',
+                                            )
+                                        }}
+                                    </option>
+                                </optgroup>
                             </NativeSelect>
                             <p
                                 v-if="errorOf(index, 'binding')"
@@ -213,6 +283,22 @@ const resolved = (binding: Binding): string =>
                                     {{ errorOf(index, 'value') }}
                                 </p>
                             </template>
+                            <span
+                                v-else-if="isUserBinding(row.binding)"
+                                class="inline-flex min-h-9 items-center gap-2"
+                                data-test="user-bound"
+                            >
+                                <Tag tone="info" data-test="user-context-tag">{{
+                                    labels.userContextTag
+                                }}</Tag>
+                                <span
+                                    class="type-caption font-mono text-text-muted"
+                                    :title="labels.userContextHint"
+                                    data-test="resolved"
+                                >
+                                    {{ labels.userContextResolved }}
+                                </span>
+                            </span>
                             <span
                                 v-else
                                 class="type-caption inline-flex min-h-9 items-center font-mono text-text-muted"

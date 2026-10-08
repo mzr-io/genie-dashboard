@@ -202,3 +202,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-12-define-user-attributes-for-user-context-binding.md`
   summary: AttributesOnMembershipRemoved subject-only (`membership:{id}`) fallback has no test.
   evidence: The only consumer test supplies data.membership_id, so the fallback branch is unexercised; add a case when the removal flow emits the event.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-13-bind-endpoint-parameters-and-headers-to-user-context.md`
+  summary: Fetch as user on an Endpoint with requires_user_context false still audits and emits the notification event for the target member.
+  evidence: StartFetchAsUser does not check the flag; unverified whether product wants it refused (maybe-false, medium if real).
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-13-bind-endpoint-parameters-and-headers-to-user-context.md`
+  summary: binding-options member list is capped at 50 with no cursor, has no throttle, and its filtering/search and shared rate-limit budget are not asserted by tests.
+  evidence: EndpointController::bindingOptions hard-codes pageSize 50 and carries only the admin middleware; no test passes search or mixes Test endpoint and Fetch as user against one limit.

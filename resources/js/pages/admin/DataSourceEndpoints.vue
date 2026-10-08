@@ -9,6 +9,7 @@ import {
     useId,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useShell } from '@/composables/useShell';
 import AddEndpointButton from '@/components/AddEndpointButton.vue';
 import DataSourceTabs from '@/components/DataSourceTabs.vue';
 import DataTable from '@/components/DataTable.vue';
@@ -51,9 +52,11 @@ const refreshing = ref(false);
 const searchId = useId();
 const highlighted = ref<string | null>(null);
 // The form: closed, adding, or editing one Endpoint; or the test panel of one Endpoint (Story 2.10).
-const mode = ref<'list' | 'add' | { edit: Endpoint } | { test: Endpoint }>(
-    'list',
-);
+const mode = ref<
+    'list' | 'add' | { edit: Endpoint } | { test: Endpoint; asUser?: boolean }
+>('list');
+const { can } = useShell();
+const mayPreview = computed(() => can.value['data.preview_as_user'] === true);
 
 let controller: AbortController | null = null;
 let timer: ReturnType<typeof setTimeout> | null = null;
@@ -73,6 +76,12 @@ const testing = computed(() =>
         ? mode.value.test
         : null,
 );
+const testingAsUser = computed(
+    () =>
+        typeof mode.value === 'object' &&
+        'test' in mode.value &&
+        mode.value.asUser === true,
+);
 const formOpen = computed(() => mode.value !== 'list');
 const showToolbar = computed(
     () => !isEmpty.value && state.value === 'ready' && !formOpen.value,
@@ -82,6 +91,7 @@ const columns: DataTableColumn[] = [
     { key: 'method', label: labels.columns.method },
     { key: 'path', label: labels.columns.path, rowHeader: true },
     { key: 'revision', label: labels.columns.revision, class: 'tabular-nums' },
+    { key: 'data', label: labels.dataColumn },
     { key: 'updated', label: labels.columns.updated },
     { key: 'actions', label: labels.testActions },
 ];
@@ -224,9 +234,14 @@ function openEdit(endpoint: Endpoint): void {
     void focusForm();
 }
 
-function openTest(endpoint: Endpoint): void {
+function openTest(endpoint: Endpoint, asUser = false): void {
+    // Fetch as user is `aria-disabled` without the permission: the click does nothing (the server refuses it too).
+    if (asUser && !mayPreview.value) {
+        return;
+    }
+
     highlighted.value = null;
-    mode.value = { test: endpoint };
+    mode.value = { test: endpoint, asUser };
     void nextTick(() =>
         document
             .querySelector<HTMLElement>('[data-test="test-title"]')
@@ -342,17 +357,26 @@ onBeforeUnmount(() => {
                     class="type-title-md text-text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                     data-test="test-title"
                 >
-                    {{ labels.testTitle }}:
+                    {{
+                        testingAsUser
+                            ? labels.fetchAsUserTitle
+                            : labels.testTitle
+                    }}:
                     <span class="font-mono"
                         >{{ testing.method }} {{ testing.path }}</span
                     >
                 </h2>
                 <p class="type-body-sm text-text-secondary">
-                    {{ labels.testSubtitle }}
+                    {{
+                        testingAsUser
+                            ? labels.fetchAsUserSubtitle
+                            : labels.testSubtitle
+                    }}
                 </p>
             </div>
             <EndpointTestPanel
-                :key="testing.endpoint_id"
+                :key="`${testing.endpoint_id}:${testingAsUser}`"
+                :as-user="testingAsUser"
                 :data-source-id="dataSourceId"
                 :endpoint="testing"
                 :source-name="sourceName ?? labels.sourceFallback"
@@ -493,6 +517,20 @@ onBeforeUnmount(() => {
                         labels.revisionValue(row.revision)
                     }}</span>
                 </template>
+                <template #cell-data="{ row }">
+                    <Tag
+                        v-if="row.requires_user_context"
+                        tone="info"
+                        data-test="user-context-tag"
+                        >{{ labels.userContextTag }}</Tag
+                    >
+                    <span v-else data-test="shared-data">
+                        <Tag>{{ labels.sharedData }}</Tag>
+                        <span class="sr-only"
+                            >. {{ labels.sharedDataHint }}</span
+                        >
+                    </span>
+                </template>
                 <template #cell-updated="{ row }">
                     <span data-test="updated">{{
                         formatDateTime(row.updated_at)
@@ -510,6 +548,27 @@ onBeforeUnmount(() => {
                     >
                         {{ labels.testEndpoint }}
                     </Button>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        class="ms-2"
+                        :blocked="!mayPreview"
+                        :blocked-reason="t('perm-denied')"
+                        :aria-label="
+                            labels.fetchAsUserAction(row.method, row.path)
+                        "
+                        data-test="fetch-as-user"
+                        @click="openTest(row, true)"
+                    >
+                        {{ labels.fetchAsUser }}
+                    </Button>
+                    <span
+                        v-if="!mayPreview"
+                        class="type-caption ms-2 text-text-muted"
+                        data-test="fetch-as-user-denied"
+                        >{{ t('perm-denied') }}</span
+                    >
                 </template>
             </DataTable>
         </template>

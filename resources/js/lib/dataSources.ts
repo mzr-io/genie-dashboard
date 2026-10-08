@@ -389,7 +389,9 @@ export type ConnectionTestCode =
     | 'not-json'
     | 'response-too-large'
     | 'auth-failed'
-    | 'too-many-pages';
+    | 'too-many-pages'
+    // A Fetch as user (Story 2.13) had no value for a bound attribute or group (or one that cannot be sent): nothing was sent.
+    | 'access.context_missing';
 
 export type ConnectionTestSummary = {
     ok: boolean;
@@ -407,6 +409,8 @@ export type ConnectionTestSummary = {
     // A paged Endpoint test (Story 2.11): the page that failed or was reached, and the pages fetched; null when not paged.
     page?: number | null;
     pages?: number | null;
+    // A Fetch as user (Story 2.13): the attribute key ids (and `user_group`) without a value, comma separated; never a value.
+    missing?: string | null;
 };
 
 export type OperationSummary = {

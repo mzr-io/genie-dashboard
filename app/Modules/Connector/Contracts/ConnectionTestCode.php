@@ -15,6 +15,8 @@ enum ConnectionTestCode: string
     case NotJson = 'not-json';
     case ResponseTooLarge = 'response-too-large';
     case AuthFailed = 'auth-failed';
+    /** A Fetch as user (Story 2.13) had no value for a bound attribute or group, or one that cannot be sent; no request was made. Its message is a label. */
+    case ContextMissing = 'access.context_missing';
     /** A paged run would need more pages than the cap allows (Story 2.11); its message is a label, the catalogue being closed. */
     case TooManyPages = 'too-many-pages';
 

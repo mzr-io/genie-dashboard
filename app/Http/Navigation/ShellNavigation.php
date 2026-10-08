@@ -106,6 +106,9 @@ final class ShellNavigation
         'api.admin.data-sources.endpoints.update' => Permission::DataSourcesManage,
         'api.admin.data-sources.endpoints.test' => Permission::DataSourcesManage,
         'api.admin.data-sources.endpoints.samples.show' => Permission::DataSourcesManage,
+        // Fetch as user (Story 2.13) also needs `data.preview_as_user`, which the controller checks and records as a security event when missing.
+        'api.admin.data-sources.endpoints.fetch-as-user' => Permission::DataSourcesManage,
+        'api.admin.data-sources.binding-options' => Permission::DataSourcesManage,
         'api.admin.data-sources.lock.acquire' => Permission::DataSourcesManage,
         'api.admin.data-sources.lock.heartbeat' => Permission::DataSourcesManage,
         'api.admin.data-sources.lock.release' => Permission::DataSourcesManage,

@@ -1,5 +1,14 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, reactive, ref, useId } from 'vue';
+import {
+    computed,
+    nextTick,
+    onBeforeUnmount,
+    onMounted,
+    reactive,
+    ref,
+    useId,
+    watch,
+} from 'vue';
 import { useI18n } from 'vue-i18n';
 import Banner from '@/components/Banner.vue';
 import BlockedReason from '@/components/BlockedReason.vue';
@@ -19,6 +28,8 @@ import { announce } from '@/lib/announce';
 import {
     createEndpoint,
     EndpointError,
+    fetchBindingOptions,
+    isUserBinding,
     pathPlaceholders,
     updateEndpoint,
 } from '@/lib/endpoints';
@@ -75,6 +86,30 @@ const form = reactive({
     body: props.endpoint?.body_template ?? '',
     // The required `post-readonly` checkbox. An Endpoint saved as a read-only query was confirmed when it was saved.
     readOnly: props.endpoint?.read_only_query ?? false,
+    // Story 2.13: keep each user's data separate (stored for the fetch key; the server accepts it only with a user binding).
+    scope: props.endpoint?.scope_by_caller ?? false,
+});
+// The attributes the Workspace defines, for the "User context" options of the Binding select (a failed load leaves the three fixed ones).
+const attributes = ref<{ key_id: string; label: string }[]>([]);
+const hasUserBinding = computed(() =>
+    [...form.params, ...form.headers].some((row) => isUserBinding(row.binding)),
+);
+
+// The flag means nothing without a user binding: it goes with the last one (it would otherwise stay set, hidden and unsaved).
+watch(hasUserBinding, (has) => {
+    if (!has) {
+        form.scope = false;
+    }
+});
+
+onMounted(async () => {
+    try {
+        attributes.value = (
+            await fetchBindingOptions(props.dataSourceId)
+        ).attributes;
+    } catch {
+        attributes.value = [];
+    }
 });
 const revision = ref(props.endpoint?.revision ?? 0);
 const errors = reactive<Record<string, string | null>>({});
@@ -109,6 +144,7 @@ function snapshot(): string {
         form.headers.map((r) => [r.name, r.binding, r.value]),
         form.body,
         form.readOnly,
+        form.scope,
     ]);
 }
 
@@ -210,7 +246,11 @@ function input(): EndpointInput {
     const row = (r: EditableRow): BindingRow => ({
         name: r.name,
         binding: r.binding,
-        value: r.binding === 'fixed' ? r.value : null,
+        // A fixed binding keeps its typed value and an attribute binding its key id; every other binding stores none.
+        value:
+            r.binding === 'fixed' || r.binding === 'user_attribute'
+                ? r.value
+                : null,
     });
     const post = isPost.value;
 
@@ -222,6 +262,7 @@ function input(): EndpointInput {
         body_template: post && form.body.trim() !== '' ? form.body : null,
         read_only_query: post && form.readOnly,
         confirm_read_only: post && form.readOnly,
+        scope_by_caller: hasUserBinding.value && form.scope,
     };
 }
 
@@ -572,6 +613,7 @@ function reloadLatest(): void {
                 :caption="labels.parameters"
                 :empty="labels.parametersNone"
                 :add-label="labels.addParameter"
+                :attributes="attributes"
                 @add="addRow('params')"
                 @remove="(i) => removeRow('params', i)"
                 @edited="edited"
@@ -600,6 +642,7 @@ function reloadLatest(): void {
                 :caption="labels.headers"
                 :empty="labels.headersNone"
                 :add-label="labels.addHeader"
+                :attributes="attributes"
                 @add="addRow('headers')"
                 @remove="(i) => removeRow('headers', i)"
                 @edited="edited"
@@ -612,6 +655,36 @@ function reloadLatest(): void {
                 {{ errors.headers }}
             </p>
         </fieldset>
+
+        <div
+            v-if="hasUserBinding"
+            class="grid gap-1"
+            data-test="scope-by-caller"
+        >
+            <div class="flex items-center gap-2">
+                <Checkbox
+                    :id="fieldId('scope_by_caller')"
+                    v-model="form.scope"
+                    :aria-describedby="`${fieldId('scope_by_caller')}-help`"
+                />
+                <Label :for="fieldId('scope_by_caller')">{{
+                    labels.scopeByCaller
+                }}</Label>
+            </div>
+            <p
+                :id="`${fieldId('scope_by_caller')}-help`"
+                class="type-caption text-text-muted"
+            >
+                {{ labels.scopeByCallerHelper }}
+            </p>
+            <p
+                v-if="errors.scope_by_caller"
+                class="type-caption text-error-text"
+                data-slot="field-error"
+            >
+                {{ errors.scope_by_caller }}
+            </p>
+        </div>
 
         <template v-if="isPost">
             <FormField

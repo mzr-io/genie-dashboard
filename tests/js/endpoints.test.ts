@@ -254,6 +254,7 @@ describe('Endpoint list', () => {
             labels.columns.method,
             labels.columns.path,
             labels.columns.revision,
+            labels.dataColumn,
             labels.columns.updated,
             labels.testActions,
         ]);
@@ -400,15 +401,19 @@ describe('Endpoint form', () => {
             labels.bindings.date_range_to,
             labels.bindings.period_start,
             labels.bindings.period_end,
+            // Story 2.13: the "User context" group.
+            labels.bindings.user_id,
+            labels.bindings.user_email,
+            labels.bindings.user_group,
         ]);
+        expect(
+            rows[0]
+                .querySelector('[data-test="params-binding"] optgroup')
+                ?.getAttribute('label'),
+        ).toBe(labels.userContextGroup);
         expect(
             rows[0].querySelector('[data-test="params-value"]'),
         ).not.toBeNull();
-        expect(
-            $$('[data-test="params-binding"] option').some((o) =>
-                /user/i.test(o.textContent ?? ''),
-            ),
-        ).toBe(false);
     });
 
     it('shows the resolved placeholder in muted mono for a bound row, in place of a value input', async () => {

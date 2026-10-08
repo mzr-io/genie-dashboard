@@ -121,9 +121,9 @@ it('refuses bad parameters with a field error each', function (array $params, st
     'a name with an ampersand' => [[['name' => 'a&b', 'binding' => 'fixed', 'value' => 'x']], 'params.0.name', 'param-name-invalid'],
     'an empty name' => [[['name' => '', 'binding' => 'fixed', 'value' => 'x']], 'params.0.name', 'param-name-invalid'],
     'a duplicate name' => [[['name' => 'a', 'binding' => 'fixed', 'value' => 'x'], ['name' => 'a', 'binding' => 'fixed', 'value' => 'y']], 'params.1.name', 'param-name-duplicate'],
-    'user context' => [[['name' => 'a', 'binding' => 'user_context', 'value' => null]], 'params.0.binding', 'binding-user-context-unavailable'],
-    'the user id' => [[['name' => 'a', 'binding' => 'user_id']], 'params.0.binding', 'binding-user-context-unavailable'],
-    'a user attribute' => [[['name' => 'a', 'binding' => 'user_attribute']], 'params.0.binding', 'binding-user-context-unavailable'],
+    'user context is not a binding of its own' => [[['name' => 'a', 'binding' => 'user_context', 'value' => null]], 'params.0.binding', 'binding-invalid'],
+    'a user attribute needs a key' => [[['name' => 'a', 'binding' => 'user_attribute']], 'params.0.binding', 'binding-attribute-unknown'],
+    'a user attribute key that is not defined' => [[['name' => 'a', 'binding' => 'user_attribute', 'value' => 'nope']], 'params.0.binding', 'binding-attribute-unknown'],
     'an unknown binding' => [[['name' => 'a', 'binding' => 'magic']], 'params.0.binding', 'binding-invalid'],
     'no binding' => [[['name' => 'a']], 'params.0.binding', 'binding-invalid'],
     'not a list' => [['a' => 1], 'params', 'params-invalid'],
@@ -167,7 +167,7 @@ it('refuses a bad header with a field error and nothing else stored', function (
     'cookie' => [[['name' => 'COOKIE', 'binding' => 'fixed', 'value' => 'x']], 'headers.0.name', 'header-name-reserved'],
     'proxy-authorization' => [[['name' => 'Proxy-Authorization', 'binding' => 'fixed', 'value' => 'x']], 'headers.0.name', 'header-name-reserved'],
     'a duplicate, in any case' => [[['name' => 'X-A', 'binding' => 'fixed', 'value' => 'x'], ['name' => 'x-a', 'binding' => 'fixed', 'value' => 'y']], 'headers.1.name', 'header-name-duplicate'],
-    'user context' => [[['name' => 'X-A', 'binding' => 'user_email']], 'headers.0.binding', 'binding-user-context-unavailable'],
+    'a header attribute key that is not defined' => [[['name' => 'X-A', 'binding' => 'user_attribute', 'value' => 'nope']], 'headers.0.binding', 'binding-attribute-unknown'],
     'not a list' => [['a' => 1], 'headers', 'headers-invalid'],
 ]);
 
@@ -275,4 +275,43 @@ it('classifies a parameter used inside an array of the body template as a body p
     ]);
 
     expect(array_column($input->params, 'kind', 'name'))->toBe(['team' => 'body', 'debug' => 'query']);
+});
+
+// Story 2.13: user-context bindings. The stored row holds a kind and, for an attribute, the defined key id, never a user's value.
+it('accepts the four user bindings, derives requires_user_context and stores only the key id', function () {
+    $input = (new ValidateEndpointInput)->validate(endpointRaw([
+        'params' => [
+            ['name' => 'uid', 'binding' => 'user_id', 'value' => 'client-supplied'],
+            ['name' => 'mail', 'binding' => 'user_email'],
+            ['name' => 'grp', 'binding' => 'user_group', 'value' => 'ignored'],
+            ['name' => 'region', 'binding' => 'user_attribute', 'value' => 'region'],
+        ],
+        'headers' => [['name' => 'X-User', 'binding' => 'user_id']],
+    ]), ['region', 'team']);
+
+    expect($input->requiresUserContext())->toBeTrue()
+        ->and($input->scopeByCaller)->toBeFalse()
+        ->and(array_column($input->params, 'value', 'name'))->toBe(['uid' => null, 'mail' => null, 'grp' => null, 'region' => 'region'])
+        ->and($input->headers[0]['value'])->toBeNull();
+});
+
+it('does not require user context without a user binding', function () {
+    $input = (new ValidateEndpointInput)->validate(endpointRaw(['params' => [['name' => 'a', 'binding' => 'fixed', 'value' => 'x']]]));
+
+    expect($input->requiresUserContext())->toBeFalse();
+});
+
+it('refuses an attribute key the Workspace does not define, on the Binding select', function () {
+    $raw = endpointRaw(['params' => [['name' => 'a', 'binding' => 'user_attribute', 'value' => 'region']]]);
+
+    expect(fn () => (new ValidateEndpointInput)->validate($raw, ['team']))->toThrow(InvalidDataSource::class);
+    expect(endpointInvalid($raw)->reasons)->toBe(['params.0.binding' => 'binding-attribute-unknown']);
+});
+
+it('accepts scope_by_caller only with a user binding', function () {
+    $with = (new ValidateEndpointInput)->validate(endpointRaw(['scope_by_caller' => true, 'params' => [['name' => 'a', 'binding' => 'user_id']]]));
+
+    expect($with->scopeByCaller)->toBeTrue()
+        ->and(endpointInvalid(endpointRaw(['scope_by_caller' => true, 'params' => [['name' => 'a', 'binding' => 'fixed', 'value' => 'x']]]))->reasons)->toBe(['scope_by_caller' => 'scope-requires-user-context'])
+        ->and(endpointInvalid(endpointRaw(['scope_by_caller' => 'yes']))->reasons)->toBe(['scope_by_caller' => 'scope-invalid']);
 });

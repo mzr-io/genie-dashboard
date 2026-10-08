@@ -32,3 +32,16 @@ it('seals with the data key and fails closed, never caching a sample in the clea
         ->and($source)->toContain("SampleBlobUnavailable('key_unavailable')")
         ->and($source)->not->toContain('tokenKeyPath');
 });
+
+// Story 2.13: the code that handles a member's resolved values never logs, audits or stores them, and the worker never needs the digest key.
+it('keeps the user-context resolver and the Fetch as user handler away from the logs, the audit and the database', function (string $path) {
+    $source = (string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/'.$path);
+
+    expect($source)->not->toMatch('/Log::|LoggerInterface|->log\(|\baudit->|Outbox|AuditAction|\bDB::insert|\bDB::update/');
+})->with(['Connector/Application/RunFetchAsUser.php', 'Access/Contracts/UserContextValues.php']);
+
+it('resolves user context without the digest key', function () {
+    $source = (string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/Access/Application/ResolveUserContext.php');
+
+    expect($source)->toContain('assertReadable()')->and($source)->not->toContain('assertAvailable')->and($source)->not->toContain('blindIndex');
+});

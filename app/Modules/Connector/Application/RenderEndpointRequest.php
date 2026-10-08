@@ -2,6 +2,7 @@
 
 namespace App\Modules\Connector\Application;
 
+use App\Modules\Access\Contracts\UserContext;
 use App\Modules\Connector\Contracts\CredentialScheme;
 use App\Modules\Connector\Contracts\DataSource;
 use App\Modules\Connector\Contracts\Endpoint;
@@ -25,6 +26,11 @@ use App\Platform\Json\LosslessJson;
  * on one line, any other value has no control character. A refusal is a 422 whose field is `values.{name}` (a header bound
  * to a date is `header:{name}`) and whose message names the parameter, never the value.
  *
+ * User-context bindings (Story 2.13) never take a client value: a `values` entry named for a user-bound parameter or header is a 422
+ * `values.{name}` (`value-not-accepted`) whatever else is wrong. Before resolution (`$resolved` null) such a row is skipped; with the
+ * values the server resolved ({@see self::userBindings()} names what to ask Access for) the same rules apply to them, and a resolved value
+ * that fails them is `context-value-invalid` (the message never carries the value).
+ *
  * {@see self::request()} renders: {@see EndpointPath::render()} builds the path against the Data Source base URL only, the
  * other parameters go through the one query builder, the Endpoint's headers are applied after the Data Source defaults and a
  * body template has each whole-value `{"$param": name}` replaced by the value as a JSON string (a value can fill a position,
@@ -38,11 +44,12 @@ final class RenderEndpointRequest
 
     /**
      * @param  array<string, mixed>  $given  the Admin's values by parameter name
+     * @param  array<string, string>|null  $resolved  the server-resolved user-context values by parameter name (`header:{name}` for a header); null before they are resolved
      * @return array<string, string> every declared parameter (and every header that needs one) with its value, `header:{name}` for a header
      *
      * @throws InvalidDataSource
      */
-    public function values(Endpoint $endpoint, array $given): array
+    public function values(Endpoint $endpoint, array $given, ?array $resolved = null): array
     {
         $errors = [];
         $reasons = [];
@@ -61,11 +68,29 @@ final class RenderEndpointRequest
             }
         }
 
+        // A value of a user-bound name is never accepted from a client, and that is refused before anything else is judged.
+        foreach (array_keys($this->userBindings($endpoint)) as $ref) {
+            if (array_key_exists($ref, $given)) {
+                $label = str_starts_with($ref, 'header:') ? 'the '.substr($ref, 7).' header' : $ref;
+                $errors["values.{$ref}"][] = "The value of {$label} comes from the user and cannot be supplied.";
+                $reasons["values.{$ref}"] = 'value-not-accepted';
+            }
+        }
+
         if ($errors === []) {
             foreach ($endpoint->params as $param) {
                 $name = $param['name'];
-                $value = $this->pick($given, $name, $param['binding'], $param['value']);
                 $label = $name;
+
+                if (Endpoint::isUserBound($param['binding'])) {
+                    if ($resolved !== null) {
+                        $this->resolvedValue($resolved[$name] ?? null, $name, false, $param['kind'] === 'path', $fail) && $values[$name] = $resolved[$name];
+                    }
+
+                    continue;
+                }
+
+                $value = $this->pick($given, $name, $param['binding'], $param['value']);
 
                 if ($value === null || $value === '') {
                     $fail($name, 'param-value-required', "Enter a value for {$label}.");
@@ -92,6 +117,15 @@ final class RenderEndpointRequest
 
             foreach ($endpoint->headers as $header) {
                 $key = 'header:'.$header['name'];
+
+                if (Endpoint::isUserBound($header['binding'])) {
+                    if ($resolved !== null) {
+                        $this->resolvedValue($resolved[$key] ?? null, $key, true, false, $fail) && $values[$key] = $resolved[$key];
+                    }
+
+                    continue;
+                }
+
                 $value = $this->pick($given, $key, $header['binding'], $header['value']);
 
                 if ($value === null || $value === '') {
@@ -117,6 +151,49 @@ final class RenderEndpointRequest
         }
 
         return $values;
+    }
+
+    /**
+     * The user-bound parameters and headers of the Endpoint, by the reference {@see self::values()} uses (the name, or `header:{name}`):
+     * what to ask {@see UserContext} for. A user-bound row has no value of its own to show.
+     *
+     * @return array<string, array{binding: string, key: string|null}>
+     */
+    public function userBindings(Endpoint $endpoint): array
+    {
+        $bound = [];
+
+        foreach ($endpoint->params as $param) {
+            if (Endpoint::isUserBound($param['binding'])) {
+                $bound[$param['name']] = ['binding' => $param['binding'], 'key' => $param['binding'] === 'user_attribute' ? $param['value'] : null];
+            }
+        }
+
+        foreach ($endpoint->headers as $header) {
+            if (Endpoint::isUserBound($header['binding'])) {
+                $bound['header:'.$header['name']] = ['binding' => $header['binding'], 'key' => $header['binding'] === 'user_attribute' ? $header['value'] : null];
+            }
+        }
+
+        return $bound;
+    }
+
+    /**
+     * A server-resolved value must obey the rules of a save for where it goes: a header value is visible ASCII on one line (CR, LF and
+     * every other control or non-ASCII byte fail closed), a path value is one segment, and any other value has no control character.
+     * The refusal is `context-value-invalid` and its message never carries the value.
+     */
+    private function resolvedValue(?string $value, string $field, bool $header, bool $path, callable $fail): bool
+    {
+        $ok = $value !== null && $value !== '' && strlen($value) <= self::VALUE_MAX
+            && ($header ? preg_match('/\A[\x20-\x7e]*\z/D', $value) === 1 : mb_check_encoding($value, 'UTF-8') && preg_match('/[\x00-\x1f\x7f]/', $value) !== 1)
+            && (! $path || EndpointPath::valueAllowed($value));
+
+        if (! $ok) {
+            $fail($field, 'context-value-invalid', 'A value taken from the user cannot be sent here.');
+        }
+
+        return $ok;
     }
 
     /**

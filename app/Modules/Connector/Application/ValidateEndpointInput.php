@@ -16,8 +16,11 @@ use App\Modules\Connector\Contracts\ReservedHeaders;
  * Method: only `GET` and `POST`, exactly (anything else, lower case and empty included, is `method-not-allowed`). A POST
  * is accepted only as a read-only query with the risk confirmation (`read_only_query` and `confirm_read_only`, both true).
  * Path: {@see EndpointPath}. Parameters and headers are `{name, binding, value}` rows with the bindings `fixed` (a string
- * value is required) and the four date and period bindings (the value is stored as null; they resolve at fetch time, which
- * nothing here does). A user-context binding is not accepted. A header name is an HTTP token that is neither reserved nor a
+ * value is required), the four date and period bindings (the value is stored as null; they resolve at fetch time, which
+ * nothing here does) and, since Story 2.13, the four user-context bindings: `user_id`, `user_email` and `user_group` store a null
+ * value and `user_attribute` stores a defined attribute key id (an unknown one is `binding-attribute-unknown`). A user binding
+ * never carries a value of a user, only the key: the stored revision cannot hold one. `scope_by_caller` is accepted only when a
+ * user binding exists (`scope-requires-user-context`). A header name is an HTTP token that is neither reserved nor a
  * credential name, and a fixed header value is visible ASCII only (CR, LF and every other control or non-ASCII byte is
  * refused). A parameter is a path parameter when the path has its placeholder, a body parameter when the body template
  * references it, and a query parameter otherwise. Nothing here contacts any host.
@@ -36,15 +39,21 @@ final class ValidateEndpointInput
 
     private const QUERY_NAME = '/\A[A-Za-z0-9_.~\-]{1,64}\z/D';
 
+    /** @var list<string> the defined attribute key ids of the call being validated */
+    private array $attributeKeys = [];
+
     private const TOKEN = '/\A[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/D';
 
     /**
      * @param  array<string, mixed>  $raw
+     * @param  list<string>  $attributeKeys  the key ids the Workspace defines (Story 2.12); a `user_attribute` binding must name one
      *
      * @throws InvalidDataSource
      */
-    public function validate(array $raw): EndpointInput
+    public function validate(array $raw, array $attributeKeys = []): EndpointInput
     {
+        $this->attributeKeys = $attributeKeys;
+
         $errors = [];
         $reasons = [];
         $fail = function (string $field, string $reason, string $message) use (&$errors, &$reasons): void {
@@ -80,6 +89,7 @@ final class ValidateEndpointInput
         }
 
         $readOnly = $this->readOnly($raw, $method, $fail);
+        $scope = $this->scope($raw['scope_by_caller'] ?? null, [...$params, ...$headers], $fail);
 
         if ($errors !== [] || $method === null || $path === null) {
             throw new InvalidDataSource($errors, $reasons);
@@ -92,7 +102,7 @@ final class ValidateEndpointInput
         $params = array_values($params);
 
         /** @var list<array{name: string, binding: string, value: string|null, kind: string}> $params */
-        return new EndpointInput($method, $path, $params, $headers, $body, $readOnly);
+        return new EndpointInput($method, $path, $params, $headers, $body, $readOnly, $scope);
     }
 
     private function method(mixed $value, callable $fail): ?string
@@ -144,6 +154,34 @@ final class ValidateEndpointInput
     }
 
     /**
+     * The optional `scope_by_caller` flag: only a revision with a user-context binding may set it (the membership ID joins the fetch key, Story 2.14).
+     *
+     * @param  list<array{name: string, binding: string, value: string|null}>  $rows
+     */
+    private function scope(mixed $value, array $rows, callable $fail): bool
+    {
+        if ($value === null || $value === false) {
+            return false;
+        }
+
+        if ($value !== true) {
+            $fail('scope_by_caller', 'scope-invalid', 'The scope flag must be true or false.');
+
+            return false;
+        }
+
+        foreach ($rows as $row) {
+            if (in_array($row['binding'], EndpointInput::USER_BINDINGS, true)) {
+                return true;
+            }
+        }
+
+        $fail('scope_by_caller', 'scope-requires-user-context', 'Scoping by the caller needs a parameter or header bound to user context.');
+
+        return false;
+    }
+
+    /**
      * The parameters: a list of `{name, binding, value}`.
      *
      * @return array<int, array{name: string, binding: string, value: string|null}>
@@ -182,11 +220,11 @@ final class ValidateEndpointInput
                 $seen[(string) $name] = true;
             }
 
-            $valueOk = $bindingOk && ($binding !== 'fixed' || $this->fixedValue($text, "{$field}.{$i}.value", false, $fail));
+            $valueOk = $bindingOk && $this->bindingValue((string) $binding, $text, "{$field}.{$i}.value", false, $fail);
 
             if ($nameOk && $bindingOk && $valueOk) {
                 // Keyed by the row's own index, so an error on a later row names the right form row.
-                $rows[$i] = ['name' => (string) $name, 'binding' => (string) $binding, 'value' => $binding === 'fixed' ? (string) $text : null];
+                $rows[$i] = ['name' => (string) $name, 'binding' => (string) $binding, 'value' => $this->storedValue((string) $binding, $text)];
             }
         }
 
@@ -219,15 +257,31 @@ final class ValidateEndpointInput
             return true;
         }
 
-        if (is_string($binding) && preg_match('/\Auser/i', $binding) === 1) {
-            $fail($field, 'binding-user-context-unavailable', 'Binding to user context is not available yet.');
+        $fail($field, 'binding-invalid', 'Choose Fixed value, a date range bound, a period bound or user context.');
+
+        return false;
+    }
+
+    /** The value a binding needs: a fixed one, a defined attribute key id, or nothing (date, period, user ID, email and group). */
+    private function bindingValue(string $binding, mixed $text, string $field, bool $header, callable $fail): bool
+    {
+        if ($binding === 'fixed') {
+            return $this->fixedValue($text, $field, $header, $fail);
+        }
+
+        if ($binding === 'user_attribute' && (! is_string($text) || ! in_array($text, $this->attributeKeys, true))) {
+            // Shown on the Binding select, the only control a user-bound row has.
+            $fail(substr($field, 0, -strlen('value')).'binding', 'binding-attribute-unknown', 'Choose one of the attributes defined for this workspace.');
 
             return false;
         }
 
-        $fail($field, 'binding-invalid', 'Choose Fixed value, a date range bound or a period bound.');
+        return true;
+    }
 
-        return false;
+    private function storedValue(string $binding, mixed $text): ?string
+    {
+        return $binding === 'fixed' || $binding === 'user_attribute' ? (string) $text : null;
     }
 
     /** A fixed value: required, a string; a header value is visible ASCII on one line. */
@@ -290,14 +344,14 @@ final class ValidateEndpointInput
             $text = is_array($row) ? ($row['value'] ?? null) : null;
             $nameOk = $this->headerName($name, "headers.{$i}.name", $seen, $fail);
             $bindingOk = $this->binding($binding, "headers.{$i}.binding", $fail);
-            $valueOk = $bindingOk && ($binding !== 'fixed' || $this->fixedValue($text, "headers.{$i}.value", true, $fail));
+            $valueOk = $bindingOk && $this->bindingValue((string) $binding, $text, "headers.{$i}.value", true, $fail);
 
             if ($nameOk) {
                 $seen[strtolower((string) $name)] = true;
             }
 
             if ($nameOk && $bindingOk && $valueOk) {
-                $rows[] = ['name' => (string) $name, 'binding' => (string) $binding, 'value' => $binding === 'fixed' ? (string) $text : null];
+                $rows[] = ['name' => (string) $name, 'binding' => (string) $binding, 'value' => $this->storedValue((string) $binding, $text)];
             }
         }
 

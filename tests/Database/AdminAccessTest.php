@@ -175,7 +175,7 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
             // A user attribute key and a member's values are validated before the key or the member is looked up.
             in_array($name, ['api.admin.user-attributes.store', 'api.admin.user-attributes.update', 'api.admin.members.attributes.update'], true) => 422,
             // A Data source is validated before it is looked up (the revision first), and the blur check validates its URL.
-            in_array($name, ['api.admin.data-sources.store', 'api.admin.data-sources.update', 'api.admin.data-sources.check-url', 'api.admin.data-sources.test-connection', 'api.admin.data-sources.endpoints.store', 'api.admin.data-sources.endpoints.update'], true) => 422,
+            in_array($name, ['api.admin.data-sources.store', 'api.admin.data-sources.update', 'api.admin.data-sources.check-url', 'api.admin.data-sources.test-connection', 'api.admin.data-sources.endpoints.store', 'api.admin.data-sources.endpoints.update', 'api.admin.data-sources.endpoints.fetch-as-user'], true) => 422,
             // The edit and Endpoints pages render whatever Data source they name; the form loads it through the API.
             in_array($name, ['admin.data-sources.edit', 'admin.data-sources.endpoints'], true) => 200,
             str_contains($uri, '{') => 404,

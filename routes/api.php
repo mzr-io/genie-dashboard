@@ -84,6 +84,10 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // Test an Endpoint (Story 2.10): starts a `sample_fetch` Operation; the Sample Response is read back by the requester alone. Nothing is called from this tier.
     Route::post('data-sources/{dataSource}/endpoints/{endpoint}/test', [EndpointController::class, 'test'])->middleware(['admin', 'throttle:30,1,data-source-endpoint-test'])->name('api.admin.data-sources.endpoints.test');
     Route::get('data-sources/{dataSource}/endpoints/{endpoint}/samples/{operation}', [EndpointController::class, 'sample'])->middleware(['admin', 'throttle:120,1,data-source-endpoint-sample'])->name('api.admin.data-sources.endpoints.samples.show');
+    // Fetch as user (Story 2.13): `data_sources.manage` through the gate, `data.preview_as_user` in the controller (403 and a security event). Throttled like Test endpoint.
+    Route::post('data-sources/{dataSource}/endpoints/{endpoint}/fetch-as-user', [EndpointController::class, 'fetchAsUser'])->middleware(['admin', 'throttle:30,1,data-source-endpoint-test'])->name('api.admin.data-sources.endpoints.fetch-as-user');
+    // The Binding select's options (Story 2.13): the fixed user-context bindings and each defined attribute key (id and label), never a value.
+    Route::get('data-sources/{dataSource}/binding-options', [EndpointController::class, 'bindingOptions'])->middleware('admin')->name('api.admin.data-sources.binding-options');
 
     // The Data source soft lock (Story 2.8): acquire, heartbeat, release (also by beacon), take over (request, then poll) and
     // the holder's flush acknowledgement. Same permission; none of them takes a secret value; the heartbeat and the polls send `X-Background: 1`.

@@ -31,6 +31,9 @@ final class EndpointResource extends JsonResource
             'headers' => $endpoint->headers,
             'body_template' => $endpoint->bodyTemplate,
             'read_only_query' => $endpoint->readOnlyQuery,
+            // Story 2.13: derived from the bindings; never a user's value (a user-bound row holds a kind and, at most, an attribute key id).
+            'requires_user_context' => $endpoint->requiresUserContext,
+            'scope_by_caller' => $endpoint->scopeByCaller,
             'revision' => $endpoint->revision,
             'created_at' => $endpoint->createdAt,
             'updated_at' => $endpoint->updatedAt,
