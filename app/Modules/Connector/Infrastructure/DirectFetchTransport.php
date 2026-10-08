@@ -2,8 +2,10 @@
 
 namespace App\Modules\Connector\Infrastructure;
 
+use App\Modules\Connector\Contracts\AuthFailed;
 use App\Modules\Connector\Contracts\CredentialScheme;
 use App\Modules\Connector\Contracts\EgressRequest;
+use App\Modules\Connector\Contracts\EgressResponse;
 use App\Modules\Connector\Contracts\EgressTransport;
 use App\Modules\Connector\Contracts\FetchRequest;
 use App\Modules\Connector\Contracts\FetchResponse;
@@ -17,7 +19,7 @@ use InvalidArgumentException;
 /**
  * The `direct` {@see FetchTransport} (Story 2.5): the worker calls the source itself. Each secret ref is resolved at egress
  * through {@see SecretVault::resolve} (the plaintext lives in local variables for the length of one call), the credential
- * scheme is applied (a bearer or basic `Authorization` header, an API key in a header or in the query string, a secret
+ * scheme is applied (a bearer or basic `Authorization` header, an OAuth2 token as a Bearer (cached encrypted per secret version, refreshed once on a 401), an API key in a header or in the query string, a secret
  * default header) and the request goes out through the {@see EgressTransport}: the guard decides every hop and the connection
  * is pinned to the address it checked. Credentials travel as credentials, so the transport drops them if the origin changes.
  */
@@ -26,6 +28,9 @@ final class DirectFetchTransport implements FetchTransport
     public function __construct(
         private readonly EgressTransport $egress,
         private readonly SecretVault $vault,
+        private readonly OAuthTokenClient $tokens,
+        private readonly OAuthTokenCache $tokenCache,
+        private readonly SecretSettings $settings,
     ) {}
 
     public function fetch(FetchRequest $request): FetchResponse
@@ -61,6 +66,9 @@ final class DirectFetchTransport implements FetchTransport
                 $credentials['Authorization'] = 'Basic '.base64_encode($this->secret($request, SecretSlots::BASIC_USERNAME).':'.$this->secret($request, SecretSlots::BASIC_PASSWORD));
 
                 break;
+            case CredentialScheme::OAuth2ClientCredentials:
+                // The token is added below: it may come from the cache, and a 401 asks for another.
+                break;
         }
 
         // A source is asked for JSON unless the Data Source sets its own Accept.
@@ -69,10 +77,106 @@ final class DirectFetchTransport implements FetchTransport
         }
 
         $started = hrtime(true);
-        $response = $this->egress->send($request->workspaceId, new EgressRequest($url, $request->method, $headers, $credentials, null, $request->timeoutSeconds, $request->maxResponseBytes));
+
+        if ($request->scheme === CredentialScheme::OAuth2ClientCredentials) {
+            $response = $this->sendWithToken($request, $url, $headers, $credentials);
+        } else {
+            $response = $this->send($request, $url, $headers, $credentials);
+        }
+
         $latencyMs = (int) round((hrtime(true) - $started) / 1_000_000);
 
         return new FetchResponse($response->status, $response->headers, $response->body, strlen($response->body), $latencyMs);
+    }
+
+    /** @param  array<string, string>  $headers
+     * @param  array<string, string>  $credentials */
+    private function send(FetchRequest $request, string $url, array $headers, array $credentials): EgressResponse
+    {
+        return $this->egress->send($request->workspaceId, new EgressRequest($url, $request->method, $headers, $credentials, null, $request->timeoutSeconds, $request->maxResponseBytes));
+    }
+
+    /**
+     * An OAuth2 call (Story 2.7): the cached token, or a fresh one, as the Bearer. A 401 drops the cache entry, asks for a new
+     * token once and repeats the call once; a second 401 is {@see AuthFailed} and nothing more is tried.
+     *
+     * @param  array<string, string>  $headers
+     * @param  array<string, string>  $credentials
+     *
+     * @throws AuthFailed
+     */
+    private function sendWithToken(FetchRequest $request, string $url, array $headers, array $credentials): EgressResponse
+    {
+        $token = $rejected = $this->token($request, false);
+        $response = $this->send($request, $url, $headers, $credentials + ['Authorization' => 'Bearer '.$token]);
+
+        if ($response->status !== 401) {
+            return $response;
+        }
+
+        $this->forgetToken($request, $rejected);
+        $token = $this->token($request, true);
+        $response = $this->send($request, $url, $headers, $credentials + ['Authorization' => 'Bearer '.$token]);
+
+        if ($response->status === 401) {
+            throw new AuthFailed('api_401');
+        }
+
+        return $response;
+    }
+
+    /** The access token: from the cache unless `$fresh`, else requested (and cached when it may be). */
+    private function token(FetchRequest $request, bool $fresh): string
+    {
+        $cacheable = $this->cacheable($request);
+
+        if ($cacheable && ! $fresh) {
+            $cached = $this->tokenCache->get($request->workspaceId, (string) $request->dataSourceId, (int) $request->secretVersion, $this->binding($request));
+
+            if ($cached !== null) {
+                return $cached;
+            }
+        }
+
+        $skew = $this->settings->tokenSkewSeconds();
+        $issued = $this->tokens->request($request, $this->secret($request, SecretSlots::OAUTH_CLIENT_SECRET));
+
+        if ($cacheable && $issued->expiresIn !== null && $issued->expiresIn - $skew > 0) {
+            $this->tokenCache->put($request->workspaceId, (string) $request->dataSourceId, (int) $request->secretVersion, $this->binding($request), $issued->accessToken, $issued->expiresIn - $skew);
+        }
+
+        return $issued->accessToken;
+    }
+
+    private function forgetToken(FetchRequest $request, string $rejected): void
+    {
+        if ($this->cacheable($request)) {
+            $this->tokenCache->forgetIfRejected($request->workspaceId, (string) $request->dataSourceId, (int) $request->secretVersion, $this->binding($request), $rejected);
+        }
+    }
+
+    /**
+     * Only a token requested with a stored client secret of a saved Data Source is cached: a secret typed into a form that
+     * is being tested (a transient one) has no version of its own, and its token must not outlive the test.
+     */
+    private function cacheable(FetchRequest $request): bool
+    {
+        if ($request->dataSourceId === null || $request->secretVersion === null) {
+            return false;
+        }
+
+        foreach ($request->secretRefs as $ref) {
+            if ($ref->slot === SecretSlots::OAUTH_CLIENT_SECRET) {
+                return $ref->operationId === null;
+            }
+        }
+
+        return false;
+    }
+
+    private function binding(FetchRequest $request): string
+    {
+        return OAuthTokenCache::binding((string) $request->oauthTokenUrl, (string) $request->oauthClientId, $request->oauthScope);
     }
 
     private function apiKeyName(FetchRequest $request): string

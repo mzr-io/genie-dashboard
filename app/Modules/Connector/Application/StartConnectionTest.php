@@ -4,6 +4,7 @@ namespace App\Modules\Connector\Application;
 
 use App\Modules\Connector\Contracts\ConnectionTests;
 use App\Modules\Connector\Contracts\ConnectionTestThrottled;
+use App\Modules\Connector\Contracts\DataSource;
 use App\Modules\Connector\Contracts\DataSourceActor;
 use App\Modules\Connector\Contracts\DataSourceInput;
 use App\Modules\Connector\Contracts\DataSources;
@@ -46,7 +47,7 @@ final class StartConnectionTest implements ConnectionTests
         return $this->transactions->run($actor->workspaceId, function () use ($actor, $input, $dataSourceId): Operation {
             $source = $dataSourceId === null ? null : $this->sources->find($actor->workspaceId, $dataSourceId);
 
-            $this->assertTestable($input, $source === null ? [] : $source->secrets);
+            $this->assertTestable($input, $source === null ? [] : $source->secrets, $source);
             $this->hitLimits($actor);
 
             $operation = $this->operations->enqueue(
@@ -61,6 +62,9 @@ final class StartConnectionTest implements ConnectionTests
                     'auth_type' => $input->authType,
                     'api_key_name' => $input->apiKeyName,
                     'api_key_placement' => $input->apiKeyPlacement,
+                    'oauth_token_url' => $input->oauthTokenUrl?->baseUrl,
+                    'oauth_client_id' => $input->oauthClientId,
+                    'oauth_scope' => $input->oauthScope,
                     'headers' => $input->headers,
                     'timeout_seconds' => $input->timeoutSeconds,
                     'max_response_bytes' => $input->maxResponseBytes,
@@ -80,14 +84,24 @@ final class StartConnectionTest implements ConnectionTests
      *
      * @param  array<string, SecretStatus>  $stored
      */
-    private function assertTestable(#[\SensitiveParameter] DataSourceInput $input, array $stored): void
+    private function assertTestable(#[\SensitiveParameter] DataSourceInput $input, array $stored, ?DataSource $source = null): void
     {
+        // A stored client secret is only for the token URL, client ID and scope it was saved with: aimed elsewhere, it needs a typed one.
+        if ($source !== null && ($input->oauthTokenUrl?->baseUrl !== $source->oauthTokenUrl || $input->oauthClientId !== $source->oauthClientId || $input->oauthScope !== $source->oauthScope)) {
+            unset($stored[SecretSlots::OAUTH_CLIENT_SECRET]);
+        }
+
         $errors = [];
         $reasons = [];
 
         if ($input->url->scheme === 'http' && $this->settings->requireHttps()) {
             $errors['base_url'] = ['This workspace requires https. Use an https:// base URL.'];
             $reasons['base_url'] = 'https-required';
+        }
+
+        if ($input->oauthTokenUrl?->scheme === 'http' && $this->settings->requireHttps()) {
+            $errors['oauth_token_url'] = ['This workspace requires https. Use an https:// token URL.'];
+            $reasons['oauth_token_url'] = 'https-required';
         }
 
         foreach (SecretSlots::used($input->authType, $input->headers) as $slot => $field) {

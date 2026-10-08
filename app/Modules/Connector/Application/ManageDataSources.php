@@ -22,6 +22,7 @@ use App\Modules\Connector\Contracts\SecretSlots;
 use App\Modules\Connector\Contracts\SecretStatus;
 use App\Modules\Connector\Contracts\SecretVault;
 use App\Modules\Connector\Infrastructure\DataSourceSettings;
+use App\Modules\Connector\Infrastructure\OAuthTokenCache;
 use App\Platform\Audit\Audit;
 use App\Platform\Audit\AuditAction;
 use App\Platform\Tenancy\WorkspaceTransaction;
@@ -42,7 +43,7 @@ final class ManageDataSources implements DataSources
 {
     private const STAMP = "'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'";
 
-    private const COLUMNS = 'd.id, d.name, d.base_url, d.scheme, d.host, d.port, d.auth_type, d.default_headers, d.timeout_seconds, d.max_response_bytes, d.max_pages, d.live_capable, d.api_key_name, d.api_key_placement, d.revision, '
+    private const COLUMNS = 'd.id, d.name, d.base_url, d.scheme, d.host, d.port, d.auth_type, d.default_headers, d.timeout_seconds, d.max_response_bytes, d.max_pages, d.live_capable, d.api_key_name, d.api_key_placement, d.oauth_token_url, d.oauth_client_id, d.oauth_scope, d.revision, '
         .'to_char(d.created_at, '.self::STAMP.') AS created, to_char(d.updated_at, '.self::STAMP.') AS updated';
 
     public function __construct(
@@ -51,6 +52,7 @@ final class ManageDataSources implements DataSources
         private readonly HostAllowlist $allowlist,
         private readonly DataSourceSettings $settings,
         private readonly SecretVault $vault,
+        private readonly OAuthTokenCache $tokenCache,
     ) {}
 
     public function list(string $workspaceId, DataSourceQuery $query): DataSourcePage
@@ -87,13 +89,13 @@ final class ManageDataSources implements DataSources
         return $this->transactions->run($workspaceId, fn (): DataSource => $this->fetch($workspaceId, $id, false) ?? throw new DataSourceNotFound);
     }
 
-    public function checkUrl(string $workspaceId, DataSourceUrl $url): void
+    public function checkUrl(string $workspaceId, DataSourceUrl $url, string $field = 'base_url'): void
     {
-        $this->transactions->run($workspaceId, function () use ($workspaceId, $url): void {
-            $refusal = $this->urlRefusal($workspaceId, $url);
+        $this->transactions->run($workspaceId, function () use ($workspaceId, $url, $field): void {
+            $refusal = $this->urlRefusal($workspaceId, $url, $field === 'base_url' ? 'base' : 'token');
 
             if ($refusal !== null) {
-                throw new InvalidDataSource(['base_url' => [$refusal[1]]], ['base_url' => $refusal[0]]);
+                throw new InvalidDataSource([$field => [$refusal[1]]], [$field => $refusal[0]]);
             }
         });
     }
@@ -110,11 +112,12 @@ final class ManageDataSources implements DataSources
 
             try {
                 DB::insert(
-                    'insert into data_sources (id, workspace_id, name, base_url, scheme, host, port, auth_type, api_key_name, api_key_placement, default_headers, timeout_seconds, max_response_bytes, max_pages, live_capable, revision, created_by_membership_id, created_at, updated_at) '
-                    .'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?::boolean, 1, ?, ?, ?)',
+                    'insert into data_sources (id, workspace_id, name, base_url, scheme, host, port, auth_type, api_key_name, api_key_placement, oauth_token_url, oauth_client_id, oauth_scope, default_headers, timeout_seconds, max_response_bytes, max_pages, live_capable, revision, created_by_membership_id, created_at, updated_at) '
+                    .'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?::boolean, 1, ?, ?, ?)',
                     [
                         $id, $actor->workspaceId, $input->name, $input->url->baseUrl, $input->url->scheme, $input->url->host, $input->url->port,
-                        $input->authType, $input->apiKeyName, $input->apiKeyPlacement, json_encode($this->storedHeaders($input->headers), JSON_THROW_ON_ERROR), $input->timeoutSeconds, $input->maxResponseBytes, $input->maxPages,
+                        $input->authType, $input->apiKeyName, $input->apiKeyPlacement, $input->oauthTokenUrl?->baseUrl, $input->oauthClientId, $input->oauthScope,
+                        json_encode($this->storedHeaders($input->headers), JSON_THROW_ON_ERROR), $input->timeoutSeconds, $input->maxResponseBytes, $input->maxPages,
                         $input->liveCapable ? 'true' : 'false', $actor->membershipId, now(), now(),
                     ],
                 );
@@ -150,16 +153,18 @@ final class ManageDataSources implements DataSources
 
             $plan = $this->plan($input, $before->secrets);
             // A credential already stored must not be rerouted (another header, name or the query string) without the password.
-            $rerouted = $before->secrets !== [] && ($input->apiKeyName !== $before->apiKeyName || $input->apiKeyPlacement !== $before->apiKeyPlacement);
+            $rerouted = ($before->secrets !== [] && ($input->apiKeyName !== $before->apiKeyName || $input->apiKeyPlacement !== $before->apiKeyPlacement))
+                // The same for the client secret: another token URL or client ID would send it somewhere else (Story 2.7).
+                || (isset($before->secrets[SecretSlots::OAUTH_CLIENT_SECRET]) && ($input->oauthTokenUrl?->baseUrl !== $before->oauthTokenUrl || $input->oauthClientId !== $before->oauthClientId));
             $this->confirm($plan, $input->authType !== $before->authType || $rerouted, $confirm);
             $sealed = $this->seal($actor->workspaceId, $before->id, $plan);
 
             try {
                 DB::update(
-                    'update data_sources set name = ?, base_url = ?, scheme = ?, host = ?, port = ?, auth_type = ?, api_key_name = ?, api_key_placement = ?, default_headers = ?::jsonb, timeout_seconds = ?, max_response_bytes = ?, max_pages = ?, live_capable = ?::boolean, revision = revision + 1, updated_at = ? '
+                    'update data_sources set name = ?, base_url = ?, scheme = ?, host = ?, port = ?, auth_type = ?, api_key_name = ?, api_key_placement = ?, oauth_token_url = ?, oauth_client_id = ?, oauth_scope = ?, default_headers = ?::jsonb, timeout_seconds = ?, max_response_bytes = ?, max_pages = ?, live_capable = ?::boolean, revision = revision + 1, updated_at = ? '
                     .'where workspace_id = ? and id = ?',
                     [
-                        $input->name, $input->url->baseUrl, $input->url->scheme, $input->url->host, $input->url->port, $input->authType, $input->apiKeyName, $input->apiKeyPlacement,
+                        $input->name, $input->url->baseUrl, $input->url->scheme, $input->url->host, $input->url->port, $input->authType, $input->apiKeyName, $input->apiKeyPlacement, $input->oauthTokenUrl?->baseUrl, $input->oauthClientId, $input->oauthScope,
                         json_encode($this->storedHeaders($input->headers), JSON_THROW_ON_ERROR), $input->timeoutSeconds, $input->maxResponseBytes, $input->maxPages,
                         $input->liveCapable ? 'true' : 'false', now(), $actor->workspaceId, $before->id,
                     ],
@@ -202,6 +207,15 @@ final class ManageDataSources implements DataSources
             $reasons['base_url'] = $refusal[0];
         }
 
+        if ($input->oauthTokenUrl !== null) {
+            $refusal = $this->urlRefusal($workspaceId, $input->oauthTokenUrl, 'token');
+
+            if ($refusal !== null) {
+                $errors['oauth_token_url'] = [$refusal[1]];
+                $reasons['oauth_token_url'] = $refusal[0];
+            }
+        }
+
         $taken = DB::selectOne(
             'select 1 as taken from data_sources where workspace_id = ? and lower(btrim(name)) = lower(btrim(?)) and (?::uuid is null or id <> ?::uuid) limit 1',
             [$workspaceId, $input->name, $ownId, $ownId],
@@ -218,10 +232,10 @@ final class ManageDataSources implements DataSources
     }
 
     /** @return array{0: string, 1: string}|null the reason and message when the Base URL may not be used */
-    private function urlRefusal(string $workspaceId, DataSourceUrl $url): ?array
+    private function urlRefusal(string $workspaceId, DataSourceUrl $url, string $noun = 'base'): ?array
     {
         if ($url->scheme === 'http' && $this->settings->requireHttps()) {
-            return ['https-required', 'This workspace requires https. Use an https:// base URL.'];
+            return ['https-required', "This workspace requires https. Use an https:// {$noun} URL."];
         }
 
         if (! $this->allowlist->isAllowed($workspaceId, $url->scheme, $url->host, $url->port)) {
@@ -326,7 +340,7 @@ final class ManageDataSources implements DataSources
 
             if (isset($existing[$slot])) {
                 DB::update(
-                    "update secrets set ciphertext = decode(?, 'base64'), key_version = ?, key_ref = ?, updated_at = ? where workspace_id = ? and data_source_id = ? and slot = ?",
+                    "update secrets set ciphertext = decode(?, 'base64'), key_version = ?, key_ref = ?, version = version + 1, updated_at = ? where workspace_id = ? and data_source_id = ? and slot = ?",
                     [$encoded, $secret->keyVersion, $secret->keyRef, now(), $actor->workspaceId, $dataSourceId, $slot],
                 );
             } else {
@@ -356,6 +370,11 @@ final class ManageDataSources implements DataSources
             DB::selectOne('select connector_remove_secrets(?::uuid, ?::text[]) as removed', [$dataSourceId, $literal]);
 
             foreach ($plan['remove'] as $slot) {
+                if ($slot === SecretSlots::OAUTH_CLIENT_SECRET && isset($existing[$slot])) {
+                    // The version restarts at 1 if the secret is set again: a token cached under the old one must not outlive it.
+                    $this->tokenCache->forget($actor->workspaceId, $dataSourceId, $existing[$slot]->secretVersion ?? 1);
+                }
+
                 $this->audit->record(
                     AuditAction::ConnectorDataSourceSecretChanged,
                     [
@@ -420,6 +439,9 @@ final class ManageDataSources implements DataSources
             'auth_type' => $source->authType,
             'api_key_name' => $source->apiKeyName,
             'api_key_placement' => $source->apiKeyPlacement,
+            'oauth_token_url' => $source->oauthTokenUrl,
+            'oauth_client_id' => $source->oauthClientId,
+            'oauth_scope' => $source->oauthScope,
             'timeout_seconds' => $source->timeoutSeconds,
             'max_response_bytes' => $source->maxResponseBytes,
             'max_pages' => $source->maxPages,
@@ -433,7 +455,7 @@ final class ManageDataSources implements DataSources
     /** @param  array<string, SecretStatus>  $secrets */
     private function source(object $row, array $secrets = []): DataSource
     {
-        /** @var object{id: string, name: string, base_url: string, scheme: string, host: string, port: int|string, auth_type: string, default_headers: string, timeout_seconds: int|string|null, max_response_bytes: int|string|null, max_pages: int|string|null, live_capable: bool|string|int, api_key_name: string|null, api_key_placement: string|null, revision: int|string, created: string, updated: string} $row */
+        /** @var object{id: string, name: string, base_url: string, scheme: string, host: string, port: int|string, auth_type: string, default_headers: string, timeout_seconds: int|string|null, max_response_bytes: int|string|null, max_pages: int|string|null, live_capable: bool|string|int, api_key_name: string|null, api_key_placement: string|null, oauth_token_url: string|null, oauth_client_id: string|null, oauth_scope: string|null, revision: int|string, created: string, updated: string} $row */
         $decoded = json_decode($row->default_headers, true);
         $headers = [];
 
@@ -464,6 +486,9 @@ final class ManageDataSources implements DataSources
             $row->api_key_name,
             $row->api_key_placement,
             $secrets,
+            $row->oauth_token_url,
+            $row->oauth_client_id,
+            $row->oauth_scope,
         );
     }
 

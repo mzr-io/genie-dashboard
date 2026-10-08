@@ -41,6 +41,7 @@ use App\Modules\Connector\Contracts\HostAllowlist;
 use App\Modules\Connector\Contracts\HostAllowlistDependents;
 use App\Modules\Connector\Contracts\HostResolver;
 use App\Modules\Connector\Contracts\SecretVault;
+use App\Modules\Connector\Contracts\TokenRequestLog;
 use App\Modules\Connector\Infrastructure\ConnectorAuditSerializer;
 use App\Modules\Connector\Infrastructure\CurlClient;
 use App\Modules\Connector\Infrastructure\CurlEgressTransport;
@@ -48,7 +49,9 @@ use App\Modules\Connector\Infrastructure\DirectFetchTransport;
 use App\Modules\Connector\Infrastructure\DnsHostResolver;
 use App\Modules\Connector\Infrastructure\LocalSecretVault;
 use App\Modules\Connector\Infrastructure\NativeCurlClient;
+use App\Modules\Connector\Infrastructure\OAuthTokenCache;
 use App\Modules\Connector\Infrastructure\SqlHostAllowlistDependents;
+use App\Modules\Connector\Infrastructure\SyncRunTokenLog;
 use App\Modules\Identity\Application\IssueInvitation;
 use App\Modules\Identity\Application\QueuedInvitationCourier;
 use App\Modules\Identity\Contracts\InvitationCourier;
@@ -125,6 +128,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(EgressTransport::class, CurlEgressTransport::class);
         // The `direct` driver: the worker calls the source itself, through the guard (the `agent` driver comes later).
         $this->app->bind(FetchTransport::class, DirectFetchTransport::class);
+        $this->app->bind(TokenRequestLog::class, SyncRunTokenLog::class);
+        // One per process, so a missing token key is warned about once.
+        $this->app->singleton(OAuthTokenCache::class);
         $this->app->bind(ConnectionTests::class, StartConnectionTest::class);
         $this->app->singleton(OperationKinds::class);
         $this->app->singleton(MetricEmitter::class, OtelMetricEmitter::class);

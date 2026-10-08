@@ -13,9 +13,17 @@ use App\Modules\Connector\Contracts\SecretMissing;
 use App\Modules\Connector\Contracts\SecretRef;
 use App\Modules\Connector\Contracts\SecretSlots;
 use App\Modules\Connector\Contracts\SecretVault;
+use App\Modules\Connector\Contracts\TokenRequestLog;
 use App\Modules\Connector\Infrastructure\ConnectionTestSettings;
 use App\Modules\Connector\Infrastructure\DirectFetchTransport;
+use App\Modules\Connector\Infrastructure\OAuthTokenCache;
+use App\Modules\Connector\Infrastructure\OAuthTokenClient;
+use App\Modules\Connector\Infrastructure\SecretSettings;
+use App\Platform\Tenancy\TenantCache;
+use Illuminate\Cache\ArrayStore;
+use Illuminate\Cache\Repository as CacheRepository;
 use Illuminate\Config\Repository;
+use Psr\Log\NullLogger;
 
 // Story 2.5: the `direct` FetchTransport applies the credential scheme from resolved refs and sends through the egress
 // transport only. The vault and the egress transport are fakes here; the real ones are covered by the Database suite.
@@ -77,6 +85,34 @@ function dftEgress(int $status = 200, string $body = 'abc'): EgressTransport
     };
 }
 
+/** The transport over fakes: a token client on the same fake egress, an array cache and settings without a token key. */
+function dftTransport(EgressTransport $egress, SecretVault $vault, ?OAuthTokenCache $cache = null, array $settings = []): DirectFetchTransport
+{
+    $config = new Repository(['dashflow' => ['secrets' => [], 'oauth' => []] + $settings]);
+    $secretSettings = new SecretSettings($config);
+
+    return new DirectFetchTransport(
+        $egress, $vault,
+        new OAuthTokenClient($egress, dftTokenLog()),
+        $cache ?? new OAuthTokenCache(new TenantCache(new CacheRepository(new ArrayStore)), $secretSettings, new NullLogger),
+        $secretSettings,
+    );
+}
+
+function dftTokenLog(): TokenRequestLog
+{
+    return new class implements TokenRequestLog
+    {
+        /** @var list<array<string, mixed>> */
+        public array $rows = [];
+
+        public function record(string $workspaceId, ?string $dataSourceId, string $tokenUrl, ?int $httpStatus, int $latencyMs, int $bytes, ?string $code, DateTimeInterface $startedAt): void
+        {
+            $this->rows[] = compact('workspaceId', 'dataSourceId', 'tokenUrl', 'httpStatus', 'bytes', 'code');
+        }
+    };
+}
+
 /** @param list<SecretRef> $refs */
 function dftRequest(CredentialScheme $scheme, array $refs, array $headers = [], ?string $apiKeyName = null, ?string $placement = null, ?string $source = DFT_SRC, ?int $timeout = null): FetchRequest
 {
@@ -86,7 +122,7 @@ function dftRequest(CredentialScheme $scheme, array $refs, array $headers = [], 
 it('sends a GET with the plain default headers and no credential for scheme none, and reports status, bytes and latency', function () {
     $egress = dftEgress(200, 'twelve bytes');
 
-    $response = (new DirectFetchTransport($egress, dftVault([])))->fetch(dftRequest(CredentialScheme::None, [], [['name' => 'Accept', 'value' => 'application/json']]));
+    $response = (dftTransport($egress, dftVault([])))->fetch(dftRequest(CredentialScheme::None, [], [['name' => 'Accept', 'value' => 'application/json']]));
 
     expect($egress->workspace)->toBe(DFT_WS)
         ->and($egress->sent->url)->toBe('https://api.example.com/v1')
@@ -104,7 +140,7 @@ it('sends a GET with the plain default headers and no credential for scheme none
 it('applies each credential scheme from the resolved refs, as a credential the transport can strip', function (CredentialScheme $scheme, array $refs, array $values, array $headers, ?string $name, ?string $placement, string $url, array $credentials) {
     $egress = dftEgress();
 
-    (new DirectFetchTransport($egress, dftVault($values)))->fetch(dftRequest($scheme, $refs, $headers, $name, $placement));
+    (dftTransport($egress, dftVault($values)))->fetch(dftRequest($scheme, $refs, $headers, $name, $placement));
 
     expect($egress->sent->url)->toBe($url)->and($egress->sent->credentials)->toBe($credentials);
 })->with([
@@ -119,7 +155,7 @@ it('opens a stored secret for its Data Source and a transient one for its Operat
     $vault = dftVault(['bearer_token' => 't', 'header:x-token' => 'h']);
     $refs = [new SecretRef('s1', 'bearer_token', operationId: DFT_OP), new SecretRef('s2', 'header:x-token')];
 
-    (new DirectFetchTransport(dftEgress(), $vault))->fetch(dftRequest(CredentialScheme::Bearer, $refs, [['name' => 'X-Token', 'value' => '', 'secret' => true]]));
+    (dftTransport(dftEgress(), $vault))->fetch(dftRequest(CredentialScheme::Bearer, $refs, [['name' => 'X-Token', 'value' => '', 'secret' => true]]));
 
     $contexts = array_map(fn (array $r): array => [$r[0]->slot, $r[1]->workspaceId, $r[1]->dataSourceId, $r[1]->slot, $r[1]->purpose], $vault->resolved);
     expect($contexts)->toEqualCanonicalizing([
@@ -131,26 +167,26 @@ it('opens a stored secret for its Data Source and a transient one for its Operat
 it('fails with SecretMissing when the scheme needs a ref the request does not carry, and sends nothing', function () {
     $egress = dftEgress();
 
-    expect(fn () => (new DirectFetchTransport($egress, dftVault([])))->fetch(dftRequest(CredentialScheme::Bearer, [])))->toThrow(SecretMissing::class)
-        ->and(fn () => (new DirectFetchTransport($egress, dftVault([])))->fetch(dftRequest(CredentialScheme::Bearer, [new SecretRef('s', 'bearer_token')], source: null)))->toThrow(SecretMissing::class)
+    expect(fn () => (dftTransport($egress, dftVault([])))->fetch(dftRequest(CredentialScheme::Bearer, [])))->toThrow(SecretMissing::class)
+        ->and(fn () => (dftTransport($egress, dftVault([])))->fetch(dftRequest(CredentialScheme::Bearer, [new SecretRef('s', 'bearer_token')], source: null)))->toThrow(SecretMissing::class)
         ->and($egress->sent)->toBeNull();
 });
 
 it('refuses an API key request that has no name to send it under', function () {
-    expect(fn () => (new DirectFetchTransport(dftEgress(), dftVault(['api_key' => 'k'])))->fetch(dftRequest(CredentialScheme::ApiKeyHeader, [new SecretRef('s', 'api_key')])))
+    expect(fn () => (dftTransport(dftEgress(), dftVault(['api_key' => 'k'])))->fetch(dftRequest(CredentialScheme::ApiKeyHeader, [new SecretRef('s', 'api_key')])))
         ->toThrow(InvalidArgumentException::class);
 });
 
 it('hands the Data Source timeout to the egress transport', function () {
     $egress = dftEgress();
 
-    (new DirectFetchTransport($egress, dftVault([])))->fetch(dftRequest(CredentialScheme::None, [], timeout: 7));
+    (dftTransport($egress, dftVault([])))->fetch(dftRequest(CredentialScheme::None, [], timeout: 7));
 
     expect($egress->sent->timeoutSeconds)->toBe(7);
 });
 
 it('reports a non-2xx answer as unsuccessful without throwing', function (int $status, bool $ok) {
-    $response = (new DirectFetchTransport(dftEgress($status), dftVault([])))->fetch(dftRequest(CredentialScheme::None, []));
+    $response = (dftTransport(dftEgress($status), dftVault([])))->fetch(dftRequest(CredentialScheme::None, []));
 
     expect($response->successful())->toBe($ok);
 })->with([[199, false], [200, true], [204, true], [299, true], [301, false], [401, false], [500, false]]);
@@ -188,12 +224,12 @@ it('limits only with a window and a positive whole number, and invents nothing',
 // Story 2.6: JSON is asked for unless the Data Source sets its own Accept, and the Data Source's size limit goes to the transport.
 it('asks for JSON unless the Data Source sets its own Accept (any case), and passes its size limit on', function () {
     $egress = dftEgress();
-    (new DirectFetchTransport($egress, dftVault([])))->fetch(new FetchRequest(DFT_WS, DFT_SRC, null, 'https://api.example.com/v1', [], CredentialScheme::None, [], [], maxResponseBytes: 4096));
+    (dftTransport($egress, dftVault([])))->fetch(new FetchRequest(DFT_WS, DFT_SRC, null, 'https://api.example.com/v1', [], CredentialScheme::None, [], [], maxResponseBytes: 4096));
 
     expect($egress->sent->headers)->toBe(['Accept' => 'application/json'])->and($egress->sent->maxBytes)->toBe(4096);
 
     $own = dftEgress();
-    (new DirectFetchTransport($own, dftVault([])))->fetch(dftRequest(CredentialScheme::None, [], [['name' => 'accept', 'value' => 'application/vnd.api+json']]));
+    (dftTransport($own, dftVault([])))->fetch(dftRequest(CredentialScheme::None, [], [['name' => 'accept', 'value' => 'application/vnd.api+json']]));
 
     expect($own->sent->headers)->toBe(['accept' => 'application/vnd.api+json'])->and($own->sent->maxBytes)->toBeNull();
 });

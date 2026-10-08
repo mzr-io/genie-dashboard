@@ -163,3 +163,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-6-accept-only-json-losslessly-and-within-limits.md`
   summary: Decide whether to add a built-in depth and response-size ceiling that the pending_input settings can only lower.
   evidence: With both settings unset nothing is capped; the README records a worker segfault when PHP frees a body nested 300,000 levels deep, and a gzip bomb is unbounded in memory until a limit is configured.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-7-use-oauth2-client-credentials.md`
+  summary: Add single-flight locking for OAuth token refresh and restrict the 401 retry to idempotent requests when Story 2.9 adds read-only POST.
+  evidence: DirectFetchTransport::token() does get, request, put with no lock, so parallel jobs stampede the token endpoint; the retry resends the whole request.

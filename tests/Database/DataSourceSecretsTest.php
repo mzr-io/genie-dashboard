@@ -503,7 +503,7 @@ it('builds a FetchRequest with secret_refs and the credential scheme only, never
     $json = json_encode($request, JSON_THROW_ON_ERROR);
     $ciphertexts = array_map(fn ($row) => $row['sealed'], scSecrets());
 
-    expect($request->toArray()['v'])->toBe(3)
+    expect($request->toArray()['v'])->toBe(4)
         ->and($request->scheme->value)->toBe('api_key_query')
         ->and($request->secretRefs)->toHaveCount(2)
         ->and(array_column($request->toArray()['secret_refs'], 'slot'))->toBe(['api_key', 'header:x-s'])

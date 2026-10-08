@@ -565,3 +565,31 @@ it('rejects a set but malformed platform ceiling or source limit instead of read
 it('treats an empty or null ceiling as unset', function () {
     expect(ResponseLimit::effective(null, ''))->toBeNull()->and(ResponseLimit::effective(null, null))->toBeNull();
 });
+
+// Story 2.7: a token request follows nothing, not even to the same origin: any 3xx is a failure and nothing more is sent.
+it('treats any 3xx answer to a request that refuses redirects as a failure and follows nothing, not even on the same origin', function (int $status) {
+    [$workspace, , $curl] = transportWorld(answers: [FakeCurl::redirect('https://api.example.com/other', $status), FakeCurl::answer()]);
+
+    expect(fn () => app(EgressTransport::class)->send($workspace, new EgressRequest('https://api.example.com/token', 'POST', body: 'a=b', refuseRedirects: true)))
+        ->toThrow(EgressTransportFailed::class)
+        ->and($curl->calls)->toHaveCount(1);
+})->with([301, 302, 303, 307, 308]);
+
+it('treats a 304 or a 3xx without a Location as a failure too when redirects are refused, and still sends an ordinary request as before', function () {
+    [$workspace, , $curl] = transportWorld(answers: [FakeCurl::answer(304, ''), FakeCurl::answer(200, '{}')]);
+
+    expect(fn () => app(EgressTransport::class)->send($workspace, new EgressRequest('https://api.example.com/token', 'POST', body: 'a=b', refuseRedirects: true)))
+        ->toThrow(EgressTransportFailed::class);
+
+    expect(app(EgressTransport::class)->send($workspace, new EgressRequest('https://api.example.com/token', 'POST', body: 'a=b', refuseRedirects: true))->status)->toBe(200)
+        ->and($curl->calls[1][CURLOPT_POSTFIELDS])->toBe('a=b');
+});
+
+it('still guards the token URL: a host that is not allowlisted is refused and audited', function () {
+    [$workspace, , $curl] = transportWorld(['auth.example.org' => ['93.184.216.50']], [FakeCurl::answer()]);
+
+    expect(fn () => app(EgressTransport::class)->send($workspace, new EgressRequest('https://auth.example.org/token', 'POST', body: 'a=b', refuseRedirects: true)))
+        ->toThrow(SsrfBlocked::class)
+        ->and($curl->calls)->toBe([])
+        ->and(blockEvents())->toHaveCount(1);
+});

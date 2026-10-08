@@ -9,6 +9,7 @@ use App\Modules\Connector\Contracts\EgressReason;
 use App\Modules\Connector\Contracts\EgressRequest;
 use App\Modules\Connector\Contracts\EgressResponse;
 use App\Modules\Connector\Contracts\EgressTransport;
+use App\Modules\Connector\Contracts\EgressTransportFailed;
 use App\Modules\Connector\Contracts\EgressVerdict;
 use App\Modules\Connector\Contracts\ReservedHeaders;
 use App\Modules\Connector\Contracts\ResponseLimit;
@@ -24,7 +25,7 @@ use InvalidArgumentException;
  * (`CURLOPT_RESOLVE` for that host and port, so the name is never resolved again and a rebinding answer is never used).
  * Only http and https are accepted, also for redirects. Proxy variables (`HTTP_PROXY`, `http_proxy`, `ALL_PROXY` and the
  * rest) are ignored: the proxy option is set empty and `NO_PROXY` is `*`, so curl never reads the environment (httpoxy).
- * curl follows no redirect: the transport reads each 3xx itself. A target on another origin, or an https-to-http
+ * curl follows no redirect: the transport reads each 3xx itself (a request with `refuseRedirects`, such as an OAuth token request, treats any 3xx as a failure and follows nothing). A target on another origin, or an https-to-http
  * downgrade, is refused and audited as a security event; nothing is sent on a refused hop, so credentials never reach
  * another origin. A same-origin target keeps its credentials and goes through the whole guard again.
  *
@@ -62,6 +63,11 @@ final class CurlEgressTransport implements EgressTransport
                 $this->options($verdict, $url, $method, $request, $body),
                 ResponseLimit::effective($request->maxBytes, $this->config->get('dashflow.tunables.guards.max_bytes.value')),
             );
+
+            // A token request follows nothing, not even to the same origin: any 3xx is a failure (nothing more is sent).
+            if ($request->refuseRedirects && $result->status >= 300 && $result->status < 400) {
+                throw new EgressTransportFailed('The request was answered with a redirect.');
+            }
 
             $location = in_array($result->status, self::REDIRECTS, true) ? ($result->headers['location'][0] ?? null) : null;
 

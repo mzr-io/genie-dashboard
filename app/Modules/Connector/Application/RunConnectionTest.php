@@ -2,6 +2,7 @@
 
 namespace App\Modules\Connector\Application;
 
+use App\Modules\Connector\Contracts\AuthFailed;
 use App\Modules\Connector\Contracts\ConnectionTestCode;
 use App\Modules\Connector\Contracts\ConnectionTests;
 use App\Modules\Connector\Contracts\CredentialScheme;
@@ -19,6 +20,7 @@ use App\Modules\Connector\Contracts\SecretRefused;
 use App\Modules\Connector\Contracts\SecretSlots;
 use App\Modules\Connector\Contracts\SecretVault;
 use App\Modules\Connector\Contracts\SsrfBlocked;
+use App\Modules\Connector\Contracts\TokenRequestFailed;
 use App\Platform\Json\InvalidLimitSetting;
 use App\Platform\Operations\Operation;
 use App\Platform\Operations\OperationHandler;
@@ -33,7 +35,8 @@ use Throwable;
  * The `connection_test` Operation (Story 2.5), run by `worker-connector` on queue `fetch-interactive` in the requester's
  * Workspace: one GET to the Base URL with the form's default headers and credentials through the {@see FetchTransport}.
  * Success is HTTP 2xx with a JSON body that parses (Story 2.6); the decoded value is dropped, never stored. Every outcome is one `sync_runs` row and a small summary
- * `{ok, status, latency_ms, code, reason, host, request_id}`.
+ * `{ok, status, latency_ms, code, reason, host, request_id}`. An OAuth2 source gets its token first (Story 2.7), recorded as its own
+ * `oauth_token` run; a refusal of the credentials is `auth-failed`.
  *
  * A failure collapses to one of {@see ConnectionTestCode}'s user codes; a body that is not JSON and one over the size limit are
  * never retried. A too-large answer puts the bytes read and the limit in the summary as `size_bytes` and `limit_bytes`. The finer `reason` (a status, a timeout, a key
@@ -90,6 +93,15 @@ final class RunConnectionTest implements OperationHandler
             $code = ConnectionTestCode::FetchFailed;
             $reason = 'misconfigured';
             Log::error('connector.connection_test.limit_setting_invalid', ['workspace_id' => $operation->workspaceId, 'operation_id' => $operation->id, 'setting' => $e->setting]);
+        } catch (AuthFailed $e) {
+            // The token endpoint refused the credentials, or the API refused a fresh token: never retried (Story 2.7).
+            $latencyMs = $this->elapsed($began);
+            $code = ConnectionTestCode::AuthFailed;
+            $reason = $e->code()->value.':'.$e->reason;
+        } catch (TokenRequestFailed $e) {
+            $latencyMs = $this->elapsed($began);
+            $code = ConnectionTestCode::FetchFailed;
+            $reason = 'oauth_'.$e->reason;
         } catch (NotJsonResponse $e) {
             $code = ConnectionTestCode::NotJson;
             $reason = $e->code()->value.':'.$e->reason;
@@ -204,18 +216,23 @@ final class RunConnectionTest implements OperationHandler
         if ($dataSourceId !== null) {
             foreach ($this->vault->status($operation->workspaceId, $dataSourceId) as $slot => $status) {
                 if (! isset($refs[$slot]) && isset($used[$slot]) && $status->id !== null) {
-                    $refs[$slot] = new SecretRef($status->id, $slot);
+                    $refs[$slot] = new SecretRef($status->id, $slot, secretVersion: $status->secretVersion ?? 1);
                 }
             }
         }
 
         $placement = is_string($input['api_key_placement'] ?? null) ? $input['api_key_placement'] : null;
+        $client = $refs[SecretSlots::OAUTH_CLIENT_SECRET] ?? null;
 
         return new FetchRequest(
             $operation->workspaceId, $dataSourceId, null, $url->baseUrl, [], CredentialScheme::fromAuth($authType, $placement), array_values($refs),
             $headers, is_string($input['api_key_name'] ?? null) ? $input['api_key_name'] : null, $placement,
             is_int($input['timeout_seconds'] ?? null) ? $input['timeout_seconds'] : null,
             maxResponseBytes: is_int($input['max_response_bytes'] ?? null) ? $input['max_response_bytes'] : null,
+            oauthTokenUrl: is_string($input['oauth_token_url'] ?? null) ? $input['oauth_token_url'] : null,
+            oauthClientId: is_string($input['oauth_client_id'] ?? null) ? $input['oauth_client_id'] : null,
+            oauthScope: is_string($input['oauth_scope'] ?? null) ? $input['oauth_scope'] : null,
+            secretVersion: $client?->secretVersion,
         );
     }
 

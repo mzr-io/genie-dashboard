@@ -756,8 +756,30 @@ export const dataSourceLabels = {
     saveBlocked:
         "Save is unavailable until the base URL's host is on the workspace allowlist.",
     saveBlockedUrl: 'Save is unavailable until the base URL is accepted.',
+    saveBlockedToken:
+        "Save is unavailable until the token URL's host is on the workspace allowlist.",
+    saveBlockedTokenUrl: 'Save is unavailable until the token URL is accepted.',
+    tokenUrlRequired: 'Enter the token URL.',
+    clientIdRequired: 'Enter the client ID.',
     nameRequired: 'Enter a name.',
     baseUrlRequired: 'Enter the base URL.',
+    // The same refusals for the OAuth2 token URL (Story 2.7), by the server's reason.
+    tokenUrlReasons: {
+        empty: 'Enter the token URL.',
+        'too-long': 'The token URL is too long.',
+        whitespace:
+            'The token URL cannot contain spaces. Remove them and try again.',
+        malformed:
+            'Enter a full address such as https://auth.example.com/oauth/token.',
+        scheme: 'The token URL must start with http:// or https://.',
+        userinfo: 'Leave the user name and password out of the token URL.',
+        query: 'Leave the query string out of the token URL.',
+        fragment: 'Leave the fragment (#) out of the token URL.',
+        'invalid-host':
+            'The host is not valid. Use a host name, or an IP address that is not in a private or reserved range.',
+        'https-required':
+            'This workspace requires https. Change the token URL to start with https://.',
+    } as Record<string, string>,
     // Field errors by the server's reason; a reason without an entry shows the server's own message.
     reasons: {
         'name-required': 'Enter a name.',
@@ -795,8 +817,6 @@ export const dataSourceLabels = {
         'invalid-boolean': 'Choose on or off.',
         'headers-invalid':
             'The default headers are not valid. Reload the page and try again.',
-        'auth-type-unavailable':
-            'This authentication type is not available yet.',
         'auth-type-invalid': 'Choose an authentication type.',
         'api-key-name-required': 'Enter the name the API key is sent under.',
         'api-key-name-invalid':
@@ -815,6 +835,11 @@ export const dataSourceLabels = {
             'This credential does not belong to the chosen authentication type.',
         'secrets-invalid':
             'The credentials are not valid. Reload the page and try again.',
+        'oauth-client-id-required': 'Enter the client ID.',
+        'oauth-client-id-invalid':
+            'The client ID uses visible ASCII characters only, without spaces.',
+        'oauth-scope-invalid':
+            'The scope is names separated by single spaces, using visible ASCII characters only.',
     } as Record<string, string>,
     // Someone else saved first (409): the typed values stay.
     conflict:
@@ -831,6 +856,7 @@ export const dataSourceLabels = {
         api_key: 'API key',
         bearer: 'Bearer token',
         basic: 'Basic (user name and password)',
+        oauth2_client_credentials: 'OAuth2 client credentials',
     } as Record<string, string>,
     apiKeyName: 'API key name',
     apiKeyNameHelper:
@@ -844,6 +870,14 @@ export const dataSourceLabels = {
     bearerToken: 'Token',
     basicUsername: 'User name',
     basicPassword: 'Password',
+    // OAuth2 client credentials (Story 2.7): the client secret is write-only like every other credential.
+    oauthTokenUrl: 'Token URL',
+    oauthTokenUrlHelper:
+        'Where Dashflow asks for an access token, such as https://auth.example.com/oauth/token. It must be on your workspace allowlist.',
+    oauthClientId: 'Client ID',
+    oauthClientSecret: 'Client secret',
+    oauthScope: 'Scope (optional)',
+    oauthScopeHelper: 'Names separated by spaces. Leave blank to ask for none.',
     secretHeader: 'Secret',
     secretHeaderHint:
         'Mark a header as secret to store its value sealed. It is then shown as set, never in full.',
@@ -866,6 +900,9 @@ export const dataSourceLabels = {
     testHint:
         'Calls the base URL once with these headers and credentials. Nothing is saved.',
     // Story 2.6: the card also shows the catalogue's `not-json` and `response-too-large`.
+    // Story 2.7: the catalogue is closed to the canonical rows of EXPERIENCE.md, so this message lives here.
+    authFailed: (source: string) =>
+        `Authentication failed. ${source} did not accept these credentials. Check the client ID, the client secret and the scope, then test again.`,
 } as const;
 
 // Units of a size for people (Story 2.6), smallest first, 1024 apart.

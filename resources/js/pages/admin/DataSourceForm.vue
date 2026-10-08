@@ -29,6 +29,7 @@ import { Switch } from '@/components/ui/switch';
 import { announce } from '@/lib/announce';
 import {
     checkBaseUrl,
+    checkTokenUrl,
     createDataSource,
     DataSourceError,
     fetchDataSource,
@@ -96,6 +97,10 @@ const form = reactive({
     auth_type: 'none' as AuthType,
     api_key_name: '',
     api_key_placement: 'header' as 'header' | 'query',
+    // OAuth2 client credentials (Story 2.7): plain values; the client secret is a write-only slot like the others.
+    oauth_token_url: '',
+    oauth_client_id: '',
+    oauth_scope: '',
     confirm_password: '',
 });
 // Secret values live only here, in memory: never in the snapshot, a draft, storage or the URL.
@@ -108,6 +113,9 @@ const urlRequestId = ref<string | null>(null);
 // The blur check refused the Base URL: Save stays `aria-disabled` until it is changed and accepted.
 const urlBlock = ref<'host' | 'url' | null>(null);
 const urlChecking = ref(false);
+// The same for the OAuth2 token URL.
+const tokenBlock = ref<'host' | 'url' | null>(null);
+let tokenController: AbortController | null = null;
 const failure = ref<'save' | 'throttled' | 'stale' | 'unconfigured' | null>(
     null,
 );
@@ -158,6 +166,9 @@ function snapshot(): string {
         form.auth_type,
         form.api_key_name,
         form.api_key_placement,
+        form.oauth_token_url,
+        form.oauth_client_id,
+        form.oauth_scope,
         // Whether a secret was typed, never what.
         Object.values(secretValues).map((value) => value !== ''),
         form.headers.map((row) => row.secret),
@@ -186,12 +197,22 @@ function fill(source: DataSource): void {
         };
     });
     form.auth_type = (
-        ['none', 'api_key', 'bearer', 'basic'].includes(source.auth_type)
+        [
+            'none',
+            'api_key',
+            'bearer',
+            'basic',
+            'oauth2_client_credentials',
+        ].includes(source.auth_type)
             ? source.auth_type
             : 'none'
     ) as AuthType;
     form.api_key_name = source.api_key_name ?? '';
     form.api_key_placement = source.api_key_placement ?? 'header';
+    form.oauth_token_url = source.oauth_token_url ?? '';
+    form.oauth_client_id = source.oauth_client_id ?? '';
+    form.oauth_scope = source.oauth_scope ?? '';
+    tokenBlock.value = null;
     form.confirm_password = '';
     clearSecretInputs();
     form.timeout_seconds = source.timeout_seconds?.toString() ?? '';
@@ -226,6 +247,7 @@ function chooseAuth(type: AuthType): void {
     form.auth_type = type;
     clearSecretInputs();
     errors.auth_type = null;
+    tokenBlock.value = null;
 }
 
 // Any typed secret, a changed auth type, or a secret header removed or unflagged needs the password.
@@ -251,6 +273,15 @@ const needsPassword = computed(() => {
         ) &&
         (form.api_key_name !== (saved.api_key_name ?? '') ||
             form.api_key_placement !== (saved.api_key_placement ?? 'header'))
+    ) {
+        return true;
+    }
+
+    // The same for the client secret: another token URL or client ID would send it somewhere else.
+    if (
+        saved?.secrets?.oauth_client_secret?.configured &&
+        (form.oauth_token_url.trim() !== (saved.oauth_token_url ?? '') ||
+            form.oauth_client_id !== (saved.oauth_client_id ?? ''))
     ) {
         return true;
     }
@@ -375,6 +406,14 @@ function messageFor(
     reason: string | undefined,
     server: string | undefined,
 ): string {
+    if (field === 'oauth_token_url' && reason !== 'host-not-allowlisted') {
+        return (
+            (reason ? labels.tokenUrlReasons[reason] : undefined) ??
+            server ??
+            t('save-failed.form')
+        );
+    }
+
     if (reason === 'host-not-allowlisted') {
         // The catalogue message ends with its "Technical details" cue, which this form renders as its own disclosure.
         return t('host-not-allowlisted').replace(/\s*▸.*$/u, '');
@@ -445,6 +484,58 @@ async function checkUrl(): Promise<void> {
     }
 }
 
+async function checkToken(): Promise<void> {
+    tokenController?.abort();
+    const url = form.oauth_token_url.trim();
+
+    if (url === '') {
+        errors.oauth_token_url = null;
+        tokenBlock.value = null;
+
+        return;
+    }
+
+    tokenController = new AbortController();
+    const mine = tokenController;
+
+    try {
+        await checkTokenUrl(url, mine.signal);
+
+        if (!mine.signal.aborted) {
+            errors.oauth_token_url = null;
+            tokenBlock.value = null;
+        }
+    } catch (error) {
+        if (mine.signal.aborted || authExpired(error)) {
+            return;
+        }
+
+        if (error instanceof DataSourceError && error.status === 422) {
+            const reason = error.reasons.oauth_token_url;
+
+            errors.oauth_token_url = messageFor(
+                'oauth_token_url',
+                reason,
+                error.errors.oauth_token_url?.[0],
+            );
+            tokenBlock.value =
+                reason === 'host-not-allowlisted' ? 'host' : 'url';
+
+            return;
+        }
+
+        // The check itself failed: the save still asks the server, which refuses a blocked host.
+        errors.oauth_token_url = null;
+        tokenBlock.value = null;
+    }
+}
+
+function onTokenUrlInput(): void {
+    tokenController?.abort();
+    errors.oauth_token_url = null;
+    tokenBlock.value = null;
+}
+
 function onUrlInput(): void {
     checkController?.abort();
     urlChecking.value = false;
@@ -457,7 +548,11 @@ const saveReason = computed(() =>
         ? labels.saveBlocked
         : urlBlock.value === 'url'
           ? labels.saveBlockedUrl
-          : undefined,
+          : tokenBlock.value === 'host'
+            ? labels.saveBlockedToken
+            : tokenBlock.value === 'url'
+              ? labels.saveBlockedTokenUrl
+              : undefined,
 );
 
 // ---- Save --------------------------------------------------------------------------------------------------------
@@ -490,6 +585,15 @@ function payload(): DataSourceInput {
             ? {
                   api_key_name: form.api_key_name,
                   api_key_placement: form.api_key_placement,
+              }
+            : {}),
+        ...(form.auth_type === 'oauth2_client_credentials'
+            ? {
+                  oauth_token_url: form.oauth_token_url.trim(),
+                  oauth_client_id: form.oauth_client_id,
+                  ...(form.oauth_scope.trim() !== ''
+                      ? { oauth_scope: form.oauth_scope.trim() }
+                      : {}),
               }
             : {}),
         ...secretsPayload(),
@@ -541,6 +645,9 @@ function fieldLabel(field: string): string {
     if (field === 'auth_type') return labels.authType;
     if (field === 'api_key_name') return labels.apiKeyName;
     if (field === 'api_key_placement') return labels.apiKeyPlacement;
+    if (field === 'oauth_token_url') return labels.oauthTokenUrl;
+    if (field === 'oauth_client_id') return labels.oauthClientId;
+    if (field === 'oauth_scope') return labels.oauthScope;
     if (field === 'confirm_password') return labels.confirmPassword;
 
     const secret = /^secrets\.(\w+)$/.exec(field);
@@ -569,7 +676,9 @@ function slotLabel(slot: string): string {
           ? labels.bearerToken
           : slot === 'basic_username'
             ? labels.basicUsername
-            : labels.basicPassword;
+            : slot === 'oauth_client_secret'
+              ? labels.oauthClientSecret
+              : labels.basicPassword;
 }
 
 function elementFor(field: string): string {
@@ -586,10 +695,14 @@ const fieldOrder = [
     'auth_type',
     'api_key_name',
     'api_key_placement',
+    'oauth_token_url',
+    'oauth_client_id',
     'secrets.api_key',
     'secrets.bearer_token',
     'secrets.basic_username',
     'secrets.basic_password',
+    'secrets.oauth_client_secret',
+    'oauth_scope',
 ];
 
 const summaryItems = computed(() =>
@@ -658,6 +771,13 @@ async function showServerErrors(error: DataSourceError): Promise<boolean> {
         errors[key] = message;
     }
 
+    if (error.errors.oauth_token_url?.length) {
+        tokenBlock.value =
+            error.reasons.oauth_token_url === 'host-not-allowlisted'
+                ? 'host'
+                : null;
+    }
+
     if (error.errors.base_url?.length) {
         urlBlock.value =
             error.reasons.base_url === 'host-not-allowlisted' ? 'host' : null;
@@ -707,6 +827,16 @@ async function submit(): Promise<void> {
 
     if (form.auth_type === 'api_key' && form.api_key_name === '') {
         errors.api_key_name = labels.reasons['api-key-name-required'];
+    }
+
+    if (form.auth_type === 'oauth2_client_credentials') {
+        if (form.oauth_token_url.trim() === '') {
+            errors.oauth_token_url = labels.tokenUrlRequired;
+        }
+
+        if (form.oauth_client_id === '') {
+            errors.oauth_client_id = labels.clientIdRequired;
+        }
     }
 
     // A credential needs a value: a new one, or the saved one left alone. "Replace" asks for a new value.
@@ -1068,6 +1198,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
     window.removeEventListener('beforeunload', onBeforeUnload);
     checkController?.abort();
+    tokenController?.abort();
     testController?.abort();
 
     if (testWaitTimer) {
@@ -1310,6 +1441,7 @@ const ceilingHelper = (value: number | null): string | undefined =>
                                     'api_key',
                                     'bearer',
                                     'basic',
+                                    'oauth2_client_credentials',
                                 ]"
                                 :key="type"
                                 :value="type"
@@ -1372,6 +1504,54 @@ const ceilingHelper = (value: number | null): string | undefined =>
                         </p>
                     </template>
 
+                    <template
+                        v-if="form.auth_type === 'oauth2_client_credentials'"
+                    >
+                        <FormField
+                            :id="fieldId('oauth_token_url')"
+                            :label="labels.oauthTokenUrl"
+                            :helper="labels.oauthTokenUrlHelper"
+                            :error="errors.oauth_token_url"
+                            required
+                            #default="{ field }"
+                        >
+                            <Input
+                                v-bind="field"
+                                v-model="form.oauth_token_url"
+                                name="oauth_token_url"
+                                type="text"
+                                inputmode="url"
+                                maxlength="2100"
+                                autocomplete="off"
+                                autocapitalize="off"
+                                spellcheck="false"
+                                data-test="oauth-token-url"
+                                @input="onTokenUrlInput"
+                                @blur="checkToken"
+                            />
+                        </FormField>
+                        <FormField
+                            :id="fieldId('oauth_client_id')"
+                            :label="labels.oauthClientId"
+                            :error="errors.oauth_client_id"
+                            required
+                            #default="{ field }"
+                        >
+                            <Input
+                                v-bind="field"
+                                v-model="form.oauth_client_id"
+                                name="oauth_client_id"
+                                type="text"
+                                maxlength="255"
+                                autocomplete="off"
+                                autocapitalize="off"
+                                spellcheck="false"
+                                data-test="oauth-client-id"
+                                @input="errors.oauth_client_id = null"
+                            />
+                        </FormField>
+                    </template>
+
                     <FormField
                         v-for="slot in slots"
                         :key="slot"
@@ -1391,6 +1571,28 @@ const ceilingHelper = (value: number | null): string | undefined =>
                             @update:model-value="
                                 errors[`secrets.${slot}`] = null
                             "
+                        />
+                    </FormField>
+
+                    <FormField
+                        v-if="form.auth_type === 'oauth2_client_credentials'"
+                        :id="fieldId('oauth_scope')"
+                        :label="labels.oauthScope"
+                        :helper="labels.oauthScopeHelper"
+                        :error="errors.oauth_scope"
+                        #default="{ field }"
+                    >
+                        <Input
+                            v-bind="field"
+                            v-model="form.oauth_scope"
+                            name="oauth_scope"
+                            type="text"
+                            maxlength="512"
+                            autocomplete="off"
+                            autocapitalize="off"
+                            spellcheck="false"
+                            data-test="oauth-scope"
+                            @input="errors.oauth_scope = null"
                         />
                     </FormField>
 

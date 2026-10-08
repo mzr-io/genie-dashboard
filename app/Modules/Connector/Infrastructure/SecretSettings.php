@@ -3,6 +3,7 @@
 namespace App\Modules\Connector\Infrastructure;
 
 use App\Modules\Connector\Contracts\SecretsNotConfigured;
+use App\Platform\Json\InvalidLimitSetting;
 use Illuminate\Contracts\Config\Repository;
 
 /**
@@ -37,6 +38,38 @@ final class SecretSettings
         }
 
         return (int) $value;
+    }
+
+    /** Where the token cache key is read (worker-connector only). */
+    public function tokenKeyPath(): string
+    {
+        $value = $this->config->get('dashflow.secrets.token_key_path.value');
+
+        return is_string($value) && $value !== '' ? $value : '/run/secrets/key-token';
+    }
+
+    /**
+     * Seconds taken off a token's `expires_in` before it is cached; unset means none (no number is invented).
+     *
+     * @throws InvalidLimitSetting when it is set but is not a whole number of zero or more (the caller fails closed)
+     */
+    public function tokenSkewSeconds(): int
+    {
+        $value = $this->config->get('dashflow.oauth.token_skew_seconds.value');
+
+        if ($value === null || (is_string($value) && trim($value) === '')) {
+            return 0;
+        }
+
+        if (is_int($value) && $value >= 0) {
+            return $value;
+        }
+
+        if (is_string($value) && preg_match('/\A(?:0|[1-9][0-9]{0,8})\z/D', trim($value)) === 1) {
+            return (int) trim($value);
+        }
+
+        throw new InvalidLimitSetting('oauth_token_skew_seconds');
     }
 
     public function keyPath(): string

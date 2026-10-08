@@ -32,5 +32,8 @@ final readonly class DataSource
         public ?string $apiKeyPlacement = null,
         /** @var array<string, SecretStatus> slot => status, only the slots that hold a value; empty in a list */
         public array $secrets = [],
+        public ?string $oauthTokenUrl = null,
+        public ?string $oauthClientId = null,
+        public ?string $oauthScope = null,
     ) {}
 }

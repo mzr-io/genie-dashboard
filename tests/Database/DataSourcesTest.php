@@ -450,7 +450,7 @@ it('checks no ceiling that is not set: nothing is invented', function () {
         ->assertJsonPath('data.max_response_bytes', 999999999999);
 });
 
-it('refuses an auth type that is not offered: OAuth2 client credentials wait for Story 2.7, anything else is not a type', function (string $auth, string $reason) {
+it('refuses an auth type that is not offered: anything else is not a type', function (string $auth, string $reason) {
     $workspace = Cluster::workspace('Acme');
     dsAdmin($workspace);
     dsAllow($workspace);
@@ -459,7 +459,6 @@ it('refuses an auth type that is not offered: OAuth2 client credentials wait for
 
     expect(dsRows())->toBe([]);
 })->with([
-    'oauth2' => ['oauth2_client_credentials', 'auth-type-unavailable'],
     'anything' => ['anything', 'auth-type-invalid'],
 ]);
 

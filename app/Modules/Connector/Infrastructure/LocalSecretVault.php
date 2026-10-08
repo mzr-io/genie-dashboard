@@ -158,15 +158,15 @@ final class LocalSecretVault implements SecretVault
     public function status(string $workspaceId, string $dataSourceId): array
     {
         $rows = DB::select(
-            'select id, slot, key_version, to_char(updated_at, '.self::STAMP.') as updated from secrets where workspace_id = ? and data_source_id = ? order by slot',
+            'select id, slot, key_version, version, to_char(updated_at, '.self::STAMP.') as updated from secrets where workspace_id = ? and data_source_id = ? order by slot',
             [$workspaceId, $dataSourceId],
         );
 
         $statuses = [];
 
         foreach ($rows as $row) {
-            /** @var object{id: string, slot: string, key_version: int|string, updated: string} $row */
-            $statuses[$row->slot] = new SecretStatus($row->slot, true, $row->updated, strtolower($row->id), (int) $row->key_version);
+            /** @var object{id: string, slot: string, key_version: int|string, version: int|string, updated: string} $row */
+            $statuses[$row->slot] = new SecretStatus($row->slot, true, $row->updated, strtolower($row->id), (int) $row->key_version, (int) $row->version);
         }
 
         return $statuses;

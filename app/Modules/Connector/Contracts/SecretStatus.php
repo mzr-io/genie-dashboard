@@ -14,6 +14,8 @@ final readonly class SecretStatus
         public ?string $updatedAt = null,
         public ?string $id = null,
         public ?int $keyVersion = null,
+        /** How many times the value has been set: 1 at first, raised on every replace. Part of the OAuth token cache key. */
+        public ?int $secretVersion = null,
     ) {}
 
     /** @return array{configured: bool, updated_at: string|null} */

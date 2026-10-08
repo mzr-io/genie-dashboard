@@ -38,6 +38,10 @@ final class ConnectorAuditSerializer implements AuditSerializer
             // Authentication (Story 2.4): the API key's name (hashed) and placement; a secret change is the slot kind, purpose, key version and action in the clear and one keyed hash of the value.
             'api_key_name' => AuditField::Hashed,
             'api_key_placement' => AuditField::Enum,
+            // OAuth2 client credentials (Story 2.7): the token URL, client ID and scope as keyed hashes (the client secret is audited as any other slot).
+            'oauth_token_url' => AuditField::Hashed,
+            'oauth_client_id' => AuditField::Hashed,
+            'oauth_scope' => AuditField::Hashed,
             'slot' => AuditField::Enum,
             'purpose' => AuditField::Enum,
             'key_version' => AuditField::Count,

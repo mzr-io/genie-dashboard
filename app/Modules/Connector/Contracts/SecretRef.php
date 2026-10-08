@@ -14,11 +14,12 @@ final readonly class SecretRef
         public string $slot,
         public string $purpose = SecretContext::PURPOSE_CRED,
         public ?string $operationId = null,
+        public int $secretVersion = 1,
     ) {}
 
-    /** @return array{id: string, slot: string, purpose: string, operation_id?: string} */
+    /** @return array{id: string, slot: string, purpose: string, secret_version: int, operation_id?: string} */
     public function toArray(): array
     {
-        return ['id' => $this->id, 'slot' => $this->slot, 'purpose' => $this->purpose] + ($this->operationId === null ? [] : ['operation_id' => $this->operationId]);
+        return ['id' => $this->id, 'slot' => $this->slot, 'purpose' => $this->purpose, 'secret_version' => $this->secretVersion] + ($this->operationId === null ? [] : ['operation_id' => $this->operationId]);
     }
 }

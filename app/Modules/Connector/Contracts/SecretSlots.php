@@ -13,6 +13,8 @@ final class SecretSlots
 
     public const BASIC_PASSWORD = 'basic_password';
 
+    public const OAUTH_CLIENT_SECRET = 'oauth_client_secret';
+
     public const HEADER_PREFIX = 'header:';
 
     /** @return list<string> the slots an authentication type needs */
@@ -22,6 +24,7 @@ final class SecretSlots
             'api_key' => [self::API_KEY],
             'bearer' => [self::BEARER],
             'basic' => [self::BASIC_USERNAME, self::BASIC_PASSWORD],
+            'oauth2_client_credentials' => [self::OAUTH_CLIENT_SECRET],
             default => [],
         };
     }

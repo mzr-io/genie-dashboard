@@ -7,9 +7,6 @@ final readonly class DataSourceInput
 {
     public const AUTH_TYPES = ['none', 'api_key', 'bearer', 'basic', 'oauth2_client_credentials'];
 
-    /** The types accepted until Story 2.7 adds `oauth2_client_credentials`. */
-    public const ACCEPTED_AUTH_TYPES = ['none', 'api_key', 'bearer', 'basic'];
-
     /**
      * @param  list<array{name: string, value: string, secret?: true}>  $headers  a secret header keeps only its name and the flag
      * @param  array<string, string>  $secretValues  slot => the new value, only for the slots being set or replaced; never stored in the clear
@@ -26,6 +23,10 @@ final readonly class DataSourceInput
         public ?string $apiKeyName = null,
         public ?string $apiKeyPlacement = null,
         #[\SensitiveParameter] public array $secretValues = [],
+        /** OAuth2 client credentials only (Story 2.7): where the token is requested, the plain client ID and the optional scope. */
+        public ?DataSourceUrl $oauthTokenUrl = null,
+        public ?string $oauthClientId = null,
+        public ?string $oauthScope = null,
     ) {}
 
     /** @return array<string, mixed> */

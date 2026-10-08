@@ -16,4 +16,6 @@ enum ErrorCode: string
     case LimitExceeded = 'connector.limit_exceeded';
     /** A response was not JSON: wrong or missing Content-Type, or a body that does not parse (Story 2.6). */
     case NotJson = 'connector.not_json';
+    /** The source refused the credentials: a token endpoint answered 400 or 401, or the API answered 401 twice with a fresh token (Story 2.7). */
+    case AuthFailed = 'connector.auth_failed';
 }

@@ -25,5 +25,7 @@ final readonly class EgressRequest
          * ceiling (each used only when set; neither set means no cap) and counts the decompressed stream.
          */
         public ?int $maxBytes = null,
+        /** True for a token request (Story 2.7): any 3xx answer is a failure and nothing is followed, not even to the same origin. */
+        public bool $refuseRedirects = false,
     ) {}
 }

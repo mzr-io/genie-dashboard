@@ -109,13 +109,15 @@ final class DataSourceController extends Controller
     }
 
     /**
-     * The blur check on the Base URL: the allowlist and `require_https` only. Nothing is resolved, requested or written.
+     * The blur check on the Base URL (or, with `oauth_token_url`, the OAuth2 token URL): the allowlist and `require_https` only. Nothing is resolved, requested or written.
      */
     public function checkUrl(Request $request): JsonResponse
     {
         try {
-            $url = $this->validator->url($request->input('base_url'));
-            $this->sources->checkUrl($this->workspaceId($request), $url ?? throw new \LogicException('The base URL was not parsed.'));
+            // The OAuth2 token URL is checked as a Base URL is (Story 2.7), reported on its own field.
+            $token = $request->has('oauth_token_url');
+            $url = $token ? $this->validator->tokenUrl($request->input('oauth_token_url')) : $this->validator->url($request->input('base_url'));
+            $this->sources->checkUrl($this->workspaceId($request), $url ?? throw new \LogicException('The URL was not parsed.'), $token ? 'oauth_token_url' : 'base_url');
         } catch (InvalidDataSource $e) {
             return $this->invalid($request, $e);
         }

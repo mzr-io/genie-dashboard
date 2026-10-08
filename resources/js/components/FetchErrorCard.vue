@@ -12,7 +12,7 @@ import {
 } from '@/locales/labels';
 
 // The error card of a failed call to a source (Story 2.5, 2.6; UX-DR-135, 70). It tells the Admin one thing (the
-// catalogue's `host-not-allowlisted`, `blocked-address`, `fetch-failed`, `not-json` or `response-too-large`) and keeps the rest behind "Technical details"
+// catalogue's `host-not-allowlisted`, `blocked-address`, `fetch-failed`, `not-json` or `response-too-large`, and `auth-failed` from the labels) and keeps the rest behind "Technical details"
 // (status, host, request ID, the collapsed reason code): never a resolved address, which the server never sends. Retry runs
 // the test again; Copy request ID copies the ID for support. Focus moves to the title when the card appears (`focus()`).
 const props = defineProps<{
@@ -21,7 +21,8 @@ const props = defineProps<{
         | 'blocked-address'
         | 'fetch-failed'
         | 'not-json'
-        | 'response-too-large';
+        | 'response-too-large'
+        | 'auth-failed';
     // The name of the source, for `fetch-failed`.
     source: string;
     // The bytes read and the limit, for `response-too-large`.
@@ -42,6 +43,11 @@ const copied = ref<'idle' | 'copied' | 'failed'>('idle');
 
 // The catalogue messages end with their own "Technical details" cue: the card renders the disclosure itself.
 function message(): string {
+    // Story 2.7: the canonical catalogue is closed to EXPERIENCE.md's rows, which have none for this, so it is a label.
+    if (props.code === 'auth-failed') {
+        return dataSourceLabels.authFailed(props.source);
+    }
+
     return t(props.code, {
         source: props.source,
         size: formatBytes(props.sizeBytes ?? 0),

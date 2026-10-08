@@ -10,6 +10,7 @@ enum CredentialScheme: string
     case ApiKeyQuery = 'api_key_query';
     case Bearer = 'bearer';
     case Basic = 'basic';
+    case OAuth2ClientCredentials = 'oauth2_client_credentials';
 
     public static function forSource(DataSource $source): self
     {
@@ -23,6 +24,7 @@ enum CredentialScheme: string
             'api_key' => $apiKeyPlacement === 'query' ? self::ApiKeyQuery : self::ApiKeyHeader,
             'bearer' => self::Bearer,
             'basic' => self::Basic,
+            'oauth2_client_credentials' => self::OAuth2ClientCredentials,
             default => self::None,
         };
     }

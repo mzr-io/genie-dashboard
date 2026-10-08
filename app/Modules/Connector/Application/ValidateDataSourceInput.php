@@ -33,6 +33,10 @@ final class ValidateDataSourceInput
 
     public const PLACEMENTS = ['header', 'query'];
 
+    public const CLIENT_ID_MAX = 255;
+
+    public const SCOPE_MAX = 512;
+
     private const TOKEN = '/\A[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/D';
 
     public function __construct(private readonly DataSourceSettings $settings) {}
@@ -65,10 +69,9 @@ final class ValidateDataSourceInput
         if (! is_string($auth) || ! in_array($auth, DataSourceInput::AUTH_TYPES, true)) {
             $fail('auth_type', 'auth-type-invalid', 'Choose an authentication type.');
             $auth = 'none';
-        } elseif (! in_array($auth, DataSourceInput::ACCEPTED_AUTH_TYPES, true)) {
-            // OAuth2 client credentials arrive with Story 2.7.
-            $fail('auth_type', 'auth-type-unavailable', 'This authentication type is not available yet.');
         }
+
+        [$tokenUrl, $clientId, $scope] = $this->oauth($auth, $raw, $fail);
 
         [$apiKeyName, $apiKeyPlacement] = $this->apiKey($auth, $raw, $headers, $fail);
         $this->secrets($auth, $raw['secrets'] ?? null, $secretValues, $fail);
@@ -77,7 +80,7 @@ final class ValidateDataSourceInput
             throw new InvalidDataSource($errors, $reasons);
         }
 
-        return new DataSourceInput($name, $url, $headers, $timeout, $bytes, $pages, $live, $auth, $apiKeyName, $apiKeyPlacement, $secretValues);
+        return new DataSourceInput($name, $url, $headers, $timeout, $bytes, $pages, $live, $auth, $apiKeyName, $apiKeyPlacement, $secretValues, $tokenUrl, $clientId, $scope);
     }
 
     /** The Base URL alone, for the blur check. @throws InvalidDataSource */
@@ -96,6 +99,61 @@ final class ValidateDataSourceInput
 
             return null;
         }
+    }
+
+    /**
+     * The token URL alone (the same rules as a Base URL), for the blur check. @throws InvalidDataSource
+     */
+    public function tokenUrl(mixed $value, ?callable $fail = null): ?DataSourceUrl
+    {
+        try {
+            return DataSourceUrl::parse($value);
+        } catch (InvalidDataSourceUrl $e) {
+            $message = str_replace('base URL', 'token URL', $e->problem->message());
+
+            if ($fail === null) {
+                throw new InvalidDataSource(['oauth_token_url' => [$message]], ['oauth_token_url' => $e->problem->value]);
+            }
+
+            $fail('oauth_token_url', $e->problem->value, $message);
+
+            return null;
+        }
+    }
+
+    /**
+     * The OAuth2 client credentials fields: the token URL, the client ID (a plain value) and the optional scope; all null
+     * for any other type, whatever was posted.
+     *
+     * @param  array<string, mixed>  $raw
+     * @return array{0: ?DataSourceUrl, 1: ?string, 2: ?string}
+     */
+    private function oauth(string $auth, #[\SensitiveParameter] array $raw, callable $fail): array
+    {
+        if ($auth !== 'oauth2_client_credentials') {
+            return [null, null, null];
+        }
+
+        $url = $this->tokenUrl($raw['oauth_token_url'] ?? null, $fail);
+        $id = $raw['oauth_client_id'] ?? null;
+        $scope = $raw['oauth_scope'] ?? null;
+
+        if (! is_string($id) || $id === '') {
+            $fail('oauth_client_id', 'oauth-client-id-required', 'Enter the client ID.');
+            $id = null;
+        } elseif (strlen($id) > self::CLIENT_ID_MAX || preg_match('/\A[\x21-\x7e]+\z/D', $id) !== 1) {
+            $fail('oauth_client_id', 'oauth-client-id-invalid', 'The client ID uses visible ASCII characters only, without spaces, up to '.self::CLIENT_ID_MAX.' characters.');
+            $id = null;
+        }
+
+        if ($scope === null || $scope === '') {
+            $scope = null;
+        } elseif (! is_string($scope) || strlen($scope) > self::SCOPE_MAX || preg_match('/\A[\x21\x23-\x5b\x5d-\x7e]+(?: [\x21\x23-\x5b\x5d-\x7e]+)*\z/D', $scope) !== 1) {
+            $fail('oauth_scope', 'oauth-scope-invalid', 'The scope is names separated by single spaces, up to '.self::SCOPE_MAX.' characters.');
+            $scope = null;
+        }
+
+        return [$url, $id, $scope];
     }
 
     private function name(mixed $value, callable $fail): ?string

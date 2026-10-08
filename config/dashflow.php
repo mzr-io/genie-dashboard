@@ -153,6 +153,15 @@ return [
         'cred_public_key' => $tunable('DASHFLOW_SECRETS_CRED_PUBLIC_KEY'),
         'cred_key_version' => $tunable('DASHFLOW_SECRETS_CRED_KEY_VERSION'),
         'cred_key_path' => $tunable('DASHFLOW_SECRETS_CRED_KEY_PATH', '/run/secrets/key-cred'),
+        // OAuth token cache (Story 2.7): the 32-byte key (base64) that seals cached access tokens is read, on worker-connector
+        // only, from the `key-token` mount. A missing or placeholder key means a token is used for one call and never cached.
+        'token_key_path' => $tunable('DASHFLOW_SECRETS_TOKEN_KEY_PATH', '/run/secrets/key-token'),
+    ],
+
+    // OAuth2 client credentials (Story 2.7), kept outside `tunables`. `token_skew_seconds` is `pending_input` with no
+    // default: a cached token lives `expires_in` minus this many seconds, and unset means no skew at all.
+    'oauth' => [
+        'token_skew_seconds' => $tunable('DASHFLOW_OAUTH_TOKEN_SKEW_SECONDS'),
     ],
 
     // Connection-test rate limits (Story 2.5), kept outside `tunables` like `egress`. Every one is `pending_input` with no

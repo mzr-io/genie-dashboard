@@ -10,7 +10,12 @@ export type DataSourceSortKey = 'name' | 'host' | 'auth_type';
 // A default header. A secret one has no value in what the server returns: only its name and the flag.
 export type DefaultHeader = { name: string; value?: string; secret?: boolean };
 
-export type AuthType = 'none' | 'api_key' | 'bearer' | 'basic';
+export type AuthType =
+    | 'none'
+    | 'api_key'
+    | 'bearer'
+    | 'basic'
+    | 'oauth2_client_credentials';
 
 // The credential slots of an auth type; a secret header's slot is `header:{lower-case name}`.
 export const SECRET_SLOTS: Record<AuthType, string[]> = {
@@ -18,6 +23,7 @@ export const SECRET_SLOTS: Record<AuthType, string[]> = {
     api_key: ['api_key'],
     bearer: ['bearer_token'],
     basic: ['basic_username', 'basic_password'],
+    oauth2_client_credentials: ['oauth_client_secret'],
 };
 
 // All the API says about a secret: whether it is set and when, never a value.
@@ -39,6 +45,10 @@ export type DataSource = {
     auth_type: string;
     api_key_name: string | null;
     api_key_placement: 'header' | 'query' | null;
+    // OAuth2 client credentials (Story 2.7): plain values, null for any other type. The client secret is a write-only slot.
+    oauth_token_url: string | null;
+    oauth_client_id: string | null;
+    oauth_scope: string | null;
     headers: DefaultHeader[];
     // Absent in the list; on a single read the status of each slot in use.
     secrets?: Record<string, SecretStatus>;
@@ -85,6 +95,9 @@ export type DataSourceInput = {
     auth_type: AuthType;
     api_key_name?: string;
     api_key_placement?: 'header' | 'query';
+    oauth_token_url?: string;
+    oauth_client_id?: string;
+    oauth_scope?: string;
     // Only the slots being set or replaced; an absent slot stays as saved. Never kept anywhere but in this request.
     secrets?: Record<string, string>;
     // Needed when a secret value or the auth type changes.
@@ -274,6 +287,19 @@ export async function updateDataSource(
     return body;
 }
 
+// The blur check on the OAuth2 token URL (Story 2.7): the same rules, reported on `oauth_token_url`.
+export async function checkTokenUrl(
+    tokenUrl: string,
+    signal?: AbortSignal,
+): Promise<void> {
+    await call(
+        'POST',
+        `${DATA_SOURCES_URL}/check-url`,
+        { oauth_token_url: tokenUrl },
+        signal,
+    );
+}
+
 // The blur check on the Base URL: the allowlist and `require_https` only, so nothing is resolved or requested. It
 // resolves when the URL may be used and throws the 422 (with its `reasons.base_url`) when it may not.
 export async function checkBaseUrl(
@@ -314,13 +340,14 @@ export type OperationStatus =
     | 'stale'
     | 'expired';
 
-// The three things an Admin is told about a failed test; they are message catalogue keys.
+// The things an Admin is told about a failed test; all but `auth-failed` (Story 2.7, a label: the catalogue is closed) are message catalogue keys.
 export type ConnectionTestCode =
     | 'host-not-allowlisted'
     | 'blocked-address'
     | 'fetch-failed'
     | 'not-json'
-    | 'response-too-large';
+    | 'response-too-large'
+    | 'auth-failed';
 
 export type ConnectionTestSummary = {
     ok: boolean;

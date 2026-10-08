@@ -38,6 +38,9 @@ final class DataSourceResource extends JsonResource
             'auth_type' => $source->authType,
             'api_key_name' => $source->apiKeyName,
             'api_key_placement' => $source->apiKeyPlacement,
+            'oauth_token_url' => $source->oauthTokenUrl,
+            'oauth_client_id' => $source->oauthClientId,
+            'oauth_scope' => $source->oauthScope,
             'headers' => array_map(fn (array $h): array => isset($h['secret'])
                 ? ['name' => $h['name'], 'secret' => true]
                 : ($this->headerValues ? ['name' => $h['name'], 'value' => $h['value']] : ['name' => $h['name']]), $source->headers),

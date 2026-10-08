@@ -61,7 +61,7 @@ final class RejectsSecretValues
 
     public static function isSecretName(string $name): bool
     {
-        // The same names the Scrubber redacts; `api_key_name` and `api_key_placement` are plain settings, not credentials.
-        return preg_match(Scrubber::SENSITIVE_KEY, $name) === 1 && preg_match('/api[_-]?key[_-]?(name|placement)/i', $name) !== 1;
+        // The same names the Scrubber redacts; `api_key_name`, `api_key_placement` and `oauth_token_url` are plain settings, not credentials.
+        return preg_match(Scrubber::SENSITIVE_KEY, $name) === 1 && preg_match('/\A(?:api[_-]?key[_-]?(?:name|placement)|oauth[_-]?token[_-]?url)\z/i', $name) !== 1;
     }
 }

@@ -18,9 +18,11 @@ interface DataSources
     /**
      * Whether the Base URL may be used: the allowlist and `require_https` only, so no DNS lookup and no request.
      *
-     * @throws InvalidDataSource on `base_url`
+     * @param  string  $field  the field the refusal is reported on: `base_url`, or `oauth_token_url` for an OAuth2 token URL (Story 2.7)
+     *
+     * @throws InvalidDataSource on `$field`
      */
-    public function checkUrl(string $workspaceId, DataSourceUrl $url): void;
+    public function checkUrl(string $workspaceId, DataSourceUrl $url, string $field = 'base_url'): void;
 
     /**
      * @param  (\Closure(): bool)|null  $confirm  asked when the change needs the Admin's password (a secret value, or a credential type other than `none`); false refuses it
