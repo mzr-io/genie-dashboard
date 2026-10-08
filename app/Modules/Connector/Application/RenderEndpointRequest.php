@@ -146,11 +146,13 @@ final class RenderEndpointRequest
             [$body, $inBody] = $this->body($endpoint->bodyTemplate, $values);
         }
 
-        // A parameter the body template uses fills its position there and is not sent in the query string as well.
+        // A parameter the body template uses fills its position there and is not sent in the query string as well. A name the
+        // Data Source's pagination sets itself (Story 2.11) is not sent twice: the pagination one wins.
         $query = [];
+        $paged = $source->pagination->enabled() ? array_filter([$source->pagination->param, $source->pagination->sizeParam]) : [];
 
         foreach ($endpoint->params as $param) {
-            if ($param['kind'] !== 'path' && $param['kind'] !== 'body' && ! in_array($param['name'], $inBody, true)) {
+            if ($param['kind'] !== 'path' && $param['kind'] !== 'body' && ! in_array($param['name'], $inBody, true) && ! in_array($param['name'], $paged, true)) {
                 $query[] = [$param['name'], $values[$param['name']]];
             }
         }
@@ -190,6 +192,7 @@ final class RenderEndpointRequest
             $source->oauthTokenUrl, $source->oauthClientId, $source->oauthScope, $client?->secretVersion,
             url: $base.$path, queryPairs: $query, endpointHeaders: $headers, body: $body,
             idempotencyKey: $isPost ? $operationId : null, readOnlyQuery: $endpoint->readOnlyQuery,
+            pagination: $source->pagination, maxPages: $source->maxPages,
         );
     }
 

@@ -12,7 +12,7 @@ import {
 } from '@/locales/labels';
 
 // The error card of a failed call to a source (Story 2.5, 2.6; UX-DR-135, 70). It tells the Admin one thing (the
-// catalogue's `host-not-allowlisted`, `blocked-address`, `fetch-failed`, `not-json` or `response-too-large`, and `auth-failed` from the labels) and keeps the rest behind "Technical details"
+// catalogue's `host-not-allowlisted`, `blocked-address`, `fetch-failed`, `not-json` or `response-too-large`, and `auth-failed` or `too-many-pages` from the labels) and keeps the rest behind "Technical details"
 // (status, host, request ID, the collapsed reason code): never a resolved address, which the server never sends. Retry runs
 // the test again; Copy request ID copies the ID for support. Focus moves to the title when the card appears (`focus()`).
 const props = defineProps<{
@@ -22,7 +22,8 @@ const props = defineProps<{
         | 'fetch-failed'
         | 'not-json'
         | 'response-too-large'
-        | 'auth-failed';
+        | 'auth-failed'
+        | 'too-many-pages';
     // The name of the source, for `fetch-failed`.
     source: string;
     // The bytes read and the limit, for `response-too-large`.
@@ -34,6 +35,9 @@ const props = defineProps<{
     reason?: string | null;
     // The card's title; the connection test's by default (an Endpoint test passes its own).
     heading?: string;
+    // A paged Endpoint test (Story 2.11): the page that failed or was reached, and the pages fetched (the cap, for `too-many-pages`).
+    page?: number | null;
+    pages?: number | null;
 }>();
 
 const emit = defineEmits<{ (e: 'retry'): void }>();
@@ -48,6 +52,11 @@ function message(): string {
     // Story 2.7: the canonical catalogue is closed to EXPERIENCE.md's rows, which have none for this, so it is a label.
     if (props.code === 'auth-failed') {
         return dataSourceLabels.authFailed(props.source);
+    }
+
+    // Story 2.11: the page-limit message is a label too, and says the cap that was reached.
+    if (props.code === 'too-many-pages') {
+        return dataSourceLabels.tooManyPages(props.pages ?? 0);
     }
 
     return t(props.code, {
@@ -81,6 +90,13 @@ defineExpose({ focus: () => title.value?.focus() });
             class="type-title-sm text-error-text focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
             {{ heading ?? dataSourceLabels.testFailedTitle }}
+            <template v-if="page != null">
+                <span aria-hidden="true"> · </span>
+                <span class="sr-only">, </span>
+                <span data-test="fetch-error-page">{{
+                    dataSourceLabels.failedPage(page)
+                }}</span>
+            </template>
         </h3>
         <p class="type-body-sm text-error-text" data-test="fetch-error-message">
             {{ message() }}

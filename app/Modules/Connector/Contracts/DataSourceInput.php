@@ -27,6 +27,8 @@ final readonly class DataSourceInput
         public ?DataSourceUrl $oauthTokenUrl = null,
         public ?string $oauthClientId = null,
         public ?string $oauthScope = null,
+        /** How the API pages its answers (Story 2.11). */
+        public Pagination $pagination = new Pagination,
     ) {}
 
     /** @return array<string, mixed> */

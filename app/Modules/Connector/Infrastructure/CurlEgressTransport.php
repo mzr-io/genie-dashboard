@@ -15,6 +15,7 @@ use App\Modules\Connector\Contracts\ReservedHeaders;
 use App\Modules\Connector\Contracts\ResponseLimit;
 use App\Modules\Connector\Contracts\ResponseLimitExceeded;
 use App\Modules\Connector\Contracts\SsrfBlocked;
+use App\Modules\Connector\Contracts\UrlReference;
 use Illuminate\Contracts\Config\Repository;
 use InvalidArgumentException;
 
@@ -76,7 +77,7 @@ final class CurlEgressTransport implements EgressTransport
             }
 
             $current = EgressOrigin::of($url);
-            $target = $this->target($url, $location);
+            $target = UrlReference::resolve($url, $location);
             $next = $target === null ? null : EgressOrigin::of($target);
 
             // Only a target that is provably the same origin (same scheme, host and port) may be followed: anything else,
@@ -173,39 +174,5 @@ final class CurlEgressTransport implements EgressTransport
         }
 
         return $options;
-    }
-
-    /** The absolute URL a Location header points to, relative to the current URL; null when it cannot be resolved. */
-    private function target(string $base, string $location): ?string
-    {
-        $location = (string) preg_replace('/#.*\z/s', '', $location);
-
-        if ($location === '') {
-            return null;
-        }
-
-        if (preg_match('~\A[A-Za-z][A-Za-z0-9+.-]*:~', $location) === 1) {
-            return $location;
-        }
-
-        if (preg_match('~\A([A-Za-z][A-Za-z0-9+.-]*:)//([^/?#]*)([^?#]*)~', $base, $b) !== 1) {
-            return null;
-        }
-
-        if (str_starts_with($location, '//')) {
-            return $b[1].$location;
-        }
-
-        if ($location[0] === '/') {
-            return $b[1].'//'.$b[2].$location;
-        }
-
-        if ($location[0] === '?') {
-            return $b[1].'//'.$b[2].$b[3].$location;
-        }
-
-        $directory = substr($b[3], 0, (int) strrpos($b[3], '/'));
-
-        return $b[1].'//'.$b[2].$directory.'/'.$location;
     }
 }

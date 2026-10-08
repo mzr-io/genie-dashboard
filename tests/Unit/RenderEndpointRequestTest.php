@@ -5,6 +5,7 @@ use App\Modules\Connector\Contracts\DataSource;
 use App\Modules\Connector\Contracts\Endpoint;
 use App\Modules\Connector\Contracts\EndpointQuery;
 use App\Modules\Connector\Contracts\InvalidDataSource;
+use App\Modules\Connector\Contracts\Pagination;
 use App\Modules\Connector\Contracts\SecretStatus;
 
 // Story 2.10: the server renders the request from the Endpoint's current revision and the Admin's test values. Values are
@@ -220,3 +221,18 @@ it('carries the Data Source credentials into the request: scheme, secret refs wi
         ['https://auth.example.com/token', 'client-1', 'read write'], 'oauth2_client_credentials', [['oauth_client_secret', 5, null]], 5,
     ],
 ]);
+
+// Story 2.11: a query pair named like a pagination parameter is not sent twice; the pagination one wins.
+it('leaves out an Endpoint query pair named like the pagination parameter or page size parameter', function () {
+    $source = new DataSource('d', 'Sales', 'https://api.example.com/v1', 'https', 'api.example.com', 443, 'none', [], null, null, null, false, 1, 't', 't', pagination: new Pagination('page', 'limit', 'from', 5));
+    $values = (new RenderEndpointRequest)->values(rerEndpoint(RER_PARAMS), ['from' => '2026-02-28']);
+
+    $request = (new RenderEndpointRequest)->request('w', $source, rerEndpoint(RER_PARAMS), $values, []);
+
+    expect($request->queryPairs)->toBe([])
+        ->and($request->pagination->param)->toBe('limit');
+
+    $plain = new DataSource('d', 'Sales', 'https://api.example.com/v1', 'https', 'api.example.com', 443, 'none', [], null, null, null, false, 1, 't', 't');
+
+    expect((new RenderEndpointRequest)->request('w', $plain, rerEndpoint(RER_PARAMS), $values, [])->queryPairs)->toBe([['from', '2026-02-28'], ['limit', '10']]);
+});

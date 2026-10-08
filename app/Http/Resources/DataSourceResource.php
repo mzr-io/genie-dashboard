@@ -50,6 +50,12 @@ final class DataSourceResource extends JsonResource
             'max_response_bytes' => $source->maxResponseBytes,
             'max_pages' => $source->maxPages,
             'live_capable' => $source->liveCapable,
+            'pagination_style' => $source->pagination->style,
+            'pagination_param' => $source->pagination->param,
+            'pagination_size_param' => $source->pagination->sizeParam,
+            'pagination_size' => $source->pagination->size,
+            'pagination_records_path' => $source->pagination->recordsPath,
+            'pagination_cursor_path' => $source->pagination->cursorPath,
             'revision' => $source->revision,
             // The soft lock's epoch (Story 2.8): public state, a form echoes it back with its lock token.
             'lock_epoch' => $source->lockEpoch,

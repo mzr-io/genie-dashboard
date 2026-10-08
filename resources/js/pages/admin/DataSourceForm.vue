@@ -40,7 +40,7 @@ import {
     startConnectionTest,
     updateDataSource,
 } from '@/lib/dataSources';
-import { SECRET_SLOTS } from '@/lib/dataSources';
+import { PAGINATION_STYLES, SECRET_SLOTS } from '@/lib/dataSources';
 import type {
     AuthType,
     Ceilings,
@@ -50,6 +50,7 @@ import type {
     DefaultHeader,
     LockClaim,
     OneDataSource,
+    PaginationStyle,
 } from '@/lib/dataSources';
 import {
     acknowledgeFlush,
@@ -118,6 +119,13 @@ const form = reactive({
     max_response_bytes: '',
     max_pages: '',
     live_capable: false,
+    // Pagination (Story 2.11): the style, and the fields that style needs (kept while another style is chosen, sent only when used).
+    pagination_style: 'none' as PaginationStyle,
+    pagination_param: '',
+    pagination_size_param: '',
+    pagination_size: '',
+    pagination_records_path: '',
+    pagination_cursor_path: '',
     auth_type: 'none' as AuthType,
     api_key_name: '',
     api_key_placement: 'header' as 'header' | 'query',
@@ -189,6 +197,12 @@ function snapshot(): string {
         form.max_response_bytes,
         form.max_pages,
         form.live_capable,
+        form.pagination_style,
+        form.pagination_param,
+        form.pagination_size_param,
+        form.pagination_size,
+        form.pagination_records_path,
+        form.pagination_cursor_path,
         form.auth_type,
         form.api_key_name,
         form.api_key_placement,
@@ -249,6 +263,12 @@ function fill(source: DataSource): void {
     form.max_response_bytes = source.max_response_bytes?.toString() ?? '';
     form.max_pages = source.max_pages?.toString() ?? '';
     form.live_capable = source.live_capable;
+    form.pagination_style = source.pagination_style ?? 'none';
+    form.pagination_param = source.pagination_param ?? '';
+    form.pagination_size_param = source.pagination_size_param ?? '';
+    form.pagination_size = source.pagination_size?.toString() ?? '';
+    form.pagination_records_path = source.pagination_records_path ?? '';
+    form.pagination_cursor_path = source.pagination_cursor_path ?? '';
     original.value = source;
     revision.value = source.revision;
     baseline = snapshot();
@@ -592,6 +612,45 @@ function limit(value: string): string | null {
     return value.trim() === '' ? null : value.trim();
 }
 
+// Whether the chosen style sends a parameter that carries the page, the offset or the cursor.
+const paginationNeedsParam = computed(() =>
+    ['page', 'offset', 'cursor'].includes(form.pagination_style),
+);
+
+// Only the fields the chosen style needs are sent; the server drops the rest anyway.
+function paginationPayload(): Pick<
+    DataSourceInput,
+    | 'pagination_style'
+    | 'pagination_param'
+    | 'pagination_size_param'
+    | 'pagination_size'
+    | 'pagination_records_path'
+    | 'pagination_cursor_path'
+> {
+    if (form.pagination_style === 'none') {
+        return { pagination_style: 'none' };
+    }
+
+    // A Link header carries its own page size: none is sent for it.
+    const sized = form.pagination_style !== 'link_header';
+    const size = sized ? limit(form.pagination_size) : null;
+    const sizeParam = sized ? form.pagination_size_param.trim() : '';
+    const records = form.pagination_records_path.trim();
+
+    return {
+        pagination_style: form.pagination_style,
+        ...(paginationNeedsParam.value
+            ? { pagination_param: form.pagination_param.trim() }
+            : {}),
+        ...(sizeParam !== '' ? { pagination_size_param: sizeParam } : {}),
+        ...(size !== null ? { pagination_size: size } : {}),
+        ...(records !== '' ? { pagination_records_path: records } : {}),
+        ...(form.pagination_style === 'cursor'
+            ? { pagination_cursor_path: form.pagination_cursor_path.trim() }
+            : {}),
+    };
+}
+
 function payload(): DataSourceInput {
     return {
         name: form.name.trim(),
@@ -611,6 +670,7 @@ function payload(): DataSourceInput {
         max_response_bytes: limit(form.max_response_bytes),
         max_pages: limit(form.max_pages),
         live_capable: form.live_capable,
+        ...paginationPayload(),
         auth_type: form.auth_type,
         ...(form.auth_type === 'api_key'
             ? {
@@ -673,6 +733,14 @@ function fieldLabel(field: string): string {
     if (field === 'timeout_seconds') return labels.timeout;
     if (field === 'max_response_bytes') return labels.maxResponse;
     if (field === 'max_pages') return labels.maxPages;
+    if (field === 'pagination_style') return labels.paginationStyle;
+    if (field === 'pagination_param')
+        return labels.paginationParam(form.pagination_style);
+    if (field === 'pagination_size_param') return labels.paginationSizeParam;
+    if (field === 'pagination_size') return labels.paginationSize;
+    if (field === 'pagination_records_path')
+        return labels.paginationRecordsPath;
+    if (field === 'pagination_cursor_path') return labels.paginationCursorPath;
     if (field === 'auth_type') return labels.authType;
     if (field === 'api_key_name') return labels.apiKeyName;
     if (field === 'api_key_placement') return labels.apiKeyPlacement;
@@ -768,6 +836,12 @@ function order(a: string, b: string): number {
                 'timeout_seconds',
                 'max_response_bytes',
                 'max_pages',
+                'pagination_style',
+                'pagination_param',
+                'pagination_size_param',
+                'pagination_size',
+                'pagination_records_path',
+                'pagination_cursor_path',
                 'live_capable',
                 'confirm_password',
             ].indexOf(field)
@@ -1465,6 +1539,15 @@ async function flushSave(): Promise<boolean> {
 // Which form row each header of the last flush payload came from (a saved secret header has none).
 let flushRows: number[] = [];
 
+const PAGINATION_FIELDS = [
+    'pagination_style',
+    'pagination_param',
+    'pagination_size_param',
+    'pagination_size',
+    'pagination_records_path',
+    'pagination_cursor_path',
+];
+
 function flushPayload(invalid: Set<string>): DataSourceInput {
     const saved = original.value as DataSource;
     const body = payload();
@@ -1505,6 +1588,34 @@ function flushPayload(invalid: Set<string>): DataSourceInput {
         body.max_response_bytes = nonSecret(saved.max_response_bytes);
     if (invalid.has('max_pages')) body.max_pages = nonSecret(saved.max_pages);
     if (invalid.has('live_capable')) body.live_capable = saved.live_capable;
+
+    // A refused pagination field sends the saved pagination as it was, whole: the fields only make sense together.
+    if (PAGINATION_FIELDS.some((field) => invalid.has(field))) {
+        delete body.pagination_param;
+        delete body.pagination_size_param;
+        delete body.pagination_size;
+        delete body.pagination_records_path;
+        delete body.pagination_cursor_path;
+        body.pagination_style = saved.pagination_style ?? 'none';
+
+        if (saved.pagination_param)
+            body.pagination_param = saved.pagination_param;
+
+        if (saved.pagination_size_param)
+            body.pagination_size_param = saved.pagination_size_param;
+
+        if (
+            saved.pagination_size !== null &&
+            saved.pagination_size !== undefined
+        )
+            body.pagination_size = String(saved.pagination_size);
+
+        if (saved.pagination_records_path)
+            body.pagination_records_path = saved.pagination_records_path;
+
+        if (saved.pagination_cursor_path)
+            body.pagination_cursor_path = saved.pagination_cursor_path;
+    }
 
     // Plain headers as typed (a refused row dropped); a secret header only as saved, by name and flag.
     const rows: number[] = [];
@@ -2452,6 +2563,152 @@ const ceilingHelper = (value: number | null): string | undefined =>
                             @input="errors.max_pages = null"
                         />
                     </FormField>
+
+                    <fieldset class="grid gap-4" data-test="pagination-section">
+                        <legend class="type-title-sm mb-1 text-text-primary">
+                            {{ labels.pagination }}
+                        </legend>
+                        <p class="type-caption text-text-muted">
+                            {{ labels.paginationHelper }}
+                        </p>
+                        <FormField
+                            :id="fieldId('pagination_style')"
+                            :label="labels.paginationStyle"
+                            :helper="
+                                labels.paginationStyleHelper[
+                                    form.pagination_style
+                                ]
+                            "
+                            :error="errors.pagination_style"
+                            #default="{ field }"
+                        >
+                            <select
+                                v-bind="field"
+                                v-model="form.pagination_style"
+                                name="pagination_style"
+                                class="bg-surface h-9 w-full max-w-xs rounded-md border border-border px-3 text-sm"
+                                data-test="pagination-style"
+                                @change="errors.pagination_style = null"
+                            >
+                                <option
+                                    v-for="style in PAGINATION_STYLES"
+                                    :key="style"
+                                    :value="style"
+                                >
+                                    {{ labels.paginationStyles[style] }}
+                                </option>
+                            </select>
+                        </FormField>
+                        <template v-if="form.pagination_style !== 'none'">
+                            <FormField
+                                v-if="paginationNeedsParam"
+                                :id="fieldId('pagination_param')"
+                                :label="
+                                    labels.paginationParam(
+                                        form.pagination_style,
+                                    )
+                                "
+                                :helper="labels.paginationParamHelper"
+                                :error="errors.pagination_param"
+                                #default="{ field }"
+                            >
+                                <Input
+                                    v-bind="field"
+                                    v-model="form.pagination_param"
+                                    name="pagination_param"
+                                    type="text"
+                                    autocomplete="off"
+                                    class="max-w-xs"
+                                    data-test="pagination-param"
+                                    @input="errors.pagination_param = null"
+                                />
+                            </FormField>
+                            <FormField
+                                v-if="form.pagination_style === 'cursor'"
+                                :id="fieldId('pagination_cursor_path')"
+                                :label="labels.paginationCursorPath"
+                                :helper="labels.paginationCursorPathHelper"
+                                :error="errors.pagination_cursor_path"
+                                #default="{ field }"
+                            >
+                                <Input
+                                    v-bind="field"
+                                    v-model="form.pagination_cursor_path"
+                                    name="pagination_cursor_path"
+                                    type="text"
+                                    autocomplete="off"
+                                    class="max-w-xs"
+                                    data-test="pagination-cursor-path"
+                                    @input="
+                                        errors.pagination_cursor_path = null
+                                    "
+                                />
+                            </FormField>
+                            <FormField
+                                :id="fieldId('pagination_records_path')"
+                                :label="labels.paginationRecordsPath"
+                                :helper="labels.paginationRecordsPathHelper"
+                                :error="errors.pagination_records_path"
+                                #default="{ field }"
+                            >
+                                <Input
+                                    v-bind="field"
+                                    v-model="form.pagination_records_path"
+                                    name="pagination_records_path"
+                                    type="text"
+                                    autocomplete="off"
+                                    class="max-w-xs"
+                                    data-test="pagination-records-path"
+                                    @input="
+                                        errors.pagination_records_path = null
+                                    "
+                                />
+                            </FormField>
+                            <template
+                                v-if="form.pagination_style !== 'link_header'"
+                            >
+                                <FormField
+                                    :id="fieldId('pagination_size_param')"
+                                    :label="labels.paginationSizeParam"
+                                    :helper="labels.paginationSizeParamHelper"
+                                    :error="errors.pagination_size_param"
+                                    #default="{ field }"
+                                >
+                                    <Input
+                                        v-bind="field"
+                                        v-model="form.pagination_size_param"
+                                        name="pagination_size_param"
+                                        type="text"
+                                        autocomplete="off"
+                                        class="max-w-xs"
+                                        data-test="pagination-size-param"
+                                        @input="
+                                            errors.pagination_size_param = null
+                                        "
+                                    />
+                                </FormField>
+                                <FormField
+                                    :id="fieldId('pagination_size')"
+                                    :label="labels.paginationSize"
+                                    :helper="labels.paginationSizeHelper"
+                                    :error="errors.pagination_size"
+                                    #default="{ field }"
+                                >
+                                    <Input
+                                        v-bind="field"
+                                        v-model="form.pagination_size"
+                                        name="pagination_size"
+                                        type="text"
+                                        inputmode="numeric"
+                                        autocomplete="off"
+                                        class="max-w-xs"
+                                        data-test="pagination-size"
+                                        @input="errors.pagination_size = null"
+                                    />
+                                </FormField>
+                            </template>
+                        </template>
+                    </fieldset>
                 </fieldset>
 
                 <fieldset class="grid gap-3">

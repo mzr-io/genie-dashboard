@@ -2,6 +2,7 @@
 
 use App\Modules\Connector\Contracts\ConnectionTestCode;
 use App\Modules\Connector\Contracts\CredentialScheme;
+use App\Modules\Connector\Contracts\EgressBlockLog;
 use App\Modules\Connector\Contracts\EgressReason;
 use App\Modules\Connector\Contracts\EgressRequest;
 use App\Modules\Connector\Contracts\EgressResponse;
@@ -86,7 +87,7 @@ function dftEgress(int $status = 200, string $body = 'abc'): EgressTransport
 }
 
 /** The transport over fakes: a token client on the same fake egress, an array cache and settings without a token key. */
-function dftTransport(EgressTransport $egress, SecretVault $vault, ?OAuthTokenCache $cache = null, array $settings = []): DirectFetchTransport
+function dftTransport(EgressTransport $egress, SecretVault $vault, ?OAuthTokenCache $cache = null, array $settings = [], ?EgressBlockLog $blocks = null): DirectFetchTransport
 {
     $config = new Repository(['dashflow' => ['secrets' => [], 'oauth' => []] + $settings]);
     $secretSettings = new SecretSettings($config);
@@ -96,6 +97,11 @@ function dftTransport(EgressTransport $egress, SecretVault $vault, ?OAuthTokenCa
         new OAuthTokenClient($egress, dftTokenLog()),
         $cache ?? new OAuthTokenCache(new TenantCache(new CacheRepository(new ArrayStore)), $secretSettings, new NullLogger),
         $secretSettings,
+        $blocks ?? new class implements EgressBlockLog
+        {
+            public function record(string $workspaceId, EgressReason $reason, ?string $host, ?int $port): void {}
+        },
+        $config,
     );
 }
 

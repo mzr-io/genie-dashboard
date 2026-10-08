@@ -32,6 +32,13 @@ final class ConnectorAuditSerializer implements AuditSerializer
             'max_response_bytes' => AuditField::Count,
             'max_pages' => AuditField::Count,
             'live_capable' => AuditField::Enum,
+            // Pagination (Story 2.11): the style as an enum, the page size as a count, the parameter and path names as keyed hashes.
+            'pagination_style' => AuditField::Enum,
+            'pagination_param' => AuditField::Hashed,
+            'pagination_size_param' => AuditField::Hashed,
+            'pagination_size' => AuditField::Count,
+            'pagination_records_path' => AuditField::Hashed,
+            'pagination_cursor_path' => AuditField::Hashed,
             'header_count' => AuditField::Count,
             'headers' => AuditField::Hashed,
             'revision' => AuditField::Count,

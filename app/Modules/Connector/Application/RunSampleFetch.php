@@ -14,6 +14,9 @@ use App\Modules\Connector\Contracts\InvalidDataSource;
 use App\Modules\Connector\Contracts\KeyringMismatch;
 use App\Modules\Connector\Contracts\KeyringUnavailable;
 use App\Modules\Connector\Contracts\NotJsonResponse;
+use App\Modules\Connector\Contracts\PageFailed;
+use App\Modules\Connector\Contracts\PageLimitExceeded;
+use App\Modules\Connector\Contracts\PaginationFailed;
 use App\Modules\Connector\Contracts\ResponseLimitExceeded;
 use App\Modules\Connector\Contracts\SampleBlobUnavailable;
 use App\Modules\Connector\Contracts\SampleFetches;
@@ -45,7 +48,9 @@ use Throwable;
  * whose revision moved before the request was made, or while it ran, ends the Operation as `stale` with nothing stored.
  *
  * Every attempt is one `sync_runs` row of kind `sample_fetch` (the template, never a value). The summary is
- * `{ok, status, latency_ms, code, reason, size_bytes, limit_bytes, host, request_id, endpoint_revision}`.
+ * `{ok, status, latency_ms, code, reason, size_bytes, limit_bytes, host, request_id, endpoint_revision, page, pages}`; for a paged Data
+ * Source (Story 2.11) `page` is the page that failed or was reached and `pages` the pages fetched (both null otherwise), and
+ * the bytes are the combined decompressed bytes of all pages.
  */
 final class RunSampleFetch implements OperationHandler
 {
@@ -79,62 +84,79 @@ final class RunSampleFetch implements OperationHandler
         }
 
         $status = $latencyMs = $bytes = $sizeBytes = $limitBytes = $code = $reason = null;
+        // A paged Data Source (Story 2.11): the page that failed or was reached, and how many pages were fetched.
+        $page = $pages = null;
         $host = '';
         $urlTemplate = '';
         $stale = null;
         $began = hrtime(true);
 
         try {
-            if ($dataSourceId === null || $endpointId === null || $tested === null) {
-                throw new EndpointNotFound;
-            }
+            try {
+                if ($dataSourceId === null || $endpointId === null || $tested === null) {
+                    throw new EndpointNotFound;
+                }
 
-            $source = $this->sources->find($operation->workspaceId, $dataSourceId);
-            $endpoint = $this->endpoints->find($operation->workspaceId, $dataSourceId, $endpointId);
-            $host = $source->host;
-            $urlTemplate = rtrim($source->baseUrl, '/').$endpoint->pathTemplate;
+                $source = $this->sources->find($operation->workspaceId, $dataSourceId);
+                $endpoint = $this->endpoints->find($operation->workspaceId, $dataSourceId, $endpointId);
+                $host = $source->host;
+                $urlTemplate = rtrim($source->baseUrl, '/').$endpoint->pathTemplate;
 
-            if ($endpoint->revision !== $tested) {
-                // The Endpoint changed before the request was made: it would test a revision nobody asked for. Nothing is sent.
-                return $this->staleOutcome($operation, $requestId, $host, $endpoint->revision);
-            }
+                if ($endpoint->revision !== $tested) {
+                    // The Endpoint changed before the request was made: it would test a revision nobody asked for. Nothing is sent.
+                    return $this->staleOutcome($operation, $requestId, $host, $endpoint->revision);
+                }
 
-            if ($endpoint->method === 'POST' && ! $endpoint->readOnlyQuery) {
-                $code = ConnectionTestCode::FetchFailed;
-                $reason = 'not_read_only';
-            } else {
-                $request = $this->renderer->request($operation->workspaceId, $source, $endpoint, $values, $this->vault->status($operation->workspaceId, $source->id), $operation->id);
-                $urlTemplate = $request->urlTemplate;
-                $began = hrtime(true);
-                $response = $this->transport->fetch($request);
-
-                $status = $response->status;
-                $latencyMs = $response->latencyMs;
-                $bytes = $sizeBytes = $response->bytes;
-
-                // The Endpoint may have been revised while the request ran: whatever came back is for a superseded revision.
-                $current = $this->endpoints->find($operation->workspaceId, $dataSourceId, $endpointId);
-
-                if ($current->revision !== $tested) {
-                    $stale = $current;
-                } elseif (! $response->successful()) {
+                if ($endpoint->method === 'POST' && ! $endpoint->readOnlyQuery) {
                     $code = ConnectionTestCode::FetchFailed;
-                    $reason = 'http_'.$status;
+                    $reason = 'not_read_only';
                 } else {
-                    // A 2xx answer must be JSON that parses, losslessly; the decoded value is dropped, the text is what is kept.
-                    $response->assertJson();
-                    $this->blobs->put(
-                        $operation->workspaceId, $operation->id, $operation->requesterMembershipId, $endpoint->id, $tested,
-                        $response->body, $this->lifetime($operation),
-                    );
+                    $request = $this->renderer->request($operation->workspaceId, $source, $endpoint, $values, $this->vault->status($operation->workspaceId, $source->id), $operation->id);
+                    $urlTemplate = $request->urlTemplate;
+                    $began = hrtime(true);
+                    $response = $this->transport->fetch($request);
 
-                    // Revised between the check and the store: drop what was just kept.
-                    $after = $this->endpoints->find($operation->workspaceId, $dataSourceId, $endpointId);
+                    if ($request->pagination->enabled()) {
+                        $page = $response->page;
+                        $pages = $response->pages;
+                    }
 
-                    if ($after->revision !== $tested) {
-                        $stale = $after;
+                    $status = $response->status;
+                    $latencyMs = $response->latencyMs;
+                    $bytes = $sizeBytes = $response->bytes;
+
+                    // The Endpoint may have been revised while the request ran: whatever came back is for a superseded revision.
+                    $current = $this->endpoints->find($operation->workspaceId, $dataSourceId, $endpointId);
+
+                    if ($current->revision !== $tested) {
+                        $stale = $current;
+                    } elseif (! $response->successful()) {
+                        $code = ConnectionTestCode::FetchFailed;
+                        $reason = 'http_'.$status;
+                    } else {
+                        // A 2xx answer must be JSON that parses, losslessly; the decoded value is dropped, the text is what is kept.
+                        $response->assertJson();
+                        $this->blobs->put(
+                            $operation->workspaceId, $operation->id, $operation->requesterMembershipId, $endpoint->id, $tested,
+                            $response->body, $this->lifetime($operation),
+                        );
+
+                        // Revised between the check and the store: drop what was just kept.
+                        $after = $this->endpoints->find($operation->workspaceId, $dataSourceId, $endpointId);
+
+                        if ($after->revision !== $tested) {
+                            $stale = $after;
+                        }
                     }
                 }
+            } catch (PageFailed $e) {
+                // One page of a paged run failed: the whole fetch failed at that page. What it raised is judged as an unpaged call's would be.
+                $page = $e->page;
+                $pages = $e->pages;
+                // The time the run took up to the failure; a limit cause (response-too-large) also brings its sizes through the ladder below.
+                $latencyMs = $this->elapsed($began);
+
+                throw $e->cause;
             }
         } catch (InvalidDataSource) {
             // The values no longer fit the revision they were checked against.
@@ -159,6 +181,15 @@ final class RunSampleFetch implements OperationHandler
             $latencyMs = $this->elapsed($began);
             $code = ConnectionTestCode::FetchFailed;
             $reason = 'oauth_'.$e->reason;
+        } catch (PageLimitExceeded $e) {
+            // The run would need a page beyond the cap: nothing is kept and nothing is truncated.
+            $latencyMs = $this->elapsed($began);
+            $code = ConnectionTestCode::TooManyPages;
+            $reason = $e->code()->value;
+        } catch (PaginationFailed $e) {
+            $latencyMs = $this->elapsed($began);
+            $code = ConnectionTestCode::FetchFailed;
+            $reason = 'pagination_'.$e->reason;
         } catch (NotJsonResponse $e) {
             $code = ConnectionTestCode::NotJson;
             $reason = $e->code()->value.':'.$e->reason;
@@ -219,7 +250,7 @@ final class RunSampleFetch implements OperationHandler
             // Operator detail: identifiers and reason codes only, never an address, a header, a value or a body.
             Log::warning('connector.sample_fetch.failed', [
                 'workspace_id' => $operation->workspaceId, 'operation_id' => $operation->id, 'data_source_id' => $dataSourceId, 'endpoint_id' => $endpointId,
-                'code' => $code?->value, 'reason' => $reason, 'status' => $status, 'host' => $host,
+                'code' => $code?->value, 'reason' => $reason, 'status' => $status, 'host' => $host, 'page' => $page,
             ]);
         }
 
@@ -236,6 +267,8 @@ final class RunSampleFetch implements OperationHandler
             'host' => substr($host, 0, 160),
             'request_id' => $requestId === null ? null : substr($requestId, 0, 64),
             'endpoint_revision' => $tested,
+            'page' => $page,
+            'pages' => $pages,
         ]);
     }
 
@@ -262,6 +295,8 @@ final class RunSampleFetch implements OperationHandler
             'host' => substr($host, 0, 160),
             'request_id' => $requestId === null ? null : substr($requestId, 0, 64),
             'endpoint_revision' => $current,
+            'page' => null,
+            'pages' => null,
         ]);
     }
 

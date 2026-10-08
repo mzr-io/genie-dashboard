@@ -37,5 +37,7 @@ final readonly class DataSource
         public ?string $oauthScope = null,
         /** The soft lock's epoch (Story 2.8): raised each time the edit lock is taken over, never lowered. */
         public int $lockEpoch = 1,
+        /** How the API pages its answers (Story 2.11). */
+        public Pagination $pagination = new Pagination,
     ) {}
 }

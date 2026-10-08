@@ -78,6 +78,12 @@ function source(overrides: Partial<DataSource> = {}): DataSource {
         max_response_bytes: null,
         max_pages: null,
         live_capable: false,
+        pagination_style: 'none',
+        pagination_param: null,
+        pagination_size_param: null,
+        pagination_size: null,
+        pagination_records_path: null,
+        pagination_cursor_path: null,
         revision: 1,
         lock_epoch: 1,
         health: 'checking',
@@ -568,6 +574,74 @@ describe('the holder when someone takes over', () => {
         expect(of('PUT ds')).toHaveLength(0);
         expect(of('POST flush')).toHaveLength(1);
         expect(notice()).toContain('Your changes were saved.');
+    });
+
+    it('flushes the saved pagination whole when the server refuses a pagination field, and none of the unsaved edits', async () => {
+        on(
+            'GET ds',
+            one(
+                source({
+                    pagination_style: 'page',
+                    pagination_param: 'p',
+                    pagination_size_param: 'limit',
+                    pagination_size: 50,
+                    pagination_records_path: 'data.items',
+                }),
+            ),
+        );
+        on('PUT lock', granted({ flush_requested: true }));
+        on(
+            'PUT ds',
+            refused(422, {
+                errors: {
+                    pagination_param: ['Enter the query parameter name.'],
+                },
+                reasons: { pagination_param: 'pagination-param-required' },
+            }),
+            one(source({ name: 'Ada flushed', revision: 2 })),
+        );
+        on(
+            'POST flush',
+            lockData({
+                status: 'taken_over',
+                flush_acknowledged: true,
+                taken_over_by: {
+                    name: 'Alex Morgan',
+                    at: '2026-10-08T10:58:00Z',
+                },
+            }),
+        );
+        await mountForm();
+        await type('[data-test="name"]', 'Ada flushed');
+        const select = $('[data-test="pagination-style"]') as HTMLSelectElement;
+        select.value = 'cursor';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        await flushPromises();
+        await type('[data-test="pagination-param"]', 'after');
+        await type('[data-test="pagination-cursor-path"]', 'meta.UNSAVED');
+        await type('[data-test="pagination-size"]', '999');
+        await advance(21_000);
+
+        expect(of('PUT ds')).toHaveLength(2);
+        expect(of('PUT ds')[0].body).toMatchObject({
+            pagination_style: 'cursor',
+            pagination_param: 'after',
+        });
+
+        const second = of('PUT ds')[1].body as Record<string, unknown>;
+
+        expect(second).toMatchObject({
+            name: 'Ada flushed',
+            pagination_style: 'page',
+            pagination_param: 'p',
+            pagination_size_param: 'limit',
+            pagination_size: '50',
+            pagination_records_path: 'data.items',
+        });
+        expect(second).not.toHaveProperty('pagination_cursor_path');
+        expect(JSON.stringify(second)).not.toContain('UNSAVED');
+        expect(JSON.stringify(second)).not.toContain('999');
+        expect(JSON.stringify(second)).not.toContain('after');
     });
 
     it('keeps the saved value of a field the server refuses and saves the rest', async () => {

@@ -575,8 +575,8 @@ it('rolls the OAuth migration back, dropping the client secrets, and migrates fo
     $columns = fn (string $table, string $column): int => Cluster::rows(Cluster::superuser(), 'select count(*) as n from information_schema.columns where table_name = ? and column_name = ?', [$table, $column])[0]['n'];
 
     try {
-        // Three steps: the newest migrations are Story 2.9's (Endpoints) and Story 2.8's (lock epoch), then this one.
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 3, '--force' => true]))->toBe(0)
+        // Four steps: the newest migrations are Story 2.11's (pagination), Story 2.9's (Endpoints) and Story 2.8's (lock epoch), then this one.
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 4, '--force' => true]))->toBe(0)
             ->and($columns('secrets', 'version'))->toBe(0)
             ->and($columns('data_sources', 'oauth_token_url'))->toBe(0)
             ->and(Cluster::rows(Cluster::superuser(), 'select count(*) as n from secrets')[0]['n'])->toBe(0)

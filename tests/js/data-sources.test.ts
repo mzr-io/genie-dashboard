@@ -72,6 +72,12 @@ function source(overrides: Partial<DataSource> = {}): DataSource {
         max_response_bytes: null,
         max_pages: null,
         live_capable: false,
+        pagination_style: 'none',
+        pagination_param: null,
+        pagination_size_param: null,
+        pagination_size: null,
+        pagination_records_path: null,
+        pagination_cursor_path: null,
         revision: 1,
         health: 'checking',
         last_successful_call_at: null,
@@ -563,6 +569,7 @@ describe('Data source form: register', () => {
                     max_response_bytes: null,
                     max_pages: null,
                     live_capable: true,
+                    pagination_style: 'none',
                     auth_type: 'none',
                 },
             },
@@ -834,5 +841,150 @@ describe('Data source labels', () => {
             await import('../../resources/js/locales/labels');
 
         expect(labels.notEncrypted).toBe(hostAllowlistLabels.notEncrypted);
+    });
+});
+
+describe('Data source form: pagination', () => {
+    const style = () =>
+        $('[data-test="pagination-style"]') as HTMLSelectElement;
+
+    async function choose(value: string): Promise<void> {
+        style().value = value;
+        style().dispatchEvent(new Event('change', { bubbles: true }));
+        await flushPromises();
+    }
+
+    const present = (name: string) =>
+        $(`[data-test="pagination-${name}"]`) !== null;
+
+    it('sits in the Limits area, starts at None and shows no other pagination field', async () => {
+        await mountPage(DataSourceForm);
+
+        expect(
+            $('[data-test="pagination-section"]')
+                ?.closest('fieldset')
+                ?.parentElement?.closest('fieldset'),
+        ).not.toBeNull();
+        expect(style().value).toBe('none');
+        expect([...style().options].map((o) => o.textContent?.trim())).toEqual(
+            ['none', 'page', 'offset', 'cursor', 'link_header'].map(
+                (key) => labels.paginationStyles[key],
+            ),
+        );
+        for (const name of [
+            'param',
+            'cursor-path',
+            'records-path',
+            'size-param',
+            'size',
+        ]) {
+            expect(present(name)).toBe(false);
+        }
+    });
+
+    it.each([
+        ['page', ['param', 'records-path', 'size-param', 'size']],
+        ['offset', ['param', 'records-path', 'size-param', 'size']],
+        [
+            'cursor',
+            ['param', 'cursor-path', 'records-path', 'size-param', 'size'],
+        ],
+        ['link_header', ['records-path']],
+    ])('shows only the fields the %s style needs', async (value, fields) => {
+        await mountPage(DataSourceForm);
+        await choose(value);
+
+        const all = [
+            'param',
+            'cursor-path',
+            'records-path',
+            'size-param',
+            'size',
+        ];
+
+        expect(all.filter(present)).toEqual(
+            all.filter((name) => fields.includes(name)),
+        );
+    });
+
+    it('sends only what the chosen style needs', async () => {
+        await mountPage(DataSourceForm);
+        replies = [ok(one(source({ data_source_id: 'ds-9' })))];
+
+        await type('[data-test="name"]', 'Sales API');
+        await type('[data-test="base-url"]', 'https://api.example.com/v1');
+        await choose('cursor');
+        await type('[data-test="pagination-param"]', ' after ');
+        await type('[data-test="pagination-cursor-path"]', 'meta.next');
+        await type('[data-test="pagination-records-path"]', 'data.items');
+        await type('[data-test="pagination-size-param"]', 'limit');
+        await type('[data-test="pagination-size"]', '50');
+        // Switching style keeps the typed values but the next style sends only its own.
+        await choose('link_header');
+        await click(save());
+
+        expect(writes()[0].body).toMatchObject({
+            pagination_style: 'link_header',
+            pagination_records_path: 'data.items',
+        });
+        expect(writes()[0].body).not.toHaveProperty('pagination_size');
+        expect(writes()[0].body).not.toHaveProperty('pagination_size_param');
+        expect(writes()[0].body).not.toHaveProperty('pagination_param');
+        expect(writes()[0].body).not.toHaveProperty('pagination_cursor_path');
+    });
+
+    it('shows a server field error inline with the label of the field, and focuses it', async () => {
+        await mountPage(DataSourceForm);
+        replies = [
+            refused(422, {
+                errors: {
+                    pagination_param: ['Enter the query parameter name.'],
+                },
+                reasons: { pagination_param: 'pagination-param-required' },
+            }),
+        ];
+
+        await type('[data-test="name"]', 'Sales API');
+        await type('[data-test="base-url"]', 'https://api.example.com/v1');
+        await choose('page');
+        await click(save());
+
+        const input = $('[data-test="pagination-param"]');
+
+        expect(input?.getAttribute('aria-invalid')).toBe('true');
+        expect(document.activeElement).toBe(input);
+        expect($('[data-slot="field-error"]')?.textContent).toContain(
+            labels.reasons['pagination-param-required'],
+        );
+    });
+
+    it('fills the section from the saved Data Source', async () => {
+        replies = [
+            ok(
+                one(
+                    source({
+                        pagination_style: 'cursor',
+                        pagination_param: 'after',
+                        pagination_size_param: 'limit',
+                        pagination_size: 50,
+                        pagination_records_path: 'data.items',
+                        pagination_cursor_path: 'meta.next',
+                    }),
+                ),
+            ),
+        ];
+        await mountPage(DataSourceForm, { dataSourceId: 'ds-1' });
+
+        expect(style().value).toBe('cursor');
+        expect(
+            ($('[data-test="pagination-param"]') as HTMLInputElement).value,
+        ).toBe('after');
+        expect(
+            ($('[data-test="pagination-cursor-path"]') as HTMLInputElement)
+                .value,
+        ).toBe('meta.next');
+        expect(
+            ($('[data-test="pagination-size"]') as HTMLInputElement).value,
+        ).toBe('50');
     });
 });

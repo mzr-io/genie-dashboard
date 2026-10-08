@@ -191,3 +191,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-10-test-an-endpoint-and-see-the-sample-response.md`
   summary: Audit sample reads and consider consuming the sample blob after the first read.
   evidence: ReadSample can be called repeatedly until the Operation expires and reads are not recorded.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-11-follow-pagination-up-to-the-limits.md`
+  summary: Carry the Operation's expiry into FetchRequest as a run deadline for paged fetches and add a merged-size ceiling.
+  evidence: Each page has its own timeout but nothing bounds the whole run; the merged records are held as a decoded tree and sealed into one cache value, so memory can exceed the byte cap.

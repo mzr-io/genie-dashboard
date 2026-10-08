@@ -20,6 +20,10 @@ final readonly class FetchResponse
         #[\SensitiveParameter] public string $body,
         public int $bytes,
         public int $latencyMs,
+        /** Pages fetched and read (Story 2.11): 1 for an unpaged call. A paged body is the merged document of all of them. */
+        public int $pages = 1,
+        /** For a paged call, the page this answer is the outcome of: the one that failed, else the last one fetched. Null when unpaged. */
+        public ?int $page = null,
     ) {}
 
     /** True for HTTP 2xx. */

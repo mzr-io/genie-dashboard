@@ -212,3 +212,26 @@ it('validate() enforces the depth limit before parsing', function () {
     expect(fn () => LosslessJson::validate(str_repeat('[', 6).str_repeat(']', 6), 5))->toThrow(JsonDepthExceeded::class);
     LosslessJson::validate(str_repeat('[', 6).str_repeat(']', 6), 6);
 });
+
+// Story 2.11: the tree-to-text emitter that writes a merged page document. It keeps key order and every number lexeme.
+it('encodes a decoded value back to text that decodes to an equal value, for every accepted fixture', function (string $file) {
+    $body = (string) file_get_contents($file);
+    $tree = LosslessJson::decode($body);
+    $text = LosslessJson::encode($tree);
+
+    expect(LosslessJson::decode($text))->toEqual($tree)
+        ->and(LosslessJson::canonical($text))->toBe(LosslessJson::canonical($body))
+        ->and(LosslessJson::encode(LosslessJson::decode($text)))->toBe($text);
+})->with(ljFiles('accept'));
+
+it('encodes without whitespace, in the order received, with every number lexeme and one fixed escaping', function () {
+    $text = '{"b":[12345678901234567890.12,1.10,-0,1E+2,0.0],"a":{"z":null,"y":true,"x":false},"s":"q\"\\\\\n\u0001éé 😀/","":{}, "e":[]}';
+
+    expect(LosslessJson::encode(LosslessJson::decode($text)))
+        ->toBe('{"b":[12345678901234567890.12,1.10,-0,1E+2,0.0],"a":{"z":null,"y":true,"x":false},"s":"q\"\\\\\n\u0001éé 😀/","":{},"e":[]}');
+});
+
+it('encodes an object whose keys look like list positions as an object', function () {
+    expect(LosslessJson::encode(LosslessJson::decode('{"1":"a","0":"b","":[]}')))->toBe('{"1":"a","0":"b","":[]}')
+        ->and(fn () => LosslessJson::encode(1.5))->toThrow(InvalidArgumentException::class);
+});

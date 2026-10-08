@@ -10,11 +10,12 @@ it('serialises ids, a sanitized template, parameter names, the scheme and refs o
     $request = new FetchRequest('w', 'd', 'e', 'https://user:pw@api.example.com/v1/{id}?key=CANARY#frag', ['id'], CredentialScheme::Bearer, [new SecretRef('s1', 'bearer_token')]);
 
     expect($request->toArray())->toBe([
-        'v' => 5, 'workspace_id' => 'w', 'data_source_id' => 'd', 'endpoint_id' => 'e', 'url_template' => 'https://api.example.com/v1/{id}',
+        'v' => 6, 'workspace_id' => 'w', 'data_source_id' => 'd', 'endpoint_id' => 'e', 'url_template' => 'https://api.example.com/v1/{id}',
         'parameter_names' => ['id'], 'credential_scheme' => 'bearer', 'secret_refs' => [['id' => 's1', 'slot' => 'bearer_token', 'purpose' => 'cred', 'secret_version' => 1]],
         'headers' => [], 'api_key_name' => null, 'api_key_placement' => null, 'timeout_seconds' => null, 'method' => 'GET', 'max_response_bytes' => null,
         'oauth_token_url' => null, 'oauth_client_id' => null, 'oauth_scope' => null, 'secret_version' => null,
         'query_count' => 0, 'endpoint_header_count' => 0, 'has_body' => false, 'read_only_query' => false,
+        'pagination' => ['style' => 'none', 'param' => null, 'size_param' => null, 'size' => null, 'records_path' => null, 'cursor_path' => null], 'max_pages' => null,
     ])->and(json_encode($request))->not->toContain('CANARY')->not->toContain('pw@');
 });
 
@@ -43,7 +44,7 @@ it('carries the rendered URL, query, headers and body of a test but serialises o
     expect($request->url)->toBe('https://api.example.com/v1/customers/CANARY-PATH')
         ->and($request->queryPairs)->toBe([['q', 'CANARY-QUERY']])
         ->and($request->toArray())->toMatchArray([
-            'v' => 5, 'url_template' => 'https://api.example.com/v1/customers/{id}', 'parameter_names' => ['id', 'q'],
+            'v' => 6, 'url_template' => 'https://api.example.com/v1/customers/{id}', 'parameter_names' => ['id', 'q'],
             'method' => 'POST', 'query_count' => 1, 'endpoint_header_count' => 1, 'has_body' => true, 'read_only_query' => true,
         ])
         ->and($dump)->not->toContain('CANARY');

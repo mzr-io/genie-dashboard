@@ -676,3 +676,129 @@ it('throttles the blur check in its own bucket, so exhausting it does not thrott
     expect($last)->toBe(429);
     dsCreate()->assertCreated();
 });
+
+// Story 2.11: the pagination setting of a Data Source.
+it('stores the pagination setting on register and edit, returns it, and audits the style, the size and keyed hashes of the names', function () {
+    $workspace = Cluster::workspace('Acme');
+    dsAdmin($workspace);
+    dsAllow($workspace);
+
+    $created = dsCreate(['pagination_style' => 'cursor', 'pagination_param' => 'after', 'pagination_size_param' => 'limit', 'pagination_size' => '50', 'pagination_records_path' => 'data.items', 'pagination_cursor_path' => 'meta.next_cursor'])->assertCreated();
+    $id = $created->json('data.data_source_id');
+
+    expect($created->json('data'))->toMatchArray(['pagination_style' => 'cursor', 'pagination_param' => 'after', 'pagination_size_param' => 'limit', 'pagination_size' => 50, 'pagination_records_path' => 'data.items', 'pagination_cursor_path' => 'meta.next_cursor'])
+        ->and(dsRows()[0])->toMatchArray(['pagination_style' => 'cursor', 'pagination_param' => 'after', 'pagination_size' => 50]);
+
+    $edited = dsUpdate($id, 1, ['pagination_style' => 'link_header', 'pagination_param' => 'ignored', 'pagination_cursor_path' => 'ignored', 'pagination_records_path' => ''])->assertOk();
+
+    // What the style does not need is dropped, whatever was posted.
+    expect($edited->json('data'))->toMatchArray(['pagination_style' => 'link_header', 'pagination_param' => null, 'pagination_size_param' => null, 'pagination_size' => null, 'pagination_records_path' => null, 'pagination_cursor_path' => null]);
+
+    $audit = dsAudits('connector.data_source.updated');
+    $before = json_decode($audit[0]['before_state'], true);
+    $after = json_decode($audit[0]['after_state'], true);
+
+    expect($before)->toMatchArray(['pagination_style' => 'cursor', 'pagination_size' => 50])
+        ->and($before['pagination_param'])->toMatch('/^hmac-sha256:[0-9a-f]{64}$/')
+        ->and($before['pagination_records_path'])->toMatch('/^hmac-sha256:[0-9a-f]{64}$/')
+        ->and($before['pagination_cursor_path'])->toMatch('/^hmac-sha256:[0-9a-f]{64}$/')
+        ->and($after)->toMatchArray(['pagination_style' => 'link_header', 'pagination_size' => null])
+        ->and(dsAudits('connector.data_source.created')[0]['after_state'].$audit[0]['before_state'])->not->toContain('after')->not->toContain('next_cursor')->not->toContain('data.items');
+});
+
+it('defaults to no pagination and returns the setting on a list and a single read', function () {
+    $workspace = Cluster::workspace('Acme');
+    dsAdmin($workspace);
+    dsAllow($workspace);
+    $id = dsCreate()->assertCreated()->json('data.data_source_id');
+
+    $none = ['pagination_style' => 'none', 'pagination_param' => null, 'pagination_size_param' => null, 'pagination_size' => null, 'pagination_records_path' => null, 'pagination_cursor_path' => null];
+
+    expect(test()->getJson(DS_URL."/{$id}", DS_HEADERS)->json('data'))->toMatchArray($none)
+        ->and(test()->getJson(DS_URL, DS_HEADERS)->json('data.0'))->toMatchArray($none);
+});
+
+it('refuses a pagination setting the style cannot use, with a field error and a reason', function (array $body, string $field, string $reason) {
+    $workspace = Cluster::workspace('Acme');
+    dsAdmin($workspace);
+    dsAllow($workspace);
+
+    dsCreate($body)->assertStatus(422)->assertJsonPath("reasons.{$field}", $reason)->assertJsonValidationErrors($field, 'errors');
+
+    expect(dsRows())->toBe([]);
+})->with([
+    'an unknown style' => [['pagination_style' => 'magic'], 'pagination_style', 'pagination-style-invalid'],
+    'page without a parameter' => [['pagination_style' => 'page'], 'pagination_param', 'pagination-param-required'],
+    'offset without a parameter' => [['pagination_style' => 'offset', 'pagination_param' => ''], 'pagination_param', 'pagination-param-required'],
+    'cursor without a parameter' => [['pagination_style' => 'cursor', 'pagination_cursor_path' => 'next'], 'pagination_param', 'pagination-param-required'],
+    'cursor without a cursor path' => [['pagination_style' => 'cursor', 'pagination_param' => 'after'], 'pagination_cursor_path', 'pagination-path-required'],
+    'a parameter that is not a token' => [['pagination_style' => 'page', 'pagination_param' => 'a b&c'], 'pagination_param', 'pagination-param-invalid'],
+    'a parameter that is too long' => [['pagination_style' => 'page', 'pagination_param' => str_repeat('a', 65)], 'pagination_param', 'pagination-param-invalid'],
+    'a size without its parameter' => [['pagination_style' => 'page', 'pagination_param' => 'p', 'pagination_size' => 50], 'pagination_size_param', 'pagination-size-param-required'],
+    'a size parameter without its size' => [['pagination_style' => 'page', 'pagination_param' => 'p', 'pagination_size_param' => 'limit'], 'pagination_size', 'pagination-size-invalid'],
+    'a size of zero' => [['pagination_style' => 'page', 'pagination_param' => 'p', 'pagination_size_param' => 'limit', 'pagination_size' => 0], 'pagination_size', 'pagination-size-invalid'],
+    'a fractional size' => [['pagination_style' => 'page', 'pagination_param' => 'p', 'pagination_size_param' => 'limit', 'pagination_size' => '1.5'], 'pagination_size', 'pagination-size-invalid'],
+    'a records path with a bracket' => [['pagination_style' => 'link_header', 'pagination_records_path' => 'data[0]'], 'pagination_records_path', 'pagination-path-invalid'],
+    'a records path of nine segments' => [['pagination_style' => 'link_header', 'pagination_records_path' => 'a.b.c.d.e.f.g.h.i'], 'pagination_records_path', 'pagination-path-invalid'],
+    'a cursor path with a space' => [['pagination_style' => 'cursor', 'pagination_param' => 'after', 'pagination_cursor_path' => 'meta next'], 'pagination_cursor_path', 'pagination-path-invalid'],
+]);
+
+it('refuses an edit with a bad pagination setting and keeps the saved one', function () {
+    $workspace = Cluster::workspace('Acme');
+    dsAdmin($workspace);
+    dsAllow($workspace);
+    $id = dsCreate(['pagination_style' => 'page', 'pagination_param' => 'p'])->assertCreated()->json('data.data_source_id');
+
+    dsUpdate($id, 1, ['pagination_style' => 'cursor', 'pagination_param' => 'after'])->assertStatus(422)->assertJsonPath('reasons.pagination_cursor_path', 'pagination-path-required');
+
+    expect(dsRows()[0])->toMatchArray(['revision' => 1, 'pagination_style' => 'page', 'pagination_param' => 'p']);
+});
+
+it('refuses at the database each combination the pagination CHECKs forbid', function (string $set, string $constraint) {
+    $a = Cluster::workspace('A');
+    Cluster::seedDataSource($a, 'Src');
+
+    expect(fn () => Cluster::superuser()->exec("UPDATE data_sources SET {$set}"))->toThrow(PDOException::class, $constraint);
+})->with([
+    'an unknown style' => ["pagination_style = 'magic'", 'data_sources_pagination'],
+    'a parameter with style none' => ["pagination_param = 'p'", 'data_sources_pagination_check'],
+    'a size with style none' => ["pagination_size_param = 'l', pagination_size = 5", 'data_sources_pagination_check'],
+    'a records path with style none' => ["pagination_records_path = 'data'", 'data_sources_pagination_check'],
+    'a cursor path with style none' => ["pagination_cursor_path = 'next'", 'data_sources_pagination_check'],
+    'page without a parameter' => ["pagination_style = 'page'", 'data_sources_pagination_check'],
+    'offset without a parameter' => ["pagination_style = 'offset'", 'data_sources_pagination_check'],
+    'cursor without a parameter' => ["pagination_style = 'cursor', pagination_cursor_path = 'n'", 'data_sources_pagination_check'],
+    'cursor without a cursor path' => ["pagination_style = 'cursor', pagination_param = 'p'", 'data_sources_pagination_check'],
+    'link_header with a parameter' => ["pagination_style = 'link_header', pagination_param = 'p'", 'data_sources_pagination_check'],
+    'link_header with a cursor path' => ["pagination_style = 'link_header', pagination_cursor_path = 'n'", 'data_sources_pagination_check'],
+    'link_header with a size' => ["pagination_style = 'link_header', pagination_size_param = 'l', pagination_size = 5", 'data_sources_pagination_check'],
+    'page with a cursor path' => ["pagination_style = 'page', pagination_param = 'p', pagination_cursor_path = 'x'", 'data_sources_pagination_check'],
+    'offset with a cursor path' => ["pagination_style = 'offset', pagination_param = 'p', pagination_cursor_path = 'x'", 'data_sources_pagination_check'],
+    'a size parameter without a size' => ["pagination_style = 'page', pagination_param = 'p', pagination_size_param = 'l'", 'data_sources_pagination_check'],
+    'a size without a size parameter' => ["pagination_style = 'page', pagination_param = 'p', pagination_size = 5", 'data_sources_pagination_check'],
+    'a size of zero' => ["pagination_style = 'page', pagination_param = 'p', pagination_size_param = 'l', pagination_size = 0", 'data_sources_pagination_check'],
+]);
+
+it('accepts at the database each valid pagination shape', function (string $set) {
+    $a = Cluster::workspace('A');
+    Cluster::seedDataSource($a, 'Src');
+
+    expect(Cluster::superuser()->exec("UPDATE data_sources SET {$set}"))->toBe(1);
+})->with([
+    ["pagination_style = 'page', pagination_param = 'p', pagination_records_path = 'd'"],
+    ["pagination_style = 'cursor', pagination_param = 'p', pagination_cursor_path = 'n', pagination_size_param = 'l', pagination_size = 5"],
+    ["pagination_style = 'link_header', pagination_records_path = 'd'"],
+]);
+
+it('refuses a page size parameter equal to the page, offset or cursor parameter, and drops the size for link_header', function () {
+    $workspace = Cluster::workspace('Acme');
+    dsAdmin($workspace);
+    dsAllow($workspace);
+
+    dsCreate(['pagination_style' => 'page', 'pagination_param' => 'p', 'pagination_size_param' => 'p', 'pagination_size' => 5])
+        ->assertStatus(422)->assertJsonPath('reasons.pagination_size_param', 'pagination-size-param-duplicate');
+
+    $created = dsCreate(['pagination_style' => 'link_header', 'pagination_size_param' => 'limit', 'pagination_size' => 5, 'pagination_param' => 'p'])->assertCreated();
+
+    expect($created->json('data'))->toMatchArray(['pagination_style' => 'link_header', 'pagination_size_param' => null, 'pagination_size' => null, 'pagination_param' => null]);
+});

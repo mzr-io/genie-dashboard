@@ -465,8 +465,8 @@ it('rolls the lock_epoch migration back and migrates forward again at epoch 1', 
     $columns = fn (): int => Cluster::rows(Cluster::superuser(), "select count(*) as n from information_schema.columns where table_name = 'data_sources' and column_name = 'lock_epoch'")[0]['n'];
 
     try {
-        // Two steps: the newest migration is Story 2.9's (Endpoints), then this one.
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 2, '--force' => true]))->toBe(0)
+        // Three steps: the newest migrations are Story 2.11's (pagination) and Story 2.9's (Endpoints), then this one.
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 3, '--force' => true]))->toBe(0)
             ->and($columns())->toBe(0);
     } finally {
         Artisan::call('migrate', ['--database' => 'migrator', '--force' => true]);

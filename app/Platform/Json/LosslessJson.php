@@ -232,6 +232,23 @@ final class LosslessJson
      */
     public static function canonicalOf(mixed $value): string
     {
+        return self::emit($value, true);
+    }
+
+    /**
+     * Writes an already decoded value back as JSON text (Story 2.11) with the same escaping as the canonical form, every number
+     * as the lexeme received and the members of an object in the order they hold (so a merged document keeps the order of the
+     * first page). {@see self::decode()} of the result gives back an equal value. Iterative, like the parser.
+     *
+     * @throws InvalidArgumentException when the value holds something the decoder never produces (a float, an object)
+     */
+    public static function encode(mixed $value): string
+    {
+        return self::emit($value, false);
+    }
+
+    private static function emit(mixed $value, bool $sortKeys): string
+    {
         $out = '';
         // Work items: a value to write, or a literal string to append.
         $work = [[0, $value]];
@@ -257,7 +274,10 @@ final class LosslessJson
                 $out .= $item->lexeme;
             } elseif ($item instanceof JsonObject) {
                 $entries = $item->entries();
-                usort($entries, static fn (array $a, array $b): int => strcmp($a[0], $b[0]));
+
+                if ($sortKeys) {
+                    usort($entries, static fn (array $a, array $b): int => strcmp($a[0], $b[0]));
+                }
 
                 $out .= '{';
                 $work[] = [1, '}'];

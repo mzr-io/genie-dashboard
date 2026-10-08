@@ -11,6 +11,8 @@ enum EgressReason: string
     case InvalidUrl = 'invalid_url';
     case Unresolvable = 'unresolvable';
     case RedirectRefused = 'redirect_refused';
+    /** A next-page URL (Story 2.11) on another origin, another port or a downgrade to http: refused before anything is sent. */
+    case PaginationRefused = 'pagination_refused';
 
     /** The message catalogue key an Admin sees (`msg:host-not-allowlisted` or `msg:blocked-address`). */
     public function messageKey(): string

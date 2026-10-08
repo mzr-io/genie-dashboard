@@ -225,7 +225,8 @@ it('starts a sample_fetch Operation for the Endpoint revision, runs it through t
     expect($summary['status'])->toBe('succeeded')
         ->and($summary['kind'])->toBe('sample_fetch')
         ->and($summary['result'])->toMatchArray(['ok' => true, 'status' => 200, 'code' => null, 'reason' => null, 'host' => 'api.example.com', 'endpoint_revision' => 1])
-        ->and(array_keys($summary['result']))->toEqualCanonicalizing(['ok', 'status', 'latency_ms', 'code', 'reason', 'size_bytes', 'limit_bytes', 'host', 'request_id', 'endpoint_revision'])
+        ->and(array_keys($summary['result']))->toEqualCanonicalizing(['ok', 'status', 'latency_ms', 'code', 'reason', 'size_bytes', 'limit_bytes', 'host', 'request_id', 'endpoint_revision', 'page', 'pages'])
+        ->and($summary['result']['page'])->toBeNull()
         ->and(json_encode($summary))->not->toContain('CANARY');
 
     // The requester reads the body exactly as received, every number with its lexeme.
@@ -914,4 +915,233 @@ it('caps the number and the size of the test values with a 422', function () {
     sfTest($source, $endpoint, sfValues(['unknown' => 'ignored']))->assertStatus(202);
 
     Queue::assertPushed(RunOperation::class, 1);
+});
+
+// Story 2.11: a Data Source that pages its answers. The pages are followed through the real guard, merged into one document
+// and handed to the requester like any other sample; a limit, a refused link or a failing page fails the whole test.
+
+/** @param  array<string, int|string|null>  $columns  pagination columns of the Data Source row */
+function sfPaginate(string $source, array $columns, ?int $maxPages = null): void
+{
+    $columns += ['pagination_param' => null, 'pagination_size_param' => null, 'pagination_size' => null, 'pagination_records_path' => null, 'pagination_cursor_path' => null];
+    Cluster::superuser()->prepare('UPDATE data_sources SET pagination_style = :pagination_style, pagination_param = :pagination_param, pagination_size_param = :pagination_size_param, pagination_size = :pagination_size, pagination_records_path = :pagination_records_path, pagination_cursor_path = :pagination_cursor_path, max_pages = :max_pages WHERE id = :id')
+        ->execute($columns + ['max_pages' => $maxPages, 'id' => $source]);
+}
+
+function sfPage(string $body, array $headers = []): CurlResult
+{
+    return FakeCurl::answer(200, $body, ['content-type' => ['application/json']] + $headers);
+}
+
+/** @return list<array<string, mixed>> */
+function sfBlocks(): array
+{
+    return array_map(
+        fn (array $row): array => json_decode($row['after_state'], true),
+        Cluster::rows(Cluster::superuser(), "select after_state from audit_events where action = 'connector.egress.blocked' order by occurred_at, id"),
+    );
+}
+
+function sfPagedWorld(array $style, array $answers, ?int $maxPages = null): array
+{
+    $workspace = Cluster::workspace('Acme');
+    sfAdmin($workspace);
+    $source = Cluster::seedDataSource($workspace, 'Sales API');
+    sfPaginate($source, $style, $maxPages);
+    $endpoint = sfEndpoint($source);
+    test()->curl->queue = $answers;
+
+    return [$workspace, $source, $endpoint];
+}
+
+it('follows the pages of a paged source, merges them losslessly into one sample and records one sync_runs row with the cumulative bytes', function () {
+    $pages = [
+        '{"meta":{"total":12345678901234567890.12},"data":[{"v":1.10}],"note":"CANARY-sf-first"}',
+        '{"meta":{"total":1},"data":[{"v":2.50},{"v":3}]}',
+        '{"data":[{"v":4e2}]}',
+        '{"data":[]}',
+    ];
+    [$workspace, $source, $endpoint] = sfPagedWorld(['pagination_style' => 'page', 'pagination_param' => 'page', 'pagination_records_path' => 'data'], array_map(fn (string $b): CurlResult => sfPage($b), $pages));
+
+    $id = sfRun($source, $endpoint, sfValues(['id' => 'c-7', 'limit' => '25']));
+
+    expect(array_map(fn (array $c): string => $c[CURLOPT_URL], $this->curl->calls))->toBe(array_map(
+        fn (int $n): string => "https://api.example.com/customers/c-7/revenue?from=2026-01-01&limit=25&page={$n}", [1, 2, 3, 4],
+    ));
+
+    $summary = sfPoll($id)->json('data.result');
+    expect($summary)->toMatchArray(['ok' => true, 'status' => 200, 'code' => null, 'page' => 4, 'pages' => 4, 'size_bytes' => array_sum(array_map('strlen', $pages))])
+        ->and(sfSample($source, $endpoint, $id)->assertOk()->json('data.body'))
+        ->toBe('{"meta":{"total":12345678901234567890.12},"data":[{"v":1.10},{"v":2.50},{"v":3},{"v":4e2}],"note":"CANARY-sf-first"}');
+
+    $runs = sfRuns();
+    expect($runs)->toHaveCount(1)
+        ->and($runs[0])->toMatchArray(['status' => 'succeeded', 'http_status' => 200, 'bytes' => array_sum(array_map('strlen', $pages)), 'error_code' => null])
+        ->and(sfEverything())->not->toContain('CANARY-sf-first')->not->toContain('12345678901234567890');
+});
+
+it('sends the cursor as a plain token and never requests it as a URL, and keeps the tokens out of every record', function () {
+    [, $source, $endpoint] = sfPagedWorld(
+        ['pagination_style' => 'cursor', 'pagination_param' => 'after', 'pagination_cursor_path' => 'meta.next', 'pagination_records_path' => 'd', 'pagination_size_param' => 'per_page', 'pagination_size' => 20],
+        [sfPage('{"d":[1],"meta":{"next":"https://evil.example/CANARY-sf-cursor"}}'), sfPage('{"d":[2],"meta":{"next":null}}')],
+    );
+
+    $id = sfRun($source, $endpoint, sfValues());
+
+    expect($this->curl->calls)->toHaveCount(2)
+        ->and($this->curl->calls[0][CURLOPT_URL])->toBe('https://api.example.com/customers/c-42/revenue?from=2026-01-01&limit=10&per_page=20')
+        ->and($this->curl->calls[1][CURLOPT_URL])->toBe('https://api.example.com/customers/c-42/revenue?from=2026-01-01&limit=10&after=https%3A%2F%2Fevil.example%2FCANARY-sf-cursor&per_page=20')
+        ->and($this->curl->calls[1][CURLOPT_RESOLVE])->toBe(['api.example.com:443:93.184.216.34'])
+        ->and(sfPoll($id)->json('data.result'))->toMatchArray(['ok' => true, 'pages' => 2])
+        ->and(sfSample($source, $endpoint, $id)->json('data.body'))->toBe('{"d":[1,2],"meta":{"next":"https://evil.example/CANARY-sf-cursor"}}')
+        ->and(sfRuns())->toHaveCount(1)
+        ->and(sfEverything())->not->toContain('CANARY-sf-cursor');
+});
+
+it('fails a repeated cursor as a loop and stores nothing', function () {
+    [, $source, $endpoint] = sfPagedWorld(
+        ['pagination_style' => 'cursor', 'pagination_param' => 'after', 'pagination_cursor_path' => 'next', 'pagination_records_path' => 'd'],
+        [sfPage('{"d":[1],"next":"c1"}'), sfPage('{"d":[2],"next":"c1"}')],
+    );
+
+    $id = sfRun($source, $endpoint, sfValues());
+
+    expect(sfPoll($id)->json('data.result'))->toMatchArray(['ok' => false, 'code' => 'fetch-failed', 'reason' => 'pagination_cursor_loop', 'page' => 2, 'pages' => 2])
+        ->and(sfSample($source, $endpoint, $id)->assertNotFound()->getContent())->toBe('');
+});
+
+it('follows the Link header through the guard, resolving a relative target against the current URL', function () {
+    [, $source, $endpoint] = sfPagedWorld(
+        ['pagination_style' => 'link_header', 'pagination_records_path' => 'data'],
+        [
+            sfPage('{"data":[1]}', ['link' => ['<https://api.example.com/next?cursor=2>; rel="next"']]),
+            sfPage('{"data":[2]}', ['link' => ['</next?cursor=3>; rel="next"']]),
+            sfPage('{"data":[3]}'),
+        ],
+    );
+
+    $id = sfRun($source, $endpoint, sfValues());
+
+    expect(array_map(fn (array $c): string => $c[CURLOPT_URL], $this->curl->calls))->toBe([
+        'https://api.example.com/customers/c-42/revenue?from=2026-01-01&limit=10', 'https://api.example.com/next?cursor=2', 'https://api.example.com/next?cursor=3',
+    ])->and(sfPoll($id)->json('data.result'))->toMatchArray(['ok' => true, 'pages' => 3])
+        ->and(sfSample($source, $endpoint, $id)->json('data.body'))->toBe('{"data":[1,2,3]}');
+});
+
+it('refuses a Link target on another origin, another port or an http downgrade: audited, counted, no request sent to it and nothing stored', function (string $link, string $host, int $port) {
+    [, $source, $endpoint] = sfPagedWorld(
+        ['pagination_style' => 'link_header', 'pagination_records_path' => 'data'],
+        [sfPage('{"data":[1]}', ['link' => [$link]]), sfPage('{"data":[2]}')],
+    );
+
+    $id = sfRun($source, $endpoint, sfValues());
+
+    expect($this->curl->calls)->toHaveCount(1)
+        ->and(sfPoll($id)->json('data.result'))->toMatchArray(['ok' => false, 'code' => 'fetch-failed', 'reason' => 'pagination_refused', 'page' => 1, 'pages' => 1])
+        ->and(sfBlocks())->toEqual([['reason' => 'pagination_refused', 'host' => $host, 'port' => $port]])
+        ->and(sfSample($source, $endpoint, $id)->assertNotFound()->getContent())->toBe('')
+        ->and(sfRuns()[0])->toMatchArray(['status' => 'failed', 'error_code' => 'fetch-failed']);
+})->with([
+    'another host' => ['<https://other.example.com/x>; rel="next"', 'other.example.com', 443],
+    'another port' => ['<https://api.example.com:8443/x>; rel="next"', 'api.example.com', 8443],
+    'a downgrade' => ['<http://api.example.com/x>; rel="next"', 'api.example.com', 80],
+]);
+
+it('refuses the first page when the guard denies it, naming page 1 and recording the block', function () {
+    [, $source, $endpoint] = sfPagedWorld(
+        ['pagination_style' => 'link_header', 'pagination_records_path' => 'data'],
+        [sfPage('{"data":[1]}', ['link' => ['<https://api.example.com/next>; rel="next"']]), sfPage('{"data":[2]}')],
+    );
+    Cluster::superuser()->exec("DELETE FROM host_allowlist_entries WHERE host = 'api.example.com'");
+    // The first request is refused by the guard already: no page is fetched and the block is recorded by the guard.
+    $id = sfRun($source, $endpoint, sfValues());
+
+    expect($this->curl->calls)->toBe([])
+        ->and(sfPoll($id)->json('data.result'))->toMatchArray(['ok' => false, 'code' => 'host-not-allowlisted', 'page' => 1, 'pages' => 0])
+        ->and(sfBlocks())->toHaveCount(1);
+});
+
+it('fails with too-many-pages when the run would need a page beyond the cap, and keeps nothing', function () {
+    [, $source, $endpoint] = sfPagedWorld(
+        ['pagination_style' => 'page', 'pagination_param' => 'p'],
+        [sfPage('[1]'), sfPage('[2]'), sfPage('[3]')],
+        maxPages: 2,
+    );
+
+    $id = sfRun($source, $endpoint, sfValues());
+
+    // Page 3 is asked for as the terminator; it holds records, so the run overflows.
+    expect($this->curl->calls)->toHaveCount(3)
+        ->and(sfPoll($id)->json('data.result'))->toMatchArray(['ok' => false, 'code' => 'too-many-pages', 'reason' => 'connector.limit_exceeded', 'page' => 3, 'pages' => 2])
+        ->and(sfSample($source, $endpoint, $id)->assertNotFound()->getContent())->toBe('')
+        ->and(sfRuns()[0])->toMatchArray(['status' => 'failed', 'error_code' => 'too-many-pages']);
+});
+
+it('applies the smaller of the Data Source cap and the platform ceiling, and no cap when neither is set', function () {
+    config(['dashflow.tunables.guards.max_pages.value' => '1']);
+    [, $source, $endpoint] = sfPagedWorld(['pagination_style' => 'page', 'pagination_param' => 'p'], [sfPage('[1]'), sfPage('[2]')], maxPages: 5);
+
+    expect(sfPoll(sfRun($source, $endpoint, sfValues()))->json('data.result'))->toMatchArray(['code' => 'too-many-pages', 'pages' => 1]);
+
+    config(['dashflow.tunables.guards.max_pages.value' => null]);
+    $this->curl->queue = array_merge(array_map(fn (int $n): CurlResult => sfPage("[{$n}]"), range(1, 12)), [sfPage('[]')]);
+    sfPaginate($source, ['pagination_style' => 'page', 'pagination_param' => 'p'], null);
+
+    expect(sfPoll(sfRun($source, $endpoint, sfValues()))->json('data.result'))->toMatchArray(['ok' => true, 'pages' => 13]);
+});
+
+it('fails with response-too-large and the cumulative size when the pages together pass the byte limit', function () {
+    [, $source, $endpoint] = sfPagedWorld(
+        ['pagination_style' => 'page', 'pagination_param' => 'p'],
+        [sfPage('[1111]'), new ResponseLimitExceeded(30, 4090, 200)],
+    );
+    Cluster::superuser()->exec('UPDATE data_sources SET max_response_bytes = 4096');
+
+    $id = sfRun($source, $endpoint, sfValues());
+
+    expect($this->curl->limits)->toBe([4096, 4090])
+        ->and(sfPoll($id)->json('data.result'))->toMatchArray(['ok' => false, 'code' => 'response-too-large', 'reason' => 'connector.limit_exceeded', 'size_bytes' => 6 + 30, 'limit_bytes' => 4096, 'page' => 2, 'pages' => 1])
+        ->and(sfSample($source, $endpoint, $id)->assertNotFound()->getContent())->toBe('')
+        ->and(sfRuns()[0])->toMatchArray(['status' => 'failed', 'error_code' => 'response-too-large']);
+});
+
+it('fails the whole fetch at the page that fails: nothing stored, no retry, the page named', function (array $third, array $expected) {
+    [, $source, $endpoint] = sfPagedWorld(
+        ['pagination_style' => 'offset', 'pagination_param' => 'offset', 'pagination_records_path' => 'data'],
+        [sfPage('{"data":[1,2]}'), sfPage('{"data":[3]}'), ...$third, sfPage('{"data":[]}')],
+    );
+
+    $id = sfRun($source, $endpoint, sfValues());
+
+    expect(sfPoll($id)->json('data.result'))->toMatchArray(['ok' => false, 'page' => 3, 'pages' => 2] + $expected)
+        ->and($this->curl->calls)->toHaveCount(3)
+        ->and(sfSample($source, $endpoint, $id)->assertNotFound()->getContent())->toBe('')
+        ->and(sfRuns())->toHaveCount(1)
+        ->and(sfEverything())->not->toContain('CANARY-sf-body');
+})->with([
+    'a 503' => [[FakeCurl::answer(503, '{"error":"CANARY-sf-body"}')], ['code' => 'fetch-failed', 'reason' => 'http_503', 'status' => 503]],
+    'HTML' => [[FakeCurl::answer(200, '<html>CANARY-sf-body</html>', ['content-type' => ['text/html']])], ['code' => 'not-json', 'reason' => 'connector.not_json:content_type']],
+    'a missing records path' => [[sfPage('{"other":"CANARY-sf-body"}')], ['code' => 'not-json', 'reason' => 'connector.not_json:records_path']],
+    'a timeout' => [[new EgressTransportFailed('x', 28)], ['code' => 'fetch-failed', 'reason' => 'timeout']],
+]);
+
+it('shows the offset advancing by the records received', function () {
+    [, $source, $endpoint] = sfPagedWorld(
+        ['pagination_style' => 'offset', 'pagination_param' => 'offset', 'pagination_records_path' => 'data'],
+        [sfPage('{"data":[1,2,3]}'), sfPage('{"data":[4]}'), sfPage('{"data":[]}')],
+    );
+
+    sfRun($source, $endpoint, sfValues());
+
+    expect(array_map(fn (array $c): string => substr($c[CURLOPT_URL], strrpos($c[CURLOPT_URL], '&offset=') + 1), $this->curl->calls))->toBe(['offset=0', 'offset=3', 'offset=4']);
+});
+
+it('keeps one request and the body untouched for the style none', function () {
+    [, $source, $endpoint] = sfPagedWorld(['pagination_style' => 'none'], [sfPage(SF_BODY), sfPage(SF_BODY)]);
+
+    $id = sfRun($source, $endpoint, sfValues());
+
+    expect($this->curl->calls)->toHaveCount(1)
+        ->and(sfPoll($id)->json('data.result'))->toMatchArray(['ok' => true, 'page' => null, 'pages' => null])
+        ->and(sfSample($source, $endpoint, $id)->json('data.body'))->toBe(SF_BODY);
 });

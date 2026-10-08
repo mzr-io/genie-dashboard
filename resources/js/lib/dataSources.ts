@@ -10,6 +10,21 @@ export type DataSourceSortKey = 'name' | 'host' | 'auth_type';
 // A default header. A secret one has no value in what the server returns: only its name and the flag.
 export type DefaultHeader = { name: string; value?: string; secret?: boolean };
 
+export type PaginationStyle =
+    | 'none'
+    | 'page'
+    | 'offset'
+    | 'cursor'
+    | 'link_header';
+
+export const PAGINATION_STYLES: PaginationStyle[] = [
+    'none',
+    'page',
+    'offset',
+    'cursor',
+    'link_header',
+];
+
 export type AuthType =
     | 'none'
     | 'api_key'
@@ -56,6 +71,13 @@ export type DataSource = {
     max_response_bytes: number | null;
     max_pages: number | null;
     live_capable: boolean;
+    // How the API pages its answers (Story 2.11); everything but the style is null unless the style needs it.
+    pagination_style: PaginationStyle;
+    pagination_param: string | null;
+    pagination_size_param: string | null;
+    pagination_size: number | null;
+    pagination_records_path: string | null;
+    pagination_cursor_path: string | null;
     revision: number;
     // The soft lock's epoch (Story 2.8): sent back with an edit, with the lock token.
     lock_epoch?: number;
@@ -94,6 +116,13 @@ export type DataSourceInput = {
     max_response_bytes: string | null;
     max_pages: string | null;
     live_capable: boolean;
+    // Pagination (Story 2.11): only what the style needs is sent.
+    pagination_style: PaginationStyle;
+    pagination_param?: string;
+    pagination_size_param?: string;
+    pagination_size?: string;
+    pagination_records_path?: string;
+    pagination_cursor_path?: string;
     auth_type: AuthType;
     api_key_name?: string;
     api_key_placement?: 'header' | 'query';
@@ -352,14 +381,15 @@ export type OperationStatus =
     | 'stale'
     | 'expired';
 
-// The things an Admin is told about a failed test; all but `auth-failed` (Story 2.7, a label: the catalogue is closed) are message catalogue keys.
+// The things an Admin is told about a failed test; all but `auth-failed` (Story 2.7) and `too-many-pages` (Story 2.11), which are labels because the catalogue is closed, are message catalogue keys.
 export type ConnectionTestCode =
     | 'host-not-allowlisted'
     | 'blocked-address'
     | 'fetch-failed'
     | 'not-json'
     | 'response-too-large'
-    | 'auth-failed';
+    | 'auth-failed'
+    | 'too-many-pages';
 
 export type ConnectionTestSummary = {
     ok: boolean;
@@ -374,6 +404,9 @@ export type ConnectionTestSummary = {
     request_id: string | null;
     // An Endpoint test (Story 2.10): the Endpoint revision that was tested, or, for a stale result, the one that replaced it.
     endpoint_revision?: number | null;
+    // A paged Endpoint test (Story 2.11): the page that failed or was reached, and the pages fetched; null when not paged.
+    page?: number | null;
+    pages?: number | null;
 };
 
 export type OperationSummary = {

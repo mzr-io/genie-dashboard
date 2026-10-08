@@ -7,7 +7,10 @@ import { resetAnnouncer } from '../../resources/js/lib/announce';
 import type { Endpoint } from '../../resources/js/lib/endpoints';
 import { testFields } from '../../resources/js/lib/endpoints';
 import { createCatalogue } from '../../resources/js/lib/i18n';
-import { endpointLabels as labels } from '../../resources/js/locales/labels';
+import {
+    dataSourceLabels,
+    endpointLabels as labels,
+} from '../../resources/js/locales/labels';
 
 // Story 2.10: Test endpoint (UX-DR-135, 25, 26, 70, 276, 279, 282): the action per Endpoint, the test-values panel, a polite
 // "Testing…", the sample viewer (a focusable labelled region, the body exactly as received, Copy), the shared error card
@@ -363,6 +366,81 @@ describe('Running the test', () => {
         );
         expect($('[data-test="copy-request-id"]')).not.toBeNull();
         expect($('[data-test="sample-viewer"]')).toBeNull();
+    });
+
+    it('names the page a paged call stopped at in the card title', async () => {
+        await openTest();
+        replies = [
+            started,
+            operation('failed', {
+                ok: false,
+                status: 503,
+                code: 'fetch-failed',
+                reason: 'http_503',
+                host: 'api.example.com',
+                request_id: 'req-3',
+                endpoint_revision: 4,
+                page: 3,
+                pages: 2,
+            }),
+        ];
+        await click(run());
+
+        expect($('[data-test="fetch-error-page"]')?.textContent).toBe(
+            dataSourceLabels.failedPage(3),
+        );
+        expect($('[data-test="fetch-error-title"]')?.textContent).toContain(
+            'Page 3',
+        );
+    });
+
+    it('shows too-many-pages with the cap, says nothing was shown and names the page reached', async () => {
+        await openTest();
+        replies = [
+            started,
+            operation('failed', {
+                ok: false,
+                status: null,
+                code: 'too-many-pages',
+                reason: 'connector.limit_exceeded',
+                host: 'api.example.com',
+                request_id: 'req-4',
+                endpoint_revision: 4,
+                page: 21,
+                pages: 20,
+            }),
+        ];
+        await click(run());
+
+        const message = $('[data-test="fetch-error-message"]')?.textContent;
+
+        expect(message).toBe(dataSourceLabels.tooManyPages(20));
+        expect(message).toContain('more than 20 pages');
+        expect(message).toContain('Nothing was shown, so no totals are wrong.');
+        expect(message).toContain('raise the page limit');
+        expect($('[data-test="fetch-error-page"]')?.textContent).toBe(
+            'Page 21',
+        );
+    });
+
+    it('shows no page for a call that is not paged', async () => {
+        await openTest();
+        replies = [
+            started,
+            operation('failed', {
+                ok: false,
+                code: 'fetch-failed',
+                reason: 'http_500',
+                status: 500,
+                host: 'api.example.com',
+                request_id: 'r',
+                page: null,
+                pages: null,
+            }),
+        ];
+        await click(run());
+
+        expect($('[data-test="fetch-error-page"]')).toBeNull();
     });
 
     it('runs the test again from the card with Retry', async () => {

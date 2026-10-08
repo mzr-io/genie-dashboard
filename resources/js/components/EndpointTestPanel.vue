@@ -41,6 +41,9 @@ type Failure = {
     reason: string | null;
     sizeBytes: number | null;
     limitBytes: number | null;
+    // A paged Data Source (Story 2.11): the page that failed or was reached, and the pages fetched.
+    page: number | null;
+    pages: number | null;
 };
 
 type Outcome =
@@ -170,6 +173,8 @@ const generic = (
     reason: reasonCode,
     sizeBytes: null,
     limitBytes: null,
+    page: null,
+    pages: null,
 });
 
 async function run(): Promise<void> {
@@ -254,6 +259,8 @@ async function run(): Promise<void> {
             reason: result?.reason ?? operation.status,
             sizeBytes: result?.size_bytes ?? null,
             limitBytes: result?.limit_bytes ?? null,
+            page: result?.page ?? null,
+            pages: result?.pages ?? null,
         });
     } catch (error) {
         if (mine.signal.aborted || leaveForSignIn(error)) {
@@ -444,6 +451,8 @@ defineExpose({ run });
             :reason="outcome.failure.reason"
             :size-bytes="outcome.failure.sizeBytes"
             :limit-bytes="outcome.failure.limitBytes"
+            :page="outcome.failure.page"
+            :pages="outcome.failure.pages"
             @retry="run"
         />
 

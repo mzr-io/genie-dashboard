@@ -741,6 +741,44 @@ export const dataSourceLabels = {
     maxResponse: 'Maximum response size (bytes)',
     maxPages: 'Maximum pages',
     ceiling: (value: number) => `The platform limit is ${value}.`,
+    // Pagination (Story 2.11): how the API pages its answers. The Pagination section sits in the Limits area.
+    pagination: 'Pagination',
+    paginationHelper:
+        'Choose how this API splits its answers into pages. Dashflow follows the pages up to the limits above and merges them into one response. Nothing is saved from a test.',
+    paginationStyle: 'Pagination style',
+    paginationStyles: {
+        none: 'None (one request)',
+        page: 'Page number',
+        offset: 'Offset',
+        cursor: 'Cursor',
+        link_header: 'Link header',
+    } as Record<string, string>,
+    paginationStyleHelper: {
+        none: 'The API returns everything in one answer.',
+        page: 'Sends the page number, starting at 1, until a page has no records.',
+        offset: 'Sends the offset, starting at 0 and growing by the records received, until a page has no records.',
+        cursor: 'Sends the cursor read from each answer, as a plain value, until an answer has none.',
+        link_header:
+            'Follows the next link in the Link header, only on the same address as the request.',
+    } as Record<string, string>,
+    paginationParam: (style: string) =>
+        style === 'cursor'
+            ? 'Cursor parameter'
+            : style === 'offset'
+              ? 'Offset parameter'
+              : 'Page parameter',
+    paginationParamHelper: 'The query parameter that carries it, such as page.',
+    paginationSizeParam: 'Page size parameter (optional)',
+    paginationSizeParamHelper:
+        'The query parameter that carries the page size, such as limit. Leave blank to send no size.',
+    paginationSize: 'Page size',
+    paginationSizeHelper: 'How many records to ask for in each page.',
+    paginationRecordsPath: 'Records path (optional)',
+    paginationRecordsPathHelper:
+        'Where the records array sits in each page, such as data.items. Leave blank when the answer itself is the array.',
+    paginationCursorPath: 'Cursor path',
+    paginationCursorPathHelper:
+        'Where the next cursor sits in each answer, such as meta.next. No cursor ends the run.',
     refresh: 'Refresh',
     live: 'Supports Live refresh (~30 s)',
     liveHelper:
@@ -825,6 +863,20 @@ export const dataSourceLabels = {
             'This name is reserved. Choose another name for the API key.',
         'api-key-name-duplicate': 'A default header already uses this name.',
         'api-key-placement-invalid': 'Choose header or query string.',
+        'pagination-style-invalid': 'Choose how this API pages its answers.',
+        'pagination-param-required': 'Enter the query parameter name.',
+        'pagination-param-invalid':
+            'A query parameter name uses letters, digits and the characters _ . ~ - only, up to 64 characters.',
+        'pagination-size-param-required':
+            'Enter the query parameter that carries the page size, or clear the page size.',
+        'pagination-size-invalid':
+            'Enter a whole number greater than zero for the page size, or clear the page size parameter.',
+        'pagination-size-param-duplicate':
+            'The page size needs a different query parameter from the page, offset or cursor.',
+        'pagination-path-required':
+            'Enter where the next cursor sits in the response, such as meta.next.',
+        'pagination-path-invalid':
+            'A path is keys and array positions separated by dots, such as data.items: letters, digits, _ and - only, at most 8 parts.',
         'secret-required': 'Enter a new value.',
         'secret-values-refused':
             'This form cannot carry a secret value. Remove it and try again.',
@@ -903,6 +955,11 @@ export const dataSourceLabels = {
     // Story 2.7: the catalogue is closed to the canonical rows of EXPERIENCE.md, so this message lives here.
     authFailed: (source: string) =>
         `Authentication failed. ${source} did not accept these credentials. Check the client ID, the client secret and the scope, then test again.`,
+    // Story 2.11: the catalogue is closed too, so the page-limit message lives here. `pages` is the cap that was reached.
+    tooManyPages: (pages: number) =>
+        `Too many pages: this endpoint needs more than ${pages} pages, the page limit. Nothing was shown, so no totals are wrong. Narrow the request with parameters, or raise the page limit on the data source.`,
+    // The page a paged call stopped at, in the card's title.
+    failedPage: (page: number) => `Page ${page}`,
 } as const;
 
 // The Endpoints tab of a Data source (Story 2.9): the list, and the add and edit form with its `method-prefix`,

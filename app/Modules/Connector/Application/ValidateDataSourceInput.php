@@ -6,6 +6,8 @@ use App\Modules\Connector\Contracts\DataSourceInput;
 use App\Modules\Connector\Contracts\DataSourceUrl;
 use App\Modules\Connector\Contracts\InvalidDataSource;
 use App\Modules\Connector\Contracts\InvalidDataSourceUrl;
+use App\Modules\Connector\Contracts\Pagination;
+use App\Modules\Connector\Contracts\PaginationPath;
 use App\Modules\Connector\Contracts\ReservedHeaders;
 use App\Modules\Connector\Contracts\SecretSlots;
 use App\Modules\Connector\Infrastructure\DataSourceSettings;
@@ -36,6 +38,10 @@ final class ValidateDataSourceInput
     public const CLIENT_ID_MAX = 255;
 
     public const SCOPE_MAX = 512;
+
+    public const PARAM_MAX = 64;
+
+    public const PAGE_SIZE_MAX = 1000000;
 
     private const TOKEN = '/\A[!#$%&\'*+.^_`|~0-9A-Za-z-]+\z/D';
 
@@ -75,12 +81,13 @@ final class ValidateDataSourceInput
 
         [$apiKeyName, $apiKeyPlacement] = $this->apiKey($auth, $raw, $headers, $fail);
         $this->secrets($auth, $raw['secrets'] ?? null, $secretValues, $fail);
+        $pagination = $this->pagination($raw, $fail);
 
         if ($errors !== [] || $name === null || $url === null) {
             throw new InvalidDataSource($errors, $reasons);
         }
 
-        return new DataSourceInput($name, $url, $headers, $timeout, $bytes, $pages, $live, $auth, $apiKeyName, $apiKeyPlacement, $secretValues, $tokenUrl, $clientId, $scope);
+        return new DataSourceInput($name, $url, $headers, $timeout, $bytes, $pages, $live, $auth, $apiKeyName, $apiKeyPlacement, $secretValues, $tokenUrl, $clientId, $scope, $pagination);
     }
 
     /** The Base URL alone, for the blur check. @throws InvalidDataSource */
@@ -154,6 +161,111 @@ final class ValidateDataSourceInput
         }
 
         return [$url, $id, $scope];
+    }
+
+    /**
+     * The pagination settings (Story 2.11). Only what the style needs is kept (the rest is dropped, whatever was posted): `page`,
+     * `offset` and `cursor` need the parameter that carries the page, the offset or the cursor, `cursor` also the path of the
+     * next cursor, a page size is optional (name and number together), and the records path is optional (empty: the response
+     * root is the array).
+     *
+     * @param  array<string, mixed>  $raw
+     */
+    private function pagination(#[\SensitiveParameter] array $raw, callable $fail): Pagination
+    {
+        $style = $raw['pagination_style'] ?? 'none';
+
+        if ($style === '') {
+            $style = 'none';
+        }
+
+        if (! is_string($style) || ! in_array($style, Pagination::STYLES, true)) {
+            $fail('pagination_style', 'pagination-style-invalid', 'Choose how this API pages its answers.');
+
+            return new Pagination;
+        }
+
+        if ($style === 'none') {
+            return new Pagination;
+        }
+
+        $param = null;
+
+        if (Pagination::needsParam($style)) {
+            $param = $this->paramName($raw['pagination_param'] ?? null, 'pagination_param', 'pagination-param-required', $style === 'cursor' ? 'Enter the query parameter that carries the cursor.' : ($style === 'page' ? 'Enter the query parameter that carries the page number.' : 'Enter the query parameter that carries the offset.'), $fail);
+        }
+
+        // A page size applies to page, offset and cursor; a Link header carries its own, so none is kept for it.
+        $sizeParam = $style === 'link_header' ? null : $this->optional($raw['pagination_size_param'] ?? null);
+        $size = $style === 'link_header' ? null : $this->optional($raw['pagination_size'] ?? null);
+        $sizeValue = null;
+
+        if ($sizeParam !== null || $size !== null) {
+            $sizeParam = $this->paramName($sizeParam, 'pagination_size_param', 'pagination-size-param-required', 'Enter the query parameter that carries the page size, or clear the page size.', $fail);
+
+            if ($sizeParam !== null && $sizeParam === $param) {
+                $fail('pagination_size_param', 'pagination-size-param-duplicate', 'The page size needs a different query parameter from the page, offset or cursor.');
+                $sizeParam = null;
+            }
+
+            if (is_string($size) && preg_match('/\A[1-9][0-9]{0,8}\z/D', $size) === 1) {
+                $size = (int) $size;
+            }
+
+            if (! is_int($size) || $size < 1 || $size > self::PAGE_SIZE_MAX) {
+                $fail('pagination_size', 'pagination-size-invalid', 'Enter a whole number greater than zero for the page size, or clear the page size parameter.');
+            } else {
+                $sizeValue = $size;
+            }
+        }
+
+        $recordsPath = $this->path($raw['pagination_records_path'] ?? null, 'pagination_records_path', false, $fail);
+        $cursorPath = $style === 'cursor' ? $this->path($raw['pagination_cursor_path'] ?? null, 'pagination_cursor_path', true, $fail) : null;
+
+        return new Pagination($style, $param, $sizeParam, $sizeValue, $recordsPath, $cursorPath);
+    }
+
+    private function optional(mixed $value): mixed
+    {
+        return $value === null || $value === '' ? null : $value;
+    }
+
+    /** A query parameter name: a short token of unreserved characters. */
+    private function paramName(mixed $value, string $field, string $reason, string $required, callable $fail): ?string
+    {
+        if (! is_string($value) || $value === '') {
+            $fail($field, $reason, $required);
+
+            return null;
+        }
+
+        if (strlen($value) > self::PARAM_MAX || preg_match('/\A[A-Za-z0-9_.~-]+\z/D', $value) !== 1) {
+            $fail($field, 'pagination-param-invalid', 'A query parameter name uses letters, digits and the characters _ . ~ - only, up to '.self::PARAM_MAX.' characters.');
+
+            return null;
+        }
+
+        return $value;
+    }
+
+    /** A dotted path into the response ({@see PaginationPath}); blank means "none" unless it is required. */
+    private function path(mixed $value, string $field, bool $required, callable $fail): ?string
+    {
+        if ($value === null || $value === '') {
+            if ($required) {
+                $fail($field, 'pagination-path-required', 'Enter where the next cursor sits in the response, such as meta.next.');
+            }
+
+            return null;
+        }
+
+        if (! is_string($value) || ! PaginationPath::valid($value)) {
+            $fail($field, 'pagination-path-invalid', 'A path is keys and array positions separated by dots, such as data.items: letters, digits, _ and - only, at most '.PaginationPath::MAX_SEGMENTS.' parts.');
+
+            return null;
+        }
+
+        return $value;
     }
 
     private function name(mixed $value, callable $fail): ?string

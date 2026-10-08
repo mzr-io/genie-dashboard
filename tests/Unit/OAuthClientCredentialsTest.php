@@ -2,6 +2,7 @@
 
 use App\Modules\Connector\Contracts\AuthFailed;
 use App\Modules\Connector\Contracts\CredentialScheme;
+use App\Modules\Connector\Contracts\EgressBlockLog;
 use App\Modules\Connector\Contracts\EgressReason;
 use App\Modules\Connector\Contracts\EgressRequest;
 use App\Modules\Connector\Contracts\EgressResponse;
@@ -10,6 +11,7 @@ use App\Modules\Connector\Contracts\EgressTransportFailed;
 use App\Modules\Connector\Contracts\FetchRequest;
 use App\Modules\Connector\Contracts\NotJsonResponse;
 use App\Modules\Connector\Contracts\OAuthToken;
+use App\Modules\Connector\Contracts\Pagination;
 use App\Modules\Connector\Contracts\SealedSecret;
 use App\Modules\Connector\Contracts\SecretContext;
 use App\Modules\Connector\Contracts\SecretRef;
@@ -154,7 +156,10 @@ function oaStack(EgressTransport $egress, ?string $keyFile, array $oauth = []): 
     $log = oaLog();
     $vault = oaVault();
 
-    return [new DirectFetchTransport($egress, $vault, new OAuthTokenClient($egress, $log), $cache, $settings), $log, $vault, $store, $cache, $logger];
+    return [new DirectFetchTransport($egress, $vault, new OAuthTokenClient($egress, $log), $cache, $settings, new class implements EgressBlockLog
+    {
+        public function record(string $workspaceId, EgressReason $reason, ?string $host, ?int $port): void {}
+    }, $config), $log, $vault, $store, $cache, $logger];
 }
 
 function oaKeyFile(): string
@@ -551,4 +556,43 @@ it('does not repeat a POST after a 401: AuthFailed at once, one send, the reject
         ->and($egress->tokenRequests)->toHaveCount(1)
         ->and($egress->apiRequests[0]->method)->toBe('POST')
         ->and(oaRaw($store, OA_SRC, 1))->toBeNull();
+});
+
+// Story 2.11: a paged OAuth2 run asks for one token, sends it with every page, and refreshes it once on a 401.
+function oaPaged(): FetchRequest
+{
+    $base = oaRequest(transient: true);
+
+    return new FetchRequest(
+        OA_WS, OA_SRC, null, OA_API_URL, [], CredentialScheme::OAuth2ClientCredentials, $base->secretRefs,
+        oauthTokenUrl: OA_TOKEN_URL, oauthClientId: 'client-1', oauthScope: 'read write', secretVersion: 1,
+        pagination: new Pagination('page', 'p'),
+    );
+}
+
+function oaJson(string $body, int $status = 200): EgressResponse
+{
+    return new EgressResponse($status, ['content-type' => ['application/json']], $body, OA_API_URL);
+}
+
+it('requests one token for all the pages of a run and sends it as the Bearer on every page', function () {
+    $egress = oaEgress([oaToken('T1')], [oaJson('[1]'), oaJson('[2]'), oaJson('[]')]);
+    [$transport] = oaStack($egress, $this->keyFile);
+
+    $response = $transport->fetch(oaPaged());
+
+    expect($response->body)->toBe('[1,2]')
+        ->and($egress->tokenRequests)->toHaveCount(1)
+        ->and(array_map(fn (EgressRequest $r): array => $r->credentials, $egress->apiRequests))->toBe(array_fill(0, 3, ['Authorization' => 'Bearer T1']));
+});
+
+it('refreshes the token once on a 401 on page 2 and sends page 3 with the refreshed token', function () {
+    $egress = oaEgress([oaToken('T1'), oaToken('T2')], [oaJson('[1]'), oaJson('{}', 401), oaJson('[2]'), oaJson('[]')]);
+    [$transport] = oaStack($egress, $this->keyFile);
+
+    $response = $transport->fetch(oaPaged());
+
+    expect($response->body)->toBe('[1,2]')
+        ->and($egress->tokenRequests)->toHaveCount(2)
+        ->and(array_map(fn (EgressRequest $r): string => $r->credentials['Authorization'], $egress->apiRequests))->toBe(['Bearer T1', 'Bearer T1', 'Bearer T2', 'Bearer T2']);
 });
