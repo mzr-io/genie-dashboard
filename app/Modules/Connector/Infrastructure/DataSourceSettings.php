@@ -38,6 +38,18 @@ final class DataSourceSettings
         );
     }
 
+    /**
+     * The largest retention window an Admin may choose, in days (`dashflow.retention.max_window_days`, Story 2.16). Null when it is
+     * unset or not a positive whole number: a window is then refused, because an unbounded one is longer retention than NFR-5 allows.
+     */
+    public function retentionMaxWindowDays(): ?int
+    {
+        // Capped at the largest value the INTEGER column holds, so an accepted window can never overflow it.
+        $max = $this->whole('dashflow.retention.max_window_days.value');
+
+        return $max === null ? null : min($max, 2147483647);
+    }
+
     private function whole(string $key): ?int
     {
         $value = $this->config->get($key);

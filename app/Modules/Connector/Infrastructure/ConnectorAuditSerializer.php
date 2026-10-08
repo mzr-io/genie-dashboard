@@ -39,6 +39,9 @@ final class ConnectorAuditSerializer implements AuditSerializer
             'pagination_size' => AuditField::Count,
             'pagination_records_path' => AuditField::Hashed,
             'pagination_cursor_path' => AuditField::Hashed,
+            // Retention (Story 2.16): the mode as an enum and the window as a count of days.
+            'retention_mode' => AuditField::Enum,
+            'retention_days' => AuditField::Count,
             'header_count' => AuditField::Count,
             'headers' => AuditField::Hashed,
             'revision' => AuditField::Count,

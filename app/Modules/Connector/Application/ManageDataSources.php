@@ -18,6 +18,7 @@ use App\Modules\Connector\Contracts\DataSourceUrl;
 use App\Modules\Connector\Contracts\HostAllowlist;
 use App\Modules\Connector\Contracts\InvalidDataSource;
 use App\Modules\Connector\Contracts\Pagination;
+use App\Modules\Connector\Contracts\Retention;
 use App\Modules\Connector\Contracts\SealedSecret;
 use App\Modules\Connector\Contracts\SecretContext;
 use App\Modules\Connector\Contracts\SecretSlots;
@@ -46,7 +47,7 @@ final class ManageDataSources implements DataSources
 {
     private const STAMP = "'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'";
 
-    private const COLUMNS = 'd.id, d.name, d.base_url, d.scheme, d.host, d.port, d.auth_type, d.default_headers, d.timeout_seconds, d.max_response_bytes, d.max_pages, d.live_capable, d.api_key_name, d.api_key_placement, d.oauth_token_url, d.oauth_client_id, d.oauth_scope, d.pagination_style, d.pagination_param, d.pagination_size_param, d.pagination_size, d.pagination_records_path, d.pagination_cursor_path, d.revision, d.lock_epoch, '
+    private const COLUMNS = 'd.id, d.name, d.base_url, d.scheme, d.host, d.port, d.auth_type, d.default_headers, d.timeout_seconds, d.max_response_bytes, d.max_pages, d.live_capable, d.api_key_name, d.api_key_placement, d.oauth_token_url, d.oauth_client_id, d.oauth_scope, d.pagination_style, d.pagination_param, d.pagination_size_param, d.pagination_size, d.pagination_records_path, d.pagination_cursor_path, d.retention_mode, d.retention_days, d.revision, d.lock_epoch, '
         .'to_char(d.created_at, '.self::STAMP.') AS created, to_char(d.updated_at, '.self::STAMP.') AS updated';
 
     public function __construct(
@@ -116,13 +117,13 @@ final class ManageDataSources implements DataSources
 
             try {
                 DB::insert(
-                    'insert into data_sources (id, workspace_id, name, base_url, scheme, host, port, auth_type, api_key_name, api_key_placement, oauth_token_url, oauth_client_id, oauth_scope, default_headers, timeout_seconds, max_response_bytes, max_pages, live_capable, pagination_style, pagination_param, pagination_size_param, pagination_size, pagination_records_path, pagination_cursor_path, revision, created_by_membership_id, created_at, updated_at) '
-                    .'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?::boolean, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)',
+                    'insert into data_sources (id, workspace_id, name, base_url, scheme, host, port, auth_type, api_key_name, api_key_placement, oauth_token_url, oauth_client_id, oauth_scope, default_headers, timeout_seconds, max_response_bytes, max_pages, live_capable, pagination_style, pagination_param, pagination_size_param, pagination_size, pagination_records_path, pagination_cursor_path, retention_mode, retention_days, revision, created_by_membership_id, created_at, updated_at) '
+                    .'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, ?, ?::boolean, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)',
                     [
                         $id, $actor->workspaceId, $input->name, $input->url->baseUrl, $input->url->scheme, $input->url->host, $input->url->port,
                         $input->authType, $input->apiKeyName, $input->apiKeyPlacement, $input->oauthTokenUrl?->baseUrl, $input->oauthClientId, $input->oauthScope,
                         json_encode($this->storedHeaders($input->headers), JSON_THROW_ON_ERROR), $input->timeoutSeconds, $input->maxResponseBytes, $input->maxPages,
-                        $input->liveCapable ? 'true' : 'false', ...$this->paginationValues($input->pagination), $actor->membershipId, now(), now(),
+                        $input->liveCapable ? 'true' : 'false', ...$this->paginationValues($input->pagination), $input->retention->mode, $input->retention->days, $actor->membershipId, now(), now(),
                     ],
                 );
             } catch (QueryException $e) {
@@ -172,12 +173,12 @@ final class ManageDataSources implements DataSources
 
             try {
                 DB::update(
-                    'update data_sources set name = ?, base_url = ?, scheme = ?, host = ?, port = ?, auth_type = ?, api_key_name = ?, api_key_placement = ?, oauth_token_url = ?, oauth_client_id = ?, oauth_scope = ?, default_headers = ?::jsonb, timeout_seconds = ?, max_response_bytes = ?, max_pages = ?, live_capable = ?::boolean, pagination_style = ?, pagination_param = ?, pagination_size_param = ?, pagination_size = ?, pagination_records_path = ?, pagination_cursor_path = ?, revision = revision + 1, updated_at = ? '
+                    'update data_sources set name = ?, base_url = ?, scheme = ?, host = ?, port = ?, auth_type = ?, api_key_name = ?, api_key_placement = ?, oauth_token_url = ?, oauth_client_id = ?, oauth_scope = ?, default_headers = ?::jsonb, timeout_seconds = ?, max_response_bytes = ?, max_pages = ?, live_capable = ?::boolean, pagination_style = ?, pagination_param = ?, pagination_size_param = ?, pagination_size = ?, pagination_records_path = ?, pagination_cursor_path = ?, retention_mode = ?, retention_days = ?, revision = revision + 1, updated_at = ? '
                     .'where workspace_id = ? and id = ?',
                     [
                         $input->name, $input->url->baseUrl, $input->url->scheme, $input->url->host, $input->url->port, $input->authType, $input->apiKeyName, $input->apiKeyPlacement, $input->oauthTokenUrl?->baseUrl, $input->oauthClientId, $input->oauthScope,
                         json_encode($this->storedHeaders($input->headers), JSON_THROW_ON_ERROR), $input->timeoutSeconds, $input->maxResponseBytes, $input->maxPages,
-                        $input->liveCapable ? 'true' : 'false', ...$this->paginationValues($input->pagination), now(), $actor->workspaceId, $before->id,
+                        $input->liveCapable ? 'true' : 'false', ...$this->paginationValues($input->pagination), $input->retention->mode, $input->retention->days, now(), $actor->workspaceId, $before->id,
                     ],
                 );
             } catch (QueryException $e) {
@@ -209,6 +210,11 @@ final class ManageDataSources implements DataSources
     public function ceilings(): DataSourceCeilings
     {
         return $this->settings->ceilings();
+    }
+
+    public function maxRetentionWindowDays(): ?int
+    {
+        return $this->settings->retentionMaxWindowDays();
     }
 
     /** All the checks that need the database, refused together; nothing has been written yet. */
@@ -469,6 +475,8 @@ final class ManageDataSources implements DataSources
             'pagination_size' => $source->pagination->size,
             'pagination_records_path' => $source->pagination->recordsPath,
             'pagination_cursor_path' => $source->pagination->cursorPath,
+            'retention_mode' => $source->retention->mode,
+            'retention_days' => $source->retention->days,
             'header_count' => count($headers),
             'headers' => json_encode(array_map(fn (array $h): array => isset($h['secret']) ? [strtolower($h['name']), '', true] : [strtolower($h['name']), $h['value']], $headers), JSON_THROW_ON_ERROR),
             'revision' => $source->revision,
@@ -484,7 +492,7 @@ final class ManageDataSources implements DataSources
     /** @param  array<string, SecretStatus>  $secrets */
     private function source(object $row, array $secrets = []): DataSource
     {
-        /** @var object{id: string, name: string, base_url: string, scheme: string, host: string, port: int|string, auth_type: string, default_headers: string, timeout_seconds: int|string|null, max_response_bytes: int|string|null, max_pages: int|string|null, live_capable: bool|string|int, api_key_name: string|null, api_key_placement: string|null, oauth_token_url: string|null, oauth_client_id: string|null, oauth_scope: string|null, pagination_style: string, pagination_param: string|null, pagination_size_param: string|null, pagination_size: int|string|null, pagination_records_path: string|null, pagination_cursor_path: string|null, revision: int|string, lock_epoch: int|string, created: string, updated: string} $row */
+        /** @var object{id: string, name: string, base_url: string, scheme: string, host: string, port: int|string, auth_type: string, default_headers: string, timeout_seconds: int|string|null, max_response_bytes: int|string|null, max_pages: int|string|null, live_capable: bool|string|int, api_key_name: string|null, api_key_placement: string|null, oauth_token_url: string|null, oauth_client_id: string|null, oauth_scope: string|null, pagination_style: string, pagination_param: string|null, pagination_size_param: string|null, pagination_size: int|string|null, pagination_records_path: string|null, pagination_cursor_path: string|null, retention_mode: string, retention_days: int|string|null, revision: int|string, lock_epoch: int|string, created: string, updated: string} $row */
         $decoded = json_decode($row->default_headers, true);
         $headers = [];
 
@@ -520,6 +528,7 @@ final class ManageDataSources implements DataSources
             $row->oauth_scope,
             (int) $row->lock_epoch,
             new Pagination($row->pagination_style, $row->pagination_param, $row->pagination_size_param, $row->pagination_size === null ? null : (int) $row->pagination_size, $row->pagination_records_path, $row->pagination_cursor_path),
+            new Retention($row->retention_mode, $row->retention_days === null ? null : (int) $row->retention_days),
         );
     }
 

@@ -69,6 +69,14 @@ final class RegisterSyncTargets implements OutboxConsumer
             return;
         }
 
+        if ($event->type === 'connector.data_source.updated') {
+            // The Admin's retention choice reaches every target of the Data Source, retired ones too (Story 2.16). It never touches a fetch key or a payload pointer.
+            DB::update(
+                'update sync_targets set retention_mode = ?, retention_days = ?::integer, updated_at = now() where workspace_id = ? and data_source_id = ? and (retention_mode is distinct from ? or retention_days is distinct from ?::integer)',
+                [$source->retention->mode, $source->retention->days, $event->workspaceId, $source->id, $source->retention->mode, $source->retention->days],
+            );
+        }
+
         foreach ($endpoints as $endpoint) {
             try {
                 $this->register($event->workspaceId, $source, $endpoint);
@@ -94,11 +102,11 @@ final class RegisterSyncTargets implements OutboxConsumer
             $id = (string) Str::uuid7();
 
             DB::insert(
-                'insert into sync_targets (id, workspace_id, fetch_key, data_source_id, endpoint_id, endpoint_revision_id, data_source_revision, params, sync_group_id, refresh_interval_seconds, next_due_at, created_at, updated_at) '
-                .'values (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?::integer, case when ?::integer is null then null else now() end, now(), now()) on conflict (workspace_id, fetch_key) do nothing',
+                'insert into sync_targets (id, workspace_id, fetch_key, data_source_id, endpoint_id, endpoint_revision_id, data_source_revision, params, sync_group_id, refresh_interval_seconds, next_due_at, retention_mode, retention_days, created_at, updated_at) '
+                .'values (?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?::integer, case when ?::integer is null then null else now() end, ?, ?::integer, now(), now()) on conflict (workspace_id, fetch_key) do nothing',
                 [
                     $id, $workspaceId, $key, $source->id, $endpoint->id, $endpoint->revisionId, $source->revision,
-                    json_encode((object) $params, JSON_THROW_ON_ERROR), $id, $interval, $interval,
+                    json_encode((object) $params, JSON_THROW_ON_ERROR), $id, $interval, $interval, $source->retention->mode, $source->retention->days,
                 ],
             );
 

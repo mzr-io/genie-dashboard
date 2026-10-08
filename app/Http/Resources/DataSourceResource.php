@@ -56,6 +56,8 @@ final class DataSourceResource extends JsonResource
             'pagination_size' => $source->pagination->size,
             'pagination_records_path' => $source->pagination->recordsPath,
             'pagination_cursor_path' => $source->pagination->cursorPath,
+            'retention_mode' => $source->retention->mode,
+            'retention_days' => $source->retention->days,
             'revision' => $source->revision,
             // The soft lock's epoch (Story 2.8): public state, a form echoes it back with its lock token.
             'lock_epoch' => $source->lockEpoch,

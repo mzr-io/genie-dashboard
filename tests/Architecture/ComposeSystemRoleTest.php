@@ -2,6 +2,24 @@
 
 use Symfony\Component\Yaml\Yaml;
 
+it('gives the maintenance database credentials to worker-compute only', function () {
+    $compose = Yaml::parseFile(dirname(__DIR__, 2).'/compose.yaml');
+
+    foreach ($compose['services'] as $name => $service) {
+        $keys = array_filter(array_keys($service['environment'] ?? []), fn ($key) => str_starts_with((string) $key, 'DB_MAINTENANCE_'));
+
+        if ($name === 'worker-compute') {
+            expect($keys)->toContain('DB_MAINTENANCE_USERNAME')->toContain('DB_MAINTENANCE_PASSWORD')->toContain('DB_MAINTENANCE_HOST');
+            expect($service['environment']['DB_MAINTENANCE_USERNAME'])->toBe('maintenance');
+        } else {
+            expect($keys)->toBe([], "service {$name} must not hold DB_MAINTENANCE_* credentials");
+        }
+    }
+
+    // Shared environment anchors must not carry them either.
+    expect(array_filter(array_keys($compose['x-app-env']), fn ($key) => str_starts_with((string) $key, 'DB_MAINTENANCE_')))->toBe([]);
+});
+
 it('gives the system database credentials to worker-compute only', function () {
     $compose = Yaml::parseFile(dirname(__DIR__, 2).'/compose.yaml');
 

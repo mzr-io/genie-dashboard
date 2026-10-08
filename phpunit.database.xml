@@ -48,6 +48,11 @@
         <env name="DB_SYSTEM_PORT" value="55432" force="true"/>
         <env name="DB_SYSTEM_USERNAME" value="system" force="true"/>
         <env name="DB_SYSTEM_PASSWORD" value="dashflow-test-system" force="true"/>
+        <!-- The retention sweep (Story 2.16) runs as role `maintenance`, straight against PostgreSQL. -->
+        <env name="DB_MAINTENANCE_HOST" value="127.0.0.1" force="true"/>
+        <env name="DB_MAINTENANCE_PORT" value="55432" force="true"/>
+        <env name="DB_MAINTENANCE_USERNAME" value="maintenance" force="true"/>
+        <env name="DB_MAINTENANCE_PASSWORD" value="dashflow-test-maintenance" force="true"/>
         <!-- The operator command runs as role `operator`, straight against PostgreSQL. -->
         <env name="DB_OPERATOR_HOST" value="127.0.0.1" force="true"/>
         <env name="DB_OPERATOR_PORT" value="55432" force="true"/>

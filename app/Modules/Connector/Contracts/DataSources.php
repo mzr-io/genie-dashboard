@@ -52,4 +52,7 @@ interface DataSources
 
     /** The platform ceilings the limits are checked against. */
     public function ceilings(): DataSourceCeilings;
+
+    /** The deployment's maximum for a retention window, in days; null when it is unset or malformed (then `window` is refused). */
+    public function maxRetentionWindowDays(): ?int;
 }

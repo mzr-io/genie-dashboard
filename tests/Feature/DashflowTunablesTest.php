@@ -66,6 +66,22 @@ it('reads a tunable from its environment variable', function () {
     }
 });
 
+// Story 2.16: the maximum retention window is a pending_input setting kept outside the closed `tunables` list, like `egress`.
+it('has the maximum retention window as a pending_input setting with no default, outside the tunables', function () {
+    $setting = config('dashflow.retention.max_window_days');
+
+    expect($setting)->toBe(['env' => 'DASHFLOW_RETENTION_MAX_WINDOW_DAYS', 'value' => null, 'pending_input' => true])
+        ->and(config('dashflow.tunables'))->not->toHaveKey('retention');
+
+    putenv('DASHFLOW_RETENTION_MAX_WINDOW_DAYS=90');
+    try {
+        $config = require dirname(__DIR__, 2).'/config/dashflow.php';
+        expect($config['retention']['max_window_days']['value'])->toBe('90');
+    } finally {
+        putenv('DASHFLOW_RETENTION_MAX_WINDOW_DAYS');
+    }
+});
+
 it('lists no tunable outside the AR-57 names', function () {
     $present = collect(config('dashflow.tunables'))
         ->flatMap(fn ($group, $area) => collect($group)->keys()->map(fn ($key) => "{$area}.{$key}"))

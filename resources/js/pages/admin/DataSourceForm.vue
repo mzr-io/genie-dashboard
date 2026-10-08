@@ -51,6 +51,7 @@ import type {
     LockClaim,
     OneDataSource,
     PaginationStyle,
+    RetentionMode,
 } from '@/lib/dataSources';
 import {
     acknowledgeFlush,
@@ -83,7 +84,11 @@ import { index } from '@/routes/admin/data-sources';
 // and Close. A take-over asks the holder's heartbeat to flush: the holder saves its valid non-secret fields through the
 // normal update, never a secret and never an invalid field, and acknowledges. This form registers no form draft and
 // keeps secrets in memory only, so nothing is restored after a session expires.
-const props = defineProps<{ dataSourceId?: string | null }>();
+const props = defineProps<{
+    dataSourceId?: string | null;
+    // The deployment's maximum retention window in days (Story 2.16); null: none is set.
+    retentionMaxWindowDays?: number | null;
+}>();
 
 const { t } = useI18n();
 const editing = computed(() => !!props.dataSourceId);
@@ -110,6 +115,9 @@ const ceilings = ref<Ceilings>({
     max_pages: null,
 });
 
+// The deployment's maximum retention window in days (null: none set, so a window is not offered).
+const retentionMax = ref<number | null>(props.retentionMaxWindowDays ?? null);
+
 let nextRowKey = 1;
 const form = reactive({
     name: '',
@@ -126,6 +134,9 @@ const form = reactive({
     pagination_size: '',
     pagination_records_path: '',
     pagination_cursor_path: '',
+    // Retention (Story 2.16): `latest`, or a window of days (the days are sent only with a window).
+    retention_mode: 'latest' as RetentionMode,
+    retention_days: '',
     auth_type: 'none' as AuthType,
     api_key_name: '',
     api_key_placement: 'header' as 'header' | 'query',
@@ -203,6 +214,8 @@ function snapshot(): string {
         form.pagination_size,
         form.pagination_records_path,
         form.pagination_cursor_path,
+        form.retention_mode,
+        form.retention_days,
         form.auth_type,
         form.api_key_name,
         form.api_key_placement,
@@ -269,6 +282,8 @@ function fill(source: DataSource): void {
     form.pagination_size = source.pagination_size?.toString() ?? '';
     form.pagination_records_path = source.pagination_records_path ?? '';
     form.pagination_cursor_path = source.pagination_cursor_path ?? '';
+    form.retention_mode = source.retention_mode ?? 'latest';
+    form.retention_days = source.retention_days?.toString() ?? '';
     original.value = source;
     revision.value = source.revision;
     baseline = snapshot();
@@ -386,6 +401,7 @@ async function load(): Promise<void> {
 
         fill(one.data);
         ceilings.value = one.meta.ceilings;
+        retentionMax.value = one.meta.retention?.max_window_days ?? null;
         state.value = 'ready';
     } catch (error) {
         if (authExpired(error)) {
@@ -471,7 +487,11 @@ function messageFor(
     }
 
     // A ceiling message from the server names the limit.
-    if (reason === 'above-ceiling' && server) {
+    if (
+        (reason === 'above-ceiling' ||
+            reason === 'retention-days-above-maximum') &&
+        server
+    ) {
         return server;
     }
 
@@ -651,6 +671,19 @@ function paginationPayload(): Pick<
     };
 }
 
+// The window's days go with a window only: with `latest` none are sent.
+function retentionPayload(): Pick<
+    DataSourceInput,
+    'retention_mode' | 'retention_days'
+> {
+    return form.retention_mode === 'window'
+        ? {
+              retention_mode: 'window',
+              retention_days: form.retention_days.trim(),
+          }
+        : { retention_mode: 'latest' };
+}
+
 function payload(): DataSourceInput {
     return {
         name: form.name.trim(),
@@ -671,6 +704,7 @@ function payload(): DataSourceInput {
         max_pages: limit(form.max_pages),
         live_capable: form.live_capable,
         ...paginationPayload(),
+        ...retentionPayload(),
         auth_type: form.auth_type,
         ...(form.auth_type === 'api_key'
             ? {
@@ -741,6 +775,8 @@ function fieldLabel(field: string): string {
     if (field === 'pagination_records_path')
         return labels.paginationRecordsPath;
     if (field === 'pagination_cursor_path') return labels.paginationCursorPath;
+    if (field === 'retention_mode') return labels.retentionModeLabel;
+    if (field === 'retention_days') return labels.retentionDays;
     if (field === 'auth_type') return labels.authType;
     if (field === 'api_key_name') return labels.apiKeyName;
     if (field === 'api_key_placement') return labels.apiKeyPlacement;
@@ -842,6 +878,8 @@ function order(a: string, b: string): number {
                 'pagination_size',
                 'pagination_records_path',
                 'pagination_cursor_path',
+                'retention_mode',
+                'retention_days',
                 'live_capable',
                 'confirm_password',
             ].indexOf(field)
@@ -1026,6 +1064,8 @@ async function refused(error: unknown): Promise<void> {
             revision.value = error.current.data.revision;
             original.value = error.current.data;
             ceilings.value = error.current.meta.ceilings;
+            retentionMax.value =
+                error.current.meta.retention?.max_window_days ?? null;
             await failWith('stale');
 
             return;
@@ -1615,6 +1655,15 @@ function flushPayload(invalid: Set<string>): DataSourceInput {
 
         if (saved.pagination_cursor_path)
             body.pagination_cursor_path = saved.pagination_cursor_path;
+    }
+
+    // A refused retention field sends the saved retention as it was, whole.
+    if (invalid.has('retention_mode') || invalid.has('retention_days')) {
+        delete body.retention_days;
+        body.retention_mode = saved.retention_mode ?? 'latest';
+
+        if (saved.retention_days !== null && saved.retention_days !== undefined)
+            body.retention_days = String(saved.retention_days);
     }
 
     // Plain headers as typed (a refused row dropped); a secret header only as saved, by name and flag.
@@ -2709,6 +2758,96 @@ const ceilingHelper = (value: number | null): string | undefined =>
                             </template>
                         </template>
                     </fieldset>
+                </fieldset>
+
+                <fieldset class="grid gap-4" data-test="retention-section">
+                    <legend class="type-title-md mb-1 text-text-primary">
+                        {{ labels.retention }}
+                    </legend>
+                    <p class="type-caption text-text-muted">
+                        {{ labels.retentionHelper }}
+                    </p>
+                    <div
+                        role="radiogroup"
+                        :aria-label="labels.retentionModeLabel"
+                        :aria-describedby="fieldId('retention-mode-helper')"
+                        class="grid gap-2"
+                        data-test="retention-mode"
+                    >
+                        <label class="type-body-sm flex items-center gap-2">
+                            <input
+                                :id="fieldId('retention_mode')"
+                                v-model="form.retention_mode"
+                                type="radio"
+                                name="retention_mode"
+                                value="latest"
+                                data-test="retention-latest"
+                                @change="
+                                    errors.retention_mode = null;
+                                    errors.retention_days = null;
+                                "
+                            />
+                            {{ labels.retentionModes.latest }}
+                        </label>
+                        <label class="type-body-sm flex items-center gap-2">
+                            <input
+                                v-model="form.retention_mode"
+                                type="radio"
+                                name="retention_mode"
+                                value="window"
+                                :disabled="retentionMax === null"
+                                :aria-describedby="
+                                    retentionMax === null
+                                        ? fieldId('retention-unavailable')
+                                        : undefined
+                                "
+                                data-test="retention-window"
+                                @change="errors.retention_mode = null"
+                            />
+                            {{ labels.retentionModes.window }}
+                        </label>
+                    </div>
+                    <p
+                        :id="fieldId('retention-mode-helper')"
+                        class="type-caption text-text-muted"
+                    >
+                        {{ labels.retentionLatestHelper }}
+                    </p>
+                    <p
+                        v-if="retentionMax === null"
+                        :id="fieldId('retention-unavailable')"
+                        class="type-caption text-text-muted"
+                        data-test="retention-unavailable"
+                    >
+                        {{ labels.retentionWindowUnavailable }}
+                    </p>
+                    <p
+                        v-if="errors.retention_mode"
+                        class="type-caption text-error-text"
+                        role="alert"
+                    >
+                        {{ errors.retention_mode }}
+                    </p>
+                    <FormField
+                        v-if="form.retention_mode === 'window'"
+                        :id="fieldId('retention_days')"
+                        :label="labels.retentionDays"
+                        :helper="labels.retentionDaysHelper(retentionMax)"
+                        :error="errors.retention_days"
+                        #default="{ field }"
+                    >
+                        <Input
+                            v-bind="field"
+                            v-model="form.retention_days"
+                            name="retention_days"
+                            type="text"
+                            inputmode="numeric"
+                            autocomplete="off"
+                            class="max-w-xs"
+                            data-test="retention-days"
+                            @input="errors.retention_days = null"
+                        />
+                    </FormField>
                 </fieldset>
 
                 <fieldset class="grid gap-3">

@@ -84,6 +84,8 @@ function source(overrides: Partial<DataSource> = {}): DataSource {
         pagination_size: null,
         pagination_records_path: null,
         pagination_cursor_path: null,
+        retention_mode: 'latest',
+        retention_days: null,
         revision: 1,
         lock_epoch: 1,
         health: 'checking',
@@ -642,6 +644,54 @@ describe('the holder when someone takes over', () => {
         expect(JSON.stringify(second)).not.toContain('UNSAVED');
         expect(JSON.stringify(second)).not.toContain('999');
         expect(JSON.stringify(second)).not.toContain('after');
+    });
+
+    it('flushes the saved retention when the server refuses a retention field, and not the unsaved edit', async () => {
+        on(
+            'GET ds',
+            one(source({ retention_mode: 'window', retention_days: 14 })),
+        );
+        on('PUT lock', granted({ flush_requested: true }));
+        on(
+            'PUT ds',
+            refused(422, {
+                errors: {
+                    retention_days: ['The window cannot be more than 90 days.'],
+                },
+                reasons: { retention_days: 'retention-days-above-maximum' },
+            }),
+            one(source({ name: 'Ada flushed', revision: 2 })),
+        );
+        on(
+            'POST flush',
+            lockData({
+                status: 'taken_over',
+                flush_acknowledged: true,
+                taken_over_by: {
+                    name: 'Alex Morgan',
+                    at: '2026-10-08T10:58:00Z',
+                },
+            }),
+        );
+        await mountForm();
+        await type('[data-test="name"]', 'Ada flushed');
+        await type('[data-test="retention-days"]', '400');
+        await advance(21_000);
+
+        expect(of('PUT ds')).toHaveLength(2);
+        expect(of('PUT ds')[0].body).toMatchObject({
+            retention_mode: 'window',
+            retention_days: '400',
+        });
+
+        const second = of('PUT ds')[1].body as Record<string, unknown>;
+
+        expect(second).toMatchObject({
+            name: 'Ada flushed',
+            retention_mode: 'window',
+            retention_days: '14',
+        });
+        expect(JSON.stringify(second)).not.toContain('400');
     });
 
     it('keeps the saved value of a field the server refuses and saves the rest', async () => {

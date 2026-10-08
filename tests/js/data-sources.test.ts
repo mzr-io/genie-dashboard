@@ -78,6 +78,8 @@ function source(overrides: Partial<DataSource> = {}): DataSource {
         pagination_size: null,
         pagination_records_path: null,
         pagination_cursor_path: null,
+        retention_mode: 'latest',
+        retention_days: null,
         revision: 1,
         health: 'checking',
         last_successful_call_at: null,
@@ -102,7 +104,11 @@ function list(data: DataSource[], meta: Record<string, unknown> = {}) {
     };
 }
 
-const one = (data: DataSource) => ({ data, meta: { ceilings } });
+let retentionMax: number | null = 90;
+const one = (data: DataSource) => ({
+    data,
+    meta: { ceilings, retention: { max_window_days: retentionMax } },
+});
 
 type Reply = { ok: boolean; status: number; json: unknown };
 type Call = { url: string; method: string; body: unknown };
@@ -158,6 +164,7 @@ const save = () => $('[data-test="save"]') as HTMLButtonElement;
 
 beforeEach(() => {
     setActivePinia(createPinia());
+    retentionMax = 90;
     calls.length = 0;
     replies = [];
     visit.mockClear();
@@ -570,6 +577,7 @@ describe('Data source form: register', () => {
                     max_pages: null,
                     live_capable: true,
                     pagination_style: 'none',
+                    retention_mode: 'latest',
                     auth_type: 'none',
                 },
             },
@@ -986,5 +994,111 @@ describe('Data source form: pagination', () => {
         expect(
             ($('[data-test="pagination-size"]') as HTMLInputElement).value,
         ).toBe('50');
+    });
+});
+
+describe('Data source form: retention', () => {
+    const mode = (value: 'latest' | 'window') =>
+        $(`[data-test="retention-${value}"]`) as HTMLInputElement;
+
+    async function choose(value: 'latest' | 'window'): Promise<void> {
+        mode(value).checked = true;
+        mode(value).dispatchEvent(new Event('change', { bubbles: true }));
+        await flushPromises();
+    }
+
+    it('starts at Latest only with no days field, and says older data goes at the next sweep', async () => {
+        await mountPage(DataSourceForm, { retentionMaxWindowDays: 90 });
+
+        expect(mode('latest').checked).toBe(true);
+        expect(mode('window').disabled).toBe(false);
+        expect($('[data-test="retention-days"]')).toBeNull();
+        expect($('[data-test="retention-section"]')?.textContent).toContain(
+            labels.retentionHelper,
+        );
+        expect($('[data-test="retention-section"]')?.textContent).toContain(
+            labels.retentionModes.latest,
+        );
+        expect($('[data-test="retention-section"]')?.textContent).toContain(
+            labels.retentionModes.window,
+        );
+    });
+
+    it('sends the days with a window and none with latest', async () => {
+        await mountPage(DataSourceForm, { retentionMaxWindowDays: 90 });
+        replies = [ok(one(source({ data_source_id: 'ds-9' })))];
+
+        await type('[data-test="name"]', 'Sales API');
+        await type('[data-test="base-url"]', 'https://api.example.com/v1');
+        await choose('window');
+        await type('[data-test="retention-days"]', ' 30 ');
+        await click(save());
+
+        expect(writes()[0].body).toMatchObject({
+            retention_mode: 'window',
+            retention_days: '30',
+        });
+
+        calls.length = 0;
+        replies = [ok(one(source({ data_source_id: 'ds-9' })))];
+        await choose('latest');
+        await click(save());
+
+        expect(writes()[0].body).toMatchObject({ retention_mode: 'latest' });
+        expect(writes()[0].body).not.toHaveProperty('retention_days');
+    });
+
+    it('fills the saved window when editing', async () => {
+        replies = [
+            ok(one(source({ retention_mode: 'window', retention_days: 14 }))),
+        ];
+        await mountPage(DataSourceForm, { dataSourceId: 'ds-1' });
+
+        expect(mode('window').checked).toBe(true);
+        expect(
+            ($('[data-test="retention-days"]') as HTMLInputElement).value,
+        ).toBe('14');
+    });
+
+    it('disables the window option with its reason while no maximum is set', async () => {
+        await mountPage(DataSourceForm, { retentionMaxWindowDays: null });
+
+        const unavailable = $('[data-test="retention-unavailable"]');
+
+        expect(mode('window').disabled).toBe(true);
+        expect(mode('latest').disabled).toBe(false);
+        expect(unavailable?.textContent).toContain(
+            labels.retentionWindowUnavailable,
+        );
+        expect(mode('window').getAttribute('aria-describedby')).toBe(
+            unavailable?.id,
+        );
+    });
+
+    it('shows a refused window inline with the reason, and focuses the days field', async () => {
+        await mountPage(DataSourceForm, { retentionMaxWindowDays: 90 });
+        replies = [
+            refused(422, {
+                errors: {
+                    retention_days: ['The window cannot be more than 90 days.'],
+                },
+                reasons: { retention_days: 'retention-days-above-maximum' },
+            }),
+        ];
+
+        await type('[data-test="name"]', 'Sales API');
+        await type('[data-test="base-url"]', 'https://api.example.com/v1');
+        await choose('window');
+        await type('[data-test="retention-days"]', '400');
+        await click(save());
+
+        const input = $('[data-test="retention-days"]');
+
+        expect(input?.getAttribute('aria-invalid')).toBe('true');
+        expect(document.activeElement).toBe(input);
+        expect($('[data-slot="field-error"]')?.textContent).toContain(
+            'The window cannot be more than 90 days.',
+        );
+        expect((input as HTMLInputElement).value).toBe('400');
     });
 });

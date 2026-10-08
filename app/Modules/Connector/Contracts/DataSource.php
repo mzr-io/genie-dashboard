@@ -39,5 +39,7 @@ final readonly class DataSource
         public int $lockEpoch = 1,
         /** How the API pages its answers (Story 2.11). */
         public Pagination $pagination = new Pagination,
+        /** How much raw history it keeps (Story 2.16). */
+        public Retention $retention = new Retention,
     ) {}
 }

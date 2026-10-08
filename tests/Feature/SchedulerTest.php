@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Ingestion\Application\DispatchDueSyncsJob;
+use App\Modules\Ingestion\Application\SweepRawHistoryJob;
 use App\Platform\Outbox\RelayOutboxJob;
 use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Console\Scheduling\Schedule;
@@ -67,4 +68,15 @@ it('schedules the sync dispatcher job every dispatch tick on queue maintenance w
     $event->run(app());
     Queue::assertPushedOn('maintenance', DispatchDueSyncsJob::class);
     expect(new DispatchDueSyncsJob)->not->toBeInstanceOf(ShouldBeUnique::class);
+});
+
+// Story 2.16: the retention sweep runs every five minutes on queue `maintenance` (worker-compute holds the `maintenance` credentials), onOneServer.
+it('schedules the raw history sweep every five minutes on queue maintenance with onOneServer', function () {
+    $event = collect(app(Schedule::class)->events())->first(fn ($e) => ($e->description ?? null) === SweepRawHistoryJob::class);
+
+    expect($event)->not->toBeNull()->and($event->onOneServer)->toBeTrue()->and($event->expression)->toBe('*/5 * * * *');
+
+    Queue::fake();
+    $event->run(app());
+    Queue::assertPushedOn('maintenance', SweepRawHistoryJob::class);
 });

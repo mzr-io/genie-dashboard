@@ -325,6 +325,11 @@ services:
             DB_SYSTEM_PORT: '5432'
             DB_SYSTEM_USERNAME: system
             DB_SYSTEM_PASSWORD: ${POSTGRES_SYSTEM_PASSWORD:-dashflow-dev-system}
+            # ... and the `maintenance` credentials: the retention sweep is the only deleter of the raw tier (Story 2.16).
+            DB_MAINTENANCE_HOST: postgres
+            DB_MAINTENANCE_PORT: '5432'
+            DB_MAINTENANCE_USERNAME: maintenance
+            DB_MAINTENANCE_PASSWORD: ${POSTGRES_MAINTENANCE_PASSWORD:-dashflow-dev-maintenance}
         secrets:
             - key-data
         healthcheck:

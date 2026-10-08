@@ -93,7 +93,9 @@ use App\Modules\Ingestion\Contracts\FetchKeyResolver;
 use App\Modules\Ingestion\Contracts\SyncStatuses;
 use App\Modules\Ingestion\Infrastructure\KeyFileContextDigest;
 use App\Modules\RawStore\Contracts\RawStore;
+use App\Modules\RawStore\Contracts\RawTierSweep;
 use App\Modules\RawStore\Infrastructure\PostgresRawStore;
+use App\Modules\RawStore\Infrastructure\PostgresRawTierSweep;
 use App\Platform\Audit\AuditHasher;
 use App\Platform\Audit\AuditSerializers;
 use App\Platform\Audit\PlatformAuditSerializer;
@@ -185,6 +187,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ContextDigest::class, KeyFileContextDigest::class);
         $this->app->bind(FetchKeyResolver::class, ResolveFetchKey::class);
         $this->app->bind(RawStore::class, PostgresRawStore::class);
+        $this->app->bind(RawTierSweep::class, PostgresRawTierSweep::class);
         $this->app->bind(SyncStatuses::class, ReadSyncStatuses::class);
         $this->app->singleton(OperationKinds::class);
         $this->app->singleton(MetricEmitter::class, OtelMetricEmitter::class);

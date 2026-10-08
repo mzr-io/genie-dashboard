@@ -226,3 +226,13 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-15-use-conditional-requests-and-skip-unchanged-data.md`
   summary: Canonicalisation runs under the target row lock, and stored validators are not reset on credential rotation unless the Data Source revision bumps.
   evidence: commitSuccess hashes after select for update; unverified whether secret or OAuth rotation bumps data_source_revision (maybe-false, medium if not).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-16-choose-how-much-raw-history-a-data-source-keeps.md`
+  summary: Saving a retention change bumps data_source_revision, which re-keys sync targets (old target retired with its payload, new target has no current payload until refetched), so retention edits are not independent of fetch state.
+  evidence: ManageDataSources::update revision+1 and ResolveFetchKey hashes data_source_revision; needs a decision whether retention should be excluded from the revision bump (conflicts with epic AC wording about leaving current_payload_id untouched).
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-16-choose-how-much-raw-history-a-data-source-keeps.md`
+  summary: Sweep robustness: one failing target rolls back a Workspace's whole sweep every run, the 20-target cold limit can starve behind un-purgeable targets, only 1000 rows per rule per run, no overlap guard on SweepRawHistoryJob, no failure/duration metrics.
+  evidence: SweepRawHistory sweeps each Workspace in one runIsolated transaction and logs only the exception class.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-16-choose-how-much-raw-history-a-data-source-keeps.md`
+  summary: A Data Source saved as window(N) cannot be edited for unrelated fields once the deployment maximum is lowered or unset until the Admin switches to Latest only.
+  evidence: Validator checks the maximum on every save; the form shows the window radio selected but disabled.

@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\HelpController;
+use App\Modules\Connector\Contracts\DataSources;
 use App\Modules\Identity\Http\InvitationController;
 use App\Modules\Identity\Http\InvitationResponseHeaders;
 use App\Modules\Identity\Http\WorkspaceSwitchController;
@@ -65,8 +66,10 @@ Route::middleware(['auth'])->group(function () {
         Route::inertia('templates', 'Placeholder', ['page' => 'dashboard-templates'])->name('admin.templates.index');
         Route::inertia('data-sources', 'admin/DataSources')->name('admin.data-sources.index');
         // Register and edit (Story 2.3): views of the Data sources item, mapped in ShellNavigation::ADMIN_PAGES.
-        Route::inertia('data-sources/create', 'admin/DataSourceForm')->name('admin.data-sources.create');
-        Route::get('data-sources/{dataSource}/edit', fn (string $dataSource) => Inertia::render('admin/DataSourceForm', ['dataSourceId' => strtolower($dataSource)]))
+        // Both carry the deployment's maximum retention window (Story 2.16; null: none set, so the form disables the window option).
+        Route::get('data-sources/create', fn () => Inertia::render('admin/DataSourceForm', ['retentionMaxWindowDays' => app(DataSources::class)->maxRetentionWindowDays()]))
+            ->name('admin.data-sources.create');
+        Route::get('data-sources/{dataSource}/edit', fn (string $dataSource) => Inertia::render('admin/DataSourceForm', ['dataSourceId' => strtolower($dataSource), 'retentionMaxWindowDays' => app(DataSources::class)->maxRetentionWindowDays()]))
             ->whereUuid('dataSource')
             ->name('admin.data-sources.edit');
         // The Endpoints tab of a Data Source (Story 2.9): list, add and edit on one page.

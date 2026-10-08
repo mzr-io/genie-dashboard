@@ -1,6 +1,7 @@
 <?php
 
 use App\Modules\Ingestion\Application\DispatchDueSyncsJob;
+use App\Modules\Ingestion\Application\SweepRawHistoryJob;
 use App\Modules\Ingestion\Infrastructure\SyncSettings;
 use App\Platform\Outbox\RelayOutboxJob;
 use Illuminate\Foundation\Inspiring;
@@ -33,6 +34,9 @@ match (SyncSettings::tick(config('dashflow.tunables.sync.dispatch_tick.value')))
     default => $dispatch->everyMinute(),
 };
 $dispatch->onOneServer();
+
+// The retention sweep (Story 2.16) runs on queue `maintenance`, so it runs on worker-compute, the only service holding the `maintenance` database credentials.
+Schedule::job(new SweepRawHistoryJob, 'maintenance')->everyFiveMinutes()->onOneServer();
 
 // Schedule mutexes are locks: with Valkey they live on the noeviction `queue` store, not the LRU cache.
 Schedule::useCache(config('cache.schedule_store'));

@@ -241,7 +241,7 @@ final class DataSourceController extends Controller
     /**
      * The platform ceilings the form shows beside the limits (null: not set, nothing is checked).
      *
-     * @return array{ceilings: array<string, int|null>}
+     * @return array{ceilings: array<string, int|null>, retention: array{max_window_days: int|null}}
      */
     private function meta(): array
     {
@@ -251,7 +251,7 @@ final class DataSourceController extends Controller
             'timeout_seconds' => $ceilings->timeoutSeconds,
             'max_response_bytes' => $ceilings->maxResponseBytes,
             'max_pages' => $ceilings->maxPages,
-        ]];
+        ], 'retention' => ['max_window_days' => $this->sources->maxRetentionWindowDays()]];
     }
 
     /**

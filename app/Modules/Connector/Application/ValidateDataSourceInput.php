@@ -9,6 +9,7 @@ use App\Modules\Connector\Contracts\InvalidDataSourceUrl;
 use App\Modules\Connector\Contracts\Pagination;
 use App\Modules\Connector\Contracts\PaginationPath;
 use App\Modules\Connector\Contracts\ReservedHeaders;
+use App\Modules\Connector\Contracts\Retention;
 use App\Modules\Connector\Contracts\SecretSlots;
 use App\Modules\Connector\Infrastructure\DataSourceSettings;
 
@@ -82,12 +83,13 @@ final class ValidateDataSourceInput
         [$apiKeyName, $apiKeyPlacement] = $this->apiKey($auth, $raw, $headers, $fail);
         $this->secrets($auth, $raw['secrets'] ?? null, $secretValues, $fail);
         $pagination = $this->pagination($raw, $fail);
+        $retention = $this->retention($raw, $fail);
 
         if ($errors !== [] || $name === null || $url === null) {
             throw new InvalidDataSource($errors, $reasons);
         }
 
-        return new DataSourceInput($name, $url, $headers, $timeout, $bytes, $pages, $live, $auth, $apiKeyName, $apiKeyPlacement, $secretValues, $tokenUrl, $clientId, $scope, $pagination);
+        return new DataSourceInput($name, $url, $headers, $timeout, $bytes, $pages, $live, $auth, $apiKeyName, $apiKeyPlacement, $secretValues, $tokenUrl, $clientId, $scope, $pagination, $retention);
     }
 
     /** The Base URL alone, for the blur check. @throws InvalidDataSource */
@@ -223,6 +225,62 @@ final class ValidateDataSourceInput
         $cursorPath = $style === 'cursor' ? $this->path($raw['pagination_cursor_path'] ?? null, 'pagination_cursor_path', true, $fail) : null;
 
         return new Pagination($style, $param, $sizeParam, $sizeValue, $recordsPath, $cursorPath);
+    }
+
+    /**
+     * The retention setting (Story 2.16): `latest` (the default; no days may be sent) or `window` with a whole number of days from 1 to
+     * the deployment's maximum. With no maximum set a window is refused: nothing is invented and the form shows why.
+     *
+     * @param  array<string, mixed>  $raw
+     */
+    private function retention(#[\SensitiveParameter] array $raw, callable $fail): Retention
+    {
+        $mode = $raw['retention_mode'] ?? 'latest';
+        $days = $this->optional($raw['retention_days'] ?? null);
+
+        if ($mode === '') {
+            $mode = 'latest';
+        }
+
+        if (! is_string($mode) || ! in_array($mode, Retention::MODES, true)) {
+            $fail('retention_mode', 'retention-mode-invalid', 'Choose how much raw history to keep.');
+
+            return new Retention;
+        }
+
+        if ($mode === 'latest') {
+            if ($days !== null) {
+                $fail('retention_days', 'retention-days-not-allowed', 'A number of days applies only to a window of history.');
+            }
+
+            return new Retention;
+        }
+
+        $max = $this->settings->retentionMaxWindowDays();
+
+        if ($max === null) {
+            $fail('retention_days', 'retention-window-unavailable', 'Keeping a window of history is not available: no maximum is set for this deployment.');
+
+            return new Retention;
+        }
+
+        if (is_string($days) && preg_match('/\A[1-9][0-9]{0,8}\z/D', $days) === 1) {
+            $days = (int) $days;
+        }
+
+        if (! is_int($days) || $days < 1) {
+            $fail('retention_days', 'retention-days-invalid', 'Enter a whole number of days, 1 or more.');
+
+            return new Retention;
+        }
+
+        if ($days > $max) {
+            $fail('retention_days', 'retention-days-above-maximum', "The window cannot be more than {$max} days.");
+
+            return new Retention;
+        }
+
+        return new Retention('window', $days);
     }
 
     private function optional(mixed $value): mixed

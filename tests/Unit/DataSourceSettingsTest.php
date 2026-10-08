@@ -39,3 +39,20 @@ it('turns the deployment require_https on only for a true value', function (mixe
     ['1', true],
     ['on', true],
 ]);
+
+// Story 2.16: the deployment's maximum retention window. Unset or malformed means no window may be chosen.
+it('reads the maximum retention window as a positive whole number of days and nothing else', function (mixed $value, ?int $expected) {
+    $settings = new DataSourceSettings(new Repository(['dashflow' => ['retention' => ['max_window_days' => ['value' => $value]]]]), new WorkspaceSettings);
+
+    expect($settings->retentionMaxWindowDays())->toBe($expected);
+})->with([
+    ['90', 90],
+    [365, 365],
+    ['99999999999', 2147483647],
+    [null, null],
+    ['', null],
+    ['0', null],
+    ['-7', null],
+    ['1.5', null],
+    ['ninety', null],
+]);

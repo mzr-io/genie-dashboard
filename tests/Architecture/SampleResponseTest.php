@@ -125,3 +125,33 @@ it('runs the dispatcher on the system connection with a fixed batch and SKIP LOC
         ->and($job)->toContain("'sync_targets' => [\$this->syncGroupId]")
         ->and($tick)->toContain("onQueue('maintenance')");
 });
+
+// Story 2.16: the raw tier is deleted by RawStore's RawTierSweep and nowhere else, always on the `maintenance` connection.
+it('lets only the RawTierSweep delete from the raw tier, run by the sweep on the maintenance connection', function () {
+    $app = dirname(__DIR__, 2).'/app';
+    $deleters = [];
+    $maintenance = [];
+
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($app, FilesystemIterator::SKIP_DOTS)) as $file) {
+        if ($file->getExtension() !== 'php') {
+            continue;
+        }
+
+        $source = (string) file_get_contents($file->getPathname());
+        $relative = substr($file->getPathname(), strlen($app) + 1);
+
+        if (preg_match('/delete\s+from\s+raw_(?:bodies|observations)\b|table\(\s*[\'"]raw_(?:bodies|observations)[\'"]\s*\)\s*->\s*(?:where\w*\([^;]*)?delete\(/i', $source) === 1) {
+            $deleters[] = $relative;
+        }
+
+        if (str_contains($source, "'maintenance'") || str_contains($source, 'CONNECTION = \'maintenance\'')) {
+            $maintenance[] = $relative;
+        }
+    }
+
+    expect($deleters)->toBe(['Modules/RawStore/Infrastructure/PostgresRawTierSweep.php'])
+        ->and($maintenance)->toContain('Modules/Ingestion/Application/SweepRawHistory.php');
+
+    $sweep = (string) file_get_contents($app.'/Modules/RawStore/Infrastructure/PostgresRawTierSweep.php');
+    expect($sweep)->not->toMatch('/json_decode|\bupdate\s+raw_|insert\s+into/i');
+});

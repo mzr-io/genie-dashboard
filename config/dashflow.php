@@ -145,6 +145,14 @@ return [
         'operator_password_hash' => $tunable('DASHFLOW_EGRESS_OPERATOR_PASSWORD_HASH'),
     ],
 
+    // Raw history retention (Story 2.16), kept outside `tunables` like `egress`. `max_window_days` is `pending_input` with no
+    // default: the longest `window(N days)` an Admin may choose. Unset or malformed: a window is refused (422
+    // `retention-window-unavailable`) and the form shows the option disabled; `latest` always works. The sweep's two timings are
+    // `tunables.sync.superseded_payload_grace` and `tunables.sync.cold_purge_after` (whole seconds; unset or malformed: inert).
+    'retention' => [
+        'max_window_days' => $tunable('DASHFLOW_RETENTION_MAX_WINDOW_DAYS'),
+    ],
+
     // The soft edit lock (Story 2.8), kept outside `tunables` like `egress`. The lock's TTL is `tunables.timeouts.edit_lock_ttl`
     // (seconds; unset = the soft lock is disabled and a form is protected by its `revision` only). `flush_timeout_seconds` is
     // `pending_input` with no default: how long a take-over waits for the holder to save and acknowledge before it completes

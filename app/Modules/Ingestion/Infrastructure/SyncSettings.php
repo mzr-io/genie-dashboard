@@ -27,6 +27,34 @@ final class SyncSettings
         return self::smallest($this->config->get('dashflow.tunables.sync.refresh_intervals.value'));
     }
 
+    /**
+     * `sync.superseded_payload_grace` in whole seconds: how long a superseded payload is kept. Null when unset or malformed: the `latest`
+     * rule of the sweep is then inert and superseded payloads stay (Story 2.16).
+     */
+    public function supersededGraceSeconds(): ?int
+    {
+        return self::seconds($this->config->get('dashflow.tunables.sync.superseded_payload_grace.value'));
+    }
+
+    /**
+     * `sync.cold_purge_after` in whole seconds: how long a retired target is kept before its payloads and the target are deleted. Null when
+     * unset or malformed: nothing is purged (Story 2.16).
+     */
+    public function coldPurgeAfterSeconds(): ?int
+    {
+        return self::seconds($this->config->get('dashflow.tunables.sync.cold_purge_after.value'));
+    }
+
+    /** A positive whole number of seconds (digits only), or null. */
+    public static function seconds(mixed $setting): ?int
+    {
+        if (! is_string($setting) && ! is_int($setting)) {
+            return null;
+        }
+
+        return preg_match('/\A[1-9][0-9]{0,8}\z/D', trim((string) $setting)) === 1 ? (int) trim((string) $setting) : null;
+    }
+
     public function dispatchTick(): int
     {
         return self::tick($this->config->get('dashflow.tunables.sync.dispatch_tick.value'));

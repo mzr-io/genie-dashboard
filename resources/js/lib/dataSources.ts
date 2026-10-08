@@ -50,6 +50,11 @@ export type Ceilings = {
     max_pages: number | null;
 };
 
+export type RetentionMode = 'latest' | 'window';
+
+// The deployment's maximum for a retention window, in days; null when none is set (then a window is refused).
+export type RetentionMeta = { max_window_days: number | null };
+
 export type DataSource = {
     data_source_id: string;
     name: string;
@@ -78,6 +83,9 @@ export type DataSource = {
     pagination_size: number | null;
     pagination_records_path: string | null;
     pagination_cursor_path: string | null;
+    // How much raw history it keeps (Story 2.16): `latest`, or a window of `retention_days` days.
+    retention_mode: RetentionMode;
+    retention_days: number | null;
     revision: number;
     // The soft lock's epoch (Story 2.8): sent back with an edit, with the lock token.
     lock_epoch?: number;
@@ -95,6 +103,7 @@ export type DataSourceListMeta = {
     sort: DataSourceSortKey;
     direction: 'asc' | 'desc';
     ceilings: Ceilings;
+    retention: RetentionMeta;
 };
 
 export type DataSourceList = { data: DataSource[]; meta: DataSourceListMeta };
@@ -105,7 +114,10 @@ export type DataSourceQuery = {
     direction: 'asc' | 'desc';
 };
 
-export type OneDataSource = { data: DataSource; meta: { ceilings: Ceilings } };
+export type OneDataSource = {
+    data: DataSource;
+    meta: { ceilings: Ceilings; retention: RetentionMeta };
+};
 
 // What the form sends. A limit is a digit string, or null for "use the platform setting".
 export type DataSourceInput = {
@@ -123,6 +135,9 @@ export type DataSourceInput = {
     pagination_size?: string;
     pagination_records_path?: string;
     pagination_cursor_path?: string;
+    // Retention (Story 2.16): the days only with a window.
+    retention_mode: RetentionMode;
+    retention_days?: string;
     auth_type: AuthType;
     api_key_name?: string;
     api_key_placement?: 'header' | 'query';

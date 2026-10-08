@@ -841,6 +841,24 @@ export const dataSourceLabels = {
     maxResponse: 'Maximum response size (bytes)',
     maxPages: 'Maximum pages',
     ceiling: (value: number) => `The platform limit is ${value}.`,
+    // Retention (Story 2.16): how much raw history the Data Source keeps.
+    retention: 'Retention',
+    retentionHelper:
+        'Choose how much raw history to keep. Older data is deleted by the next sweep, which runs every few minutes. The current data is never deleted.',
+    retentionModeLabel: 'Raw history',
+    retentionModes: {
+        latest: 'Latest only',
+        window: 'Keep a window',
+    } as Record<string, string>,
+    retentionLatestHelper:
+        'Keeps the current data. Superseded data is deleted after the grace period set for this deployment.',
+    retentionWindowUnavailable:
+        'Not available: no maximum window is set for this deployment.',
+    retentionDays: 'Days to keep',
+    retentionDaysHelper: (max: number | null) =>
+        max === null
+            ? 'A whole number of days, 1 or more.'
+            : `A whole number of days, from 1 to ${max}.`,
     // Pagination (Story 2.11): how the API pages its answers. The Pagination section sits in the Limits area.
     pagination: 'Pagination',
     paginationHelper:
@@ -963,6 +981,14 @@ export const dataSourceLabels = {
             'This name is reserved. Choose another name for the API key.',
         'api-key-name-duplicate': 'A default header already uses this name.',
         'api-key-placement-invalid': 'Choose header or query string.',
+        'retention-mode-invalid': 'Choose how much raw history to keep.',
+        'retention-days-invalid': 'Enter a whole number of days, 1 or more.',
+        'retention-days-above-maximum':
+            'This is above the maximum window. Enter a smaller number.',
+        'retention-days-not-allowed':
+            'A number of days applies only to a window of history.',
+        'retention-window-unavailable':
+            'Keeping a window of history is not available: no maximum is set for this deployment.',
         'pagination-style-invalid': 'Choose how this API pages its answers.',
         'pagination-param-required': 'Enter the query parameter name.',
         'pagination-param-invalid':
