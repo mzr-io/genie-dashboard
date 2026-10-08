@@ -159,3 +159,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-5-test-a-data-source-connection.md`
   summary: Move the expired-secrets purge and `sync_runs` partition upkeep to the `maintenance` role, drop UPDATE on `sync_runs` from `app`, and add retention for `operations` and `sync_runs`.
   evidence: `connector_purge_expired_secrets()` is executable by `app` and crosses Workspaces; `operations` has no sweep; a non-empty DEFAULT partition has no repair or alert path.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-6-accept-only-json-losslessly-and-within-limits.md`
+  summary: Decide whether to add a built-in depth and response-size ceiling that the pending_input settings can only lower.
+  evidence: With both settings unset nothing is capped; the README records a worker segfault when PHP frees a body nested 300,000 levels deep, and a gzip bomb is unbounded in memory until a limit is configured.

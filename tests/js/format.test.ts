@@ -5,6 +5,7 @@ import {
     formatCurrency,
     formatDate,
     formatDateTime,
+    formatBytes,
     formatNumber,
 } from '../../resources/js/lib/format';
 
@@ -90,5 +91,15 @@ describe('formatting helper', () => {
         // An instant still moves with the zone.
         configureFormatting({ locale: 'en', timeZone: 'Pacific/Honolulu' });
         expect(formatDate('2026-10-07T03:00:00Z')).toBe('Oct 6, 2026');
+    });
+});
+
+describe('formatBytes', () => {
+    it('carries to the next unit after rounding instead of showing 1,024 KB', () => {
+        expect(formatBytes(1048575)).toBe('1 MB');
+        expect(formatBytes(1048576)).toBe('1 MB');
+        expect(formatBytes(1023)).toBe('1,023 B');
+        expect(formatBytes(1536)).toBe('1.5 KB');
+        expect(formatBytes(14_890_000)).toBe('14.2 MB');
     });
 });

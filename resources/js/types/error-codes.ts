@@ -9,6 +9,8 @@ export enum ErrorCode {
     AccessRevisionConflict = 'access.revision_conflict',
     AccessSelfChangeForbidden = 'access.self_change_forbidden',
     AccessWorkspaceForbidden = 'access.workspace_forbidden',
+    ConnectorLimitExceeded = 'connector.limit_exceeded',
+    ConnectorNotJson = 'connector.not_json',
     ConnectorRevisionConflict = 'connector.revision_conflict',
     ConnectorSecretValuesRefused = 'connector.secret_values_refused',
     ConnectorSecretsNotConfigured = 'connector.secrets_not_configured',

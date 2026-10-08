@@ -7,7 +7,7 @@ use App\Platform\Operations\Operation;
 /**
  * Starts a connection test (Story 2.5): an Operation of kind `connection_test` that `worker-connector` runs on queue
  * `fetch-interactive` as the requester's Workspace. The test is a GET to the Base URL with the form's default headers and
- * credentials; success is HTTP 2xx. Nothing is called on the web tier.
+ * credentials; success is HTTP 2xx with a body that is JSON and within the size limit (Story 2.6). Nothing is called on the web tier.
  */
 interface ConnectionTests
 {

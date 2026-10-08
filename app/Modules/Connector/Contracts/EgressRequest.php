@@ -20,5 +20,10 @@ final readonly class EgressRequest
         public ?string $body = null,
         /** The Data Source's own timeout in seconds: it can only shorten the platform's, never lengthen it. */
         public ?int $timeoutSeconds = null,
+        /**
+         * The Data Source's own `max_response_bytes`. The transport reads no more than the smaller of this and the platform
+         * ceiling (each used only when set; neither set means no cap) and counts the decompressed stream.
+         */
+        public ?int $maxBytes = null,
     ) {}
 }

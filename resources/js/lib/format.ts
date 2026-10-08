@@ -1,5 +1,6 @@
 import { shallowRef } from 'vue';
 import { DEFAULT_LOCALE } from '@/lib/i18n';
+import { byteUnitLabels } from '@/locales/labels';
 
 // The one place numbers, currency and dates are formatted for display (Story 1.18). It uses `Intl` with the
 // signed-in person's locale and time zone, which the app shell keeps current from the saved profile
@@ -148,4 +149,32 @@ export function formatDateTime(
     },
 ): string {
     return formatDate(value, options);
+}
+
+// A size for people (Story 2.6): 1024-based steps, one fraction digit at most, the unit from `labels.ts`.
+export function formatBytes(bytes: number): string {
+    if (!Number.isFinite(bytes) || bytes < 0) {
+        return '';
+    }
+
+    let value = bytes;
+    let unit = 0;
+
+    // Round first, then carry: 1,048,575 bytes is "1 MB", never "1,024 KB".
+    const rounded = (n: number, u: number): number =>
+        u === 0 ? Math.round(n) : Math.round(n * 10) / 10;
+
+    while (rounded(value, unit) >= 1024 && unit < byteUnitLabels.length - 1) {
+        value /= 1024;
+        unit += 1;
+    }
+
+    const shown = formatNumber(
+        unit === 0 ? value : Math.round(value * 10) / 10,
+        {
+            maximumFractionDigits: unit === 0 ? 0 : 1,
+        },
+    );
+
+    return `${shown} ${byteUnitLabels[unit]}`;
 }

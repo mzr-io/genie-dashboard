@@ -12,7 +12,7 @@ use RecursiveIteratorIterator;
  */
 final class Scanner
 {
-    /** @var array{edges: array<string, list<string>>, kernel: string, tables: array<string, list<string>>, global_tables: list<string>, json_decode_banned: list<string>} */
+    /** @var array{edges: array<string, list<string>>, kernel: string, tables: array<string, list<string>>, global_tables: list<string>, json_decode_banned: list<string>, json_decode_banned_paths?: list<string>} */
     private array $rules;
 
     public function __construct(?array $rules = null)
@@ -100,7 +100,7 @@ final class Scanner
     }
 
     /**
-     * `json_decode` calls inside the banned modules.
+     * `json_decode` calls inside the banned modules and the banned kernel paths (the lossless decoder itself).
      *
      * @return list<string>
      */
@@ -109,7 +109,14 @@ final class Scanner
         $violations = [];
 
         foreach ($this->owned($appRoot) as [$file, $owner]) {
-            if (! in_array($owner, $this->rules['json_decode_banned'], true)) {
+            $relative = substr($file, strlen(rtrim($appRoot, '/')) + 1);
+            $bannedPath = false;
+
+            foreach ($this->rules['json_decode_banned_paths'] ?? [] as $path) {
+                $bannedPath = $bannedPath || str_starts_with($relative, rtrim($path, '/').'/');
+            }
+
+            if (! $bannedPath && ! in_array($owner, $this->rules['json_decode_banned'], true)) {
                 continue;
             }
 

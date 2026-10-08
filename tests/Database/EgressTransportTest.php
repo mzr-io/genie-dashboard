@@ -5,11 +5,15 @@ use App\Modules\Connector\Contracts\EgressRequest;
 use App\Modules\Connector\Contracts\EgressTransport;
 use App\Modules\Connector\Contracts\EgressTransportFailed;
 use App\Modules\Connector\Contracts\EgressVerdict;
+use App\Modules\Connector\Contracts\ErrorCode;
 use App\Modules\Connector\Contracts\HostResolver;
+use App\Modules\Connector\Contracts\ResponseLimit;
+use App\Modules\Connector\Contracts\ResponseLimitExceeded;
 use App\Modules\Connector\Contracts\SsrfBlocked;
 use App\Modules\Connector\Infrastructure\CurlClient;
 use App\Modules\Connector\Infrastructure\CurlEgressTransport;
 use App\Modules\Connector\Infrastructure\NativeCurlClient;
+use App\Platform\Json\InvalidLimitSetting;
 use Tests\Database\Support\Cluster;
 use Tests\Unit\Support\FakeCurl;
 use Tests\Unit\Support\FakeResolver;
@@ -314,6 +318,33 @@ function localServer(): array
             header('Location: http://example.test/elsewhere', true, 302);
             exit;
         }
+        if (preg_match('~\A/len/(\d+)\z~', $_SERVER['REQUEST_URI'], $m)) {
+            header('Content-Type: application/json');
+            echo str_repeat('a', (int) $m[1]);
+            exit;
+        }
+        if ($_SERVER['REQUEST_URI'] === '/error-big') {
+            http_response_code(503);
+            echo str_repeat('e', 200000);
+            exit;
+        }
+        if ($_SERVER['REQUEST_URI'] === '/redirect-big') {
+            header('Location: http://example.test/elsewhere', true, 302);
+            echo str_repeat('r', 200000);
+            exit;
+        }
+        if ($_SERVER['REQUEST_URI'] === '/big') {
+            header('Content-Type: application/json');
+            echo '["'.str_repeat('a', 200000).'"]';
+            exit;
+        }
+        if ($_SERVER['REQUEST_URI'] === '/bomb') {
+            // About 20 KB compressed, 20 MB decompressed.
+            header('Content-Type: application/json');
+            header('Content-Encoding: gzip');
+            echo gzencode('["'.str_repeat('a', 20_000_000).'"]', 9);
+            exit;
+        }
         header('Content-Type: application/json');
         header('X-Seen-Host: '.($_SERVER['HTTP_HOST'] ?? ''));
         echo json_encode(['auth' => $_SERVER['HTTP_AUTHORIZATION'] ?? null, 'uri' => $_SERVER['REQUEST_URI']]);
@@ -424,4 +455,113 @@ it('reports a transport failure with the curl error number and no address', func
     }
 
     expect($message)->toMatch('/curl error \d+/')->and($message)->not->toContain('127.0.0.1');
+});
+
+it('stops reading at the limit on the decompressed stream, for a big body and for a gzip bomb, and returns nothing partial', function (string $path, int $limit) {
+    [$process, $port, $dir] = localServer();
+
+    try {
+        $transport = app(EgressTransport::class);
+        $verdict = EgressVerdict::allowed('http', 'pinned.example.test', $port, '127.0.0.1', []);
+        $request = new EgressRequest("http://pinned.example.test:{$port}{$path}");
+        $options = $transport->options($verdict, $request->url, 'GET', $request, null);
+
+        expect($options[CURLOPT_ENCODING])->toBe('gzip');
+
+        $caught = null;
+
+        try {
+            (new NativeCurlClient)->execute($options, $limit);
+        } catch (ResponseLimitExceeded $e) {
+            $caught = $e;
+        }
+
+        expect($caught)->toBeInstanceOf(ResponseLimitExceeded::class)
+            ->and($caught->limit)->toBe($limit)
+            ->and($caught->bytesRead)->toBeGreaterThan($limit)
+            ->and($caught->bytesRead)->toBeLessThan(20_000_000)
+            ->and($caught->retryable)->toBeFalse()
+            ->and($caught->code())->toBe(ErrorCode::LimitExceeded);
+
+        // Within the limit the same handler returns the whole body.
+        expect((new NativeCurlClient)->execute($options, 25_000_000)->body)->not->toBe('');
+    } finally {
+        stopServer($process, $dir);
+    }
+})->with(['a big body' => ['/big', 1000], 'a gzip bomb' => ['/bomb', 100_000]]);
+
+it('takes the smaller of the Data Source limit and the platform ceiling, each only when set', function (?int $source, mixed $platform, ?int $expected) {
+    expect(ResponseLimit::effective($source, $platform))->toBe($expected);
+})->with([
+    'neither' => [null, null, null],
+    'source only' => [500, null, 500],
+    'platform only' => [null, '700', 700],
+    'source smaller' => [500, 700, 500],
+    'platform smaller' => [900, 700, 700],
+]);
+
+it('passes the effective limit to the curl handler', function () {
+    [$workspace, , $curl] = transportWorld(answers: [FakeCurl::answer(), FakeCurl::answer()]);
+    config(['dashflow.tunables.guards.max_bytes.value' => '700']);
+    $transport = app(EgressTransport::class);
+
+    $transport->send($workspace, new EgressRequest('https://api.example.com/', maxBytes: 500));
+    $transport->send($workspace, new EgressRequest('https://api.example.com/'));
+
+    expect($curl->limits)->toBe([500, 700]);
+});
+
+it('returns a 2xx body of exactly the limit in full and aborts one byte over it', function () {
+    [$process, $port, $dir] = localServer();
+
+    try {
+        $transport = app(EgressTransport::class);
+        $verdict = EgressVerdict::allowed('http', 'pinned.example.test', $port, '127.0.0.1', []);
+        $options = fn (string $path): array => $transport->options($verdict, "http://pinned.example.test:{$port}{$path}", 'GET', new EgressRequest("http://pinned.example.test:{$port}{$path}"), null);
+
+        expect(strlen((new NativeCurlClient)->execute($options('/len/1000'), 1000)->body))->toBe(1000)
+            ->and(fn () => (new NativeCurlClient)->execute($options('/len/1001'), 1000))->toThrow(ResponseLimitExceeded::class);
+    } finally {
+        stopServer($process, $dir);
+    }
+});
+
+it('enforces the limit only on a 2xx answer: an oversized error page or redirect comes back with its status and headers', function () {
+    [$process, $port, $dir] = localServer();
+
+    try {
+        $transport = app(EgressTransport::class);
+        $verdict = EgressVerdict::allowed('http', 'pinned.example.test', $port, '127.0.0.1', []);
+        $options = fn (string $path): array => $transport->options($verdict, "http://pinned.example.test:{$port}{$path}", 'GET', new EgressRequest("http://pinned.example.test:{$port}{$path}"), null);
+
+        $error = (new NativeCurlClient)->execute($options('/error-big'), 1000);
+        $redirect = (new NativeCurlClient)->execute($options('/redirect-big'), 1000);
+
+        expect($error->status)->toBe(503)
+            ->and(strlen($error->body))->toBeLessThanOrEqual(1000)
+            ->and($redirect->status)->toBe(302)
+            ->and($redirect->headers['location'][0])->toBe('http://example.test/elsewhere')
+            ->and(strlen($redirect->body))->toBeLessThanOrEqual(1000);
+    } finally {
+        stopServer($process, $dir);
+    }
+});
+
+it('rejects a set but malformed platform ceiling or source limit instead of reading it as unset', function (mixed $platform, ?int $source, string $setting) {
+    try {
+        ResponseLimit::effective($source, $platform);
+        $caught = null;
+    } catch (InvalidLimitSetting $e) {
+        $caught = $e->setting;
+    }
+
+    expect($caught)->toBe($setting);
+})->with([
+    'letters' => ['abc', null, 'max_bytes'], 'unit suffix' => ['10MB', null, 'max_bytes'], 'zero' => ['0', null, 'max_bytes'],
+    'negative' => ['-5', null, 'max_bytes'], 'float' => [1.5, null, 'max_bytes'], 'zero int' => [0, null, 'max_bytes'],
+    'source zero' => [null, 0, 'max_response_bytes'], 'source negative' => ['700', -1, 'max_response_bytes'],
+]);
+
+it('treats an empty or null ceiling as unset', function () {
+    expect(ResponseLimit::effective(null, ''))->toBeNull()->and(ResponseLimit::effective(null, null))->toBeNull();
 });

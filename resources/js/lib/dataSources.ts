@@ -318,7 +318,9 @@ export type OperationStatus =
 export type ConnectionTestCode =
     | 'host-not-allowlisted'
     | 'blocked-address'
-    | 'fetch-failed';
+    | 'fetch-failed'
+    | 'not-json'
+    | 'response-too-large';
 
 export type ConnectionTestSummary = {
     ok: boolean;
@@ -326,6 +328,9 @@ export type ConnectionTestSummary = {
     latency_ms: number | null;
     code: ConnectionTestCode | null;
     reason: string | null;
+    // The bytes read and the limit, for `response-too-large` only (Story 2.6).
+    size_bytes?: number | null;
+    limit_bytes?: number | null;
     host: string | null;
     request_id: string | null;
 };

@@ -10,9 +10,9 @@ it('serialises ids, a sanitized template, parameter names, the scheme and refs o
     $request = new FetchRequest('w', 'd', 'e', 'https://user:pw@api.example.com/v1/{id}?key=CANARY#frag', ['id'], CredentialScheme::Bearer, [new SecretRef('s1', 'bearer_token')]);
 
     expect($request->toArray())->toBe([
-        'v' => 2, 'workspace_id' => 'w', 'data_source_id' => 'd', 'endpoint_id' => 'e', 'url_template' => 'https://api.example.com/v1/{id}',
+        'v' => 3, 'workspace_id' => 'w', 'data_source_id' => 'd', 'endpoint_id' => 'e', 'url_template' => 'https://api.example.com/v1/{id}',
         'parameter_names' => ['id'], 'credential_scheme' => 'bearer', 'secret_refs' => [['id' => 's1', 'slot' => 'bearer_token', 'purpose' => 'cred']],
-        'headers' => [], 'api_key_name' => null, 'api_key_placement' => null, 'timeout_seconds' => null, 'method' => 'GET',
+        'headers' => [], 'api_key_name' => null, 'api_key_placement' => null, 'timeout_seconds' => null, 'method' => 'GET', 'max_response_bytes' => null,
     ])->and(json_encode($request))->not->toContain('CANARY')->not->toContain('pw@');
 });
 

@@ -12,12 +12,16 @@ final class FakeCurl implements CurlClient
     /** @var list<array<int, mixed>> */
     public array $calls = [];
 
+    /** @var list<int|null> the size limit each transfer was asked to enforce */
+    public array $limits = [];
+
     /** @param  list<CurlResult|\Throwable>  $queue  a Throwable in the queue is thrown, as a failed transfer would be */
     public function __construct(public array $queue = []) {}
 
-    public function execute(array $options): CurlResult
+    public function execute(array $options, ?int $maxBytes = null): CurlResult
     {
         $this->calls[] = $options;
+        $this->limits[] = $maxBytes;
 
         $next = array_shift($this->queue) ?? throw new LogicException('No scripted answer left.');
 
@@ -29,7 +33,7 @@ final class FakeCurl implements CurlClient
     }
 
     /** @param  array<string, list<string>>  $headers */
-    public static function answer(int $status = 200, string $body = '{}', array $headers = []): CurlResult
+    public static function answer(int $status = 200, string $body = '{}', array $headers = ['content-type' => ['application/json']]): CurlResult
     {
         return new CurlResult($status, $headers, $body);
     }

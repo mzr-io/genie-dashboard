@@ -865,7 +865,11 @@ export const dataSourceLabels = {
     testSourceFallback: 'this data source',
     testHint:
         'Calls the base URL once with these headers and credentials. Nothing is saved.',
+    // Story 2.6: the card also shows the catalogue's `not-json` and `response-too-large`.
 } as const;
+
+// Units of a size for people (Story 2.6), smallest first, 1024 apart.
+export const byteUnitLabels = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
 
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after
 // signing back in (`session-expired`) come from the catalogue.

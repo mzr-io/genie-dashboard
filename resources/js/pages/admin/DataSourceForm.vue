@@ -126,6 +126,8 @@ type TestFailure = {
     requestId: string | null;
     host: string | null;
     reason: string | null;
+    sizeBytes?: number | null;
+    limitBytes?: number | null;
 };
 const testing = ref(false);
 const testOk = ref<{ status: number; ms: number } | null>(null);
@@ -934,6 +936,8 @@ async function testConnection(): Promise<void> {
             requestId: result?.request_id ?? null,
             host: result?.host ?? null,
             reason: result?.reason ?? operation.status,
+            sizeBytes: result?.size_bytes ?? null,
+            limitBytes: result?.limit_bytes ?? null,
         });
     } catch (error) {
         if (mine.signal.aborted || authExpired(error)) {
@@ -1710,6 +1714,8 @@ const ceilingHelper = (value: number | null): string | undefined =>
                     :request-id="testFailure.requestId"
                     :host="testFailure.host"
                     :reason="testFailure.reason"
+                    :size-bytes="testFailure.sizeBytes"
+                    :limit-bytes="testFailure.limitBytes"
                     @retry="testConnection"
                 />
             </div>

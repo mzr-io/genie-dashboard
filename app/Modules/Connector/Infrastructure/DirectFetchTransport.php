@@ -63,8 +63,13 @@ final class DirectFetchTransport implements FetchTransport
                 break;
         }
 
+        // A source is asked for JSON unless the Data Source sets its own Accept.
+        if (! array_key_exists('accept', array_change_key_case($headers + $credentials))) {
+            $headers['Accept'] = 'application/json';
+        }
+
         $started = hrtime(true);
-        $response = $this->egress->send($request->workspaceId, new EgressRequest($url, $request->method, $headers, $credentials, null, $request->timeoutSeconds));
+        $response = $this->egress->send($request->workspaceId, new EgressRequest($url, $request->method, $headers, $credentials, null, $request->timeoutSeconds, $request->maxResponseBytes));
         $latencyMs = (int) round((hrtime(true) - $started) / 1_000_000);
 
         return new FetchResponse($response->status, $response->headers, $response->body, strlen($response->body), $latencyMs);

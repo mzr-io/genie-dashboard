@@ -9,6 +9,7 @@ use App\Modules\Connector\Contracts\EgressTransportFailed;
 use App\Modules\Connector\Contracts\HostResolver;
 use App\Modules\Connector\Contracts\InvalidDataSource;
 use App\Modules\Connector\Contracts\KeyringMismatch;
+use App\Modules\Connector\Contracts\ResponseLimitExceeded;
 use App\Modules\Connector\Contracts\SecretContext;
 use App\Modules\Connector\Contracts\SecretMissing;
 use App\Modules\Connector\Contracts\SecretRef;
@@ -158,7 +159,7 @@ function ctSentHeaders(int $n = 0): array
 it('starts an Operation, runs it on fetch-interactive and reads back status, latency and host for the requester', function () {
     $workspace = Cluster::workspace('Acme');
     [, $membership] = ctAdmin($workspace);
-    $this->curl->queue = [FakeCurl::answer(200, str_repeat('x', 321))];
+    $this->curl->queue = [FakeCurl::answer(200, '"'.str_repeat('x', 319).'"')];
 
     $response = ctTest()->assertStatus(202);
     $id = $response->json('data.operation_id');
@@ -175,7 +176,7 @@ it('starts an Operation, runs it on fetch-interactive and reads back status, lat
         ->and($summary['result'])->toMatchArray(['ok' => true, 'status' => 200, 'code' => null, 'reason' => null, 'host' => 'api.example.com'])
         ->and($summary['result']['latency_ms'])->toBeInt()
         ->and($summary['result']['request_id'])->toBeString()
-        ->and(array_keys($summary['result']))->toEqualCanonicalizing(['ok', 'status', 'latency_ms', 'code', 'reason', 'host', 'request_id']);
+        ->and(array_keys($summary['result']))->toEqualCanonicalizing(['ok', 'status', 'latency_ms', 'code', 'reason', 'size_bytes', 'limit_bytes', 'host', 'request_id']);
 
     $operation = ctOperation($id);
     expect($operation)->toMatchArray(['kind' => 'connection_test', 'status' => 'succeeded', 'requester_membership_id' => $membership, 'subject_type' => 'data_source_draft', 'subject_id' => null, 'workspace_id' => $workspace]);
@@ -190,7 +191,7 @@ it('starts an Operation, runs it on fetch-interactive and reads back status, lat
 it('records one sync_runs row for the attempt with a sanitised URL template, the numbers and no body', function () {
     $workspace = Cluster::workspace('Acme');
     ctAdmin($workspace);
-    $this->curl->queue = [FakeCurl::answer(200, 'BODY-'.CT_CANARY.str_repeat('x', 100))];
+    $this->curl->queue = [FakeCurl::answer(200, '{"v":"BODY-'.CT_CANARY.str_repeat('x', 100).'"}')];
 
     $id = ctTest()->json('data.operation_id');
     $runs = ctRuns();
@@ -198,7 +199,7 @@ it('records one sync_runs row for the attempt with a sanitised URL template, the
     expect($runs)->toHaveCount(1)
         ->and($runs[0])->toMatchArray([
             'workspace_id' => $workspace, 'kind' => 'connection_test', 'url_template' => 'https://api.example.com/v1',
-            'status' => 'succeeded', 'http_status' => 200, 'bytes' => strlen('BODY-'.CT_CANARY.str_repeat('x', 100)), 'error_code' => null, 'data_source_id' => null,
+            'status' => 'succeeded', 'http_status' => 200, 'bytes' => strlen('{"v":"BODY-'.CT_CANARY.str_repeat('x', 100).'"}'), 'error_code' => null, 'data_source_id' => null,
         ])
         ->and($runs[0]['latency_ms'])->not->toBeNull()
         ->and($runs[0]['request_id'])->toBe(ctPoll($id)->json('data.result.request_id'))
@@ -833,3 +834,91 @@ it('rolls the transient-secrets migration back even when transient rows exist', 
 
     expect(Cluster::rows(Cluster::superuser(), "select count(*) as n from information_schema.columns where table_name = 'secrets' and column_name = 'ephemeral'")[0]['n'])->toBe(1);
 });
+
+// ---- Story 2.6: only JSON, losslessly and within limits
+
+it('succeeds on a JSON body and sends Accept: application/json', function () {
+    $workspace = Cluster::workspace('Acme');
+    ctAdmin($workspace);
+    $this->curl->queue = [FakeCurl::answer(200, '{"total":1.10}', ['content-type' => ['application/json; charset=utf-8']])];
+
+    $id = ctTest()->assertStatus(202)->json('data.operation_id');
+
+    expect(ctPoll($id)->json('data.result'))->toMatchArray(['ok' => true, 'code' => null])
+        ->and(ctSentHeaders())->toContain('Accept: application/json');
+});
+
+it('rejects a 2xx that is not JSON with not-json, never retries it and stores nothing', function (string $body, ?array $headers) {
+    $workspace = Cluster::workspace('Acme');
+    ctAdmin($workspace);
+    $this->curl->queue = [FakeCurl::answer(200, $body, $headers ?? [])];
+
+    $id = ctTest()->assertStatus(202)->json('data.operation_id');
+    $poll = ctPoll($id);
+
+    expect($poll->json('data.status'))->toBe('failed')
+        ->and($poll->json('data.result'))->toMatchArray(['ok' => false, 'code' => 'not-json'])
+        ->and($this->curl->calls)->toHaveCount(1)
+        ->and(ctRuns()[0])->toMatchArray(['status' => 'failed', 'error_code' => 'not-json', 'http_status' => 200])
+        ->and(ctEverything())->not->toContain('CANARY-body');
+})->with([
+    'html' => ['<html>CANARY-body</html>', ['content-type' => ['text/html']]],
+    'plain text' => ['CANARY-body', ['content-type' => ['text/plain']]],
+    'no content type' => ['{"a":"CANARY-body"}', null],
+    'empty body' => ['', ['content-type' => ['application/json']]],
+    'trailing comma' => ['{"a":"CANARY-body",}', ['content-type' => ['application/json']]],
+    'duplicate key' => ['{"a":1,"a":"CANARY-body"}', ['content-type' => ['application/json']]],
+]);
+
+it('answers response-too-large with the sizes, records the bytes read, never retries and stores nothing', function () {
+    $workspace = Cluster::workspace('Acme');
+    ctAdmin($workspace);
+    $this->curl->queue = [new ResponseLimitExceeded(1025, 1024, 200)];
+
+    $id = ctTest(['max_response_bytes' => 1024])->assertStatus(202)->json('data.operation_id');
+    $poll = ctPoll($id);
+
+    expect($poll->json('data.status'))->toBe('failed')
+        ->and($poll->json('data.result'))->toMatchArray(['ok' => false, 'code' => 'response-too-large', 'size_bytes' => 1025, 'limit_bytes' => 1024, 'status' => 200, 'reason' => 'connector.limit_exceeded'])
+        ->and($this->curl->calls)->toHaveCount(1)
+        ->and($this->curl->limits)->toBe([1024])
+        ->and(ctRuns()[0])->toMatchArray(['status' => 'failed', 'error_code' => 'response-too-large', 'bytes' => 1025]);
+});
+
+it('keeps fetch-failed for other HTTP failures and applies the platform ceiling when the source sets none', function () {
+    $workspace = Cluster::workspace('Acme');
+    ctAdmin($workspace);
+    config(['dashflow.tunables.guards.max_bytes.value' => '2048']);
+    $this->curl->queue = [FakeCurl::answer(503, '<html>')];
+
+    $id = ctTest()->json('data.operation_id');
+
+    expect(ctPoll($id)->json('data.result'))->toMatchArray(['code' => 'fetch-failed', 'reason' => 'http_503'])
+        ->and($this->curl->limits)->toBe([2048]);
+});
+
+it('maps an oversized 503 to fetch-failed with http_503, not response-too-large', function () {
+    $workspace = Cluster::workspace('Acme');
+    ctAdmin($workspace);
+    config(['dashflow.tunables.guards.max_bytes.value' => '1000']);
+    $this->curl->queue = [FakeCurl::answer(503, str_repeat('e', 5000), ['content-type' => ['text/html']])];
+
+    $id = ctTest()->json('data.operation_id');
+
+    expect(ctPoll($id)->json('data.result'))->toMatchArray(['ok' => false, 'code' => 'fetch-failed', 'reason' => 'http_503']);
+});
+
+it('fails closed as fetch-failed with reason misconfigured when a size or depth setting is malformed, and logs the name only', function (string $key, string $setting) {
+    $workspace = Cluster::workspace('Acme');
+    ctAdmin($workspace);
+    config([$key => '10MB']);
+    $this->curl->queue = [FakeCurl::answer(200, '{}')];
+
+    $id = ctTest()->json('data.operation_id');
+
+    expect(ctPoll($id)->json('data.result'))->toMatchArray(['ok' => false, 'code' => 'fetch-failed', 'reason' => 'misconfigured'])
+        ->and((string) file_get_contents($this->logFile))->toContain('limit_setting_invalid')->toContain($setting)->not->toContain('10MB');
+})->with([
+    'max_bytes' => ['dashflow.tunables.guards.max_bytes.value', 'max_bytes'],
+    'depth_limit' => ['dashflow.tunables.guards.depth_limit.value', 'depth_limit'],
+]);

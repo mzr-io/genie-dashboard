@@ -11,12 +11,15 @@ use App\Modules\Connector\Contracts\FetchRequest;
 use App\Modules\Connector\Contracts\FetchTransport;
 use App\Modules\Connector\Contracts\KeyringMismatch;
 use App\Modules\Connector\Contracts\KeyringUnavailable;
+use App\Modules\Connector\Contracts\NotJsonResponse;
+use App\Modules\Connector\Contracts\ResponseLimitExceeded;
 use App\Modules\Connector\Contracts\SecretMissing;
 use App\Modules\Connector\Contracts\SecretRef;
 use App\Modules\Connector\Contracts\SecretRefused;
 use App\Modules\Connector\Contracts\SecretSlots;
 use App\Modules\Connector\Contracts\SecretVault;
 use App\Modules\Connector\Contracts\SsrfBlocked;
+use App\Platform\Json\InvalidLimitSetting;
 use App\Platform\Operations\Operation;
 use App\Platform\Operations\OperationHandler;
 use App\Platform\Operations\OperationOutcome;
@@ -29,10 +32,11 @@ use Throwable;
 /**
  * The `connection_test` Operation (Story 2.5), run by `worker-connector` on queue `fetch-interactive` in the requester's
  * Workspace: one GET to the Base URL with the form's default headers and credentials through the {@see FetchTransport}.
- * Success is HTTP 2xx; the body is counted and dropped. Every outcome is one `sync_runs` row and a small summary
+ * Success is HTTP 2xx with a JSON body that parses (Story 2.6); the decoded value is dropped, never stored. Every outcome is one `sync_runs` row and a small summary
  * `{ok, status, latency_ms, code, reason, host, request_id}`.
  *
- * A failure collapses to one of {@see ConnectionTestCode}'s three user codes. The finer `reason` (a status, a timeout, a key
+ * A failure collapses to one of {@see ConnectionTestCode}'s user codes; a body that is not JSON and one over the size limit are
+ * never retried. A too-large answer puts the bytes read and the limit in the summary as `size_bytes` and `limit_bytes`. The finer `reason` (a status, a timeout, a key
  * problem) is in the summary for the requester and in the operator log, and never includes a resolved address.
  */
 final class RunConnectionTest implements OperationHandler
@@ -57,6 +61,8 @@ final class RunConnectionTest implements OperationHandler
         $status = null;
         $latencyMs = null;
         $bytes = null;
+        $sizeBytes = null;
+        $limitBytes = null;
         $code = null;
         $reason = null;
         $urlTemplate = $url->baseUrl;
@@ -72,11 +78,29 @@ final class RunConnectionTest implements OperationHandler
             $latencyMs = $response->latencyMs;
             $bytes = $response->bytes;
 
-            // The body was read for its size only.
             if (! $response->successful()) {
                 $code = ConnectionTestCode::FetchFailed;
                 $reason = 'http_'.$status;
+            } else {
+                // Any 2xx answer must be JSON that parses; the decoded value is dropped, nothing is stored.
+                $response->assertJson();
             }
+        } catch (InvalidLimitSetting $e) {
+            // A configured but malformed limit: fail closed, name the setting (never its value), once.
+            $code = ConnectionTestCode::FetchFailed;
+            $reason = 'misconfigured';
+            Log::error('connector.connection_test.limit_setting_invalid', ['workspace_id' => $operation->workspaceId, 'operation_id' => $operation->id, 'setting' => $e->setting]);
+        } catch (NotJsonResponse $e) {
+            $code = ConnectionTestCode::NotJson;
+            $reason = $e->code()->value.':'.$e->reason;
+        } catch (ResponseLimitExceeded $e) {
+            $latencyMs = $this->elapsed($began);
+            $status = $e->status;
+            $bytes = $e->bytesRead;
+            $sizeBytes = $e->bytesRead;
+            $limitBytes = $e->limit;
+            $code = ConnectionTestCode::ResponseTooLarge;
+            $reason = $e->code()->value;
         } catch (SsrfBlocked $e) {
             $code = ConnectionTestCode::forEgress($e->reason);
             $reason = $e->reason->value;
@@ -132,6 +156,8 @@ final class RunConnectionTest implements OperationHandler
             'latency_ms' => $latencyMs,
             'code' => $code?->value,
             'reason' => $reason,
+            'size_bytes' => $sizeBytes,
+            'limit_bytes' => $limitBytes,
             'host' => substr($url->host, 0, 160),
             'request_id' => $requestId === null ? null : substr($requestId, 0, 64),
         ]);
@@ -189,6 +215,7 @@ final class RunConnectionTest implements OperationHandler
             $operation->workspaceId, $dataSourceId, null, $url->baseUrl, [], CredentialScheme::fromAuth($authType, $placement), array_values($refs),
             $headers, is_string($input['api_key_name'] ?? null) ? $input['api_key_name'] : null, $placement,
             is_int($input['timeout_seconds'] ?? null) ? $input['timeout_seconds'] : null,
+            maxResponseBytes: is_int($input['max_response_bytes'] ?? null) ? $input['max_response_bytes'] : null,
         );
     }
 

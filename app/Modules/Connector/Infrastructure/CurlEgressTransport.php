@@ -11,6 +11,8 @@ use App\Modules\Connector\Contracts\EgressResponse;
 use App\Modules\Connector\Contracts\EgressTransport;
 use App\Modules\Connector\Contracts\EgressVerdict;
 use App\Modules\Connector\Contracts\ReservedHeaders;
+use App\Modules\Connector\Contracts\ResponseLimit;
+use App\Modules\Connector\Contracts\ResponseLimitExceeded;
 use App\Modules\Connector\Contracts\SsrfBlocked;
 use Illuminate\Contracts\Config\Repository;
 use InvalidArgumentException;
@@ -25,6 +27,9 @@ use InvalidArgumentException;
  * curl follows no redirect: the transport reads each 3xx itself. A target on another origin, or an https-to-http
  * downgrade, is refused and audited as a security event; nothing is sent on a refused hop, so credentials never reach
  * another origin. A same-origin target keeps its credentials and goes through the whole guard again.
+ *
+ * The body is read under a size limit on the decompressed stream ({@see ResponseLimit}); passing it raises
+ * {@see ResponseLimitExceeded} and nothing partial is returned.
  */
 final class CurlEgressTransport implements EgressTransport
 {
@@ -53,7 +58,10 @@ final class CurlEgressTransport implements EgressTransport
                 throw new SsrfBlocked($verdict->reason ?? EgressReason::HostNotAllowlisted, $verdict);
             }
 
-            $result = $this->curl->execute($this->options($verdict, $url, $method, $request, $body));
+            $result = $this->curl->execute(
+                $this->options($verdict, $url, $method, $request, $body),
+                ResponseLimit::effective($request->maxBytes, $this->config->get('dashflow.tunables.guards.max_bytes.value')),
+            );
 
             $location = in_array($result->status, self::REDIRECTS, true) ? ($result->headers['location'][0] ?? null) : null;
 
@@ -121,6 +129,9 @@ final class CurlEgressTransport implements EgressTransport
             CURLOPT_SSL_VERIFYPEER => true,
             CURLOPT_SSL_VERIFYHOST => 2,
             CURLOPT_UNRESTRICTED_AUTH => false,
+            // Ask for gzip so the write callback sees the decompressed stream and the size limit counts what the body
+            // really weighs (a gzip bomb included), never the compressed bytes. Only gzip is offered.
+            CURLOPT_ENCODING => 'gzip',
         ];
 
         // http and https only, for the request and for any redirect (the string form where this cURL has it).

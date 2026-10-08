@@ -63,6 +63,7 @@ final class StartConnectionTest implements ConnectionTests
                     'api_key_placement' => $input->apiKeyPlacement,
                     'headers' => $input->headers,
                     'timeout_seconds' => $input->timeoutSeconds,
+                    'max_response_bytes' => $input->maxResponseBytes,
                     'data_source_id' => $source?->id,
                 ],
             );

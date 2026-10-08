@@ -1,0 +1,11 @@
+<?php
+
+namespace App\Platform\Json;
+
+final class Delegates
+{
+    public function decode(string $body): mixed
+    {
+        return \json_decode($body);
+    }
+}

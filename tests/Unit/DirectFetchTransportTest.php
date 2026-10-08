@@ -184,3 +184,16 @@ it('limits only with a window and a positive whole number, and invents nothing',
     'zero, negative and text do not count' => [['window' => ['value' => '60'], 'membership_limit' => ['value' => '0'], 'workspace_limit' => ['value' => 'many']], 60, null, null],
     'a window of zero is no window' => [['window' => ['value' => '0'], 'membership_limit' => ['value' => '5']], null, null, null],
 ]);
+
+// Story 2.6: JSON is asked for unless the Data Source sets its own Accept, and the Data Source's size limit goes to the transport.
+it('asks for JSON unless the Data Source sets its own Accept (any case), and passes its size limit on', function () {
+    $egress = dftEgress();
+    (new DirectFetchTransport($egress, dftVault([])))->fetch(new FetchRequest(DFT_WS, DFT_SRC, null, 'https://api.example.com/v1', [], CredentialScheme::None, [], [], maxResponseBytes: 4096));
+
+    expect($egress->sent->headers)->toBe(['Accept' => 'application/json'])->and($egress->sent->maxBytes)->toBe(4096);
+
+    $own = dftEgress();
+    (new DirectFetchTransport($own, dftVault([])))->fetch(dftRequest(CredentialScheme::None, [], [['name' => 'accept', 'value' => 'application/vnd.api+json']]));
+
+    expect($own->sent->headers)->toBe(['accept' => 'application/vnd.api+json'])->and($own->sent->maxBytes)->toBeNull();
+});

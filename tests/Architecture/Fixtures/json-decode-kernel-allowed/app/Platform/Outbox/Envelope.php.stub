@@ -1,0 +1,11 @@
+<?php
+
+namespace App\Platform\Outbox;
+
+final class Envelope
+{
+    public function decode(string $body): mixed
+    {
+        return json_decode($body, true);
+    }
+}

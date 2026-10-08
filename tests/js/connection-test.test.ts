@@ -388,6 +388,41 @@ describe('A failed test: the fetch error card', () => {
         await tick();
     }
 
+    it('shows response-too-large with the sizes for people, says nothing was shown and focuses the title', async () => {
+        await failWith({
+            status: 200,
+            code: 'response-too-large',
+            reason: 'connector.limit_exceeded',
+            size_bytes: 14_890_000,
+            limit_bytes: 10_485_760,
+        });
+
+        const title = $('[data-test="fetch-error-title"]') as HTMLElement;
+        const message = $('[data-test="fetch-error-message"]')?.textContent;
+
+        expect(document.activeElement).toBe(title);
+        expect(message).toContain('14.2 MB is over this data source');
+        expect(message).toContain('10 MB limit');
+        expect(message).toContain('Nothing was shown, so no totals are wrong.');
+    });
+
+    it('shows not-json with its catalogue message and focus on the title', async () => {
+        await failWith({
+            status: 200,
+            code: 'not-json',
+            reason: 'connector.not_json:content_type',
+        });
+
+        expect(document.activeElement).toBe(
+            $('[data-test="fetch-error-title"]'),
+        );
+        expect(
+            $('[data-test="fetch-error-message"]')?.textContent?.trim(),
+        ).toBe(
+            'This endpoint returned HTML, not JSON. Dashflow supports REST APIs that return JSON.',
+        );
+    });
+
     it('shows fetch-failed with the source name, collapsed technical details and focus on its title', async () => {
         await failWith({
             status: 503,
