@@ -199,10 +199,11 @@ final class RenderEndpointRequest
     /**
      * @param  array<string, string>  $values  as {@see self::values()} returned them
      * @param  array<string, SecretStatus>  $secrets  the Data Source's slot statuses
+     * @param  list<array{name: string, value: string}>  $extraHeaders  headers the platform adds to the Endpoint's own (the conditional ones)
      *
      * @throws InvalidDataSource when a value does not fit (the Endpoint moved since it was checked)
      */
-    public function request(string $workspaceId, DataSource $source, Endpoint $endpoint, array $values, array $secrets, ?string $operationId = null): FetchRequest
+    public function request(string $workspaceId, DataSource $source, Endpoint $endpoint, array $values, array $secrets, ?string $operationId = null, array $extraHeaders = []): FetchRequest
     {
         $pathValues = [];
         $inBody = [];
@@ -244,6 +245,12 @@ final class RenderEndpointRequest
 
         foreach ($endpoint->headers as $header) {
             $headers[] = ['name' => $header['name'], 'value' => $values['header:'.$header['name']] ?? ''];
+        }
+
+        // Headers the platform itself adds (the conditional ones of Story 2.15), after the Endpoint's own so they win a name clash.
+        foreach ($extraHeaders as $header) {
+            $headers = array_values(array_filter($headers, fn (array $own): bool => strcasecmp($own['name'], $header['name']) !== 0));
+            $headers[] = $header;
         }
 
         if ($body !== null) {

@@ -1206,6 +1206,8 @@ export const endpointLabels = {
     syncColumn: 'Last success',
     lastSuccess: (time: string) => `Last success ${time}`,
     noSuccessYet: 'No successful call yet',
+    lastChecked: (time: string) => `Checked ${time}`,
+    dataAsOf: (time: string) => `Data as of ${time}`,
     notScheduled: 'Not scheduled',
     // The reason a fetch is not scheduled, by the server's reason; the date-bound rows without a test value are named.
     notScheduledReasons: {

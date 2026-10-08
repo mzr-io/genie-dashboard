@@ -15,6 +15,7 @@ interface SyncRunLog
     /**
      * @param  string  $status  `succeeded`, `failed` or `superseded`
      * @param  list<string>  $parameterNames
+     * @param  string|null  $outcome  Story 2.15, of a `succeeded` run: `changed`, `not_modified` or `unchanged` (null before and for any other run)
      * @return string the run's id (`$id` when given)
      */
     public function recordScheduledFetch(
@@ -32,5 +33,6 @@ interface SyncRunLog
         ?string $errorCode,
         ?string $requestId,
         \DateTimeInterface $startedAt,
+        ?string $outcome = null,
     ): string;
 }

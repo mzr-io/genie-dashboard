@@ -18,11 +18,15 @@ final readonly class EndpointFetchSpec
         public array $values,
         /** The run's id: sent as the `Idempotency-Key` of a POST. */
         public ?string $runId = null,
+        /** Story 2.15: the stored `ETag`, sent verbatim as `If-None-Match`. Wins over `ifModifiedSince`. Ignored for a paged Data Source. */
+        public ?string $ifNoneMatch = null,
+        /** Story 2.15: the stored `Last-Modified`, sent verbatim as `If-Modified-Since` when there is no ETag. Ignored for a paged Data Source. */
+        public ?string $ifModifiedSince = null,
     ) {}
 
     /** @return array<string, mixed> */
     public function __debugInfo(): array
     {
-        return ['endpoint_id' => $this->endpointId, 'endpoint_revision_id' => $this->endpointRevisionId, 'data_source_revision' => $this->dataSourceRevision];
+        return ['endpoint_id' => $this->endpointId, 'endpoint_revision_id' => $this->endpointRevisionId, 'data_source_revision' => $this->dataSourceRevision, 'conditional' => $this->ifNoneMatch !== null || $this->ifModifiedSince !== null];
     }
 }

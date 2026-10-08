@@ -296,3 +296,12 @@ it('refuses a resolved value that is not one path segment', function (string $va
 
     expect(fn () => (new RenderEndpointRequest)->values($endpoint, [], ['id' => $value]))->toThrow(InvalidDataSource::class);
 })->with(['a/b', '.', '..', '']);
+
+it('lets a platform conditional header replace an Endpoint header of the same name, whatever its case', function () {
+    $endpoint = rerEndpoint([], [['name' => 'if-none-match', 'binding' => 'fixed', 'value' => 'own'], ['name' => 'X-Keep', 'binding' => 'fixed', 'value' => 'k']], path: '/x');
+    $values = (new RenderEndpointRequest)->values($endpoint, []);
+
+    $request = (new RenderEndpointRequest)->request('w', rerSource(), $endpoint, $values, [], null, [['name' => 'If-None-Match', 'value' => '"v1"']]);
+
+    expect($request->endpointHeaders)->toBe([['name' => 'X-Keep', 'value' => 'k'], ['name' => 'If-None-Match', 'value' => '"v1"']]);
+});

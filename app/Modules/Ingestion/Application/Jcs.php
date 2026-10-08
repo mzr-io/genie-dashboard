@@ -2,6 +2,8 @@
 
 namespace App\Modules\Ingestion\Application;
 
+use App\Platform\Json\DecimalLiteral;
+use App\Platform\Json\JsonObject;
 use InvalidArgumentException;
 
 /**
@@ -10,6 +12,10 @@ use InvalidArgumentException;
  * would take for a list). No float is accepted, so no number is ever formatted: a float is a programming error here, not a rounding.
  * Object members are sorted by the UTF-16 code units of their names, strings are escaped as ECMAScript does (`"`, `\`, `\b \t \n \f \r` and
  * the other C0 controls as `\u00xx`; everything else, `/` and DEL included, literally in UTF-8) and there is no whitespace.
+ *
+ * Story 2.15 adds the two values the lossless decoder produces: a {@see DecimalLiteral} is written as the lexeme it was received with
+ * (`1.0` stays `1.0`: nothing is parsed or reformatted, so it is still no float) and a {@see JsonObject} is an object. This is the layout of
+ * {@see CanonicalBodyHash}.
  */
 final class Jcs
 {
@@ -22,10 +28,24 @@ final class Jcs
             $value === false => 'false',
             is_int($value) => (string) $value,
             is_string($value) => self::string($value),
+            $value instanceof DecimalLiteral => $value->lexeme,
+            $value instanceof JsonObject => self::object(self::members($value)),
             $value instanceof \stdClass => self::object(get_object_vars($value)),
             is_array($value) => array_is_list($value) ? self::list($value) : self::object($value),
             default => throw new InvalidArgumentException('Only strings, integers, booleans, null, lists and objects can be canonicalised.'),
         };
+    }
+
+    /** @return array<string, mixed> */
+    private static function members(JsonObject $object): array
+    {
+        $members = [];
+
+        foreach ($object->entries() as [$key, $value]) {
+            $members[$key] = $value;
+        }
+
+        return $members;
     }
 
     /** @param  list<mixed>  $list */

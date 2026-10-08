@@ -163,6 +163,8 @@ describe('the scheduled-fetch status of an Endpoint row', () => {
                         path: '/a',
                         sync: sync('succeeded', {
                             last_success_at: '2026-10-08T12:30:00Z',
+                            last_checked_at: '2026-10-08T12:45:00Z',
+                            payload_changed_at: '2026-10-08T12:00:00Z',
                         }) as Endpoint['sync'],
                     }),
                     endpoint({
@@ -209,6 +211,15 @@ describe('the scheduled-fetch status of an Endpoint row', () => {
             labels.lastSuccess(formatDateTime('2026-10-08T12:30:00Z')),
         );
         expect(text(0, 'sync-reason')).toBeUndefined();
+        // A 304 moved "Last success" and "Checked" but not "Data as of".
+        expect(text(0, 'sync-checked')).toBe(
+            labels.lastChecked(formatDateTime('2026-10-08T12:45:00Z')),
+        );
+        expect(text(0, 'sync-data-as-of')).toBe(
+            labels.dataAsOf(formatDateTime('2026-10-08T12:00:00Z')),
+        );
+        expect(text(1, 'sync-checked')).toBeUndefined();
+        expect(text(1, 'sync-data-as-of')).toBeUndefined();
         expect(text(1, 'sync-status')).toBe(labels.noSuccessYet);
         expect(text(2, 'sync-status')).toBe(labels.notScheduled);
         expect(text(2, 'sync-reason')).toBe(

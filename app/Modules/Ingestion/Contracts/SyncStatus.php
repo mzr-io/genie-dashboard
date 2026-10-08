@@ -19,8 +19,12 @@ final readonly class SyncStatus
 
     public function __construct(
         public string $state,
-        /** ISO 8601, UTC; set when `state` is `succeeded`. */
+        /** ISO 8601, UTC; set when `state` is `succeeded`. A 304 or an equal body moves it (Story 2.15). */
         public ?string $lastSuccessAt = null,
         public ?string $reason = null,
+        /** ISO 8601, UTC: the last attempt (Story 2.15 "Checked"), a failed one included. */
+        public ?string $lastCheckedAt = null,
+        /** ISO 8601, UTC: when the current payload last changed ("Data as of"); a 304 or an equal body leaves it alone. */
+        public ?string $payloadChangedAt = null,
     ) {}
 }

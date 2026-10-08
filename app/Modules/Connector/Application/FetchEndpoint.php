@@ -10,6 +10,7 @@ use App\Modules\Connector\Contracts\EndpointFetchResult;
 use App\Modules\Connector\Contracts\EndpointFetchSpec;
 use App\Modules\Connector\Contracts\EndpointNotFound;
 use App\Modules\Connector\Contracts\Endpoints;
+use App\Modules\Connector\Contracts\FetchResponse;
 use App\Modules\Connector\Contracts\FetchTransport;
 use App\Modules\Connector\Contracts\InvalidDataSource;
 use App\Modules\Connector\Contracts\SecretVault;
@@ -37,6 +38,31 @@ final class FetchEndpoint implements EndpointFetcher
         private readonly RenderEndpointRequest $renderer,
         private readonly EndpointFetchLadder $ladder,
     ) {}
+
+    /** The longest validator kept, and the characters it may hold (visible ASCII and the space inside a date). */
+    private const VALIDATOR_MAX = 512;
+
+    /** @return array{name: string, value: string}|null `If-None-Match` from the ETag, else `If-Modified-Since` from Last-Modified, verbatim */
+    private function conditional(EndpointFetchSpec $spec): ?array
+    {
+        return match (true) {
+            $spec->ifNoneMatch !== null && $spec->ifNoneMatch !== '' => ['name' => 'If-None-Match', 'value' => $spec->ifNoneMatch],
+            $spec->ifModifiedSince !== null && $spec->ifModifiedSince !== '' => ['name' => 'If-Modified-Since', 'value' => $spec->ifModifiedSince],
+            default => null,
+        };
+    }
+
+    /** The one value of a validator header of the final response, or null when it is absent, repeated, too long or not visible ASCII. Opaque: never parsed. */
+    private static function validator(FetchResponse $response, string $name): ?string
+    {
+        $values = $response->headers[$name] ?? [];
+
+        if (count($values) !== 1 || strlen($values[0]) > self::VALIDATOR_MAX || preg_match('/\A[\x21-\x7E](?:[\x20-\x7E]*[\x21-\x7E])?\z/D', $values[0]) !== 1) {
+            return null;
+        }
+
+        return $values[0];
+    }
 
     public function fetch(EndpointFetchSpec $spec): EndpointFetchResult
     {
@@ -68,7 +94,13 @@ final class FetchEndpoint implements EndpointFetcher
                 $reason = 'user_context_required';
             } else {
                 $values = $this->renderer->values($endpoint, $spec->values);
-                $request = $this->renderer->request($spec->workspaceId, $source, $endpoint, $values, $this->vault->status($spec->workspaceId, $source->id), $spec->runId);
+                // Story 2.15: the stored validator goes out as a conditional header (an ETag wins), for an unpaged Data Source only: a paged
+                // call merges pages, so no one validator speaks for it.
+                $conditional = $source->pagination->enabled() ? null : $this->conditional($spec);
+                $request = $this->renderer->request(
+                    $spec->workspaceId, $source, $endpoint, $values, $this->vault->status($spec->workspaceId, $source->id), $spec->runId,
+                    $conditional === null ? [] : [$conditional],
+                );
                 $urlTemplate = $request->urlTemplate;
                 $began = hrtime(true);
                 $response = $this->transport->fetch($request);
@@ -82,14 +114,30 @@ final class FetchEndpoint implements EndpointFetcher
                 $latencyMs = $response->latencyMs;
                 $bytes = $response->bytes;
 
-                if (! $response->successful()) {
+                $paged = $request->pagination->enabled();
+
+                if ($response->status === 304) {
+                    if ($conditional === null) {
+                        // Nothing conditional was sent, so a 304 is not an answer to anything: the caller starts over with a full fetch.
+                        $code = ConnectionTestCode::FetchFailed;
+                        $reason = EndpointFetchResult::NOT_MODIFIED_WITHOUT_PAYLOAD;
+                    } else {
+                        return new EndpointFetchResult(
+                            true, null, $status, $latencyMs, $bytes, null, null, $urlTemplate, $names, dataSourceId: $source->id, notModified: true,
+                            etag: self::validator($response, 'etag'), lastModified: self::validator($response, 'last-modified'),
+                        );
+                    }
+                } elseif (! $response->successful()) {
                     $code = ConnectionTestCode::FetchFailed;
                     $reason = 'http_'.$status;
                 } else {
                     // A 2xx answer must be JSON that parses, losslessly; the value is dropped, the exact text is what is kept.
                     $response->assertJson();
 
-                    return new EndpointFetchResult(true, $response->body, $status, $latencyMs, $bytes, null, null, $urlTemplate, $names, page: $page, pages: $pages, dataSourceId: $source->id);
+                    return new EndpointFetchResult(
+                        true, $response->body, $status, $latencyMs, $bytes, null, null, $urlTemplate, $names, page: $page, pages: $pages, dataSourceId: $source->id,
+                        etag: $paged ? null : self::validator($response, 'etag'), lastModified: $paged ? null : self::validator($response, 'last-modified'),
+                    );
                 }
             }
         } catch (InvalidDataSource) {

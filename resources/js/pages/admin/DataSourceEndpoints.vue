@@ -236,6 +236,19 @@ function syncText(endpoint: Endpoint): string {
         : labels.noSuccessYet;
 }
 
+// "Checked {time}" (the last attempt) and "Data as of {time}" (when the data last changed), Story 2.15; null when there is no such time yet.
+function checkedText(endpoint: Endpoint): string | null {
+    const time = endpoint.sync?.last_checked_at;
+
+    return time ? labels.lastChecked(formatDateTime(time)) : null;
+}
+
+function dataAsOfText(endpoint: Endpoint): string | null {
+    const time = endpoint.sync?.payload_changed_at;
+
+    return time ? labels.dataAsOf(formatDateTime(time)) : null;
+}
+
 // Why an Endpoint is not scheduled, in words; null when it is.
 function syncReason(endpoint: Endpoint): string | null {
     const sync = endpoint.sync;
@@ -567,6 +580,18 @@ onBeforeUnmount(() => {
                         :data-state="row.sync?.state ?? 'waiting'"
                         data-test="sync-status"
                         >{{ syncText(row) }}</span
+                    >
+                    <span
+                        v-if="checkedText(row) !== null"
+                        class="type-caption block text-text-muted"
+                        data-test="sync-checked"
+                        >{{ checkedText(row) }}</span
+                    >
+                    <span
+                        v-if="dataAsOfText(row) !== null"
+                        class="type-caption block text-text-muted"
+                        data-test="sync-data-as-of"
+                        >{{ dataAsOfText(row) }}</span
                     >
                     <span
                         v-if="syncReason(row) !== null"

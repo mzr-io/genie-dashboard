@@ -97,6 +97,9 @@ export type Endpoint = {
 export type SyncState = {
     state: 'succeeded' | 'waiting' | 'not_scheduled';
     last_success_at: string | null;
+    // Story 2.15: the last attempt (a failed one too) and when the data last changed; a 304 or an equal body moves only the first and `last_success_at`.
+    last_checked_at?: string | null;
+    payload_changed_at?: string | null;
     reason: 'user_context' | 'test_values' | 'no_interval' | null;
     missing_test_values: string[];
 };

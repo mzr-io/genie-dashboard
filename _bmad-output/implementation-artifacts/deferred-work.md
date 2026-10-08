@@ -219,3 +219,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-14-fetch-each-endpoint-on-a-schedule-and-keep-the-last-good-response.md`
   summary: Admin UI shows only last success; consecutive failures and last attempt are not visible.
   evidence: SyncStatus has only succeeded/waiting/not_scheduled; health belongs to a later story.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-15-use-conditional-requests-and-skip-unchanged-data.md`
+  summary: Bodies that cannot be canonicalised (duplicate keys, deep nesting) are always treated as changed, and the not_modified_without_payload reason is not stored on the run.
+  evidence: CanonicalBodyHash returns null so content_hash stays null; error code falls back to fetch-failed. Falling back to a byte hash would stop repeat payload.changed events.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-15-use-conditional-requests-and-skip-unchanged-data.md`
+  summary: Canonicalisation runs under the target row lock, and stored validators are not reset on credential rotation unless the Data Source revision bumps.
+  evidence: commitSuccess hashes after select for update; unverified whether secret or OAuth rotation bumps data_source_revision (maybe-false, medium if not).

@@ -40,18 +40,22 @@ final class ReadSyncStatuses implements SyncStatuses
         }
 
         $rows = DB::select(
-            "select endpoint_id, refresh_interval_seconds, next_due_at, to_char(last_success_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') as last_success "
+            "select endpoint_id, refresh_interval_seconds, next_due_at, to_char(last_success_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') as last_success, "
+            ."to_char(last_checked_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') as last_checked, "
+            ."to_char(payload_changed_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') as payload_changed "
             .'from sync_targets where workspace_id = ? and retired_at is null and endpoint_id in ('.implode(', ', array_fill(0, count($ids), '?')).')',
             [$workspaceId, ...$ids],
         );
 
         foreach ($rows as $row) {
             $id = strtolower((string) $row->endpoint_id);
+            $checked = $row->last_checked === null ? null : (string) $row->last_checked;
+            $changed = $row->payload_changed === null ? null : (string) $row->payload_changed;
 
             $statuses[$id] = match (true) {
-                $row->last_success !== null => new SyncStatus(SyncStatus::SUCCEEDED, (string) $row->last_success),
-                $row->refresh_interval_seconds === null || $row->next_due_at === null => new SyncStatus(SyncStatus::NOT_SCHEDULED, null, SyncStatus::NO_INTERVAL),
-                default => new SyncStatus(SyncStatus::WAITING),
+                $row->last_success !== null => new SyncStatus(SyncStatus::SUCCEEDED, (string) $row->last_success, null, $checked, $changed),
+                $row->refresh_interval_seconds === null || $row->next_due_at === null => new SyncStatus(SyncStatus::NOT_SCHEDULED, null, SyncStatus::NO_INTERVAL, $checked, $changed),
+                default => new SyncStatus(SyncStatus::WAITING, null, null, $checked, $changed),
             };
         }
 

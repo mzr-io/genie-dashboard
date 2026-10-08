@@ -96,15 +96,19 @@ it('keeps every sample path away from the raw tier', function () {
 it('hands the scheduled body to the raw tier and nowhere else, with logs of codes and counts only', function () {
     $source = (string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/Ingestion/Application/FetchSyncTarget.php');
 
-    expect(substr_count($source, '$result->body'))->toBe(1)
+    // The body goes to the raw tier, and (Story 2.15) to the hash that tells whether it changed: nowhere else.
+    expect(substr_count($source, '$result->body'))->toBe(2)
         ->and($source)->toMatch('/raw->put\([^;]*\$result->body/s')
+        ->and($source)->toMatch('/CanonicalBodyHash::of\(\(string\) \$result->body\)/')
         ->and($source)->not->toMatch('/Log::\w+\([^;]*(?:body|values|params|\$result|\$target|url)/s')
         ->and($source)->not->toContain('json_decode');
 
     $fetcher = (string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/Connector/Application/FetchEndpoint.php');
     expect(substr_count($fetcher, '$response->body'))->toBe(1)
         ->and($fetcher)->not->toMatch('/Log::\w+\([^;]*(?:body|values|\$request|url)/s')
-        ->and($fetcher)->not->toMatch('/\$response->(?:headers|json\(\))/');
+        // Story 2.15: the only header read is a validator, by name, in `validator()`.
+        ->and($fetcher)->not->toMatch('/\$response->(?:headers(?!\[\$name\])|json\(\))/')
+        ->and(substr_count($fetcher, '$response->headers'))->toBe(1);
 
     // RawStore keeps bytes: hex in, hex out, never decoded and never jsonb.
     $store = withoutComments((string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/RawStore/Infrastructure/PostgresRawStore.php'));

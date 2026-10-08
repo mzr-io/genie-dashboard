@@ -22,7 +22,9 @@ use App\Platform\Outbox\OutboxEnvelope;
 use App\Platform\Outbox\OutboxRelay;
 use App\Platform\Tenancy\WorkspaceMismatchException;
 use App\Platform\Tenancy\WorkspaceTransaction;
+use App\Support\Observability\MetricEmitter;
 use Carbon\CarbonImmutable;
+use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Facade;
 use Illuminate\Support\Facades\Queue;
@@ -37,6 +39,8 @@ use Tests\Unit\Support\FakeResolver;
 const SD_HEADERS = ['Referer' => 'http://localhost:8000'];
 const SD_CANARY = 'CANARY-sd-91c3e7';
 const SD_BODY = '{"total":12345678901234567890.12,"rate":1.10}';
+// The canonical form (Story 2.15): sorted keys, no whitespace, every number as received. `content_hash` is its sha256, not the bytes'.
+const SD_CANONICAL = '{"rate":1.10,"total":12345678901234567890.12}';
 
 beforeEach(function () {
     $this->withoutVite();
@@ -242,7 +246,7 @@ it('registers no key and no target while a date-bound row has no test value, and
     expect(sdTargets())->toBe([]);
 
     $data = test()->getJson("/api/v1/admin/data-sources/{$source}/endpoints", SD_HEADERS)->assertOk()->json('data.0');
-    expect($data['sync'])->toBe(['state' => 'not_scheduled', 'last_success_at' => null, 'reason' => 'test_values', 'missing_test_values' => ['from']])
+    expect($data['sync'])->toBe(['state' => 'not_scheduled', 'last_success_at' => null, 'last_checked_at' => null, 'payload_changed_at' => null, 'reason' => 'test_values', 'missing_test_values' => ['from']])
         ->and($data['test_values'])->toBe(['to' => '2026-10-31']);
 
     // Saving the missing value makes the target.
@@ -250,7 +254,7 @@ it('registers no key and no target while a date-bound row has no test value, and
     sdRelay();
 
     expect(sdTargets())->toHaveCount(1)
-        ->and(test()->getJson("/api/v1/admin/data-sources/{$source}/endpoints/{$endpoint}", SD_HEADERS)->json('data.sync'))->toBe(['state' => 'waiting', 'last_success_at' => null, 'reason' => null, 'missing_test_values' => []]);
+        ->and(test()->getJson("/api/v1/admin/data-sources/{$source}/endpoints/{$endpoint}", SD_HEADERS)->json('data.sync'))->toBe(['state' => 'waiting', 'last_success_at' => null, 'last_checked_at' => null, 'payload_changed_at' => null, 'reason' => null, 'missing_test_values' => []]);
 });
 
 it('registers no representative target for an Endpoint that needs user context, and retires the one it had', function () {
@@ -264,7 +268,7 @@ it('registers no representative target for an Endpoint that needs user context, 
 
     expect(sdTargets('retired_at is null'))->toBe([])
         ->and(sdTargets())->toHaveCount(1)
-        ->and(test()->getJson("/api/v1/admin/data-sources/{$source}/endpoints/{$endpoint}", SD_HEADERS)->json('data.sync'))->toBe(['state' => 'not_scheduled', 'last_success_at' => null, 'reason' => 'user_context', 'missing_test_values' => []]);
+        ->and(test()->getJson("/api/v1/admin/data-sources/{$source}/endpoints/{$endpoint}", SD_HEADERS)->json('data.sync'))->toBe(['state' => 'not_scheduled', 'last_success_at' => null, 'last_checked_at' => null, 'payload_changed_at' => null, 'reason' => 'user_context', 'missing_test_values' => []]);
 });
 
 it('takes test values only for date-range and period rows, checked as a date, and never for a user-bound name', function () {
@@ -376,8 +380,9 @@ it('keeps the exact bytes, an immutable observation, the pointer and the event o
         ->and($bodies[0])->toMatchArray(['workspace_id' => $workspace, 'sync_target_id' => $target, 'content_hash' => hash('sha256', SD_BODY), 'size_bytes' => strlen(SD_BODY)])
         ->and($observations)->toHaveCount(1)
         ->and($observations[0])->toMatchArray(['workspace_id' => $workspace, 'sync_target_id' => $target, 'payload_id' => $bodies[0]['id'], 'seq' => 1, 'dispatch_seq' => 1, 'content_hash' => hash('sha256', SD_BODY)])
-        ->and($row)->toMatchArray(['current_payload_id' => $bodies[0]['id'], 'content_hash' => hash('sha256', SD_BODY), 'payload_seq' => 1, 'applied_seq' => 1, 'dispatch_seq' => 1, 'consecutive_failures' => 0])
-        ->and($row['last_success_at'])->not->toBeNull()->and($row['last_checked_at'])->not->toBeNull();
+        ->and($row)->toMatchArray(['current_payload_id' => $bodies[0]['id'], 'content_hash' => hash('sha256', SD_CANONICAL), 'payload_seq' => 1, 'applied_seq' => 1, 'dispatch_seq' => 1, 'consecutive_failures' => 0])
+        ->and($row['last_success_at'])->not->toBeNull()->and($row['last_checked_at'])->not->toBeNull()
+        ->and($row['payload_changed_at'])->toBe($row['last_success_at']);
 
     // RawStore reads the same bytes back for the target, and for no other.
     $read = app(WorkspaceTransaction::class)->run($workspace, fn () => [
@@ -408,7 +413,9 @@ it('keeps the exact bytes, an immutable observation, the pointer and the event o
     $status = app(SyncStatuses::class)->forEndpoints($workspace, [$endpoint])[$endpoint];
     $listed = test()->getJson("/api/v1/admin/data-sources/{$source}/endpoints", SD_HEADERS)->json('data.0.sync');
     expect($status->state)->toBe('succeeded')
-        ->and($listed)->toBe(['state' => 'succeeded', 'last_success_at' => $status->lastSuccessAt, 'reason' => null, 'missing_test_values' => []])
+        ->and($listed)->toBe(['state' => 'succeeded', 'last_success_at' => $status->lastSuccessAt, 'last_checked_at' => $status->lastCheckedAt, 'payload_changed_at' => $status->payloadChangedAt, 'reason' => null, 'missing_test_values' => []])
+        ->and($status->lastCheckedAt)->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/')
+        ->and($status->payloadChangedAt)->toBe($status->lastSuccessAt)
         ->and($status->lastSuccessAt)->toMatch('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/');
 });
 
@@ -636,21 +643,6 @@ it('keeps every value, header, secret and body out of sync_runs, the log, the au
     expect(json_encode(Cluster::rows(Cluster::superuser(), "select encode(body, 'hex') as hex from raw_bodies")))->toContain(bin2hex('b-'.SD_CANARY));
 });
 
-it('stores the same bytes of a target once, with an observation for each response', function () {
-    [$workspace, , , $target] = sdReady();
-    $this->curl->queue = [FakeCurl::answer(200, SD_BODY), FakeCurl::answer(200, SD_BODY)];
-
-    sdRun($workspace, $target, 1);
-    sdRun($workspace, $target, 2);
-
-    $observations = Cluster::rows(Cluster::superuser(), 'select seq, dispatch_seq, payload_id from raw_observations order by seq');
-    expect(sdCount('raw_bodies'))->toBe(1)
-        ->and($observations)->toHaveCount(2)
-        ->and(array_column($observations, 'seq'))->toBe([1, 2])
-        ->and($observations[0]['payload_id'])->toBe($observations[1]['payload_id'])
-        ->and(sdTargets()[0]['payload_seq'])->toBe(2);
-});
-
 it('gives role system only the dispatch columns, only the rows that can be due, and only two columns to change', function () {
     [$workspace, , , $target] = sdReady();
     $other = Cluster::workspace('Other');
@@ -770,7 +762,7 @@ it('gives the Admin the status of a target that has never succeeded, and adds th
     sdRun($workspace, $target, 1);
 
     expect(app(SyncStatuses::class)->forEndpoints($workspace, [$endpoint])[$endpoint]->state)->toBe('waiting')
-        ->and(test()->getJson("/api/v1/admin/data-sources/{$source}/endpoints", SD_HEADERS)->json('data.0.sync'))->toBe(['state' => 'waiting', 'last_success_at' => null, 'reason' => null, 'missing_test_values' => []]);
+        ->and(test()->getJson("/api/v1/admin/data-sources/{$source}/endpoints", SD_HEADERS)->json('data.0.sync'))->toMatchArray(['state' => 'waiting', 'last_success_at' => null, 'payload_changed_at' => null, 'reason' => null, 'missing_test_values' => []]);
 });
 
 it('schedules a target registered while no interval was set once an interval is configured', function () {
@@ -880,4 +872,396 @@ it('rolls a body that cannot be stored back and records a failed run, store-fail
         ->and(sdCount('outbox_events where type = \'ingestion.payload.changed\''))->toBe(0)
         ->and(sdRuns())->toHaveCount(1)
         ->and(sdRuns()[0])->toMatchArray(['status' => 'failed', 'error_code' => 'store-failed']);
+});
+
+// ---- Story 2.15: conditional requests and unchanged data ------------------------------------------------------------------------------
+
+/** A 200 JSON answer with the given validators. */
+function sdOk(string $body = SD_BODY, ?string $etag = null, ?string $modified = null): CurlResult
+{
+    return FakeCurl::answer(200, $body, ['content-type' => ['application/json']] + ($etag === null ? [] : ['etag' => [$etag]]) + ($modified === null ? [] : ['last-modified' => [$modified]]));
+}
+
+/** A 304, with the validators it may carry. */
+function sdNotModified(?string $etag = null, ?string $modified = null): CurlResult
+{
+    return FakeCurl::answer(304, '', ($etag === null ? [] : ['etag' => [$etag]]) + ($modified === null ? [] : ['last-modified' => [$modified]]));
+}
+
+/** @return list<string> the request headers of call `$n` */
+function sdHeaders(int $n): array
+{
+    return test()->curl->calls[$n][CURLOPT_HTTPHEADER];
+}
+
+function sdConditional(int $n): array
+{
+    return array_values(array_filter(sdHeaders($n), fn (string $line): bool => preg_match('/^If-(None-Match|Modified-Since):/i', $line) === 1));
+}
+
+/** The row counts that an unchanged success must not move. */
+function sdCounts(): array
+{
+    return [sdCount('raw_bodies'), sdCount('raw_observations'), sdCount('outbox_events where type = \'ingestion.payload.changed\'')];
+}
+
+it('sends If-None-Match from the stored ETag and treats a 304 as an unchanged success that moves only the check times', function () {
+    [$workspace, , $endpoint, $target] = sdReady();
+    $this->curl->queue = [sdOk(SD_BODY, '"v1"', 'Wed, 21 Oct 2015 07:28:00 GMT'), sdNotModified()];
+
+    sdRun($workspace, $target, 1);
+    $first = sdTargets()[0];
+    expect($first)->toMatchArray(['etag' => '"v1"', 'last_modified' => 'Wed, 21 Oct 2015 07:28:00 GMT'])
+        ->and(sdConditional(0))->toBe([]);
+
+    usleep(20000);
+    sdRun($workspace, $target, 2);
+    $second = sdTargets()[0];
+
+    // The ETag wins over the Last-Modified, and is sent verbatim.
+    expect(sdConditional(1))->toBe(['If-None-Match: "v1"'])
+        ->and($second)->toMatchArray([
+            'current_payload_id' => $first['current_payload_id'], 'payload_seq' => 1, 'payload_changed_at' => $first['payload_changed_at'], 'content_hash' => $first['content_hash'],
+            'etag' => '"v1"', 'applied_seq' => 2, 'consecutive_failures' => 0,
+        ])
+        ->and(CarbonImmutable::parse($second['last_success_at'])->gt(CarbonImmutable::parse($first['last_success_at'])))->toBeTrue()
+        ->and(CarbonImmutable::parse($second['last_checked_at'])->gt(CarbonImmutable::parse($first['last_checked_at'])))->toBeTrue()
+        ->and(sdCounts())->toBe([1, 1, 1]);
+
+    $runs = sdRuns();
+    expect(array_column($runs, 'status'))->toBe(['succeeded', 'succeeded'])
+        ->and(array_column($runs, 'outcome'))->toBe(['changed', 'not_modified'])
+        ->and($runs[1])->toMatchArray(['http_status' => 304, 'error_code' => null]);
+
+    // The Admin sees the 304 as a success and a check, and the data as of the first response.
+    $status = app(SyncStatuses::class)->forEndpoints($workspace, [$endpoint])[$endpoint];
+    expect($status->state)->toBe('succeeded')
+        ->and($status->payloadChangedAt)->toBe(CarbonImmutable::parse($first['payload_changed_at'])->utc()->format('Y-m-d\\TH:i:s\\Z'))
+        ->and($status->lastCheckedAt)->toBe(CarbonImmutable::parse($second['last_checked_at'])->utc()->format('Y-m-d\\TH:i:s\\Z'));
+});
+
+it('sends If-Modified-Since from the stored Last-Modified when there is no ETag, with the same 304 outcome', function () {
+    [$workspace, , , $target] = sdReady();
+    $this->curl->queue = [sdOk(SD_BODY, null, 'Wed, 21 Oct 2015 07:28:00 GMT'), sdNotModified(null, 'Thu, 22 Oct 2015 07:28:00 GMT')];
+
+    sdRun($workspace, $target, 1);
+    sdRun($workspace, $target, 2);
+
+    expect(sdConditional(1))->toBe(['If-Modified-Since: Wed, 21 Oct 2015 07:28:00 GMT'])
+        ->and(sdTargets()[0])->toMatchArray(['payload_seq' => 1, 'applied_seq' => 2, 'etag' => null, 'last_modified' => 'Thu, 22 Oct 2015 07:28:00 GMT'])
+        ->and(sdCounts())->toBe([1, 1, 1])
+        ->and(array_column(sdRuns(), 'outcome'))->toBe(['changed', 'not_modified']);
+});
+
+it('compares the lossless-canonical hash when the source gives no validator: whitespace and key order are unchanged, a number lexeme is a change', function () {
+    [$workspace, , , $target] = sdReady();
+    $this->curl->queue = [
+        sdOk('{"b":[1,2,{"y":true,"x":null}],"a":"é\\u00e9/","n":1.0}'),
+        sdOk("{ \"n\" : 1.0,\n \"a\":\"é\\u00e9/\" , \"b\" : [ 1, 2, { \"x\": null, \"y\": true } ] }"),
+        sdOk('{"b":[1,2,{"y":true,"x":null}],"a":"é\\u00e9/","n":1}'),
+        sdOk('{"b":[2,1,{"y":true,"x":null}],"a":"é\\u00e9/","n":1}'),
+    ];
+
+    sdRun($workspace, $target, 1);
+    $first = sdTargets()[0];
+    sdRun($workspace, $target, 2);
+
+    // No validator was stored, so none was sent; the equal body is an unchanged success that stores nothing and emits nothing.
+    expect(sdConditional(0))->toBe([])->and(sdConditional(1))->toBe([])
+        ->and(sdTargets()[0])->toMatchArray(['payload_seq' => 1, 'applied_seq' => 2, 'content_hash' => $first['content_hash'], 'current_payload_id' => $first['current_payload_id'], 'payload_changed_at' => $first['payload_changed_at']])
+        ->and(sdCounts())->toBe([1, 1, 1])
+        ->and(array_column(sdRuns(), 'outcome'))->toBe(['changed', 'unchanged']);
+
+    // 1.0 became 1: a different lexeme, so a change, stored with its own hash.
+    sdRun($workspace, $target, 3);
+    expect(sdTargets()[0])->toMatchArray(['payload_seq' => 2])->and(sdTargets()[0]['content_hash'])->not->toBe($first['content_hash'])
+        ->and(sdCounts())->toBe([2, 2, 2]);
+
+    // A list is kept in order.
+    sdRun($workspace, $target, 4);
+    expect(sdTargets()[0]['payload_seq'])->toBe(3)->and(sdCounts())->toBe([3, 3, 3]);
+});
+
+it('stores a changed body with its observation, event, new hash, validators and Data as of', function () {
+    [$workspace, , $endpoint, $target] = sdReady();
+    $this->curl->queue = [sdOk('{"total":1}', '"v1"'), sdOk('{"total":2}', '"v2"')];
+
+    sdRun($workspace, $target, 1);
+    $first = sdTargets()[0];
+    usleep(20000);
+    sdRun($workspace, $target, 2);
+    $second = sdTargets()[0];
+
+    expect(sdConditional(1))->toBe(['If-None-Match: "v1"'])
+        ->and($second)->toMatchArray(['payload_seq' => 2, 'etag' => '"v2"', 'content_hash' => hash('sha256', '{"total":2}'), 'applied_seq' => 2])
+        ->and($second['current_payload_id'])->not->toBe($first['current_payload_id'])
+        ->and(CarbonImmutable::parse($second['payload_changed_at'])->gt(CarbonImmutable::parse($first['payload_changed_at'])))->toBeTrue()
+        ->and($second['payload_changed_at'])->toBe($second['last_success_at'])
+        ->and(sdCounts())->toBe([2, 2, 2])
+        ->and(array_column(sdRuns(), 'outcome'))->toBe(['changed', 'changed']);
+
+    $events = Cluster::rows(Cluster::superuser(), "select data from outbox_events where type = 'ingestion.payload.changed' order by (data->>'payload_seq')::int");
+    expect(json_decode($events[1]['data'], true))->toEqual(['sync_target_id' => $target, 'endpoint_id' => $endpoint, 'payload_id' => $second['current_payload_id'], 'payload_seq' => 2, 'dispatch_seq' => 2]);
+});
+
+it('compares the hash of a 200 even when a validator was sent, and refreshes the validators it brings', function () {
+    [$workspace, , , $target] = sdReady();
+    $this->curl->queue = [sdOk(SD_BODY, '"v1"'), sdOk(' '.SD_BODY, '"v2"', 'Thu, 22 Oct 2015 07:28:00 GMT'), sdOk(SD_BODY)];
+
+    sdRun($workspace, $target, 1);
+    sdRun($workspace, $target, 2);
+
+    expect(sdConditional(1))->toBe(['If-None-Match: "v1"'])
+        ->and(sdTargets()[0])->toMatchArray(['payload_seq' => 1, 'etag' => '"v2"', 'last_modified' => 'Thu, 22 Oct 2015 07:28:00 GMT'])
+        ->and(sdCounts())->toBe([1, 1, 1])
+        ->and(array_column(sdRuns(), 'outcome'))->toBe(['changed', 'unchanged']);
+
+    // A 200 that carries no validator replaces them with none: what is stored is what the latest answer said.
+    sdRun($workspace, $target, 3);
+    expect(sdConditional(2))->toBe(['If-None-Match: "v2"'])
+        ->and(sdTargets()[0])->toMatchArray(['etag' => null, 'last_modified' => null, 'payload_seq' => 1]);
+});
+
+it('treats a body that cannot be canonicalised as changed, stored, with no hash', function () {
+    [$workspace, , , $target] = sdReady();
+    // Deeper than the limit that is set for hashing is a parse failure: the JSON check passes with no limit, the hash needs one.
+    $deep = str_repeat('[', 600).str_repeat(']', 600);
+    $this->curl->queue = [sdOk($deep), sdOk($deep)];
+
+    sdRun($workspace, $target, 1);
+    sdRun($workspace, $target, 2);
+
+    expect(sdTargets()[0])->toMatchArray(['content_hash' => null, 'payload_seq' => 2])
+        ->and(sdCounts())->toBe([1, 2, 2])
+        ->and(array_column(sdRuns(), 'outcome'))->toBe(['changed', 'changed']);
+});
+
+it('sends nothing conditional for a revised Endpoint or Data Source: the new target starts empty and the old one is retired with its state', function () {
+    [$workspace, $source, $endpoint, $first] = sdReady();
+    $this->curl->queue = [sdOk(SD_BODY, '"v1"'), sdOk(SD_BODY, '"v9"'), sdOk(SD_BODY, '"v10"')];
+    sdRun($workspace, $first, 1);
+
+    sdRevise($source, $endpoint, 1, ['path' => '/revenue-v2'])->assertOk();
+    sdRelay();
+    $targets = sdTargets();
+    $second = $targets[1];
+
+    expect($targets[0])->toMatchArray(['id' => $first, 'etag' => '"v1"', 'content_hash' => hash('sha256', SD_CANONICAL)])
+        ->and($targets[0]['retired_at'])->not->toBeNull()
+        ->and($second)->toMatchArray(['etag' => null, 'last_modified' => null, 'content_hash' => null, 'current_payload_id' => null, 'payload_changed_at' => null]);
+
+    // The new target's first run is a full fetch, a change although the body equals the old target's.
+    sdRun($workspace, $second['id'], 1);
+    expect(sdConditional(1))->toBe([])
+        ->and(sdTargets("id = '{$second['id']}'")[0])->toMatchArray(['payload_seq' => 1, 'etag' => '"v9"'])
+        ->and(sdCounts())->toBe([2, 2, 2]);
+
+    // A Data Source revision does the same.
+    test()->putJson("/api/v1/admin/data-sources/{$source}", [
+        'name' => 'Sales API', 'base_url' => 'https://api.example.com/v1', 'headers' => [], 'timeout_seconds' => null, 'max_response_bytes' => null,
+        'max_pages' => null, 'live_capable' => false, 'auth_type' => 'none', 'revision' => 1,
+    ], SD_HEADERS)->assertOk();
+    sdRelay();
+    $third = sdTargets('retired_at is null');
+    expect($third)->toHaveCount(1)->and($third[0])->toMatchArray(['etag' => null, 'content_hash' => null, 'current_payload_id' => null]);
+    sdRun($workspace, $third[0]['id'], 1);
+    expect(sdConditional(2))->toBe([]);
+
+    // The retired target is never run again, and nothing is sent for it.
+    $calls = count($this->curl->calls);
+    $runs = count(sdRuns());
+    sdRun($workspace, $first, 2);
+    expect(count($this->curl->calls))->toBe($calls)->and(count(sdRuns()))->toBe($runs);
+});
+
+it('fails a 304 that nothing conditional explains, clears the conditional state and makes the next fetch a full one', function (bool $withPayload) {
+    [$workspace, , , $target] = sdReady();
+
+    if ($withPayload) {
+        // A payload but no validator: the run sends nothing conditional, so a 304 is unsolicited.
+        $this->curl->queue = [sdOk(SD_BODY), sdNotModified(), sdOk(SD_BODY, '"v1"')];
+        sdRun($workspace, $target, 1);
+        Cluster::superuser()->prepare('update sync_targets set etag = null, last_modified = null where id = ?')->execute([$target]);
+        $run = 2;
+    } else {
+        $this->curl->queue = [sdNotModified(), sdOk(SD_BODY, '"v1"')];
+        Cluster::superuser()->prepare('update sync_targets set etag = ?, content_hash = ? where id = ?')->execute(['"stale"', 'a'.str_repeat('0', 63), $target]);
+        $run = 1;
+    }
+
+    sdRun($workspace, $target, $run);
+    $failed = sdTargets()[0];
+    $runs = sdRuns();
+
+    expect($failed)->toMatchArray(['etag' => null, 'last_modified' => null, 'content_hash' => null, 'consecutive_failures' => 1, 'applied_seq' => $run])
+        ->and(sdConditional($withPayload ? 1 : 0))->toBe([])
+        ->and(end($runs))->toMatchArray(['status' => 'failed', 'error_code' => 'fetch-failed', 'outcome' => null, 'http_status' => 304]);
+
+    // The next fetch is a full one, and with no hash left it stores the body again.
+    sdRun($workspace, $target, $run + 1);
+    expect(sdConditional($withPayload ? 2 : 1))->toBe([])
+        ->and(sdTargets()[0])->toMatchArray(['etag' => '"v1"', 'consecutive_failures' => 0])
+        ->and(sdCount('raw_observations'))->toBe($withPayload ? 2 : 1);
+})->with(['a payload but nothing sent' => [true], 'no payload' => [false]]);
+
+it('sends no conditional header and keeps no validator for a paged Data Source, which relies on the hash', function () {
+    [$workspace, , , $target] = sdReady();
+    Cluster::superuser()->prepare("update data_sources set pagination_style = 'page', pagination_param = 'p'")->execute();
+    $page = fn (string $records, string $etag) => sdOk($records, $etag, 'Wed, 21 Oct 2015 07:28:00 GMT');
+    $this->curl->queue = [$page('[{"a":1}]', '"p1"'), $page('[]', '"p2"'), $page('[{"a":1}]', '"p3"'), $page('[]', '"p4"')];
+
+    sdRun($workspace, $target, 1);
+    // Even a stored validator (from before the source was paged) is not sent.
+    Cluster::superuser()->prepare('update sync_targets set etag = ? where id = ?')->execute(['"old"', $target]);
+    sdRun($workspace, $target, 2);
+
+    expect(sdConditional(0))->toBe([])->and(sdConditional(2))->toBe([])
+        ->and(sdTargets()[0])->toMatchArray(['payload_seq' => 1, 'applied_seq' => 2, 'last_modified' => null])
+        ->and(sdCounts())->toBe([1, 1, 1])
+        ->and(array_column(sdRuns(), 'outcome'))->toBe(['changed', 'unchanged']);
+    // The first run kept none; the second brought none either (the transport reports first-page headers only, which are not used).
+    expect(sdTargets()[0]['etag'])->toBeNull();
+});
+
+it('keeps only a validator that is exactly one value of at most 512 visible ASCII characters', function (array $headers, ?string $etag) {
+    [$workspace, , , $target] = sdReady();
+    $this->curl->queue = [FakeCurl::answer(200, SD_BODY, ['content-type' => ['application/json']] + $headers)];
+
+    sdRun($workspace, $target, 1);
+
+    expect(sdTargets()[0])->toMatchArray(['etag' => $etag, 'payload_seq' => 1]);
+})->with([
+    'one' => [['etag' => ['W/"abc"']], 'W/"abc"'],
+    'several' => [['etag' => ['"a"', '"b"']], null],
+    'too long' => [['etag' => ['"'.str_repeat('a', 511).'"']], null],
+    'the longest' => [['etag' => [str_repeat('a', 512)]], str_repeat('a', 512)],
+    'not visible ASCII' => [['etag' => ["\"caf\u{e9}\""]], null],
+    'empty' => [['etag' => ['']], null],
+]);
+
+it('keeps the validators when a run fails for any other reason, and a late 304 changes nothing', function () {
+    [$workspace, , , $target] = sdReady();
+    $this->curl->queue = [sdOk(SD_BODY, '"v1"'), FakeCurl::answer(500, '{}'), new EgressTransportFailed(28), sdNotModified('"v2"')];
+
+    sdRun($workspace, $target, 5);
+    $good = sdTargets()[0];
+    // A 5xx and a timeout are failures that keep the validators, so the next run still sends them.
+    sdRun($workspace, $target, 6);
+    sdRun($workspace, $target, 7);
+    expect(sdTargets()[0])->toMatchArray(['etag' => '"v1"', 'content_hash' => $good['content_hash'], 'consecutive_failures' => 2, 'current_payload_id' => $good['current_payload_id']])
+        ->and(sdConditional(1))->toBe(['If-None-Match: "v1"'])->and(sdConditional(2))->toBe(['If-None-Match: "v1"']);
+
+    // A late run is superseded before anything is sent.
+    $before = sdTargets()[0];
+    sdRun($workspace, $target, 4);
+    expect(sdTargets()[0])->toBe($before)->and($this->curl->calls)->toHaveCount(3);
+});
+
+it('supersedes a 304 that loses the race at commit, or that answers for a validator that has since moved on', function (string $race) {
+    [$workspace, , , $target] = sdReady();
+    $this->curl->queue = [sdOk(SD_BODY, '"v1"')];
+    sdRun($workspace, $target, 1);
+    $before = sdTargets()[0];
+
+    app()->instance(EndpointFetcher::class, new class($target, $race) implements EndpointFetcher
+    {
+        public function __construct(private readonly string $target, private readonly string $race) {}
+
+        public function fetch(EndpointFetchSpec $spec): EndpointFetchResult
+        {
+            // While the conditional request is out, another dispatch commits on its own connection.
+            $sql = $this->race === 'newer'
+                ? 'update sync_targets set dispatch_seq = 3, applied_seq = 3 where id = ?'
+                : "update sync_targets set etag = '\"v2\"', dispatch_seq = 1 where id = ?";
+            Cluster::superuser()->prepare($sql)->execute([$this->target]);
+
+            return new EndpointFetchResult(true, null, 304, 1, 0, null, null, 'https://api.example.com/revenue', ['region'], dataSourceId: $spec->dataSourceId, notModified: true);
+        }
+    });
+
+    sdRun($workspace, $target, 2);
+
+    $row = sdTargets()[0];
+    expect($row['payload_seq'])->toBe(1)
+        ->and($row['current_payload_id'])->toBe($before['current_payload_id'])
+        ->and($row['last_success_at'])->toBe($before['last_success_at'])
+        ->and($row['last_checked_at'])->toBe($before['last_checked_at'])
+        ->and($row['applied_seq'])->toBe($race === 'newer' ? 3 : 1)
+        ->and(sdCounts())->toBe([1, 1, 1])
+        ->and(array_column(sdRuns(), 'status'))->toBe(['succeeded', 'superseded']);
+})->with(['a newer dispatch applied' => ['newer'], 'the validator moved' => ['validator']]);
+
+it('keeps a validator, the hash and the bodies out of sync_runs, the log, the audit and the outbox', function () {
+    [$workspace, , , $target] = sdReady();
+    $etag = '"e-'.SD_CANARY.'"';
+    $this->curl->queue = [sdOk('{"note":"b-'.SD_CANARY.'"}', $etag, 'Mon, 01 Jan 2024 '.SD_CANARY), sdNotModified(), sdOk('{"note":"c-'.SD_CANARY.'"}', $etag), sdNotModified('"n-'.SD_CANARY.'"')];
+
+    foreach ([1, 2, 3, 4] as $seq) {
+        sdRun($workspace, $target, $seq);
+    }
+
+    expect(sdConditional(1))->toBe(['If-None-Match: '.$etag]);
+
+    $everything = json_encode([
+        Cluster::rows(Cluster::superuser(), 'select * from sync_runs'),
+        Cluster::rows(Cluster::superuser(), 'select * from audit_events'),
+        Cluster::rows(Cluster::superuser(), 'select * from outbox_events'),
+        Cluster::rows(Cluster::superuser(), 'select * from operations'),
+        (string) file_get_contents($this->logFile),
+    ], JSON_THROW_ON_ERROR);
+
+    expect($everything)->not->toContain(SD_CANARY);
+    // The conditional state is the target's own, by design.
+    expect(sdTargets()[0]['etag'])->toContain(SD_CANARY);
+});
+
+it('counts each outcome on its own metric: payload_changed for a change only', function () {
+    [$workspace, , , $target] = sdReady();
+    $recorded = [];
+    app()->instance(MetricEmitter::class, new class($recorded) implements MetricEmitter
+    {
+        /** @param  list<string>  $seen */
+        public function __construct(public array &$seen) {}
+
+        public function increment(string $name, array $labels = [], int $by = 1): void
+        {
+            $this->seen[] = $name;
+        }
+    });
+    $this->curl->queue = [sdOk(SD_BODY, '"v1"'), sdNotModified(), sdOk(' '.SD_BODY), sdOk('{"x":1}')];
+
+    foreach ([1, 2, 3, 4] as $seq) {
+        sdRun($workspace, $target, $seq);
+    }
+
+    $counts = array_count_values(array_filter($recorded, fn (string $name): bool => str_starts_with($name, 'dashflow.ingestion.')));
+    expect($counts['dashflow.ingestion.payload_changed'])->toBe(2)
+        ->and($counts['dashflow.ingestion.fetch_not_modified'])->toBe(1)
+        ->and($counts['dashflow.ingestion.fetch_unchanged'])->toBe(1)
+        ->and($counts['dashflow.ingestion.fetch_succeeded'])->toBe(4);
+});
+
+it('backfills Data as of and nulls the old byte hashes when the conditional-state migration runs again, and the next run is a change', function () {
+    [$workspace, , , $target] = sdReady();
+    $this->curl->queue = [sdOk(SD_BODY), sdOk(SD_BODY)];
+    sdRun($workspace, $target, 1);
+
+    try {
+        // One step: the newest migration is Story 2.15's (conditional state).
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 1, '--force' => true]))->toBe(0);
+
+        // A target as 2.14 left it: a payload, the hash of the bytes and a last success.
+        Cluster::superuser()->prepare('update sync_targets set content_hash = ?, last_success_at = ? where id = ?')->execute([hash('sha256', SD_BODY), '2026-10-01 10:00:00+00', $target]);
+    } finally {
+        Artisan::call('migrate', ['--database' => 'migrator', '--force' => true]);
+    }
+
+    $row = sdTargets()[0];
+    expect($row['payload_changed_at'])->toBe($row['last_success_at'])->and($row['payload_changed_at'])->toBe('2026-10-01 10:00:00+00')
+        ->and($row['content_hash'])->toBeNull();
+
+    // With no hash to compare, the next run is one `changed` run.
+    sdRun($workspace, $target, 2);
+    // The rollback dropped the first run's outcome with the column.
+    expect(array_column(sdRuns(), 'outcome'))->toBe([null, 'changed'])->and(sdCount('raw_observations'))->toBe(2);
 });

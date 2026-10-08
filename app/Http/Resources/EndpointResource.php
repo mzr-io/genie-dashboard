@@ -55,26 +55,26 @@ final class EndpointResource extends JsonResource
     }
 
     /**
-     * `succeeded` with the time of the last good response, `waiting` (no successful call yet), or `not_scheduled` with the reason: `user_context`
+     * `succeeded` with the time of the last good response (a 304 counts), the time of the last check and when the data last changed (Story 2.15), `waiting` (no successful call yet), or `not_scheduled` with the reason: `user_context`
      * (a per-member target belongs to Epic 3), `test_values` (a date-bound row has no test value, so there is no key and no target; the rows are
      * named) or `no_interval` (no refresh interval is set).
      *
-     * @return array{state: string, last_success_at: string|null, reason: string|null, missing_test_values: list<string>}
+     * @return array{state: string, last_success_at: string|null, last_checked_at: string|null, payload_changed_at: string|null, reason: string|null, missing_test_values: list<string>}
      */
     private function syncState(Endpoint $endpoint): array
     {
         $missing = $endpoint->missingTestValues();
 
         if ($endpoint->requiresUserContext) {
-            return ['state' => SyncStatus::NOT_SCHEDULED, 'last_success_at' => null, 'reason' => 'user_context', 'missing_test_values' => []];
+            return ['state' => SyncStatus::NOT_SCHEDULED, 'last_success_at' => null, 'last_checked_at' => null, 'payload_changed_at' => null, 'reason' => 'user_context', 'missing_test_values' => []];
         }
 
         if ($missing !== []) {
-            return ['state' => SyncStatus::NOT_SCHEDULED, 'last_success_at' => null, 'reason' => 'test_values', 'missing_test_values' => $missing];
+            return ['state' => SyncStatus::NOT_SCHEDULED, 'last_success_at' => null, 'last_checked_at' => null, 'payload_changed_at' => null, 'reason' => 'test_values', 'missing_test_values' => $missing];
         }
 
         $sync = $this->sync ?? new SyncStatus(SyncStatus::WAITING);
 
-        return ['state' => $sync->state, 'last_success_at' => $sync->lastSuccessAt, 'reason' => $sync->reason, 'missing_test_values' => []];
+        return ['state' => $sync->state, 'last_success_at' => $sync->lastSuccessAt, 'last_checked_at' => $sync->lastCheckedAt, 'payload_changed_at' => $sync->payloadChangedAt, 'reason' => $sync->reason, 'missing_test_values' => []];
     }
 }
