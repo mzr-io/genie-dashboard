@@ -78,7 +78,7 @@ function gateRoutes(): array
 function gateCall(string $method, string $uri)
 {
     // A route parameter is a member that does not exist (the allowed case then answers 404, the gate's 403 is what matters).
-    $uri = str_replace(['{membership}', '{invitation}', '{group}', '{entry}', '{dataSource}'], (string) Str::uuid7(), $uri);
+    $uri = str_replace(['{membership}', '{invitation}', '{group}', '{entry}', '{dataSource}', '{endpoint}'], (string) Str::uuid7(), $uri);
 
     if (str_starts_with($uri, '/api/')) {
         $headers = ['Referer' => 'http://localhost:8000'];
@@ -173,9 +173,9 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
             // A host and revision are validated before the allowlist is touched; a removal validates its revision before the entry.
             in_array($name, ['api.admin.host-allowlist.store', 'api.admin.host-allowlist.destroy'], true) => 422,
             // A Data source is validated before it is looked up (the revision first), and the blur check validates its URL.
-            in_array($name, ['api.admin.data-sources.store', 'api.admin.data-sources.update', 'api.admin.data-sources.check-url', 'api.admin.data-sources.test-connection'], true) => 422,
-            // The edit page renders whatever Data source it names; the form loads it through the API.
-            $name === 'admin.data-sources.edit' => 200,
+            in_array($name, ['api.admin.data-sources.store', 'api.admin.data-sources.update', 'api.admin.data-sources.check-url', 'api.admin.data-sources.test-connection', 'api.admin.data-sources.endpoints.store', 'api.admin.data-sources.endpoints.update'], true) => 422,
+            // The edit and Endpoints pages render whatever Data source they name; the form loads it through the API.
+            in_array($name, ['admin.data-sources.edit', 'admin.data-sources.endpoints'], true) => 200,
             str_contains($uri, '{') => 404,
             $name === 'api.admin.invitations.store' => 422,
             default => 200,

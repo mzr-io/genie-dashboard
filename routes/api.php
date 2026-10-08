@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\DataSourceController;
 use App\Http\Controllers\Admin\DataSourceLockController;
+use App\Http\Controllers\Admin\EndpointController;
 use App\Http\Controllers\Admin\GroupController;
 use App\Http\Controllers\Admin\HostAllowlistController;
 use App\Http\Controllers\Admin\InvitationController;
@@ -65,6 +66,12 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('data-sources/test-connection', [DataSourceController::class, 'testConnection'])->middleware(['admin', 'throttle:30,1,data-source-test'])->name('api.admin.data-sources.test-connection');
     Route::get('data-sources/{dataSource}', [DataSourceController::class, 'show'])->middleware('admin')->name('api.admin.data-sources.show');
     Route::put('data-sources/{dataSource}', [DataSourceController::class, 'update'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.data-sources.update');
+
+    // Endpoints of a Data Source (Story 2.9): same permission, mapped in ShellNavigation::ADMIN_API_ROUTES. Nothing here sends a request.
+    Route::get('data-sources/{dataSource}/endpoints', [EndpointController::class, 'index'])->middleware('admin')->name('api.admin.data-sources.endpoints.index');
+    Route::post('data-sources/{dataSource}/endpoints', [EndpointController::class, 'store'])->middleware(['admin', 'throttle:30,1,data-source-endpoints'])->name('api.admin.data-sources.endpoints.store');
+    Route::get('data-sources/{dataSource}/endpoints/{endpoint}', [EndpointController::class, 'show'])->middleware('admin')->name('api.admin.data-sources.endpoints.show');
+    Route::put('data-sources/{dataSource}/endpoints/{endpoint}', [EndpointController::class, 'update'])->middleware(['admin', 'throttle:30,1,data-source-endpoints'])->name('api.admin.data-sources.endpoints.update');
 
     // The Data source soft lock (Story 2.8): acquire, heartbeat, release (also by beacon), take over (request, then poll) and
     // the holder's flush acknowledgement. Same permission; none of them takes a secret value; the heartbeat and the polls send `X-Background: 1`.

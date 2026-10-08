@@ -1,0 +1,30 @@
+<?php
+
+namespace App\Modules\Connector\Contracts;
+
+/** An Endpoint with its current revision (Story 2.9). The `revision` is the number the next save is compared with. */
+final readonly class Endpoint
+{
+    /**
+     * @param  list<array{type: string, value?: string, name?: string}>  $pathAst
+     * @param  list<array{name: string, binding: string, value: string|null, kind: string}>  $params  `kind` is where the parameter goes: `path`, `query` or `body`
+     * @param  list<array{name: string, binding: string, value: string|null}>  $headers
+     * @param  string|null  $bodyTemplate  the template as canonical JSON text, numbers as written
+     * @param  string  $createdAt  ISO 8601, UTC
+     */
+    public function __construct(
+        public string $id,
+        public string $dataSourceId,
+        public int $revision,
+        public string $revisionId,
+        public string $method,
+        public string $pathTemplate,
+        public array $pathAst,
+        public array $params,
+        public array $headers,
+        public ?string $bodyTemplate,
+        public bool $readOnlyQuery,
+        public string $createdAt,
+        public string $updatedAt,
+    ) {}
+}

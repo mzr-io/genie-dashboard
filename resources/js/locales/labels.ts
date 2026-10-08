@@ -905,6 +905,179 @@ export const dataSourceLabels = {
         `Authentication failed. ${source} did not accept these credentials. Check the client ID, the client secret and the scope, then test again.`,
 } as const;
 
+// The Endpoints tab of a Data source (Story 2.9): the list, and the add and edit form with its `method-prefix`,
+// `parameters-table`, header rows, body template and the POST read-only confirmation. The catalogue is pinned, so the
+// copy that is not one of its canonical messages lives here (`post-readonly`, `list-empty`, `list-no-match`, `saved` and
+// `perm-denied` come from the catalogue).
+export const endpointLabels = {
+    tabsLabel: 'Data source sections',
+    tabSettings: 'Settings',
+    tabEndpoints: 'Endpoints',
+    pageTitle: 'Endpoints',
+    pageSubtitle: (name: string) =>
+        `The requests Blocks can select from ${name}. Saving does not send any request.`,
+    sourceFallback: 'this data source',
+    items: 'endpoints',
+    // The phrase of `list-empty` ("No endpoints yet. Add an endpoint to start.").
+    action: 'Add an endpoint',
+    add: '+ Add endpoint',
+    caption:
+        'Endpoints of this data source, with method, path, revision and last update',
+    tableRegion: 'Endpoints table',
+    toolbar: 'Endpoint tools',
+    search: 'Search endpoints',
+    searchPlaceholder: 'Search by path or method',
+    clearSearch: 'Clear search',
+    count: (matched: number, total: number) =>
+        `${matched} of ${total} ${total === 1 ? 'endpoint' : 'endpoints'}`,
+    columns: {
+        method: 'Method',
+        path: 'Path',
+        revision: 'Revision',
+        updated: 'Updated',
+    },
+    edit: (method: string, path: string) => `Edit ${method} ${path}`,
+    revisionValue: (n: number) => `r${n}`,
+    back: 'Back to Data sources',
+    missing: 'This data source no longer exists.',
+    // The form.
+    addTitle: 'Add endpoint',
+    editTitle: 'Edit endpoint',
+    formRegion: 'Endpoint',
+    request: 'Request',
+    endpoint: 'Endpoint',
+    endpointHelper:
+        'The method and the path, such as /api/v2/finance/revenue. The path is added to the data source base URL, and {name} marks a value that is filled in from a parameter.',
+    methodLabel: 'Method',
+    methodOptions: [
+        { value: 'GET', label: 'GET' },
+        { value: 'POST', label: 'POST' },
+    ] as { value: string; label: string }[],
+    pathLabel: 'Path',
+    pathPlaceholder: '/api/v2/finance/revenue',
+    parameters: 'Parameters',
+    parametersHelper:
+        'Each {name} in the path needs a parameter. A parameter that is not in the path is sent in the query string, or filled into the body template.',
+    parametersNone: 'No parameters.',
+    addParameter: '+ Add parameter',
+    headers: 'Headers',
+    headersHelper:
+        'Sent with this request, after the data source default headers. Credentials are added to the data source, not here.',
+    headersNone: 'No headers.',
+    addHeader: '+ Add header',
+    nameColumn: 'Name',
+    bindingColumn: 'Binding',
+    valueColumn: 'Value',
+    removeColumn: 'Remove',
+    paramName: (n: number) => `Parameter ${n} name`,
+    paramBinding: (n: number) => `Parameter ${n} binding`,
+    paramValue: (n: number) => `Parameter ${n} value`,
+    removeParam: (n: number) => `Remove parameter ${n}`,
+    paramRemoved: (n: number) => `Parameter ${n} removed.`,
+    headerName: (n: number) => `Header ${n} name`,
+    headerBinding: (n: number) => `Header ${n} binding`,
+    headerValue: (n: number) => `Header ${n} value`,
+    removeHeaderRow: (n: number) => `Remove header ${n}`,
+    headerRemoved: (n: number) => `Header ${n} removed.`,
+    removeRow: 'Remove',
+    bindings: {
+        fixed: 'Fixed value',
+        date_range_from: 'Date range: from',
+        date_range_to: 'Date range: to',
+        period_start: 'Block period: start',
+        period_end: 'Block period: end',
+    } as Record<string, string>,
+    boundPrefix: 'Filled in when fetched:',
+    boundHint: (text: string) => `Filled in when fetched: ${text}`,
+    body: 'Body template',
+    bodyHelper:
+        'JSON sent as the request body. Write a parameter as {"$param": "name"}, as a whole value. It cannot be written inside text or used as a key.',
+    bodyPlaceholder: '{ "from": { "$param": "from" } }',
+    postReadonlyBlocked:
+        'Save is unavailable until you confirm that this POST only reads data.',
+    riskTitle: 'Confirm a read-only POST',
+    riskDescription:
+        'Dashflow will send this POST to the data source whenever a block needs its data. Confirm only if the endpoint reads and never changes anything.',
+    riskConfirm: 'Confirm read-only',
+    save: 'Save',
+    saving: 'Saving…',
+    cancel: 'Cancel',
+    loadFailed: "We couldn't load this endpoint. Try again.",
+    endpointGone: 'This endpoint no longer exists. Go back to the list.',
+    discardTitle: 'Discard your changes?',
+    discardVerb: 'Discard',
+    discardObject: 'changes',
+    saveFailed: "We couldn't save this endpoint. Try again.",
+    throttled: 'Too many saves. Wait a minute, then try again.',
+    // Someone else saved first (409): the typed values stay.
+    conflict:
+        'This endpoint was changed by someone else. Your changes are still here. Review them, then save again to keep them, or reload to see the latest.',
+    reload: 'Reload latest',
+    reloaded: 'Showing the latest saved values.',
+    // Field errors by the server's reason; a reason without an entry shows the server's own message.
+    reasons: {
+        'method-not-allowed':
+            'Only GET and POST are allowed. Dashflow never sends a request that changes data.',
+        'path-required': 'Enter the path, starting with /.',
+        'path-too-long': 'The path is too long.',
+        'path-absolute':
+            'Enter a path such as /api/v2/revenue, not a full address. It is added to the data source base URL.',
+        'path-protocol-relative':
+            'Enter a path such as /api/v2/revenue, not a host. It is added to the data source base URL.',
+        'path-leading-slash': 'The path must start with /.',
+        'path-invalid-characters':
+            'The path cannot contain spaces, control characters or characters outside ASCII. Percent-encode them.',
+        'path-backslash': 'The path cannot contain a backslash.',
+        'path-query':
+            'Leave the query string out of the path. Add query values as parameters.',
+        'path-fragment': 'Leave the fragment (#) out of the path.',
+        'path-empty-segment':
+            'The path cannot have an empty segment (// or a trailing /).',
+        'path-dot-segment': 'The path cannot have a . or .. segment.',
+        'path-encoded-separator':
+            'The path cannot contain an encoded separator (%2f or %5c).',
+        'path-too-many-segments': 'The path has too many segments.',
+        'path-placeholder-invalid':
+            'A placeholder is a whole segment written {name}, starting with a letter and using letters, digits and _ only.',
+        'path-placeholder-duplicate': 'A placeholder is used more than once.',
+        'path-param-missing':
+            'Every {name} in the path needs a parameter. Add the missing one.',
+        'params-invalid': 'The parameters are not valid. Reload the page.',
+        'too-many-params': 'There are too many parameters.',
+        'param-name-invalid':
+            'A parameter name uses letters, digits and the characters _ . ~ - only.',
+        'param-name-duplicate': 'This parameter is already listed.',
+        'param-value-required': 'Enter a value.',
+        'param-value-invalid':
+            "A path value cannot be empty, '.', '..' or contain '/'. Other values cannot hold control characters.",
+        'param-value-too-long': 'This value is too long.',
+        'binding-invalid': 'Choose a binding.',
+        'binding-user-context-unavailable':
+            'Binding to user context is not available yet.',
+        'headers-invalid': 'The headers are not valid. Reload the page.',
+        'too-many-headers': 'There are too many headers.',
+        'header-name-invalid':
+            "A header name uses letters, digits and the characters ! # $ % & ' * + - . ^ _ ` | ~ only.",
+        'header-name-reserved':
+            'This header cannot be set on an endpoint. Credentials are added to the data source.',
+        'header-name-duplicate': 'This header is already listed.',
+        'header-value-invalid':
+            'A header value uses visible ASCII characters only, on one line. Remove line breaks and other special characters.',
+        'body-template-invalid': "The body template isn't valid JSON.",
+        'body-template-too-long': 'The body template is too long.',
+        'body-template-too-deep': 'The body template is nested too deeply.',
+        'body-template-not-allowed': 'Only a POST endpoint has a body.',
+        'body-template-param-invalid':
+            'A parameter is written {"$param": "name"}, alone in its object.',
+        'body-template-param-unknown':
+            'The body template uses a parameter that is not declared. Add it to the parameters.',
+        'body-template-interpolation':
+            'A parameter replaces a whole value only. It cannot be written inside text or used as a key.',
+        'post-readonly-required': 'A POST must be marked as a read-only query.',
+        'post-confirmation-required': 'Confirm that this POST only reads data.',
+    } as Record<string, string>,
+} as const;
+
 // The soft lock on the Data source form (Story 2.8). The banner (`draft-locked`) and the notice (`draft-taken-over`) come from
 // the catalogue, which is pinned; what it does not cover lives here, among it the notice for a holder whose changes were
 // not saved before the take-over.

@@ -69,6 +69,10 @@ Route::middleware(['auth'])->group(function () {
         Route::get('data-sources/{dataSource}/edit', fn (string $dataSource) => Inertia::render('admin/DataSourceForm', ['dataSourceId' => strtolower($dataSource)]))
             ->whereUuid('dataSource')
             ->name('admin.data-sources.edit');
+        // The Endpoints tab of a Data Source (Story 2.9): list, add and edit on one page.
+        Route::get('data-sources/{dataSource}/endpoints', fn (string $dataSource) => Inertia::render('admin/DataSourceEndpoints', ['dataSourceId' => strtolower($dataSource)]))
+            ->whereUuid('dataSource')
+            ->name('admin.data-sources.endpoints');
         Route::inertia('users', 'admin/Users')->name('admin.users.index');
         // The Groups view of User configuration (Story 1.23): same permission, mapped in ShellNavigation::ADMIN_PAGES.
         Route::inertia('users/groups', 'admin/UserGroups')->name('admin.users.groups');

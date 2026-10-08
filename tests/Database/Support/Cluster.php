@@ -252,6 +252,8 @@ final class Cluster
             'egress_grants' => self::seedEgressGrant($workspaceId),
             'data_sources' => self::seedDataSource($workspaceId),
             'secrets' => self::seedSecret($workspaceId),
+            'endpoints' => self::seedEndpoint($workspaceId),
+            'endpoint_revisions' => self::seedEndpointRevision($workspaceId),
             'operations' => self::seedOperation($workspaceId),
             'sync_runs' => self::seedSyncRun($workspaceId),
             default => null,
@@ -331,6 +333,37 @@ final class Cluster
             ->execute([$id, $workspaceId, $dataSourceId, $slot]);
 
         return $id;
+    }
+
+    /** An Endpoint of a Data Source with its revision 1 and the pointer (written in one transaction: the pointer's foreign key is deferred). Returns the Endpoint's ID. */
+    public static function seedEndpoint(string $workspaceId, ?string $dataSourceId = null, string $path = '/api/v2/finance/revenue'): string
+    {
+        return self::seedEndpointWithRevision($workspaceId, $dataSourceId, $path)[0];
+    }
+
+    /** The first revision of a new Endpoint of the Workspace. Returns the revision's ID. */
+    public static function seedEndpointRevision(string $workspaceId, ?string $dataSourceId = null, string $path = '/api/v2/finance/revenue'): string
+    {
+        return self::seedEndpointWithRevision($workspaceId, $dataSourceId, $path)[1];
+    }
+
+    /** @return array{0: string, 1: string} the Endpoint's ID and its revision 1's ID */
+    private static function seedEndpointWithRevision(string $workspaceId, ?string $dataSourceId, string $path): array
+    {
+        $id = (string) Str::uuid7();
+        $revisionId = (string) Str::uuid7();
+        $dataSourceId ??= self::seedDataSource($workspaceId);
+        $pdo = self::superuser();
+        $membership = (string) Str::uuid7();
+
+        $pdo->beginTransaction();
+        $pdo->prepare('INSERT INTO endpoints (id, workspace_id, data_source_id, revision, current_revision_id, created_by_membership_id, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $dataSourceId, $revisionId, $membership]);
+        $pdo->prepare("INSERT INTO endpoint_revisions (id, workspace_id, endpoint_id, revision, method, path_template, path_ast, params, headers, body_template, read_only_query, created_at, created_by_membership_id) VALUES (?, ?, ?, 1, 'GET', ?, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, NULL, false, now(), ?)")
+            ->execute([$revisionId, $workspaceId, $id, $path, $membership]);
+        $pdo->commit();
+
+        return [$id, $revisionId];
     }
 
     /** An Operation of the Workspace, started by a made-up membership (there is no foreign key across modules). */

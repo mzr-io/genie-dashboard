@@ -175,3 +175,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-8-prevent-overwriting-with-a-soft-lock.md`
   summary: Add the Reverb private-channel push (and its Echo client and channel auth) for the edit-lock flush request as a consumer of platform.edit_lock.flush_requested.
   evidence: The architecture names a realtime push with polling as the same-semantics fallback; only polling exists because no Reverb or Echo wiring is in the app.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-9-register-endpoints-on-a-data-source.md`
+  summary: Decide whether saving an Endpoint must honour the Data Source soft lock from Story 2.8.
+  evidence: ManageEndpoints::create and revise never check who holds the Data Source edit lock; the spec is silent, so two Admins can edit Endpoints and the Data Source form at once.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-9-register-endpoints-on-a-data-source.md`
+  summary: Add a value type to Endpoint parameters so a fixed value can be a number or boolean at a typed body position, and test concurrent revises with two connections.
+  evidence: Fixed values are stored as strings only; nothing renders a request yet, and the revise row lock is only tested sequentially.

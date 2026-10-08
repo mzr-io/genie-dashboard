@@ -44,8 +44,8 @@ it('gives app SELECT, INSERT and UPDATE on tenant tables and nothing else', func
             $privileges[$privilege] = Cluster::rows(Cluster::superuser(), 'select has_table_privilege(?, ?, ?) as p', ['app', "public.{$table}", $privilege])[0]['p'];
         }
 
-        // Append-only and relay-owned tables: app never updates them. `egress_grants` is the operator's: app only reads it.
-        $updatable = ! in_array($table, ['audit_events', 'outbox_events', 'outbox_consumptions', 'egress_grants'], true);
+        // Append-only and relay-owned tables: app never updates them. `egress_grants` is the operator's: app only reads it. `endpoint_revisions` is immutable (Story 2.9): app inserts and reads.
+        $updatable = ! in_array($table, ['audit_events', 'outbox_events', 'outbox_consumptions', 'egress_grants', 'endpoint_revisions'], true);
         $insertable = $table !== 'egress_grants';
 
         expect($privileges)->toBe([

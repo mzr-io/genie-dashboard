@@ -49,6 +49,11 @@ enum AuditAction: string
     case ConnectorDataSourceCreated = 'connector.data_source.created';
     case ConnectorDataSourceUpdated = 'connector.data_source.updated';
 
+    // Connector: Endpoints of a Data Source (Story 2.9). Ids, the method, revision numbers, counts and keyed hashes only.
+    case ConnectorEndpointCreated = 'connector.endpoint.created';
+    case ConnectorEndpointRevised = 'connector.endpoint.revised';
+    case ConnectorEndpointReadOnlyFlagSet = 'connector.endpoint.read_only_flag_set';
+
     // Connector: a credential set, replaced or removed (Story 2.4); the value is never part of the event, only its keyed hash.
     case ConnectorDataSourceSecretChanged = 'connector.data_source.secret_changed';
 

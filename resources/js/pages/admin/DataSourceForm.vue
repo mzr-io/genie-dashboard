@@ -13,6 +13,7 @@ import {
 import { useI18n } from 'vue-i18n';
 import Banner from '@/components/Banner.vue';
 import BlockedReason from '@/components/BlockedReason.vue';
+import DataSourceTabs from '@/components/DataSourceTabs.vue';
 import FetchErrorCard from '@/components/FetchErrorCard.vue';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import FormField from '@/components/FormField.vue';
@@ -1810,6 +1811,12 @@ const ceilingHelper = (value: number | null): string | undefined =>
                 >{{ labels.back }}</Link
             >
         </PageHeader>
+
+        <DataSourceTabs
+            v-if="editing && dataSourceId"
+            :data-source-id="dataSourceId"
+            current="settings"
+        />
 
         <section
             v-if="lockNotice"

@@ -62,6 +62,7 @@ final class ShellNavigation
         'admin.settings.host-allowlist' => Permission::SettingsManage,
         'admin.data-sources.create' => Permission::DataSourcesManage,
         'admin.data-sources.edit' => Permission::DataSourcesManage,
+        'admin.data-sources.endpoints' => Permission::DataSourcesManage,
     ];
 
     /**
@@ -93,6 +94,10 @@ final class ShellNavigation
         'api.admin.data-sources.test-connection' => Permission::DataSourcesManage,
         'api.admin.data-sources.show' => Permission::DataSourcesManage,
         'api.admin.data-sources.update' => Permission::DataSourcesManage,
+        'api.admin.data-sources.endpoints.index' => Permission::DataSourcesManage,
+        'api.admin.data-sources.endpoints.store' => Permission::DataSourcesManage,
+        'api.admin.data-sources.endpoints.show' => Permission::DataSourcesManage,
+        'api.admin.data-sources.endpoints.update' => Permission::DataSourcesManage,
         'api.admin.data-sources.lock.acquire' => Permission::DataSourcesManage,
         'api.admin.data-sources.lock.heartbeat' => Permission::DataSourcesManage,
         'api.admin.data-sources.lock.release' => Permission::DataSourcesManage,

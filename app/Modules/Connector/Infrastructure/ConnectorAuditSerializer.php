@@ -5,7 +5,7 @@ namespace App\Modules\Connector\Infrastructure;
 use App\Platform\Audit\AuditField;
 use App\Platform\Audit\AuditSerializer;
 
-/** Connector's audit allowlist: the entry and Data Source IDs, host, scheme, port, block reason, grant ID and CIDR in the clear (they are not personal data), no emails, never a resolved address; a grant's free-text reason is hashed; a credential change carries the slot kind, key version and a keyed hash of the value, never the value. */
+/** Connector's audit allowlist: the entry and Data Source IDs, host, scheme, port, block reason, grant ID and CIDR in the clear (they are not personal data), no emails, never a resolved address; a grant's free-text reason is hashed; an Endpoint carries its ids, method, counts and keyed hashes of the path and bindings; a credential change carries the slot kind, key version and a keyed hash of the value, never the value. */
 final class ConnectorAuditSerializer implements AuditSerializer
 {
     public function module(): string
@@ -42,6 +42,13 @@ final class ConnectorAuditSerializer implements AuditSerializer
             'oauth_token_url' => AuditField::Hashed,
             'oauth_client_id' => AuditField::Hashed,
             'oauth_scope' => AuditField::Hashed,
+            // Endpoints (Story 2.9): ids, the method, counts and the flag in the clear; the path and the bindings (parameters, headers, body template) as keyed hashes.
+            'endpoint_id' => AuditField::Id,
+            'method' => AuditField::Enum,
+            'param_count' => AuditField::Count,
+            'read_only_query' => AuditField::Enum,
+            'path' => AuditField::Hashed,
+            'bindings' => AuditField::Hashed,
             'slot' => AuditField::Enum,
             'purpose' => AuditField::Enum,
             'key_version' => AuditField::Count,
