@@ -69,6 +69,9 @@ enum AuditAction: string
     case ConnectorEgressGrantCreated = 'connector.egress_grant.created';
     case ConnectorEgressGrantRevoked = 'connector.egress_grant.revoked';
 
+    // Ingestion: a sync target kept a new good response (Story 2.14). An outbox event only: IDs and sequence numbers, never the body.
+    case IngestionPayloadChanged = 'ingestion.payload.changed';
+
     // Platform: operator actions mirrored into the Workspace audit log.
     case PlatformWorkspaceCreated = 'platform.workspace.created';
 

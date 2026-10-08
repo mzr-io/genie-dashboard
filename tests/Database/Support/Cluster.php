@@ -258,6 +258,9 @@ final class Cluster
             'endpoint_revisions' => self::seedEndpointRevision($workspaceId),
             'operations' => self::seedOperation($workspaceId),
             'sync_runs' => self::seedSyncRun($workspaceId),
+            'sync_targets' => self::seedSyncTarget($workspaceId),
+            'raw_bodies' => self::seedRawBody($workspaceId),
+            'raw_observations' => self::seedRawObservation($workspaceId),
             default => null,
         };
     }
@@ -403,6 +406,50 @@ final class Cluster
         $id = (string) Str::uuid7();
         self::superuser()->prepare("INSERT INTO sync_runs (id, workspace_id, kind, url_template, status, started_at, created_at, updated_at) VALUES (?, ?, 'connection_test', 'https://api.example.com/v1', 'succeeded', {$startedAt}, now(), now())")
             ->execute([$id, $workspaceId]);
+
+        return $id;
+    }
+
+    /**
+     * A sync target of the Workspace (Story 2.14), registered for made-up Connector ids (no foreign key crosses a module). The group is the
+     * target itself, as until Story 2.20.
+     *
+     * @param  array<string, mixed>  $columns  overrides, by column name
+     */
+    public static function seedSyncTarget(string $workspaceId, array $columns = []): string
+    {
+        $id = (string) Str::uuid7();
+        $row = $columns + [
+            'id' => $id, 'workspace_id' => $workspaceId, 'fetch_key' => 'fk1:'.hash('sha256', $id), 'data_source_id' => (string) Str::uuid7(),
+            'endpoint_id' => (string) Str::uuid7(), 'endpoint_revision_id' => (string) Str::uuid7(), 'data_source_revision' => 1,
+            'params' => '{}', 'sync_group_id' => $id, 'refresh_interval_seconds' => null, 'next_due_at' => null,
+        ] + ['created_at' => 'now', 'updated_at' => 'now'];
+
+        $names = array_keys($row);
+        self::superuser()->prepare('INSERT INTO sync_targets ('.implode(', ', $names).') VALUES ('.implode(', ', array_map(fn (string $n): string => $n === 'params' ? '?::jsonb' : '?', $names)).')')
+            ->execute(array_values($row));
+
+        return (string) $row['id'];
+    }
+
+    /** A stored body (`{}`) of a made-up target of the Workspace. */
+    public static function seedRawBody(string $workspaceId, ?string $targetId = null, string $body = '{}'): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO raw_bodies (id, workspace_id, sync_target_id, content_hash, size_bytes, body, created_at) VALUES (?, ?, ?, ?, ?, decode(?, 'hex'), now())")
+            ->execute([$id, $workspaceId, $targetId ?? (string) Str::uuid7(), hash('sha256', $body), strlen($body), bin2hex($body)]);
+
+        return $id;
+    }
+
+    /** An observation (and the body it names) of the Workspace, observed now (so it lands in the current month's partition). */
+    public static function seedRawObservation(string $workspaceId, string $observedAt = 'now()'): string
+    {
+        $target = (string) Str::uuid7();
+        $payload = self::seedRawBody($workspaceId, $target);
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO raw_observations (id, workspace_id, sync_target_id, payload_id, seq, content_hash, size_bytes, dispatch_seq, observed_at) VALUES (?, ?, ?, ?, 1, ?, 2, 1, {$observedAt})")
+            ->execute([$id, $workspaceId, $target, $payload, hash('sha256', '{}')]);
 
         return $id;
     }

@@ -255,6 +255,7 @@ describe('Endpoint list', () => {
             labels.columns.path,
             labels.columns.revision,
             labels.dataColumn,
+            labels.syncColumn,
             labels.columns.updated,
             labels.testActions,
         ]);

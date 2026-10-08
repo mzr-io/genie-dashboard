@@ -45,3 +45,79 @@ it('resolves user context without the digest key', function () {
 
     expect($source)->toContain('assertReadable()')->and($source)->not->toContain('assertAvailable')->and($source)->not->toContain('blindIndex');
 });
+
+// Story 2.14: a pasted, tested or fetched-as-user sample has no sync target and can never enter the raw tier. Only RawStore writes
+// `raw_bodies` and `raw_observations`, and only Ingestion's scheduled run calls it.
+function withoutComments(string $source): string
+{
+    $out = '';
+
+    foreach (token_get_all($source) as $token) {
+        $out .= is_array($token) ? (in_array($token[0], [T_COMMENT, T_DOC_COMMENT], true) ? '' : $token[1]) : $token;
+    }
+
+    return $out;
+}
+
+it('keeps every sample path away from the raw tier', function () {
+    $app = dirname(__DIR__, 2).'/app';
+    $violations = [];
+
+    foreach (new RecursiveIteratorIterator(new RecursiveDirectoryIterator($app, FilesystemIterator::SKIP_DOTS)) as $file) {
+        if (! $file->isFile() || $file->getExtension() !== 'php') {
+            continue;
+        }
+
+        $path = $file->getPathname();
+        $code = withoutComments((string) file_get_contents($path));
+        $inRawStore = str_contains($path, '/Modules/RawStore/');
+        $inIngestion = str_contains($path, '/Modules/Ingestion/');
+        $inProvider = str_ends_with($path, 'Providers/AppServiceProvider.php');
+
+        // The tables are named only inside RawStore (and by the command that prepares the monthly partitions).
+        if (! $inRawStore && ! str_ends_with($path, 'Console/Commands/EnsurePartitionsCommand.php') && preg_match('/\braw_(?:bodies|observations)\b/', $code) === 1) {
+            $violations[] = "{$path} names a raw table outside RawStore";
+        }
+
+        // The contract is called only by Ingestion (and bound in the provider).
+        if (! $inRawStore && ! $inIngestion && ! $inProvider && str_contains($code, 'App\Modules\RawStore')) {
+            $violations[] = "{$path} uses RawStore";
+        }
+    }
+
+    expect($violations)->toBe([]);
+
+    // The sample code of Connector says nothing of the raw tier at all.
+    foreach (['Application/RunSampleFetch.php', 'Application/RunFetchAsUser.php', 'Application/StartSampleFetch.php', 'Application/ReadSample.php', 'Infrastructure/SampleBlobStore.php'] as $path) {
+        expect(withoutComments(sampleSource($path)))->not->toMatch('/RawStore|raw_bodies|raw_observations|sync_targets/');
+    }
+});
+
+it('hands the scheduled body to the raw tier and nowhere else, with logs of codes and counts only', function () {
+    $source = (string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/Ingestion/Application/FetchSyncTarget.php');
+
+    expect(substr_count($source, '$result->body'))->toBe(1)
+        ->and($source)->toMatch('/raw->put\([^;]*\$result->body/s')
+        ->and($source)->not->toMatch('/Log::\w+\([^;]*(?:body|values|params|\$result|\$target|url)/s')
+        ->and($source)->not->toContain('json_decode');
+
+    $fetcher = (string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/Connector/Application/FetchEndpoint.php');
+    expect(substr_count($fetcher, '$response->body'))->toBe(1)
+        ->and($fetcher)->not->toMatch('/Log::\w+\([^;]*(?:body|values|\$request|url)/s')
+        ->and($fetcher)->not->toMatch('/\$response->(?:headers|json\(\))/');
+
+    // RawStore keeps bytes: hex in, hex out, never decoded and never jsonb.
+    $store = withoutComments((string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/RawStore/Infrastructure/PostgresRawStore.php'));
+    expect($store)->not->toMatch('/jsonb|json_decode|json_encode|Log::/')->and($store)->toContain("decode(?, 'hex')");
+});
+
+it('runs the dispatcher on the system connection with a fixed batch and SKIP LOCKED, and the fetch job on the connector queue', function () {
+    $dispatcher = (string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/Ingestion/Application/DispatchDueSyncs.php');
+    $job = (string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/Ingestion/Application/FetchJob.php');
+    $tick = (string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/Ingestion/Application/DispatchDueSyncsJob.php');
+
+    expect($dispatcher)->toContain("CONNECTION = 'system'")->toContain('for update skip locked')->toContain('const BATCH')->not->toContain('workspace_isolation')
+        ->and($job)->toContain("QUEUE = 'fetch-scheduled'")->toContain('implements ShouldQueue, WorkspaceScopedJob')->toContain('RunsInWorkspace')
+        ->and($job)->toContain("'sync_targets' => [\$this->syncGroupId]")
+        ->and($tick)->toContain("onQueue('maintenance')");
+});

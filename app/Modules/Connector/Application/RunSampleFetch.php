@@ -3,34 +3,20 @@
 namespace App\Modules\Connector\Application;
 
 use App\Modules\Access\Contracts\AttributesUnavailable;
-use App\Modules\Connector\Contracts\AuthFailed;
 use App\Modules\Connector\Contracts\ConnectionTestCode;
 use App\Modules\Connector\Contracts\DataSourceNotFound;
 use App\Modules\Connector\Contracts\DataSources;
-use App\Modules\Connector\Contracts\EgressTransportFailed;
 use App\Modules\Connector\Contracts\Endpoint;
 use App\Modules\Connector\Contracts\EndpointNotFound;
 use App\Modules\Connector\Contracts\Endpoints;
 use App\Modules\Connector\Contracts\FetchesAsUser;
 use App\Modules\Connector\Contracts\FetchTransport;
 use App\Modules\Connector\Contracts\InvalidDataSource;
-use App\Modules\Connector\Contracts\KeyringMismatch;
-use App\Modules\Connector\Contracts\KeyringUnavailable;
-use App\Modules\Connector\Contracts\NotJsonResponse;
-use App\Modules\Connector\Contracts\PageFailed;
-use App\Modules\Connector\Contracts\PageLimitExceeded;
-use App\Modules\Connector\Contracts\PaginationFailed;
-use App\Modules\Connector\Contracts\ResponseLimitExceeded;
 use App\Modules\Connector\Contracts\SampleBlobUnavailable;
 use App\Modules\Connector\Contracts\SampleFetches;
-use App\Modules\Connector\Contracts\SecretMissing;
-use App\Modules\Connector\Contracts\SecretRefused;
 use App\Modules\Connector\Contracts\SecretVault;
-use App\Modules\Connector\Contracts\SsrfBlocked;
-use App\Modules\Connector\Contracts\TokenRequestFailed;
 use App\Modules\Connector\Contracts\UserContextUnresolved;
 use App\Modules\Connector\Infrastructure\SampleBlobStore;
-use App\Platform\Json\InvalidLimitSetting;
 use App\Platform\Operations\Operation;
 use App\Platform\Operations\OperationHandler;
 use App\Platform\Operations\OperationOutcome;
@@ -73,6 +59,7 @@ final class RunSampleFetch implements OperationHandler
         private readonly SampleBlobStore $blobs,
         private readonly RecordSyncRun $runs,
         private readonly RequestContext $context,
+        private readonly EndpointFetchLadder $ladder,
     ) {}
 
     public function handle(Operation $operation, array $input): OperationOutcome
@@ -115,78 +102,68 @@ final class RunSampleFetch implements OperationHandler
         $began = hrtime(true);
 
         try {
-            try {
-                if ($dataSourceId === null || $endpointId === null || $tested === null) {
-                    throw new EndpointNotFound;
+            if ($dataSourceId === null || $endpointId === null || $tested === null) {
+                throw new EndpointNotFound;
+            }
+
+            $source = $this->sources->find($operation->workspaceId, $dataSourceId);
+            $endpoint = $this->endpoints->find($operation->workspaceId, $dataSourceId, $endpointId);
+            $host = $source->host;
+            $urlTemplate = rtrim($source->baseUrl, '/').$endpoint->pathTemplate;
+
+            if ($endpoint->revision !== $tested) {
+                // The Endpoint changed before the request was made: it would test a revision nobody asked for. Nothing is sent.
+                return $this->staleOutcome($operation, $requestId, $host, $endpoint->revision);
+            }
+
+            if ($endpoint->method === 'POST' && ! $endpoint->readOnlyQuery) {
+                $code = ConnectionTestCode::FetchFailed;
+                $reason = 'not_read_only';
+            } elseif ($bind === null && $endpoint->requiresUserContext) {
+                $code = ConnectionTestCode::FetchFailed;
+                $reason = 'user_context_required';
+            } else {
+                if ($bind !== null) {
+                    $values = $bind($operation, $endpoint, $values);
                 }
 
-                $source = $this->sources->find($operation->workspaceId, $dataSourceId);
-                $endpoint = $this->endpoints->find($operation->workspaceId, $dataSourceId, $endpointId);
-                $host = $source->host;
-                $urlTemplate = rtrim($source->baseUrl, '/').$endpoint->pathTemplate;
+                $request = $this->renderer->request($operation->workspaceId, $source, $endpoint, $values, $this->vault->status($operation->workspaceId, $source->id), $operation->id);
+                $urlTemplate = $request->urlTemplate;
+                $began = hrtime(true);
+                $response = $this->transport->fetch($request);
 
-                if ($endpoint->revision !== $tested) {
-                    // The Endpoint changed before the request was made: it would test a revision nobody asked for. Nothing is sent.
-                    return $this->staleOutcome($operation, $requestId, $host, $endpoint->revision);
+                if ($request->pagination->enabled()) {
+                    $page = $response->page;
+                    $pages = $response->pages;
                 }
 
-                if ($endpoint->method === 'POST' && ! $endpoint->readOnlyQuery) {
+                $status = $response->status;
+                $latencyMs = $response->latencyMs;
+                $bytes = $sizeBytes = $response->bytes;
+
+                // The Endpoint may have been revised while the request ran: whatever came back is for a superseded revision.
+                $current = $this->endpoints->find($operation->workspaceId, $dataSourceId, $endpointId);
+
+                if ($current->revision !== $tested) {
+                    $stale = $current;
+                } elseif (! $response->successful()) {
                     $code = ConnectionTestCode::FetchFailed;
-                    $reason = 'not_read_only';
-                } elseif ($bind === null && $endpoint->requiresUserContext) {
-                    $code = ConnectionTestCode::FetchFailed;
-                    $reason = 'user_context_required';
+                    $reason = 'http_'.$status;
                 } else {
-                    if ($bind !== null) {
-                        $values = $bind($operation, $endpoint, $values);
-                    }
+                    // A 2xx answer must be JSON that parses, losslessly; the decoded value is dropped, the text is what is kept.
+                    $response->assertJson();
+                    $this->blobs->put(
+                        $operation->workspaceId, $operation->id, $operation->requesterMembershipId, $endpoint->id, $tested,
+                        $response->body, $this->lifetime($operation),
+                    );
 
-                    $request = $this->renderer->request($operation->workspaceId, $source, $endpoint, $values, $this->vault->status($operation->workspaceId, $source->id), $operation->id);
-                    $urlTemplate = $request->urlTemplate;
-                    $began = hrtime(true);
-                    $response = $this->transport->fetch($request);
+                    // Revised between the check and the store: drop what was just kept.
+                    $after = $this->endpoints->find($operation->workspaceId, $dataSourceId, $endpointId);
 
-                    if ($request->pagination->enabled()) {
-                        $page = $response->page;
-                        $pages = $response->pages;
-                    }
-
-                    $status = $response->status;
-                    $latencyMs = $response->latencyMs;
-                    $bytes = $sizeBytes = $response->bytes;
-
-                    // The Endpoint may have been revised while the request ran: whatever came back is for a superseded revision.
-                    $current = $this->endpoints->find($operation->workspaceId, $dataSourceId, $endpointId);
-
-                    if ($current->revision !== $tested) {
-                        $stale = $current;
-                    } elseif (! $response->successful()) {
-                        $code = ConnectionTestCode::FetchFailed;
-                        $reason = 'http_'.$status;
-                    } else {
-                        // A 2xx answer must be JSON that parses, losslessly; the decoded value is dropped, the text is what is kept.
-                        $response->assertJson();
-                        $this->blobs->put(
-                            $operation->workspaceId, $operation->id, $operation->requesterMembershipId, $endpoint->id, $tested,
-                            $response->body, $this->lifetime($operation),
-                        );
-
-                        // Revised between the check and the store: drop what was just kept.
-                        $after = $this->endpoints->find($operation->workspaceId, $dataSourceId, $endpointId);
-
-                        if ($after->revision !== $tested) {
-                            $stale = $after;
-                        }
+                    if ($after->revision !== $tested) {
+                        $stale = $after;
                     }
                 }
-            } catch (PageFailed $e) {
-                // One page of a paged run failed: the whole fetch failed at that page. What it raised is judged as an unpaged call's would be.
-                $page = $e->page;
-                $pages = $e->pages;
-                // The time the run took up to the failure; a limit cause (response-too-large) also brings its sizes through the ladder below.
-                $latencyMs = $this->elapsed($began);
-
-                throw $e->cause;
             }
         } catch (AttributesUnavailable) {
             // A member's attribute cannot be opened (the `data` key is unusable): an operator problem, nothing was sent.
@@ -208,65 +185,18 @@ final class RunSampleFetch implements OperationHandler
             $code = ConnectionTestCode::FetchFailed;
             $reason = 'blob_unavailable';
             Log::error('connector.sample_fetch.blob_unavailable', ['workspace_id' => $operation->workspaceId, 'operation_id' => $operation->id, 'reason' => $e->reason]);
-        } catch (InvalidLimitSetting $e) {
-            $code = ConnectionTestCode::FetchFailed;
-            $reason = 'misconfigured';
-            Log::error('connector.sample_fetch.limit_setting_invalid', ['workspace_id' => $operation->workspaceId, 'operation_id' => $operation->id, 'setting' => $e->setting]);
-        } catch (AuthFailed $e) {
-            $latencyMs = $this->elapsed($began);
-            $code = ConnectionTestCode::AuthFailed;
-            $reason = $e->code()->value.':'.$e->reason;
-        } catch (TokenRequestFailed $e) {
-            $latencyMs = $this->elapsed($began);
-            $code = ConnectionTestCode::FetchFailed;
-            $reason = 'oauth_'.$e->reason;
-        } catch (PageLimitExceeded $e) {
-            // The run would need a page beyond the cap: nothing is kept and nothing is truncated.
-            $latencyMs = $this->elapsed($began);
-            $code = ConnectionTestCode::TooManyPages;
-            $reason = $e->code()->value;
-        } catch (PaginationFailed $e) {
-            $latencyMs = $this->elapsed($began);
-            $code = ConnectionTestCode::FetchFailed;
-            $reason = 'pagination_'.$e->reason;
-        } catch (NotJsonResponse $e) {
-            $code = ConnectionTestCode::NotJson;
-            $reason = $e->code()->value.':'.$e->reason;
-        } catch (ResponseLimitExceeded $e) {
-            // The limit was passed while reading: nothing is kept, and no truncated sample exists to show.
-            $latencyMs = $this->elapsed($began);
-            $status = $e->status;
-            $bytes = $sizeBytes = $e->bytesRead;
-            $limitBytes = $e->limit;
-            $code = ConnectionTestCode::ResponseTooLarge;
-            $reason = $e->code()->value;
-        } catch (SsrfBlocked $e) {
-            $code = ConnectionTestCode::forEgress($e->reason);
-            $reason = $e->reason->value;
-        } catch (EgressTransportFailed $e) {
-            $latencyMs = $this->elapsed($began);
-            $code = ConnectionTestCode::FetchFailed;
-            $reason = match (true) {
-                $e->errno === 28 => 'timeout',
-                in_array($e->errno, RunConnectionTest::TLS_ERRORS, true) => 'tls',
-                default => 'transport',
-            };
-        } catch (KeyringUnavailable) {
-            $code = ConnectionTestCode::FetchFailed;
-            $reason = 'keyring_unavailable';
-        } catch (KeyringMismatch) {
-            $code = ConnectionTestCode::FetchFailed;
-            $reason = 'keyring_mismatch';
-        } catch (SecretMissing) {
-            $code = ConnectionTestCode::FetchFailed;
-            $reason = 'secret_missing';
-        } catch (SecretRefused) {
-            $code = ConnectionTestCode::FetchFailed;
-            $reason = 'secret_refused';
         } catch (Throwable $e) {
-            $code = ConnectionTestCode::FetchFailed;
-            $reason = 'error';
-            Log::error('connector.sample_fetch.error', ['workspace_id' => $operation->workspaceId, 'operation_id' => $operation->id, 'exception' => $e::class]);
+            // The guard, transport, credential, limit and JSON failures of the shared ladder; an unknown one is `fetch-failed` (`error`).
+            $failure = $this->ladder->classify($e, $began, ['workspace_id' => $operation->workspaceId, 'operation_id' => $operation->id]);
+            $code = $failure->code;
+            $reason = $failure->reason;
+            $latencyMs = $failure->latencyMs ?? $latencyMs;
+            $status = $failure->status ?? $status;
+            $bytes = $failure->bytes ?? $bytes;
+            $sizeBytes = $failure->bytes ?? $sizeBytes;
+            $limitBytes = $failure->limitBytes ?? $limitBytes;
+            $page = $failure->page ?? $page;
+            $pages = $failure->pages ?? $pages;
         }
 
         $ok = $code === null && $stale === null;
@@ -365,10 +295,5 @@ final class RunSampleFetch implements OperationHandler
     private function lifetime(Operation $operation): int
     {
         return max(1, CarbonImmutable::parse($operation->expiresAt)->getTimestamp() - CarbonImmutable::now()->getTimestamp());
-    }
-
-    private function elapsed(int $began): int
-    {
-        return (int) round((hrtime(true) - $began) / 1_000_000);
     }
 }

@@ -12,6 +12,7 @@ use App\Modules\Connector\Contracts\EndpointRevisionConflict;
 use App\Modules\Connector\Contracts\Endpoints;
 use App\Platform\Audit\Audit;
 use App\Platform\Audit\AuditAction;
+use App\Platform\Outbox\Outbox;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -33,13 +34,14 @@ final class ManageEndpoints implements Endpoints
 {
     private const STAMP = "'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'";
 
-    private const SELECT = 'SELECT e.id, e.data_source_id, e.revision, e.current_revision_id, r.method, r.path_template, r.path_ast, r.params, r.headers, r.body_template, r.read_only_query, r.requires_user_context, r.scope_by_caller, '
+    private const SELECT = 'SELECT e.id, e.data_source_id, e.revision, e.current_revision_id, r.method, r.path_template, r.path_ast, r.params, r.headers, r.body_template, r.read_only_query, r.requires_user_context, r.scope_by_caller, r.test_values, '
         .'to_char(e.created_at, '.self::STAMP.') AS created, to_char(e.updated_at, '.self::STAMP.') AS updated '
         .'FROM endpoints e JOIN endpoint_revisions r ON r.workspace_id = e.workspace_id AND r.id = e.current_revision_id';
 
     public function __construct(
         private readonly WorkspaceTransaction $transactions,
         private readonly Audit $audit,
+        private readonly Outbox $outbox,
     ) {}
 
     public function list(string $workspaceId, string $dataSourceId, ?string $search): EndpointPage
@@ -98,6 +100,7 @@ final class ManageEndpoints implements Endpoints
                 subject: 'endpoint:'.$id,
                 actor: $actor->membershipId,
             );
+            $this->emit(AuditAction::ConnectorEndpointCreated, $created, $actor);
 
             if ($created->readOnlyQuery) {
                 $this->auditFlag($actor, $created);
@@ -136,6 +139,7 @@ final class ManageEndpoints implements Endpoints
                 subject: 'endpoint:'.$after->id,
                 actor: $actor->membershipId,
             );
+            $this->emit(AuditAction::ConnectorEndpointRevised, $after, $actor);
 
             if ($after->readOnlyQuery && ! $before->readOnlyQuery) {
                 $this->auditFlag($actor, $after);
@@ -145,11 +149,25 @@ final class ManageEndpoints implements Endpoints
         });
     }
 
+    /**
+     * The outbox event of a save (Story 2.14), in the transaction of the save: Ingestion registers the sync target of the new revision from
+     * it. IDs and revision numbers only, never a path, a parameter, a value or a header.
+     */
+    private function emit(AuditAction $type, Endpoint $endpoint, DataSourceActor $actor): void
+    {
+        $this->outbox->emit($type, 'endpoint:'.$endpoint->id, [
+            'data_source_id' => $endpoint->dataSourceId,
+            'endpoint_id' => $endpoint->id,
+            'endpoint_revision_id' => $endpoint->revisionId,
+            'revision' => $endpoint->revision,
+        ], actor: $actor->membershipId);
+    }
+
     private function insertRevision(DataSourceActor $actor, string $endpointId, string $revisionId, int $number, EndpointInput $input): void
     {
         DB::insert(
-            'insert into endpoint_revisions (id, workspace_id, endpoint_id, revision, method, path_template, path_ast, params, headers, body_template, read_only_query, requires_user_context, scope_by_caller, created_at, created_by_membership_id) '
-            .'values (?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?::boolean, ?::boolean, ?::boolean, ?, ?)',
+            'insert into endpoint_revisions (id, workspace_id, endpoint_id, revision, method, path_template, path_ast, params, headers, body_template, read_only_query, requires_user_context, scope_by_caller, test_values, created_at, created_by_membership_id) '
+            .'values (?, ?, ?, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?::jsonb, ?::boolean, ?::boolean, ?::boolean, ?::jsonb, ?, ?)',
             [
                 $revisionId, $actor->workspaceId, $endpointId, $number, $input->method, $input->path->template,
                 json_encode($input->path->ast, JSON_THROW_ON_ERROR),
@@ -159,6 +177,7 @@ final class ManageEndpoints implements Endpoints
                 $input->readOnlyQuery ? 'true' : 'false',
                 // Derived here, never client-supplied: the validator has already refused a scope flag without a user binding.
                 $input->requiresUserContext() ? 'true' : 'false', $input->scopeByCaller ? 'true' : 'false',
+                json_encode($input->testValues === [] ? new \stdClass : $input->testValues, JSON_THROW_ON_ERROR),
                 now(), $actor->membershipId,
             ],
         );
@@ -246,13 +265,14 @@ final class ManageEndpoints implements Endpoints
                 array_map(fn (array $p): array => [$p['name'], $p['binding'], $p['value']], $params),
                 array_map(fn (array $h): array => [strtolower($h['name']), $h['binding'], $h['value']], $headers),
                 $endpoint->bodyTemplate,
+                $endpoint->testValues,
             ], JSON_THROW_ON_ERROR),
         ];
     }
 
     private function endpoint(object $row): Endpoint
     {
-        /** @var object{id: string, data_source_id: string, revision: int|string, current_revision_id: string, method: string, path_template: string, path_ast: string, params: string, headers: string, body_template: string|null, read_only_query: bool|string|int, requires_user_context: bool|string|int, scope_by_caller: bool|string|int, created: string, updated: string} $row */
+        /** @var object{id: string, data_source_id: string, revision: int|string, current_revision_id: string, method: string, path_template: string, path_ast: string, params: string, headers: string, body_template: string|null, read_only_query: bool|string|int, requires_user_context: bool|string|int, scope_by_caller: bool|string|int, test_values: string, created: string, updated: string} $row */
         $params = [];
 
         foreach ($this->asList(json_decode($row->params, true)) as $p) {
@@ -277,6 +297,16 @@ final class ManageEndpoints implements Endpoints
             }
         }
 
+        $testValues = [];
+
+        $decoded = json_decode($row->test_values, true);
+
+        foreach (is_array($decoded) ? $decoded : [] as $name => $date) {
+            if (is_string($date)) {
+                $testValues[(string) $name] = $date;
+            }
+        }
+
         return new Endpoint(
             strtolower($row->id),
             strtolower($row->data_source_id),
@@ -293,6 +323,7 @@ final class ManageEndpoints implements Endpoints
             $row->updated,
             filter_var($row->requires_user_context, FILTER_VALIDATE_BOOLEAN),
             filter_var($row->scope_by_caller, FILTER_VALIDATE_BOOLEAN),
+            $testValues,
         );
     }
 

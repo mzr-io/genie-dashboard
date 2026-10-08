@@ -35,6 +35,7 @@ use App\Modules\Connector\Contracts\SampleFetches;
 use App\Modules\Connector\Contracts\SampleFetchThrottled;
 use App\Modules\Connector\Contracts\SamplePreviewDenied;
 use App\Modules\Connector\Contracts\Samples;
+use App\Modules\Ingestion\Contracts\SyncStatuses;
 use App\Platform\Contracts\ErrorCode as PlatformErrorCode;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Http\JsonResponse;
@@ -62,6 +63,7 @@ final class EndpointController extends Controller
         private readonly MemberDirectory $directory,
         private readonly MembershipPermissions $permissions,
         private readonly DataSources $sources,
+        private readonly SyncStatuses $syncStatuses,
     ) {}
 
     public function index(ListEndpointsRequest $request, string $dataSource): JsonResponse
@@ -72,8 +74,11 @@ final class EndpointController extends Controller
             abort(404);
         }
 
+        $workspaceId = $this->workspaceId($request);
+        $statuses = $this->syncStatuses->forEndpoints($workspaceId, array_map(fn (Endpoint $row): string => $row->id, $page->rows));
+
         return response()->json([
-            'data' => array_map(fn (Endpoint $row): array => (new EndpointResource($row))->resolve($request), $page->rows),
+            'data' => array_map(fn (Endpoint $row): array => (new EndpointResource($row))->withSync($statuses[$row->id] ?? null)->resolve($request), $page->rows),
             'meta' => ['total' => $page->total, 'matched' => $page->matched],
         ], 200, ['Cache-Control' => self::NO_STORE]);
     }
@@ -108,7 +113,7 @@ final class EndpointController extends Controller
             abort(404);
         } catch (EndpointRevisionConflict $e) {
             return AdminApiError::json($request, ErrorCode::RevisionConflict->value, 409, 'This endpoint was changed by someone else.', extra: [
-                'current' => ['data' => (new EndpointResource($e->current))->resolve($request)],
+                'current' => ['data' => $this->resource($request, $e->current)],
             ]);
         }
 
@@ -239,7 +244,19 @@ final class EndpointController extends Controller
 
     private function one(Request $request, Endpoint $endpoint, int $status): JsonResponse
     {
-        return response()->json(['data' => (new EndpointResource($endpoint))->resolve($request)], $status, ['Cache-Control' => self::NO_STORE]);
+        return response()->json(['data' => $this->resource($request, $endpoint)], $status, ['Cache-Control' => self::NO_STORE]);
+    }
+
+    /**
+     * One Endpoint with its scheduled-fetch status (Story 2.14), composed here from Ingestion's contract: Connector cannot call Ingestion.
+     *
+     * @return array<string, mixed>
+     */
+    private function resource(Request $request, Endpoint $endpoint): array
+    {
+        $statuses = $this->syncStatuses->forEndpoints($this->workspaceId($request), [$endpoint->id]);
+
+        return (new EndpointResource($endpoint))->withSync($statuses[$endpoint->id] ?? null)->resolve($request);
     }
 
     /** The Admin's own active membership in the session's Workspace; the `admin` middleware has proven it is an active Admin one. */

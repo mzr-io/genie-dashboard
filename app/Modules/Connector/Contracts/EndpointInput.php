@@ -14,6 +14,9 @@ final readonly class EndpointInput
 
     public const BINDINGS = ['fixed', 'date_range_from', 'date_range_to', 'period_start', 'period_end', 'user_id', 'user_email', 'user_group', 'user_attribute'];
 
+    /** The bindings that resolve to a date (Story 2.14): a revision may carry a test value for each. */
+    public const DATE_BINDINGS = ['date_range_from', 'date_range_to', 'period_start', 'period_end'];
+
     public const METHODS = ['GET', 'POST'];
 
     /**
@@ -28,6 +31,8 @@ final readonly class EndpointInput
         public mixed $bodyTemplate,
         public bool $readOnlyQuery,
         public bool $scopeByCaller = false,
+        /** @var array<string, string> name (`header:{name}` for a header) => ISO `YYYY-MM-DD`, for the date-bound rows only (Story 2.14) */
+        public array $testValues = [],
     ) {}
 
     /** Derived, never supplied: true when any parameter or header uses a user-context binding. */

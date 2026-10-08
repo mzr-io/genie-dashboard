@@ -289,9 +289,15 @@ final class RenderEndpointRequest
 
     private function date(string $value, string $field, string $label, callable $fail): void
     {
-        if (preg_match(self::DATE, $value, $m) !== 1 || ! checkdate((int) $m[2], (int) $m[3], (int) $m[1])) {
+        if (! self::isIsoDate($value)) {
             $fail($field, 'param-date-invalid', "Enter {$label} as a date written YYYY-MM-DD.");
         }
+    }
+
+    /** The rule for a date value (a test value, a saved test value): a real calendar date written `YYYY-MM-DD`. */
+    public static function isIsoDate(string $value): bool
+    {
+        return preg_match(self::DATE, $value, $m) === 1 && checkdate((int) $m[2], (int) $m[3], (int) $m[1]);
     }
 
     /**

@@ -8,7 +8,7 @@ use Illuminate\Support\Facades\DB;
 use Throwable;
 
 /**
- * Creates the monthly partitions of `sync_runs` (Story 2.5): the current month and the next `--months` months. It is
+ * Creates the monthly partitions of `sync_runs` (Story 2.5) and `raw_observations` (Story 2.14): the current month and the next `--months` months. It is
  * idempotent: a month that already has a partition is skipped, so it is safe to run whenever, and Epic 9's scheduler only
  * has to run it (at least monthly, with `--months` of 1 or more so a partition always exists ahead of time). Every new
  * partition gets the same row-level security as the parent. Rows that arrive for a month without a partition are not lost:
@@ -17,7 +17,14 @@ use Throwable;
 #[Signature('dashflow:partitions:ensure {--months=1 : How many months after the current one to prepare (0 to 24)}')]
 class EnsurePartitionsCommand extends Command
 {
-    protected $description = 'Create the current and upcoming monthly partitions of sync_runs (idempotent)';
+    /** Each partitioned table with the SECURITY DEFINER function that prepares its months. */
+    private const PARTITIONED = [
+        'sync_runs' => 'connector_ensure_sync_run_partitions',
+        // The raw tier's immutable observations (Story 2.14).
+        'raw_observations' => 'rawstore_ensure_raw_observation_partitions',
+    ];
+
+    protected $description = 'Create the current and upcoming monthly partitions of sync_runs and raw_observations (idempotent)';
 
     public function handle(): int
     {
@@ -29,36 +36,45 @@ class EnsurePartitionsCommand extends Command
             return self::INVALID;
         }
 
-        try {
-            $row = DB::selectOne('select connector_ensure_sync_run_partitions(?) as created', [(int) $months]);
-        } catch (Throwable $e) {
-            $this->components->error('The partitions could not be prepared: '.$e::class.'.');
+        $failed = false;
 
-            return self::FAILURE;
-        }
+        foreach (self::PARTITIONED as $table => $function) {
+            try {
+                $row = DB::selectOne("select {$function}(?) as created", [(int) $months]);
+            } catch (Throwable $e) {
+                $this->components->error("The {$table} partitions could not be prepared: ".$e::class.'.');
 
-        $created = (int) ($row->created ?? 0);
-
-        // A month the function skipped (its rows already sit in the default partition) is a failure, not a success.
-        $missing = [];
-
-        for ($i = 0; $i <= (int) $months; $i++) {
-            $first = new \DateTimeImmutable('first day of this month 00:00', new \DateTimeZone('UTC'));
-            $month = $first->modify("+{$i} months");
-            $name = 'sync_runs_y'.$month->format('Y').'m'.$month->format('m');
-
-            if (DB::selectOne('select to_regclass(?) as found', ['public.'.$name])->found === null) {
-                $missing[] = $name;
+                return self::FAILURE;
             }
+
+            $created = (int) ($row->created ?? 0);
+
+            // A month the function skipped (its rows already sit in the default partition) is a failure, not a success.
+            $missing = [];
+
+            for ($i = 0; $i <= (int) $months; $i++) {
+                $first = new \DateTimeImmutable('first day of this month 00:00', new \DateTimeZone('UTC'));
+                $month = $first->modify("+{$i} months");
+                $name = $table.'_y'.$month->format('Y').'m'.$month->format('m');
+
+                if (DB::selectOne('select to_regclass(?) as found', ['public.'.$name])->found === null) {
+                    $missing[] = $name;
+                }
+            }
+
+            if ($missing !== []) {
+                $this->components->warn('Not created, because the default partition already holds rows for it: '.implode(', ', $missing).'.');
+                $failed = true;
+
+                continue;
+            }
+
+            $this->components->info($created === 0 ? "Every {$table} partition needed already exists." : "Created {$created} {$table} partition(s).");
         }
 
-        if ($missing !== []) {
-            $this->components->warn('Not created, because the default partition already holds rows for it: '.implode(', ', $missing).'.');
-
+        if ($failed) {
             return self::FAILURE;
         }
-
-        $this->components->info($created === 0 ? 'Every sync_runs partition needed already exists.' : "Created {$created} sync_runs partition(s).");
 
         return self::SUCCESS;
     }

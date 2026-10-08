@@ -31,6 +31,7 @@ import {
     fetchBindingOptions,
     isUserBinding,
     pathPlaceholders,
+    testDateFields,
     updateEndpoint,
 } from '@/lib/endpoints';
 import type {
@@ -88,7 +89,10 @@ const form = reactive({
     readOnly: props.endpoint?.read_only_query ?? false,
     // Story 2.13: keep each user's data separate (stored for the fetch key; the server accepts it only with a user binding).
     scope: props.endpoint?.scope_by_caller ?? false,
+    // Story 2.14: a test date for each date-bound row, by name (`header:{name}` for a header); the scheduled fetch needs them all.
+    testValues: { ...props.endpoint?.test_values } as Record<string, string>,
 });
+const dateFields = computed(() => testDateFields(form.params, form.headers));
 // The attributes the Workspace defines, for the "User context" options of the Binding select (a failed load leaves the three fixed ones).
 const attributes = ref<{ key_id: string; label: string }[]>([]);
 const hasUserBinding = computed(() =>
@@ -145,6 +149,7 @@ function snapshot(): string {
         form.body,
         form.readOnly,
         form.scope,
+        dateFields.value.map((f) => [f.key, form.testValues[f.key] ?? '']),
     ]);
 }
 
@@ -253,6 +258,12 @@ function input(): EndpointInput {
                 : null,
     });
     const post = isPost.value;
+    const testDates = dateFields.value
+        .map((f): [string, string] => [
+            f.key,
+            (form.testValues[f.key] ?? '').trim(),
+        ])
+        .filter(([, value]) => value !== '');
 
     return {
         method: form.method,
@@ -263,6 +274,11 @@ function input(): EndpointInput {
         read_only_query: post && form.readOnly,
         confirm_read_only: post && form.readOnly,
         scope_by_caller: hasUserBinding.value && form.scope,
+        // Only the date-bound rows that are still there, and only the ones with a date: a row removed or changed takes its date with
+        // it, and none sent means none saved.
+        ...(testDates.length > 0
+            ? { test_values: Object.fromEntries(testDates) }
+            : {}),
     };
 }
 
@@ -286,6 +302,10 @@ function rank(field: string): number {
         );
     }
 
+    if (field.startsWith('test_values.')) {
+        return 2000;
+    }
+
     return (
         {
             params: 9,
@@ -302,6 +322,10 @@ function elementFor(field: string): string {
 
     if (row) {
         return `${prefix}-${row[1]}-${row[2]}-${row[3]}`;
+    }
+
+    if (field.startsWith('test_values.')) {
+        return fieldId(field);
     }
 
     return fieldId(
@@ -333,6 +357,16 @@ function labelFor(field: string): string {
                   };
 
         return names[row[3] as 'name' | 'binding' | 'value'](n);
+    }
+
+    if (field.startsWith('test_values.')) {
+        const key = field.slice('test_values.'.length);
+
+        return labels.testValueLabel(
+            key.startsWith('header:')
+                ? labels.testValueHeaderName(key.slice(7))
+                : key,
+        );
     }
 
     return (
@@ -497,6 +531,7 @@ function reloadLatest(): void {
     form.headers = toRows(current.headers);
     form.body = current.body_template ?? '';
     form.readOnly = current.read_only_query;
+    form.testValues = { ...current.test_values };
     revision.value = current.revision;
     baseline = snapshot();
     failure.value = null;
@@ -654,6 +689,42 @@ function reloadLatest(): void {
             >
                 {{ errors.headers }}
             </p>
+        </fieldset>
+
+        <fieldset
+            v-if="dateFields.length > 0"
+            class="grid gap-3"
+            data-test="test-dates"
+        >
+            <legend class="type-title-md mb-1 text-text-primary">
+                {{ labels.testValuesTitle }}
+            </legend>
+            <p class="type-caption text-text-muted">
+                {{ labels.testValuesFormHelper }}
+            </p>
+            <FormField
+                v-for="dateField in dateFields"
+                :id="fieldId(`test_values.${dateField.key}`)"
+                :key="dateField.key"
+                :label="
+                    labels.testValueLabel(
+                        dateField.header
+                            ? labels.testValueHeaderName(dateField.name)
+                            : dateField.name,
+                    )
+                "
+                :error="errors[`test_values.${dateField.key}`]"
+                #default="{ field }"
+            >
+                <Input
+                    v-bind="field"
+                    v-model="form.testValues[dateField.key]"
+                    type="date"
+                    class="max-w-xs"
+                    data-test="test-date"
+                    @input="clear(`test_values.${dateField.key}`)"
+                />
+            </FormField>
         </fieldset>
 
         <div

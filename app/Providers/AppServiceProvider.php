@@ -32,6 +32,7 @@ use App\Modules\Access\Infrastructure\SodiumAttributeVault;
 use App\Modules\Access\Infrastructure\SqlGroupDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberNames;
+use App\Modules\Connector\Application\FetchEndpoint;
 use App\Modules\Connector\Application\GuardEgressUrl;
 use App\Modules\Connector\Application\ManageDataSources;
 use App\Modules\Connector\Application\ManageEgressGrants;
@@ -39,6 +40,7 @@ use App\Modules\Connector\Application\ManageEndpoints;
 use App\Modules\Connector\Application\ManageHostAllowlist;
 use App\Modules\Connector\Application\ReadSample;
 use App\Modules\Connector\Application\RecordEgressBlock;
+use App\Modules\Connector\Application\RecordSyncRun;
 use App\Modules\Connector\Application\RunConnectionTest;
 use App\Modules\Connector\Application\RunFetchAsUser;
 use App\Modules\Connector\Application\RunSampleFetch;
@@ -51,6 +53,7 @@ use App\Modules\Connector\Contracts\EgressBlockLog;
 use App\Modules\Connector\Contracts\EgressGrants;
 use App\Modules\Connector\Contracts\EgressGuard;
 use App\Modules\Connector\Contracts\EgressTransport;
+use App\Modules\Connector\Contracts\EndpointFetcher;
 use App\Modules\Connector\Contracts\Endpoints;
 use App\Modules\Connector\Contracts\FetchesAsUser;
 use App\Modules\Connector\Contracts\FetchTransport;
@@ -60,6 +63,7 @@ use App\Modules\Connector\Contracts\HostResolver;
 use App\Modules\Connector\Contracts\SampleFetches;
 use App\Modules\Connector\Contracts\Samples;
 use App\Modules\Connector\Contracts\SecretVault;
+use App\Modules\Connector\Contracts\SyncRunLog;
 use App\Modules\Connector\Contracts\TokenRequestLog;
 use App\Modules\Connector\Infrastructure\ConnectorAuditSerializer;
 use App\Modules\Connector\Infrastructure\CurlClient;
@@ -81,6 +85,15 @@ use App\Modules\Identity\Contracts\SessionRevocation;
 use App\Modules\Identity\Contracts\SignInMemberships;
 use App\Modules\Identity\Infrastructure\DatabaseSessionRevocation;
 use App\Modules\Identity\Infrastructure\IdentityAuditSerializer;
+use App\Modules\Ingestion\Application\ReadSyncStatuses;
+use App\Modules\Ingestion\Application\RegisterSyncTargets;
+use App\Modules\Ingestion\Application\ResolveFetchKey;
+use App\Modules\Ingestion\Contracts\ContextDigest;
+use App\Modules\Ingestion\Contracts\FetchKeyResolver;
+use App\Modules\Ingestion\Contracts\SyncStatuses;
+use App\Modules\Ingestion\Infrastructure\KeyFileContextDigest;
+use App\Modules\RawStore\Contracts\RawStore;
+use App\Modules\RawStore\Infrastructure\PostgresRawStore;
 use App\Platform\Audit\AuditHasher;
 use App\Platform\Audit\AuditSerializers;
 use App\Platform\Audit\PlatformAuditSerializer;
@@ -165,6 +178,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SampleFetches::class, StartSampleFetch::class);
         $this->app->bind(Samples::class, ReadSample::class);
         $this->app->bind(FetchesAsUser::class, StartFetchAsUser::class);
+        // Ingestion's scheduled fetch (Story 2.14) reaches the Connector through these two contracts only.
+        $this->app->bind(EndpointFetcher::class, FetchEndpoint::class);
+        $this->app->bind(SyncRunLog::class, RecordSyncRun::class);
+        // Ingestion and RawStore (Story 2.14): the fetch key, its context digest key, the raw tier and the Endpoint status read model.
+        $this->app->bind(ContextDigest::class, KeyFileContextDigest::class);
+        $this->app->bind(FetchKeyResolver::class, ResolveFetchKey::class);
+        $this->app->bind(RawStore::class, PostgresRawStore::class);
+        $this->app->bind(SyncStatuses::class, ReadSyncStatuses::class);
         $this->app->singleton(OperationKinds::class);
         $this->app->singleton(MetricEmitter::class, OtelMetricEmitter::class);
         $this->app->bind(SignInMemberships::class, SignInMembershipsAdapter::class);
@@ -200,6 +221,7 @@ class AppServiceProvider extends ServiceProvider
 
         // Each module registers its outbox consumers with the kernel (the kernel calls no module).
         $this->app->make(OutboxConsumers::class)->register(new AttributesOnMembershipRemoved);
+        $this->app->make(OutboxConsumers::class)->register(new RegisterSyncTargets);
 
         // Each module registers the lockable resources it owns with the kernel's edit lock (the kernel calls no module).
         $this->app->make(EditLockResources::class)->register(DataSourceLockEpochs::TYPE, new DataSourceLockEpochs);

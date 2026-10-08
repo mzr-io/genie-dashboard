@@ -83,9 +83,22 @@ export type Endpoint = {
     // Derived by the server: true when a parameter or header uses a user binding. `scope_by_caller` is stored for Story 2.14.
     requires_user_context?: boolean;
     scope_by_caller?: boolean;
+    // Story 2.14: the Admin's test dates for the date-bound rows (name, `header:{name}` for a header => YYYY-MM-DD) and where the
+    // scheduled fetch stands.
+    test_values?: Record<string, string>;
+    sync?: SyncState;
     revision: number;
     created_at: string;
     updated_at: string;
+};
+
+// The scheduled fetch of an Endpoint (Story 2.14): `succeeded` with the time of the last good response (ISO 8601, UTC), `waiting`
+// (no successful call yet), or `not_scheduled` with the reason; `missing_test_values` names the date-bound rows without a test date.
+export type SyncState = {
+    state: 'succeeded' | 'waiting' | 'not_scheduled';
+    last_success_at: string | null;
+    reason: 'user_context' | 'test_values' | 'no_interval' | null;
+    missing_test_values: string[];
 };
 
 export type EndpointList = {
@@ -105,6 +118,8 @@ export type EndpointInput = {
     confirm_read_only: boolean;
     // Only with a user binding (the server refuses it otherwise).
     scope_by_caller?: boolean;
+    // Story 2.14: a test date for each date-bound row, by name (`header:{name}` for a header); an empty one is left out.
+    test_values?: Record<string, string>;
 };
 
 // A request the server refused (or that never arrived: status 0): 403 no permission, 404 not in the Workspace, 409 a
@@ -450,4 +465,35 @@ export async function startFetchAsUser(
     }
 
     return data as StartedTest;
+}
+
+// The date-bound rows of an Endpoint form, as the schedule's test-date fields: one for each parameter or header whose binding
+// resolves to a date. The key is what the server expects (`header:{name}` for a header).
+export type TestDateField = { key: string; name: string; header: boolean };
+
+export function testDateFields(
+    params: BindingRow[],
+    headers: BindingRow[],
+): TestDateField[] {
+    const isDate = (binding: Binding): boolean =>
+        binding !== 'fixed' && !isUserBinding(binding);
+    const fields: TestDateField[] = [];
+
+    for (const param of params) {
+        if (param.name !== '' && isDate(param.binding)) {
+            fields.push({ key: param.name, name: param.name, header: false });
+        }
+    }
+
+    for (const header of headers) {
+        if (header.name !== '' && isDate(header.binding)) {
+            fields.push({
+                key: `${HEADER_VALUE_PREFIX}${header.name}`,
+                name: header.name,
+                header: true,
+            });
+        }
+    }
+
+    return fields;
 }

@@ -48,4 +48,6 @@ pest()->group('security')->in(
     'Database/OperationsTest.php',
     'Database/EditLockTest.php',
     'Database/PartitionsTest.php',
+    'Database/ScheduledFetchTest.php',
+    'Unit/FetchKeyResolverTest.php',
 );

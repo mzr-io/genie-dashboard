@@ -90,6 +90,7 @@ final class ValidateEndpointInput
 
         $readOnly = $this->readOnly($raw, $method, $fail);
         $scope = $this->scope($raw['scope_by_caller'] ?? null, [...$params, ...$headers], $fail);
+        $testValues = $this->testValues($raw['test_values'] ?? null, $params, $headers, $fail);
 
         if ($errors !== [] || $method === null || $path === null) {
             throw new InvalidDataSource($errors, $reasons);
@@ -102,7 +103,7 @@ final class ValidateEndpointInput
         $params = array_values($params);
 
         /** @var list<array{name: string, binding: string, value: string|null, kind: string}> $params */
-        return new EndpointInput($method, $path, $params, $headers, $body, $readOnly, $scope);
+        return new EndpointInput($method, $path, $params, $headers, $body, $readOnly, $scope, $testValues);
     }
 
     private function method(mixed $value, callable $fail): ?string
@@ -151,6 +152,74 @@ final class ValidateEndpointInput
         }
 
         return true;
+    }
+
+    /**
+     * The optional `test_values` (Story 2.14): parameter name (`header:{name}` for a header) => ISO `YYYY-MM-DD`. They are accepted only for a
+     * date-range or period-bound row and are checked with the rule of {@see RenderEndpointRequest::isIsoDate()}; a user-bound name is refused
+     * (a value of the user is never supplied by a client), and so is any name that is not a date-bound row. An empty value is no value.
+     * A missing one is not an error here: the Endpoint is saved, and has no scheduled fetch until every date-bound row has one.
+     *
+     * @param  array<int, array{name: string, binding: string, value: string|null}>  $params
+     * @param  list<array{name: string, binding: string, value: string|null}>  $headers
+     * @return array<string, string>
+     */
+    private function testValues(mixed $value, array $params, array $headers, callable $fail): array
+    {
+        if ($value === null || $value === '' || $value === []) {
+            return [];
+        }
+
+        if (! is_array($value) || array_is_list($value)) {
+            $fail('test_values', 'test-values-invalid', 'The test values are not valid.');
+
+            return [];
+        }
+
+        $rows = [];
+
+        foreach ($params as $param) {
+            $rows[$param['name']] = $param['binding'];
+        }
+
+        foreach ($headers as $header) {
+            $rows['header:'.$header['name']] = $header['binding'];
+        }
+
+        $kept = [];
+
+        foreach ($value as $name => $date) {
+            $name = (string) $name;
+            $field = "test_values.{$name}";
+
+            if ($date === null || $date === '') {
+                continue;
+            }
+
+            if (isset($rows[$name]) && in_array($rows[$name], EndpointInput::USER_BINDINGS, true)) {
+                $fail($field, 'value-not-accepted', 'The value of this row comes from the user and cannot be supplied.');
+
+                continue;
+            }
+
+            if (! isset($rows[$name]) || ! in_array($rows[$name], EndpointInput::DATE_BINDINGS, true)) {
+                $fail($field, 'test-value-not-accepted', 'A test value is only for a date range or period row.');
+
+                continue;
+            }
+
+            if (! is_string($date) || ! RenderEndpointRequest::isIsoDate($date)) {
+                $fail($field, 'param-date-invalid', 'Enter the test value as a date written YYYY-MM-DD.');
+
+                continue;
+            }
+
+            $kept[$name] = $date;
+        }
+
+        ksort($kept);
+
+        return $kept;
     }
 
     /**

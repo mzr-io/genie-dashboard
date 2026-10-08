@@ -92,6 +92,7 @@ const columns: DataTableColumn[] = [
     { key: 'path', label: labels.columns.path, rowHeader: true },
     { key: 'revision', label: labels.columns.revision, class: 'tabular-nums' },
     { key: 'data', label: labels.dataColumn },
+    { key: 'sync', label: labels.syncColumn },
     { key: 'updated', label: labels.columns.updated },
     { key: 'actions', label: labels.testActions },
 ];
@@ -220,6 +221,36 @@ function rowElement(key: string): HTMLElement | null {
             document.querySelectorAll<HTMLElement>('[data-row-key]'),
         ).find((row) => row.dataset.rowKey === key) ?? null
     );
+}
+
+// "Last success {time}", "No successful call yet" or "Not scheduled" (Story 2.14).
+function syncText(endpoint: Endpoint): string {
+    const sync = endpoint.sync;
+
+    if (sync?.state === 'succeeded' && sync.last_success_at) {
+        return labels.lastSuccess(formatDateTime(sync.last_success_at));
+    }
+
+    return sync?.state === 'not_scheduled'
+        ? labels.notScheduled
+        : labels.noSuccessYet;
+}
+
+// Why an Endpoint is not scheduled, in words; null when it is.
+function syncReason(endpoint: Endpoint): string | null {
+    const sync = endpoint.sync;
+
+    if (sync?.state !== 'not_scheduled' || sync.reason === null) {
+        return null;
+    }
+
+    return sync.reason === 'test_values'
+        ? labels.notScheduledReasons.test_values(
+              sync.missing_test_values.map((key) =>
+                  key.startsWith('header:') ? key.slice(7) : key,
+              ),
+          )
+        : labels.notScheduledReasons[sync.reason];
 }
 
 function openAdd(): void {
@@ -530,6 +561,19 @@ onBeforeUnmount(() => {
                             >. {{ labels.sharedDataHint }}</span
                         >
                     </span>
+                </template>
+                <template #cell-sync="{ row }">
+                    <span
+                        :data-state="row.sync?.state ?? 'waiting'"
+                        data-test="sync-status"
+                        >{{ syncText(row) }}</span
+                    >
+                    <span
+                        v-if="syncReason(row) !== null"
+                        class="type-caption block text-text-muted"
+                        data-test="sync-reason"
+                        >{{ syncReason(row) }}</span
+                    >
                 </template>
                 <template #cell-updated="{ row }">
                     <span data-test="updated">{{

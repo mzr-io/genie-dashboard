@@ -27,6 +27,7 @@ use App\Modules\Connector\Infrastructure\DataSourceSettings;
 use App\Modules\Connector\Infrastructure\OAuthTokenCache;
 use App\Platform\Audit\Audit;
 use App\Platform\Audit\AuditAction;
+use App\Platform\Outbox\Outbox;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
@@ -55,6 +56,7 @@ final class ManageDataSources implements DataSources
         private readonly DataSourceSettings $settings,
         private readonly SecretVault $vault,
         private readonly OAuthTokenCache $tokenCache,
+        private readonly Outbox $outbox,
     ) {}
 
     public function list(string $workspaceId, DataSourceQuery $query): DataSourcePage
@@ -193,6 +195,12 @@ final class ManageDataSources implements DataSources
                 subject: 'data_source:'.$after->id,
                 actor: $actor->membershipId,
             );
+
+            // Every Endpoint's fetch key names the Data Source revision (Story 2.14): Ingestion re-registers its targets from this. IDs and the number only.
+            $this->outbox->emit(AuditAction::ConnectorDataSourceUpdated, 'data_source:'.$after->id, [
+                'data_source_id' => $after->id,
+                'revision' => $after->revision,
+            ], actor: $actor->membershipId);
 
             return $after;
         });

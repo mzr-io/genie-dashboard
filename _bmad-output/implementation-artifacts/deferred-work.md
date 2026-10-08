@@ -209,3 +209,13 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-13-bind-endpoint-parameters-and-headers-to-user-context.md`
   summary: binding-options member list is capped at 50 with no cursor, has no throttle, and its filtering/search and shared rate-limit budget are not asserted by tests.
   evidence: EndpointController::bindingOptions hard-codes pageSize 50 and carries only the admin middleware; no test passes search or mixes Test endpoint and Fetch as user against one limit.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-14-fetch-each-endpoint-on-a-schedule-and-keep-the-last-good-response.md`
+  summary: Scheduled fetch runs inside the workspace job transaction (connection held during slow HTTP), FetchJob has no timeout or failed() handler, and PostgresRawStore copies large bodies as hex several times.
+  evidence: FetchJob uses RunsInWorkspace around FetchSyncTarget; a killed job leaves no sync_runs row; put() uses bin2hex.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-14-fetch-each-endpoint-on-a-schedule-and-keep-the-last-good-response.md`
+  summary: Targets for deleted or disabled Endpoints and permanently failing targets (non-read-only POST) are never retired and re-run every tick; no unique-active-target-per-Endpoint constraint; data_source.updated may re-register only a partial Endpoint list; targets registered before refresh_intervals is set wait for the next save.
+  evidence: RegisterSyncTargets reacts only to created/revised/data_source.updated; unverified (maybe-false) for paging and the race.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-14-fetch-each-endpoint-on-a-schedule-and-keep-the-last-good-response.md`
+  summary: Admin UI shows only last success; consecutive failures and last attempt are not visible.
+  evidence: SyncStatus has only succeeded/waiting/not_scheduled; health belongs to a later story.

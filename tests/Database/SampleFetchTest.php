@@ -257,6 +257,9 @@ it('records one sync_runs row of kind sample_fetch with the template and numbers
 
     expect($this->curl->calls[0][CURLOPT_URL])->toContain('cust-'.SF_CANARY)->and(sfEverything())->not->toContain(SF_CANARY);
 
+    // A tested sample has no sync target and never enters the raw tier (Story 2.14).
+    expect(sfCount('raw_bodies'))->toBe(0)->and(sfCount('raw_observations'))->toBe(0)->and(sfCount('sync_targets'))->toBe(0);
+
     // The body is only in the sealed cache entry, which the requester reads back.
     expect(Cache::get(TenantKey::cache($workspace, 'sample:'.$id)))->toBeArray()
         ->and(json_encode(Cache::get(TenantKey::cache($workspace, 'sample:'.$id))))->not->toContain('CANARY-sf-body')->not->toContain('12345678901234567890')

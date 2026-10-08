@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Ingestion\Application\DispatchDueSyncsJob;
 use App\Platform\Outbox\RelayOutboxJob;
 use Illuminate\Console\Events\ScheduledTaskFinished;
 use Illuminate\Console\Scheduling\Schedule;
@@ -28,6 +29,8 @@ it('runs a task once when two schedulers fire in the same minute', function () {
     });
 
     $schedule = app(Schedule::class);
+    // The sync dispatcher repeats within the minute (Story 2.14) and needs the database: leave it out, the heartbeat is what is counted.
+    (new ReflectionProperty($schedule, 'events'))->setValue($schedule, array_values(array_filter($schedule->events(), fn ($e) => ! $e->isRepeatable())));
     $firstScheduler = fn () => Artisan::call('schedule:run');
     $secondScheduler = function () use ($schedule) {
         // A second scheduler is another process: it has no in-process mutex memo,
@@ -51,4 +54,17 @@ it('schedules the outbox relay job on queue outbox with onOneServer', function (
     $event->run(app());
     Queue::assertPushedOn('outbox', RelayOutboxJob::class);
     expect(new RelayOutboxJob)->toBeInstanceOf(ShouldBeUnique::class)->and((new RelayOutboxJob)->timeout)->toBe(55);
+});
+
+// Story 2.14: the dispatcher ticks every `dispatch_tick` on queue `maintenance` (worker-compute holds the `system` credentials), onOneServer.
+it('schedules the sync dispatcher job every dispatch tick on queue maintenance with onOneServer', function () {
+    $event = collect(app(Schedule::class)->events())->first(fn ($e) => ($e->description ?? null) === DispatchDueSyncsJob::class);
+
+    // The configured tick is 5 seconds unless the environment says otherwise: the nearest Laravel sub-minute step.
+    expect($event)->not->toBeNull()->and($event->onOneServer)->toBeTrue()->and($event->isRepeatable())->toBeTrue()->and($event->repeatSeconds)->toBe(5);
+
+    Queue::fake();
+    $event->run(app());
+    Queue::assertPushedOn('maintenance', DispatchDueSyncsJob::class);
+    expect(new DispatchDueSyncsJob)->not->toBeInstanceOf(ShouldBeUnique::class);
 });

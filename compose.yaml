@@ -99,6 +99,11 @@ x-app-env: &app-env
     # User attributes (Story 2.12): where web reads the key that keys the blind index of attribute values (a path, not key
     # material; empty = the default /run/secrets/key-digest). Values are sealed under the `data` key above.
     DASHFLOW_SECRETS_DIGEST_KEY_PATH: ${DASHFLOW_SECRETS_DIGEST_KEY_PATH:-}
+    # Scheduled fetch (Story 2.14). The scheduler fires the dispatcher every DASHFLOW_DISPATCH_TICK seconds (the nearest Laravel sub-minute
+    # step; the proposed 5 when empty). DASHFLOW_REFRESH_INTERVALS (pending_input; empty = unset) is the comma-separated list of refresh
+    # intervals in whole seconds: a sync target takes the smallest, and with none set a target is registered and never scheduled.
+    DASHFLOW_DISPATCH_TICK: ${DASHFLOW_DISPATCH_TICK:-5}
+    DASHFLOW_REFRESH_INTERVALS: ${DASHFLOW_REFRESH_INTERVALS:-}
     # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
     OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}

@@ -1202,6 +1202,24 @@ export const endpointLabels = {
     userContextHint:
         "Filled in from the signed-in user's own data. Users can't change it.",
     dataColumn: 'Data',
+    // The scheduled fetch of an Endpoint (Story 2.14): the time of the last good response, or why there is none.
+    syncColumn: 'Last success',
+    lastSuccess: (time: string) => `Last success ${time}`,
+    noSuccessYet: 'No successful call yet',
+    notScheduled: 'Not scheduled',
+    // The reason a fetch is not scheduled, by the server's reason; the date-bound rows without a test value are named.
+    notScheduledReasons: {
+        user_context:
+            'Data that depends on the user is fetched when someone subscribes to it, not on a schedule.',
+        test_values: (names: string[]) =>
+            `Add a test date for ${names.join(', ')} to schedule it.`,
+        no_interval: 'No refresh interval has been set.',
+    },
+    testValuesTitle: 'Test dates for the schedule',
+    testValuesFormHelper:
+        'The scheduled fetch needs one date for each date range or period row. Each is written YYYY-MM-DD. A fixed row keeps its saved value.',
+    testValueLabel: (name: string) => `Test date for ${name}`,
+    testValueHeaderName: (name: string) => `${name} header`,
     scopeByCaller: "Keep each user's data separate",
     scopeByCallerHelper:
         'Fetches are kept per user instead of shared. Available when a parameter or header uses user context.',

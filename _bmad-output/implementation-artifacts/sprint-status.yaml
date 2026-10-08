@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-06-2026 11:46
-last_updated: 10-08-2026 18:17
+last_updated: 10-08-2026 19:12
 project: rmg-dashboard-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -77,7 +77,7 @@ development_status:
   2-11-follow-pagination-up-to-the-limits: review
   2-12-define-user-attributes-for-user-context-binding: review
   2-13-bind-endpoint-parameters-and-headers-to-user-context: review
-  2-14-fetch-each-endpoint-on-a-schedule-and-keep-the-last-good-res: backlog
+  2-14-fetch-each-endpoint-on-a-schedule-and-keep-the-last-good-res: review
   2-15-use-conditional-requests-and-skip-unchanged-data: backlog
   2-16-choose-how-much-raw-history-a-data-source-keeps: backlog
   2-17-retry-rate-limit-and-break-the-circuit-on-failing-sources: backlog
