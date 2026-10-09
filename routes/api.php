@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AttributeKeyController;
+use App\Http\Controllers\Admin\BlockSourceController;
 use App\Http\Controllers\Admin\BlockTypeController;
 use App\Http\Controllers\Admin\DataSourceController;
 use App\Http\Controllers\Admin\DataSourceHealthController;
@@ -83,6 +84,11 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('blocks/drafts', [DraftController::class, 'store'])->middleware(['admin', RejectsSecretValues::class.':blocks', 'throttle:30,1,block-drafts'])->name('api.admin.blocks.drafts.store');
     Route::put('blocks/drafts/{draft}', [DraftController::class, 'update'])->whereUuid('draft')->middleware(['admin', RejectsSecretValues::class.':blocks', 'throttle:120,1,block-drafts-save'])->name('api.admin.blocks.drafts.update');
     Route::delete('blocks/drafts/{draft}', [DraftController::class, 'destroy'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-drafts'])->name('api.admin.blocks.drafts.destroy');
+
+    // What wizard Step 2 reads (Story 3.7): `blocks.edit`, so an Admin who may build blocks but not manage Data Sources can still choose one.
+    Route::get('blocks/data-sources', [BlockSourceController::class, 'dataSources'])->middleware('admin')->name('api.admin.blocks.data-sources.index');
+    Route::get('blocks/data-sources/{dataSource}/endpoints', [BlockSourceController::class, 'endpoints'])->whereUuid('dataSource')->middleware('admin')->name('api.admin.blocks.data-sources.endpoints.index');
+    Route::get('blocks/refresh-intervals', [BlockSourceController::class, 'refreshIntervals'])->middleware('admin')->name('api.admin.blocks.refresh-intervals');
 
     // The Draft block soft lock (Story 3.6): the same protocol as the Data source one, behind `blocks.edit`; none takes a secret value.
     Route::post('blocks/drafts/{draft}/lock', [DraftLockController::class, 'acquire'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.acquire');

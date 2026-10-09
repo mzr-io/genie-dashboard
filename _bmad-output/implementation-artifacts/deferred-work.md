@@ -314,3 +314,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-6-soft-lock-a-draft-and-take-over-editing.md`
   summary: Lock UI polish: focus move to banner when lock is lost, form aria-label landmark, read-only for wizard steps 2-5 and stepper, ttl_seconds guard, shared limiter/route factory, DataSourceError coupling
   evidence: Review blind hunter; steps 2-5 do not exist yet (3.7+), the rest is cosmetic or structural.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-7-choose-the-data-source-endpoint-parameters-and-refresh-step.md`
+  summary: Persist the POST read-only acknowledgement and detect pinned-revision drift (Endpoint/Data Source edited after the sample) so sample_out_of_date is also server-derived
+  evidence: Review hunters; ack is client-only and flag is only set by the client. Unverified severity medium; belongs with 3.8/3.9/3.18.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-7-choose-the-data-source-endpoint-parameters-and-refresh-step.md`
+  summary: Fixed parameters named like credentials are refused by RejectsSecretValues; default-range dates use browser clock and Monday week start; read routes lack a throttle; unused blockSourceLabels keys
+  evidence: Review hunters; verified in diff, low impact today.

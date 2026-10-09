@@ -3,6 +3,7 @@ import type { BlockType, BlockTypeHeight } from '@/types/block-types';
 import { DRAFT_BLOCKS_URL } from '@/lib/draftBlocks';
 import type { DraftBlock } from '@/lib/draftBlocks';
 import { xsrfToken } from '@/lib/session';
+import type { SourceConfig, SourceForm } from '@/lib/blockSource';
 import { blockWizardLabels as labels } from '@/locales/labels';
 
 // The Create block wizard's client (Story 3.4): the Draft's `config` (schema_version 1), the Step 1 rules that mirror the server's, and the
@@ -43,6 +44,8 @@ export type DraftConfig = {
     icon?: string;
     display?: Partial<DisplayConfig>;
     slots?: Record<string, { required: boolean; mapping: null }>;
+    // Step 2 (Story 3.7): the Data Source, Endpoint, parameter values, refresh interval and default date range.
+    source?: SourceConfig;
 };
 
 export type BlockCategory = { id: string; name: string; archived: boolean };
@@ -68,6 +71,8 @@ export type StepForm = {
     // The icon key chosen for this block; null follows the Category.
     icon: string | null;
     display: DisplayConfig;
+    // Step 2's form state (Story 3.7).
+    source: SourceForm;
 };
 
 // The id of each Step 1 field's control, by the field key the errors use; the page focuses the first invalid one.
@@ -298,6 +303,9 @@ async function call(
 
     return json;
 }
+
+// The generic call of the wizard's API, for the Step 2 reads (`lib/blockSource.ts`).
+export const wizardCall = call;
 
 function asDraft(body: Body): WizardDraft {
     const draft = body.data as Partial<WizardDraft> | undefined;

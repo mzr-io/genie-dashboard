@@ -169,7 +169,8 @@ final class DraftConfig
      */
     public static function merge(array $stored, array $step): array
     {
-        $kept = array_diff_key($stored, array_flip(['schema_version', 'description', 'icon', 'display', 'slots']));
+        // `source` is Step 2's key (Story 3.7): it is replaced only when the save carries one (see ManageDrafts).
+        $kept = array_diff_key($stored, array_flip(['schema_version', 'description', 'icon', 'display', 'slots', ...(array_key_exists('source', $step) ? ['source'] : [])]));
         $slots = is_array($stored['slots'] ?? null) ? $stored['slots'] : [];
         unset($slots['footer_action']);
         $slots += $step['slots'] ?? [];

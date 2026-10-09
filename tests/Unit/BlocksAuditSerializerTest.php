@@ -40,3 +40,13 @@ it('keeps IDs, the type and the revision, hashes the name and drops every other 
 it('refuses an ID field holding free text', function () {
     expect(fn () => blocksSerializers()->serialize(AuditAction::BlocksDraftCreated, ['draft_id' => 'Revenue today']))->toThrow(InvalidArgumentException::class);
 });
+
+it('drops a Draft source config (Data Source, Endpoint, pins and bindings) from the audit state', function () {
+    $id = '0199aaaa-bbbb-7ccc-8ddd-eeeeffff0000';
+    $stored = blocksSerializers()->serialize(AuditAction::BlocksDraftCreated, [
+        'block_id' => $id, 'draft_id' => $id, 'block_type' => 'kpi-card', 'revision' => 2,
+        'source' => ['data_source_id' => $id, 'endpoint_id' => $id, 'bindings' => ['region' => 'emea']], 'config' => ['source' => ['endpoint_revision_id' => $id]],
+    ]);
+
+    expect(array_keys($stored))->toBe(['block_id', 'draft_id', 'block_type', 'revision'])->and(json_encode($stored))->not->toContain('emea')->not->toContain('source');
+});

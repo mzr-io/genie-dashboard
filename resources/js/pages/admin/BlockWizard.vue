@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import ConflictChooser from '@/components/wizard/ConflictChooser.vue';
 import ConfigureBlockStep from '@/components/wizard/ConfigureBlockStep.vue';
+import DataSourceStep from '@/components/wizard/DataSourceStep.vue';
 import LivePreview from '@/components/wizard/LivePreview.vue';
 import WizardStepper from '@/components/wizard/WizardStepper.vue';
 import { useEditLock } from '@/composables/useEditLock';
@@ -28,6 +29,21 @@ import { announce } from '@/lib/announce';
 import { DRAFT_BLOCKS_URL } from '@/lib/draftBlocks';
 import { lockClient } from '@/lib/editLock';
 import { registerFlush } from '@/lib/flushRegistry';
+import {
+    customRangeError,
+    emptyCatalog,
+    emptySource,
+    endpointOf,
+    endpointText,
+    fetchEndpointOptions,
+    fetchIntervals,
+    fetchSources,
+    paramRows,
+    sourceConfigOf,
+    sourceFormOf,
+    sourceIsSet,
+    stepGate,
+} from '@/lib/blockSource';
 import { registerUnsavedForm } from '@/lib/unsavedForms';
 import { clearPending, readPending, stashPending } from '@/lib/wizardPending';
 import type { PendingChanges, PendingDelta } from '@/lib/wizardPending';
@@ -107,6 +123,7 @@ let stashed = false;
 const { offline, reason: offlineReason } = useOfflineAction();
 const saveFailedId = useId();
 const saveReasonId = useId();
+const continueReasonId = useId();
 const errors = reactive<Record<string, string | undefined>>({});
 
 const type = BLOCK_TYPES[0];
@@ -117,7 +134,10 @@ const form = reactive<StepForm>({
     type: type.key,
     icon: null,
     display: defaultDisplay(type),
+    source: emptySource(),
 });
+// What Step 2 has loaded (Story 3.7): the Data Sources, the chosen one's Endpoints and the System-settings refresh intervals.
+const catalog = reactive(emptyCatalog());
 
 const blockType = computed(() => blockTypeFor(form.type) ?? type);
 const categoryName = computed(
@@ -126,6 +146,19 @@ const categoryName = computed(
 const heading = computed(() => form.name.trim() || labels.untitled);
 const version = computed(() => draft.value?.version ?? '1.0');
 const showPreview = computed(() => current.value <= 3);
+// The completed Data Source step's summary: the chosen Data Source and Endpoint, once the lists are loaded.
+const sourceSummary = computed<string | null>(() => {
+    const chosen = catalog.sources?.find(
+        (s) => s.data_source_id === form.source.dataSourceId,
+    );
+    const endpoint = endpointOf(catalog, form.source);
+
+    return chosen
+        ? endpoint
+            ? `${chosen.name} · ${endpointText(endpoint)}`
+            : chosen.name
+        : null;
+});
 const steps = computed(() =>
     labels.steps.map((step, index) => ({
         ...step,
@@ -136,7 +169,9 @@ const steps = computed(() =>
                       heightName(form.display.height),
                       categoryName.value,
                   )
-                : null,
+                : index === 1
+                  ? sourceSummary.value
+                  : null,
     })),
 );
 
@@ -171,6 +206,7 @@ function applyDraft(next: WizardDraft): void {
     form.type = known.key;
     form.icon = next.config.icon ?? null;
     form.display = mergedDisplay(known, next.config.display);
+    form.source = sourceFormOf(next.config.source);
     uiState.acknowledged_warnings = [
         ...(next.ui_state?.acknowledged_warnings ?? []),
     ];
@@ -253,6 +289,118 @@ async function load(): Promise<void> {
     }
 }
 
+// ---- Step 2's lists (Story 3.7) -------------------------------------------------------------------------------
+
+let endpointsFor: string | null = null;
+let catalogLoading = false;
+
+async function loadEndpoints(id: string | null): Promise<void> {
+    catalog.endpoints = null;
+    catalog.endpointsError = false;
+
+    if (id === null) {
+        return;
+    }
+
+    try {
+        const found = await fetchEndpointOptions(id);
+
+        // The Admin may have chosen another Data Source while this was on its way.
+        if (form.source.dataSourceId === id) {
+            catalog.endpoints = found;
+        }
+    } catch (error) {
+        if (!sessionEnded(error) && form.source.dataSourceId === id) {
+            catalog.endpointsError = true;
+        }
+    }
+}
+
+async function loadCatalog(): Promise<void> {
+    if (catalogLoading) {
+        return;
+    }
+
+    catalogLoading = true;
+    catalog.sourcesError = false;
+    catalog.intervalsError = false;
+
+    try {
+        const [sources, intervals] = await Promise.allSettled([
+            fetchSources(),
+            fetchIntervals(),
+        ]);
+
+        for (const result of [sources, intervals]) {
+            if (result.status === 'rejected' && sessionEnded(result.reason)) {
+                return;
+            }
+        }
+
+        if (sources.status === 'fulfilled') {
+            catalog.sources = sources.value;
+        } else {
+            catalog.sourcesError = true;
+        }
+
+        if (intervals.status === 'fulfilled') {
+            catalog.intervals = intervals.value;
+            catalog.intervalsLoaded = true;
+        } else {
+            catalog.intervalsError = true;
+            catalog.intervalsLoaded = true;
+        }
+
+        // The Endpoints of the chosen Data Source are read again whenever the lists are.
+        endpointsFor = null;
+        await syncEndpoints();
+    } finally {
+        catalogLoading = false;
+    }
+}
+
+async function syncEndpoints(): Promise<void> {
+    const id = form.source.dataSourceId;
+
+    if (catalog.sources === null || id === endpointsFor) {
+        return;
+    }
+
+    endpointsFor = id;
+    await loadEndpoints(id);
+}
+
+// Step 2 reads its lists when it is first shown, and the Endpoints again whenever another Data Source is chosen (or loaded with a Draft).
+watch(
+    () => [current.value, state.value, form.source.dataSourceId] as const,
+    ([step, status]) => {
+        if (step === 2 && status === 'ready') {
+            if (catalog.sources === null) {
+                void loadCatalog();
+            } else {
+                void syncEndpoints();
+            }
+        }
+    },
+    { immediate: true },
+);
+
+const gate = computed(() => {
+    const endpoint = endpointOf(catalog, form.source);
+
+    return stepGate(
+        catalog.sources,
+        endpoint,
+        paramRows(endpoint, form.source, form.display.period),
+        form.source,
+        t('datasource-none.message'),
+    );
+});
+// Why Continue cannot leave Step 2 yet: a POST not marked read-only, or no Data Source to read.
+const stepBlocked = computed<string | undefined>(() =>
+    current.value === 2 ? gate.value.continue : undefined,
+);
+
 // ---- Validation ------------------------------------------------------------------------------------------------
 
 function checkName(): string | undefined {
@@ -308,6 +456,13 @@ function onBlur(field: string): void {
 }
 
 function onChange(): void {
+    // Step 2's server errors go when the Admin edits again.
+    for (const key of Object.keys(errors)) {
+        if (key.startsWith('source.')) {
+            delete errors[key];
+        }
+    }
+
     dirty.value = true;
     changeSeq += 1;
     scheduleAutosave();
@@ -323,6 +478,10 @@ function configOf(): DraftConfig {
         ...(description === '' ? {} : { description }),
         ...(form.icon === null ? {} : { icon: form.icon }),
         display: { ...form.display },
+        // Step 2's settings ride along once there is something to say (or something stored to clear), so Step 1's save stays what it was.
+        ...(sourceIsSet(form.source) || draft.value?.config.source !== undefined
+            ? { source: sourceConfigOf(form.source) }
+            : {}),
     };
 }
 
@@ -493,7 +652,9 @@ function savable(): boolean {
         name !== '' &&
         name.length <= NAME_MAX &&
         form.description.trim().length <= DESCRIPTION_MAX &&
-        Object.keys(validateDisplay(form.display, blockType.value)).length === 0
+        Object.keys(validateDisplay(form.display, blockType.value)).length ===
+            0 &&
+        customRangeError(form.source) === null
     );
 }
 
@@ -541,6 +702,18 @@ function persist(
     return run;
 }
 
+// The server pins the revisions when it stores a selection: the form shows what it pinned, and never sends it back.
+function syncPins(saved: WizardDraft): void {
+    const stored = saved.config.source;
+
+    if (!stored || Array.isArray(stored)) {
+        return;
+    }
+
+    form.source.endpointRevisionId = stored.endpoint_revision_id ?? null;
+    form.source.dataSourceRevision = stored.data_source_revision ?? null;
+}
+
 // Starts the Draft when there is none, then saves the form. `step` is the furthest step the Draft reaches. Returns whether it was saved.
 // An autosave or a flush is a background call: no field errors on the form, and `X-Background: 1`.
 async function save(
@@ -585,6 +758,7 @@ async function save(
         draft.value = await saveWizardDraft(target.draft_id, body, {
             background: kind !== 'manual',
         });
+        syncPins(draft.value);
         // Changes made while this save was in flight are still unsaved.
         dirty.value = changeSeq !== seq;
         saveFailed.value = null;
@@ -831,7 +1005,8 @@ async function saveDraft(): Promise<void> {
         return;
     }
 
-    if (!validate(false)) {
+    // Step 1's fields are checked on Step 1; Step 2 saves with what it has (a custom range must still be in order).
+    if (current.value === 1 ? !validate(false) : !savable()) {
         await focusFirstError();
 
         return;
@@ -847,7 +1022,9 @@ async function onContinue(): Promise<void> {
         return;
     }
 
-    if (!validate(true)) {
+    if (
+        current.value === 1 ? !validate(true) : !savable() || stepBlocked.value
+    ) {
         await focusFirstError();
 
         return;
@@ -979,6 +1156,11 @@ const saveBlocked = computed<string | undefined>(() =>
             : offline.value
               ? offlineReason.value
               : undefined,
+);
+
+// A reason Continue cannot run right now: the save reasons, then Step 2's own.
+const continueBlocked = computed<string | undefined>(
+    () => saveBlocked.value ?? stepBlocked.value,
 );
 
 // The line that tells how the Draft stands; shown only where autosave is on.
@@ -1223,10 +1405,10 @@ onBeforeUnmount(() => {
             >
                 <div class="min-w-0">
                     <form
-                        v-if="current === 1"
+                        v-if="current <= 2"
                         novalidate
                         class="flex flex-col gap-4"
-                        data-test="step-1"
+                        :data-test="`step-${current}`"
                         :aria-label="
                             readOnly ? draftLockLabels.readOnly : undefined
                         "
@@ -1238,33 +1420,68 @@ onBeforeUnmount(() => {
                             data-test="form-fields"
                         >
                             <ConfigureBlockStep
+                                v-if="current === 1"
                                 :form="form"
                                 :errors="errors"
                                 :categories="categories"
                                 @change="onChange"
                                 @blur="onBlur"
                             />
-                        </fieldset>
-                        <div class="flex justify-end gap-2">
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                data-test="leave"
-                                @click="leaveWizard"
-                            >
-                                {{ labels.back }}
-                            </Button>
-                            <Button
-                                type="submit"
-                                :blocked="saveBlocked !== undefined"
-                                :blocked-reason="saveBlocked"
-                                :aria-describedby="
-                                    saveBlocked ? saveReasonId : undefined
+                            <DataSourceStep
+                                v-else
+                                :form="form"
+                                :errors="errors"
+                                :catalog="catalog"
+                                :gate="gate"
+                                :also-blocked="
+                                    offline ? offlineReason : undefined
                                 "
-                                data-test="continue"
+                                @change="onChange"
+                                @retry="loadCatalog"
+                            />
+                        </fieldset>
+                        <div class="flex flex-col items-end gap-1">
+                            <div class="flex justify-end gap-2">
+                                <Button
+                                    v-if="current === 1"
+                                    type="button"
+                                    variant="secondary"
+                                    data-test="leave"
+                                    @click="leaveWizard"
+                                >
+                                    {{ labels.back }}
+                                </Button>
+                                <Button
+                                    v-else
+                                    type="button"
+                                    variant="secondary"
+                                    data-test="back"
+                                    @click="goTo(1)"
+                                >
+                                    {{ labels.back }}
+                                </Button>
+                                <Button
+                                    type="submit"
+                                    :blocked="continueBlocked !== undefined"
+                                    :blocked-reason="continueBlocked"
+                                    :aria-describedby="
+                                        saveBlocked
+                                            ? saveReasonId
+                                            : stepBlocked
+                                              ? continueReasonId
+                                              : undefined
+                                    "
+                                    data-test="continue"
+                                >
+                                    {{ labels.continue }}
+                                </Button>
+                            </div>
+                            <BlockedReason
+                                v-if="stepBlocked && !saveBlocked"
+                                :id="continueReasonId"
+                                data-test="continue-reason"
+                                >{{ stepBlocked }}</BlockedReason
                             >
-                                {{ labels.continue }}
-                            </Button>
                         </div>
                     </form>
 

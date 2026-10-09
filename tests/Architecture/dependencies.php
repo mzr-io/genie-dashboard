@@ -18,7 +18,7 @@ return [
         'Dashboards' => ['Results', 'Templates', 'Blocks', 'Access'],
         'Templates' => ['Blocks', 'Access'],
         'Results' => ['Blocks', 'Ingestion', 'RawStore', 'Mapping', 'BlockTypes', 'Access'],
-        'Blocks' => ['Mapping', 'Datasets', 'Ingestion', 'Access', 'BlockTypes'],
+        'Blocks' => ['Mapping', 'Datasets', 'Ingestion', 'Access', 'BlockTypes', 'Connector'],
         'Datasets' => ['Connector'],
         'Ingestion' => ['Connector', 'RawStore'],
         'Mapping' => ['BlockTypes'],

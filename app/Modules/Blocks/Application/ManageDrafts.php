@@ -50,6 +50,7 @@ final class ManageDrafts implements Drafts
         private readonly WorkspaceTransaction $transactions,
         private readonly Audit $audit,
         private readonly BlockTypeRegistry $types,
+        private readonly DraftSource $source,
     ) {}
 
     public function list(string $workspaceId, ?string $search): DraftPage
@@ -154,7 +155,7 @@ final class ManageDrafts implements Drafts
             }
 
             // The config is judged against the type the Draft will have after this save.
-            $normalised = $config === null ? null : DraftConfig::merge($before->config, DraftConfig::normalise($config, $this->checkType($type ?? $before->type)));
+            $normalised = $config === null ? null : $this->mergedConfig($actor->workspaceId, $before, $config, $type);
 
             // The Block's current category may have been archived since: keeping it is not a change.
             if ($categoryId !== null && strtolower($categoryId) !== $before->categoryId) {
@@ -183,6 +184,40 @@ final class ManageDrafts implements Drafts
 
             return $this->fetch($actor->workspaceId, $before->id, false, true) ?? throw new DraftNotFound;
         });
+    }
+
+    /**
+     * The config this save leaves: Step 1's fields judged against the Block Type, Step 2's `source` (when the save carries one) checked and
+     * pinned by {@see DraftSource}, and every other stored key kept. Both steps' errors come back together.
+     *
+     * @param  array<mixed>  $config
+     * @return array<string, mixed>
+     */
+    private function mergedConfig(string $workspaceId, Draft $before, array $config, ?string $type): array
+    {
+        $errors = [];
+        $step = [];
+
+        try {
+            $step = DraftConfig::normalise($config, $this->checkType($type ?? $before->type));
+        } catch (InvalidDraft $e) {
+            $errors = $e->errors;
+        }
+
+        if (array_key_exists('source', $config)) {
+            try {
+                $stored = is_array($before->config['source'] ?? null) ? $before->config['source'] : [];
+                $step['source'] = $this->source->normalise($workspaceId, $config['source'], $stored);
+            } catch (InvalidDraft $e) {
+                $errors += $e->errors;
+            }
+        }
+
+        if ($errors !== []) {
+            throw new InvalidDraft($errors, 'blocks.invalid_config');
+        }
+
+        return DraftConfig::merge($before->config, $step);
     }
 
     /**

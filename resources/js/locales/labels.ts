@@ -1684,3 +1684,80 @@ export const sessionLabels = {
     signOut: 'Sign out',
     extendFailed: "We couldn't keep you signed in. Try again.",
 } as const;
+
+// Wizard Step 2, Data Source (Story 3.7). `post-readonly`, `live-not-supported`, `datasource-none` and `perm-denied` come from the catalogue;
+// the parameter table reuses `endpointLabels` (column names, binding names, the user-context tag and shared-data badge).
+export const blockSourceLabels = {
+    title: 'Data source',
+    caption: 'Which API this block reads, and how often.',
+    sourceSection: { title: 'Data source and endpoint' },
+    paramsSection: {
+        title: 'Parameters',
+        caption: 'How each parameter of the endpoint gets its value.',
+    },
+    refreshSection: {
+        title: 'Refresh and date range',
+        caption: 'How often the data is fetched and the period it starts on.',
+    },
+    dataSource: 'Data source',
+    dataSourcePlaceholder: 'Choose a data source',
+    // A select option is plain text: the name and the health word.
+    sourceOption: (name: string, health: string) => `${name} (${health})`,
+    endpoint: 'Endpoint',
+    endpointPlaceholder: 'Choose an endpoint',
+    endpointOption: (method: string, path: string) => `${method} ${path}`,
+    noEndpoints: 'This data source has no endpoints yet.',
+    editSource: 'Edit data source',
+    editSourceHint: 'Opens in a new tab.',
+    registerHint: 'Opens in a new tab.',
+    newTab: '(opens in a new tab)',
+    chooseSource: 'Choose a data source first.',
+    chooseEndpoint: 'Choose an endpoint first.',
+    postRequired:
+        'Mark this POST as a read-only query before you fetch or continue.',
+    pathEmpty: (names: string[]) =>
+        names.length === 1
+            ? `Enter a value for the path parameter ${names[0]}.`
+            : `Enter a value for the path parameters ${names.join(', ')}.`,
+    parametersCaption: 'Parameters of the endpoint',
+    noParams: 'This endpoint has no parameters.',
+    paramsNone: 'Choose an endpoint to see its parameters.',
+    valueLabel: (name: string) => `Value of ${name}`,
+    periodUnavailable: 'Needs "Own selector" under Period behavior in step 1.',
+    pinned: (revision: number) => `Pinned to data source revision ${revision}.`,
+    outOfDateTitle: 'The sample is out of date',
+    outOfDate:
+        'The data source, endpoint or a parameter changed. Fetch or paste a new sample, or confirm the one you have, before you map the data.',
+    // Fetch is built in Story 3.9; it is shown, with its reasons, and does nothing until then.
+    fetch: 'Fetch sample',
+    fetchSoon: 'Fetching a sample is built in a later update.',
+    loading: 'Loading data sources…',
+    loadFailed: "We couldn't load the data sources.",
+    retry: 'Try again',
+    // Refresh Interval.
+    refresh: 'Refresh interval',
+    refreshPlaceholder: 'Choose how often to refresh',
+    live: 'Live',
+    daily: 'Daily',
+    days: (n: number) => `Every ${n} days`,
+    minutes: (n: number) => (n === 1 ? '1 minute' : `${n} minutes`),
+    seconds: (n: number) => (n === 1 ? '1 second' : `${n} seconds`),
+    refreshNone:
+        'No refresh intervals are set up in System settings yet, so none can be chosen.',
+    refreshFailed: "We couldn't load the refresh intervals.",
+    // Default date range.
+    range: 'Default date range',
+    rangePlaceholder: 'Choose a default date range',
+    presets: {
+        today: 'Today',
+        this_week: 'This week',
+        this_month: 'This month',
+        current_year: 'Current year',
+        custom: 'Custom',
+    } as Record<string, string>,
+    from: 'From',
+    to: 'To',
+    rangeOrder: 'The start date cannot be after the end date.',
+    // The out-of-date flag and the pins in words, for a screen reader.
+    sourceHealthLabel: 'Health',
+} as const;

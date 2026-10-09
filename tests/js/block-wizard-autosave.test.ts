@@ -389,6 +389,9 @@ describe('session expiry', () => {
         replies = [
             ok({ data: CATEGORIES }),
             ok({ data: draft({ step: 2 }) }),
+            // Step 2 reads its Data Sources and refresh intervals when it opens.
+            ok({ data: [] }),
+            ok({ data: { intervals: null } }),
             refused(401, { message: 'Unauthenticated.' }),
         ];
         await mountPage('?draft=d-1&step=2');
