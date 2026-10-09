@@ -58,6 +58,7 @@ final class RecordSyncRun implements SyncRunLog
         ?string $requestId,
         \DateTimeInterface $startedAt,
         ?string $outcome = null,
+        ?int $attempt = null,
     ): string {
         $id ??= (string) Str::uuid7();
         $url = (string) preg_replace('~\A([a-z][a-z0-9+.-]*://)[^/@]*@~i', '$1', (string) preg_replace('/[?#].*\z/s', '', $urlTemplate));
@@ -65,12 +66,12 @@ final class RecordSyncRun implements SyncRunLog
         $names = array_values(array_filter($parameterNames, fn (string $name): bool => preg_match('/\A(?:header:[!#$%&\'*+.^_`|~0-9A-Za-z-]{1,128}|[A-Za-z0-9_.~\-]{1,64})\z/D', $name) === 1));
 
         DB::insert(
-            'insert into sync_runs (id, workspace_id, data_source_id, kind, url_template, status, http_status, latency_ms, bytes, error_code, request_id, started_at, sync_target_id, dispatch_seq, parameter_names, outcome, created_at, updated_at) '
-            .'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, now(), now())',
+            'insert into sync_runs (id, workspace_id, data_source_id, kind, url_template, status, http_status, latency_ms, bytes, error_code, request_id, started_at, sync_target_id, dispatch_seq, parameter_names, outcome, attempt, created_at, updated_at) '
+            .'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?::jsonb, ?, ?, now(), now())',
             [
                 $id, $workspaceId, $dataSourceId, self::KIND, substr($url, 0, 2048), $status, $httpStatus, $latencyMs, $bytes,
                 $errorCode === null ? null : substr($errorCode, 0, 48), $requestId === null ? null : substr($requestId, 0, 64),
-                $startedAt->format('Y-m-d H:i:s.uP'), $syncTargetId, $dispatchSeq, json_encode($names, JSON_THROW_ON_ERROR), $outcome,
+                $startedAt->format('Y-m-d H:i:s.uP'), $syncTargetId, $dispatchSeq, json_encode($names, JSON_THROW_ON_ERROR), $outcome, $attempt,
             ],
         );
 

@@ -33,6 +33,10 @@ final readonly class EndpointFetchResult
         public ?string $etag = null,
         /** Story 2.15: the response's `Last-Modified`, under the same rule. */
         public ?string $lastModified = null,
+        /** Story 2.17: what a failed fetch means for a retry and the breaker; null for a good answer and for `moved`. */
+        public ?FailureClass $failureClass = null,
+        /** Story 2.17: the valid `Retry-After` of a 429 or 503 answer as whole seconds from now (unclamped), else null. */
+        public ?int $retryAfterSeconds = null,
     ) {}
 
     /** The reason of the failed run for a 304 nothing conditional was sent for (or the target has no payload to keep). */
@@ -41,6 +45,6 @@ final readonly class EndpointFetchResult
     /** @return array<string, mixed> */
     public function __debugInfo(): array
     {
-        return ['ok' => $this->ok, 'status' => $this->status, 'code' => $this->code?->value, 'reason' => $this->reason];
+        return ['ok' => $this->ok, 'status' => $this->status, 'code' => $this->code?->value, 'reason' => $this->reason, 'class' => $this->failureClass?->value];
     }
 }

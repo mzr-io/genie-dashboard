@@ -145,6 +145,16 @@ return [
         'operator_password_hash' => $tunable('DASHFLOW_EGRESS_OPERATOR_PASSWORD_HASH'),
     ],
 
+    // Fetch fairness and concurrency (Story 2.17), kept outside `tunables` like `egress`. Both are `pending_input` with no default and
+    // unset means off: `data_source_concurrency` is the most calls in flight per Data Source (a Valkey counter, leased for
+    // `tunables.guards.platform_timeout_ceiling` when that is set), `workspace_fair_share` the most targets one dispatch tick takes per
+    // Workspace. Retry, breaker and bucket numbers are `tunables.retry`, `tunables.circuit_breaker` and
+    // `tunables.budgets.max_fetch_rate_per_data_source` (whole calls per minute).
+    'fetch' => [
+        'data_source_concurrency' => $tunable('DASHFLOW_FETCH_DATA_SOURCE_CONCURRENCY'),
+        'workspace_fair_share' => $tunable('DASHFLOW_FETCH_WORKSPACE_FAIR_SHARE'),
+    ],
+
     // Raw history retention (Story 2.16), kept outside `tunables` like `egress`. `max_window_days` is `pending_input` with no
     // default: the longest `window(N days)` an Admin may choose. Unset or malformed: a window is refused (422
     // `retention-window-unavailable`) and the form shows the option disabled; `latest` always works. The sweep's two timings are

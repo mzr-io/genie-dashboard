@@ -106,9 +106,10 @@ it('hands the scheduled body to the raw tier and nowhere else, with logs of code
     $fetcher = (string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/Connector/Application/FetchEndpoint.php');
     expect(substr_count($fetcher, '$response->body'))->toBe(1)
         ->and($fetcher)->not->toMatch('/Log::\w+\([^;]*(?:body|values|\$request|url)/s')
-        // Story 2.15: the only header read is a validator, by name, in `validator()`.
-        ->and($fetcher)->not->toMatch('/\$response->(?:headers(?!\[\$name\])|json\(\))/')
-        ->and(substr_count($fetcher, '$response->headers'))->toBe(1);
+        // Story 2.15: a header is read only as a validator, by name, in `validator()`. Story 2.17: and as the one `Retry-After` of a 429 or 503,
+        // handed to `RetryAfter::seconds()`, which keeps a number and nothing else.
+        ->and($fetcher)->not->toMatch('/\$response->(?:headers(?!\[\$name\]|, new \\\\DateTimeImmutable)|json\(\))/')
+        ->and(substr_count($fetcher, '$response->headers'))->toBe(2);
 
     // RawStore keeps bytes: hex in, hex out, never decoded and never jsonb.
     $store = withoutComments((string) file_get_contents(dirname(__DIR__, 2).'/app/Modules/RawStore/Infrastructure/PostgresRawStore.php'));

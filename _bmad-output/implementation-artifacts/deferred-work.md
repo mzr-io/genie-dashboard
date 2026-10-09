@@ -236,3 +236,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-16-choose-how-much-raw-history-a-data-source-keeps.md`
   summary: A Data Source saved as window(N) cannot be edited for unrelated fields once the deployment maximum is lowered or unset until the Admin switches to Latest only.
   evidence: Validator checks the maximum on every save; the form shows the window radio selected but disabled.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-17-retry-rate-limit-and-break-the-circuit-on-failing-sources.md`
+  summary: The ValkeySourceGovernor Lua scripts (breaker, probe lease, bucket, concurrency) are never run by the automated suite; tests use FakeGovernor.
+  evidence: Test image has no Valkey or phpredis; the scripts were run by hand against valkey/valkey:9-alpine (empty-bucket path not exercised). Add a Database-suite test against the Docker Valkey queue store when the image supports it.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-17-retry-rate-limit-and-break-the-circuit-on-failing-sources.md`
+  summary: A killed worker's concurrency slot and half-open probe lease are freed only by TTL; skipped runs are written every interval while a breaker is open; the governor is consulted whenever only retry.cap is set; FetchJob retries re-enter every target of a sync group.
+  evidence: jobFailed does not release governor state by design; no coalescing of skipped rows; GovernorLimits::active() keys off the penalty cap; groups equal one target until Story 2.20.

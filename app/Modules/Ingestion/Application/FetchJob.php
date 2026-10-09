@@ -4,10 +4,13 @@ namespace App\Modules\Ingestion\Application;
 
 use App\Platform\Tenancy\RunsInWorkspace;
 use App\Platform\Tenancy\WorkspaceScopedJob;
+use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Foundation\Queue\Queueable;
 use Illuminate\Queue\InteractsWithQueue;
+use Illuminate\Support\Facades\Log;
+use Throwable;
 
 /**
  * One scheduled fetch of one sync group (Story 2.14), on `worker-connector` queue `fetch-scheduled`. A signed, Workspace-scoped job with IDs and
@@ -22,11 +25,19 @@ final class FetchJob implements ShouldQueue, WorkspaceScopedJob
 
     public int $tries = 1;
 
+    /**
+     * Story 2.17: the call number within this dispatch (1 for the first); a retry is this job queued again with `attempt` + 1. Not `readonly`
+     * and not promoted: a payload queued before this story has no such property, and unserializing it must leave the default 1.
+     */
+    public int $attempt = 1;
+
     public function __construct(
         public readonly string $workspaceId,
         public readonly string $syncGroupId,
         public readonly int $dispatchSeq,
+        int $attempt = 1,
     ) {
+        $this->attempt = $attempt;
         $this->onQueue(self::QUEUE);
     }
 
@@ -42,6 +53,21 @@ final class FetchJob implements ShouldQueue, WorkspaceScopedJob
 
     public function handle(FetchSyncTarget $fetch): void
     {
-        $fetch->run($this->workspaceId, $this->syncGroupId, $this->dispatchSeq);
+        $fetch->run($this->workspaceId, $this->syncGroupId, $this->dispatchSeq, $this->attempt);
+    }
+
+    /**
+     * A job that threw or whose worker was killed (Story 2.17): under the dispatch fence, a `failed` run with `job-failed` and the request ID, and
+     * one counted failure. It re-enters the Workspace itself (the job's own transaction is gone) and never throws: only the exception class is logged.
+     */
+    public function failed(?Throwable $exception = null): void
+    {
+        try {
+            app(WorkspaceTransaction::class)->run($this->workspaceId, fn () => app(FetchSyncTarget::class)->jobFailed(
+                $this->workspaceId, $this->syncGroupId, $this->dispatchSeq, $this->attempt,
+            ));
+        } catch (Throwable $e) {
+            Log::error('ingestion.fetch.job_failure_not_recorded', ['workspace_id' => $this->workspaceId, 'exception' => $e::class]);
+        }
     }
 }

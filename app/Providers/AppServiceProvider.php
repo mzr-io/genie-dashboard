@@ -60,9 +60,11 @@ use App\Modules\Connector\Contracts\FetchTransport;
 use App\Modules\Connector\Contracts\HostAllowlist;
 use App\Modules\Connector\Contracts\HostAllowlistDependents;
 use App\Modules\Connector\Contracts\HostResolver;
+use App\Modules\Connector\Contracts\Jitter;
 use App\Modules\Connector\Contracts\SampleFetches;
 use App\Modules\Connector\Contracts\Samples;
 use App\Modules\Connector\Contracts\SecretVault;
+use App\Modules\Connector\Contracts\SourceGovernor;
 use App\Modules\Connector\Contracts\SyncRunLog;
 use App\Modules\Connector\Contracts\TokenRequestLog;
 use App\Modules\Connector\Infrastructure\ConnectorAuditSerializer;
@@ -74,8 +76,10 @@ use App\Modules\Connector\Infrastructure\DnsHostResolver;
 use App\Modules\Connector\Infrastructure\LocalSecretVault;
 use App\Modules\Connector\Infrastructure\NativeCurlClient;
 use App\Modules\Connector\Infrastructure\OAuthTokenCache;
+use App\Modules\Connector\Infrastructure\RandomJitter;
 use App\Modules\Connector\Infrastructure\SqlHostAllowlistDependents;
 use App\Modules\Connector\Infrastructure\SyncRunTokenLog;
+use App\Modules\Connector\Infrastructure\ValkeySourceGovernor;
 use App\Modules\Identity\Application\IssueInvitation;
 use App\Modules\Identity\Application\QueuedInvitationCourier;
 use App\Modules\Identity\Contracts\InvitationCourier;
@@ -183,6 +187,8 @@ class AppServiceProvider extends ServiceProvider
         // Ingestion's scheduled fetch (Story 2.14) reaches the Connector through these two contracts only.
         $this->app->bind(EndpointFetcher::class, FetchEndpoint::class);
         $this->app->bind(SyncRunLog::class, RecordSyncRun::class);
+        $this->app->bind(SourceGovernor::class, ValkeySourceGovernor::class);
+        $this->app->bind(Jitter::class, RandomJitter::class);
         // Ingestion and RawStore (Story 2.14): the fetch key, its context digest key, the raw tier and the Endpoint status read model.
         $this->app->bind(ContextDigest::class, KeyFileContextDigest::class);
         $this->app->bind(FetchKeyResolver::class, ResolveFetchKey::class);

@@ -3,6 +3,7 @@
 namespace App\Modules\Connector\Application;
 
 use App\Modules\Connector\Contracts\ConnectionTestCode;
+use App\Modules\Connector\Contracts\FailureClass;
 
 /**
  * What the error ladder ({@see EndpointFetchLadder}) makes of a failed fetch: the user code and the reason, and the numbers the failure
@@ -19,5 +20,7 @@ final readonly class FetchFailure
         public ?int $limitBytes = null,
         public ?int $page = null,
         public ?int $pages = null,
+        /** Story 2.17: what the failure means for a retry and the breaker. Set by {@see EndpointFetchLadder}. */
+        public ?FailureClass $class = null,
     ) {}
 }

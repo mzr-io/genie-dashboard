@@ -581,8 +581,8 @@ it('rolls the Endpoints migration back and migrates forward again', function () 
     $tables = fn (): int => (int) Cluster::rows(Cluster::superuser(), "select count(*) as n from information_schema.tables where table_name in ('endpoints', 'endpoint_revisions')")[0]['n'];
 
     try {
-        // Seven steps: the newest migrations are Story 2.16's (retention), Story 2.15's (conditional state), Story 2.14's (scheduled fetch), Story 2.13's (user context), Story 2.12's (user attributes) and Story 2.11's (pagination), then this one.
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 7, '--force' => true]))->toBe(0)
+        // Eight steps: the newest migrations are Story 2.17's (attempt), Story 2.16's (retention), Story 2.15's (conditional state), Story 2.14's (scheduled fetch), Story 2.13's (user context), Story 2.12's (user attributes) and Story 2.11's (pagination), then this one.
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 8, '--force' => true]))->toBe(0)
             ->and($tables())->toBe(0);
     } finally {
         Artisan::call('migrate', ['--database' => 'migrator', '--force' => true]);

@@ -2,6 +2,7 @@
 
 namespace App\Modules\Ingestion\Infrastructure;
 
+use App\Modules\Connector\Contracts\GovernorLimits;
 use Illuminate\Contracts\Config\Repository;
 
 /**
@@ -43,6 +44,52 @@ final class SyncSettings
     public function coldPurgeAfterSeconds(): ?int
     {
         return self::seconds($this->config->get('dashflow.tunables.sync.cold_purge_after.value'));
+    }
+
+    /**
+     * The retry policy (Story 2.17), or null (retries are off) unless `retry.base`, `retry.cap` and `retry.max_attempts` are all positive
+     * whole numbers.
+     */
+    public function retry(): ?RetryPolicy
+    {
+        $base = self::seconds($this->config->get('dashflow.tunables.retry.base.value'));
+        $cap = self::seconds($this->config->get('dashflow.tunables.retry.cap.value'));
+        $attempts = self::seconds($this->config->get('dashflow.tunables.retry.max_attempts.value'));
+
+        return $base === null || $cap === null || $attempts === null ? null : new RetryPolicy($base, $cap, $attempts);
+    }
+
+    /** `retry.cap` alone, which a penalty needs even when the retry as a whole is off; null when unset or malformed. */
+    public function retryCap(): ?int
+    {
+        return self::seconds($this->config->get('dashflow.tunables.retry.cap.value'));
+    }
+
+    /**
+     * What the governor applies (Story 2.17): the breaker (`circuit_breaker.failure_count` and `cool_down`, both or neither), the bucket
+     * (`budgets.max_fetch_rate_per_data_source`, whole calls per minute), the concurrency cap (`fetch.data_source_concurrency`) with its
+     * lease (`guards.platform_timeout_ceiling`), and the penalty cap (`retry.cap`). Every unset or malformed number leaves that guard off.
+     */
+    public function governorLimits(): GovernorLimits
+    {
+        $failures = self::seconds($this->config->get('dashflow.tunables.circuit_breaker.failure_count.value'));
+        $coolDown = self::seconds($this->config->get('dashflow.tunables.circuit_breaker.cool_down.value'));
+        $breaker = $failures !== null && $coolDown !== null;
+
+        return new GovernorLimits(
+            $breaker ? $failures : null,
+            $breaker ? $coolDown : null,
+            self::seconds($this->config->get('dashflow.tunables.budgets.max_fetch_rate_per_data_source.value')),
+            self::seconds($this->config->get('dashflow.fetch.data_source_concurrency.value')),
+            self::seconds($this->config->get('dashflow.tunables.guards.platform_timeout_ceiling.value')),
+            $this->retryCap(),
+        );
+    }
+
+    /** `fetch.workspace_fair_share`: the most targets one dispatch tick takes per Workspace; null (no cap) when unset or malformed. */
+    public function workspaceFairShare(): ?int
+    {
+        return self::seconds($this->config->get('dashflow.fetch.workspace_fair_share.value'));
     }
 
     /** A positive whole number of seconds (digits only), or null. */

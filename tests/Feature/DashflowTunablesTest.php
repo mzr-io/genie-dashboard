@@ -89,3 +89,10 @@ it('lists no tunable outside the AR-57 names', function () {
 
     expect($present)->toEqualCanonicalizing(AR57_TUNABLES);
 });
+
+// Story 2.17: concurrency and fair share are pending_input settings kept outside the closed `tunables` list, like `egress`.
+it('has the fetch concurrency and fair share as pending_input settings with no default, outside the tunables', function () {
+    expect(config('dashflow.fetch.data_source_concurrency'))->toBe(['env' => 'DASHFLOW_FETCH_DATA_SOURCE_CONCURRENCY', 'value' => null, 'pending_input' => true])
+        ->and(config('dashflow.fetch.workspace_fair_share'))->toBe(['env' => 'DASHFLOW_FETCH_WORKSPACE_FAIR_SHARE', 'value' => null, 'pending_input' => true])
+        ->and(config('dashflow.tunables'))->not->toHaveKey('fetch');
+});

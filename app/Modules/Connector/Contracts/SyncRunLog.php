@@ -13,9 +13,10 @@ interface SyncRunLog
     public const KIND = 'scheduled_fetch';
 
     /**
-     * @param  string  $status  `succeeded`, `failed` or `superseded`
+     * @param  string  $status  `succeeded`, `failed`, `superseded`, `retrying` (Story 2.17: a retryable failure queued again) or `skipped` (no call: the breaker or a rate limit)
      * @param  list<string>  $parameterNames
      * @param  string|null  $outcome  Story 2.15, of a `succeeded` run: `changed`, `not_modified` or `unchanged` (null before and for any other run)
+     * @param  int|null  $attempt  Story 2.17: the attempt number (1 for the first call), null when unknown
      * @return string the run's id (`$id` when given)
      */
     public function recordScheduledFetch(
@@ -34,5 +35,6 @@ interface SyncRunLog
         ?string $requestId,
         \DateTimeInterface $startedAt,
         ?string $outcome = null,
+        ?int $attempt = null,
     ): string;
 }

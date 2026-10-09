@@ -1,21 +1,28 @@
 <?php
 
 use App\Models\User;
+use App\Modules\Connector\Contracts\Admission;
+use App\Modules\Connector\Contracts\CallOutcome;
 use App\Modules\Connector\Contracts\ConnectionTestCode;
 use App\Modules\Connector\Contracts\EgressTransportFailed;
 use App\Modules\Connector\Contracts\EndpointFetcher;
 use App\Modules\Connector\Contracts\EndpointFetchResult;
 use App\Modules\Connector\Contracts\EndpointFetchSpec;
 use App\Modules\Connector\Contracts\HostResolver;
+use App\Modules\Connector\Contracts\Jitter;
 use App\Modules\Connector\Contracts\ResponseLimitExceeded;
+use App\Modules\Connector\Contracts\SourceGovernor;
 use App\Modules\Connector\Infrastructure\CurlClient;
 use App\Modules\Connector\Infrastructure\CurlResult;
+use App\Modules\Connector\Infrastructure\ValkeySourceGovernor;
 use App\Modules\Ingestion\Application\DispatchDueSyncs;
 use App\Modules\Ingestion\Application\FetchJob;
+use App\Modules\Ingestion\Application\FetchSyncTarget;
 use App\Modules\Ingestion\Application\RegisterSyncTargets;
 use App\Modules\Ingestion\Contracts\FetchKeyInput;
 use App\Modules\Ingestion\Contracts\FetchKeyResolver;
 use App\Modules\Ingestion\Contracts\SyncStatuses;
+use App\Modules\Ingestion\Infrastructure\SyncSettings;
 use App\Modules\RawStore\Contracts\RawPayload;
 use App\Modules\RawStore\Contracts\RawStore;
 use App\Platform\Outbox\OutboxEnvelope;
@@ -24,6 +31,8 @@ use App\Platform\Tenancy\WorkspaceMismatchException;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use App\Support\Observability\MetricEmitter;
 use Carbon\CarbonImmutable;
+use Illuminate\Contracts\Bus\Dispatcher as BusDispatcher;
+use Illuminate\Contracts\Redis\Factory as RedisFactory;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Facade;
@@ -31,7 +40,9 @@ use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Tests\Database\Support\Cluster;
 use Tests\Unit\Support\FakeCurl;
+use Tests\Unit\Support\FakeGovernor;
 use Tests\Unit\Support\FakeResolver;
+use Tests\Unit\Support\FixedJitter;
 
 // Story 2.14 against the real PostgreSQL: a saved Endpoint revision becomes one sync target (through the outbox), the dispatcher
 // (role `system`) fences each run with `dispatch_seq`, the `fetch-scheduled` job keeps the last good response as exact bytes plus an
@@ -426,7 +437,7 @@ function sdDown(string $kind): CurlResult|Throwable
         '500' => FakeCurl::answer(500, '{"error":"down"}'),
         'html' => FakeCurl::answer(200, '<html>maintenance</html>', ['content-type' => ['text/html']]),
         'truncated' => FakeCurl::answer(200, '{"total":'),
-        'timeout' => new EgressTransportFailed(28),
+        'timeout' => new EgressTransportFailed('timeout', 28),
         'refused' => FakeCurl::answer(401, '{}'),
     };
 }
@@ -469,7 +480,7 @@ it('keeps the last good payload when the source fails, records every failed run 
     'a body that is not JSON' => ['html', 'not-json'],
     'JSON that does not parse' => ['truncated', 'not-json'],
     'a timeout' => ['timeout', 'fetch-failed'],
-    'a refused login' => ['refused', 'fetch-failed'],
+    'a refused login' => ['refused', 'config-error'],
 ]);
 
 it('treats a response over the size limit as a failed run with nothing stored or truncated', function () {
@@ -845,7 +856,7 @@ it('sends nothing for a POST that is not read-only and records a failed run', fu
 
     expect($this->curl->calls)->toBe([])
         ->and(sdRuns())->toHaveCount(1)
-        ->and(sdRuns()[0])->toMatchArray(['status' => 'failed', 'error_code' => 'fetch-failed'])
+        ->and(sdRuns()[0])->toMatchArray(['status' => 'failed', 'error_code' => 'config-error'])
         ->and(sdTargets()[0])->toMatchArray(['consecutive_failures' => 1, 'applied_seq' => 1]);
 });
 
@@ -1141,7 +1152,7 @@ it('keeps only a validator that is exactly one value of at most 512 visible ASCI
 
 it('keeps the validators when a run fails for any other reason, and a late 304 changes nothing', function () {
     [$workspace, , , $target] = sdReady();
-    $this->curl->queue = [sdOk(SD_BODY, '"v1"'), FakeCurl::answer(500, '{}'), new EgressTransportFailed(28), sdNotModified('"v2"')];
+    $this->curl->queue = [sdOk(SD_BODY, '"v1"'), FakeCurl::answer(500, '{}'), new EgressTransportFailed('timeout', 28), sdNotModified('"v2"')];
 
     sdRun($workspace, $target, 5);
     $good = sdTargets()[0];
@@ -1247,8 +1258,8 @@ it('backfills Data as of and nulls the old byte hashes when the conditional-stat
     sdRun($workspace, $target, 1);
 
     try {
-        // Two steps: the newest migrations are Story 2.16's (retention), then Story 2.15's (conditional state).
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 2, '--force' => true]))->toBe(0);
+        // Three steps: the newest migrations are Story 2.17's (attempt), 2.16's (retention), then 2.15's (conditional state).
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 3, '--force' => true]))->toBe(0);
 
         // A target as 2.14 left it: a payload, the hash of the bytes and a last success.
         Cluster::superuser()->prepare('update sync_targets set content_hash = ?, last_success_at = ? where id = ?')->execute([hash('sha256', SD_BODY), '2026-10-01 10:00:00+00', $target]);
@@ -1264,4 +1275,573 @@ it('backfills Data as of and nulls the old byte hashes when the conditional-stat
     sdRun($workspace, $target, 2);
     // The rollback dropped the first run's outcome with the column.
     expect(array_column(sdRuns(), 'outcome'))->toBe([null, 'changed'])->and(sdCount('raw_observations'))->toBe(2);
+});
+
+// ---- Story 2.17: retry, rate limit and circuit breaker. The governor is the in-memory one (no Valkey in the suite), the jitter is fixed. ----
+
+/** @param  array<string, string>  $settings  dotted `dashflow.tunables.*` / `dashflow.fetch.*` names without `.value` */
+function rbSettings(array $settings): void
+{
+    foreach ($settings as $name => $value) {
+        config(['dashflow.'.$name.'.value' => $value]);
+    }
+}
+
+function rbRetryOn(string $attempts = '3'): void
+{
+    rbSettings(['tunables.retry.base' => '2', 'tunables.retry.cap' => '60', 'tunables.retry.max_attempts' => $attempts]);
+}
+
+function rbGovernor(): FakeGovernor
+{
+    $governor = new FakeGovernor;
+    app()->instance(SourceGovernor::class, $governor);
+
+    return $governor;
+}
+
+/** The target is due again in five minutes, as the dispatcher leaves it. */
+function rbDue(string $target, int $seconds = 300): void
+{
+    Cluster::superuser()->prepare('update sync_targets set next_due_at = now() + make_interval(secs => ?) where id = ?')->execute([$seconds, $target]);
+}
+
+/** One attempt of a dispatch, run by hand (no queue), so a retry that was queued can be inspected instead of run. */
+function rbAttempt(string $workspace, string $target, int $seq, int $attempt = 1): void
+{
+    sdDispatched($target, $seq);
+    app(WorkspaceTransaction::class)->run($workspace, fn () => (new FetchJob($workspace, $target, $seq, $attempt))->handle(app(FetchSyncTarget::class)));
+}
+
+function rbRunStatuses(): array
+{
+    return array_map(fn (array $run): string => $run['status'].'/'.($run['attempt'] ?? '-'), sdRuns());
+}
+
+function rbMetrics(array &$seen): void
+{
+    app()->instance(MetricEmitter::class, new class($seen) implements MetricEmitter
+    {
+        /** @param  list<string>  $seen */
+        public function __construct(public array &$seen) {}
+
+        public function increment(string $name, array $labels = [], int $by = 1): void
+        {
+            expect(array_keys($labels))->toBe(['workspace_id']);
+            $this->seen[] = $name;
+        }
+    });
+}
+
+it('retries a source that fails twice and then answers: three runs within one interval, one commit', function () {
+    [$workspace, , , $target] = sdReady();
+    rbRetryOn();
+    rbGovernor();
+    app()->instance(Jitter::class, new FixedJitter(0.5));
+    rbDue($target);
+    $this->curl->queue = [FakeCurl::answer(500, '{}'), new EgressTransportFailed('timeout', 28), sdOk()];
+
+    // A synchronous queue runs each requeued attempt in place.
+    sdRun($workspace, $target, 1);
+
+    expect(rbRunStatuses())->toBe(['retrying/1', 'retrying/2', 'succeeded/3'])
+        ->and(sdRuns()[0]['error_code'])->toBe('fetch-failed')
+        ->and(sdTargets()[0])->toMatchArray(['applied_seq' => 1, 'payload_seq' => 1, 'consecutive_failures' => 0])
+        ->and(sdCount('raw_observations'))->toBe(1)
+        ->and(sdCount('outbox_events where type = \'ingestion.payload.changed\''))->toBe(1);
+});
+
+it('queues the retry with the jittered delay and leaves the target untouched while it is retrying', function () {
+    [$workspace, , , $target] = sdReady();
+    rbRetryOn();
+    rbGovernor();
+    $jitter = new FixedJitter(1.0);
+    app()->instance(Jitter::class, $jitter);
+    rbDue($target);
+    Queue::fake();
+    $this->curl->queue = [FakeCurl::answer(502, '{}')];
+    $before = sdTargets()[0];
+
+    rbAttempt($workspace, $target, 1);
+
+    $after = sdTargets()[0];
+    expect(rbRunStatuses())->toBe(['retrying/1'])
+        ->and($jitter->ceilings)->toBe([2])
+        ->and($after['consecutive_failures'])->toBe($before['consecutive_failures'])
+        ->and($after['applied_seq'])->toBe($before['applied_seq'])
+        ->and($after['last_checked_at'])->toBe($before['last_checked_at']);
+
+    // The same fenced job, one attempt later, with the delay; a second failure doubles the ceiling.
+    Queue::assertPushed(FetchJob::class, fn (FetchJob $job): bool => $job->attempt === 2 && $job->dispatchSeq === 1 && $job->delay === 2);
+    $this->curl->queue = [FakeCurl::answer(502, '{}')];
+    rbAttempt($workspace, $target, 1, 2);
+    expect($jitter->ceilings)->toBe([2, 4]);
+    Queue::assertPushed(FetchJob::class, fn (FetchJob $job): bool => $job->attempt === 3 && $job->delay === 4);
+});
+
+it('makes the last attempt the failure: failed run, one counted failure, the last good payload kept', function () {
+    [$workspace, , , $target] = sdReady();
+    rbRetryOn('2');
+    rbGovernor();
+    app()->instance(Jitter::class, new FixedJitter(0.0));
+    $this->curl->queue = [sdOk()];
+    sdRun($workspace, $target, 1);
+    $good = sdTargets()[0];
+    rbDue($target);
+    $this->curl->queue = [FakeCurl::answer(500, '{}'), FakeCurl::answer(500, '{}')];
+
+    sdRun($workspace, $target, 2);
+
+    expect(rbRunStatuses())->toBe(['succeeded/1', 'retrying/1', 'failed/2'])
+        ->and(sdTargets()[0])->toMatchArray(['applied_seq' => 2, 'consecutive_failures' => 1, 'current_payload_id' => $good['current_payload_id']]);
+});
+
+it('does not retry when the delay would pass the next due time, or when retries are not configured', function () {
+    [$workspace, , , $target] = sdReady();
+    rbRetryOn();
+    rbGovernor();
+    app()->instance(Jitter::class, new FixedJitter(1.0));
+    rbDue($target, 1);
+    Queue::fake();
+    $this->curl->queue = [FakeCurl::answer(500, '{}')];
+
+    rbAttempt($workspace, $target, 1);
+
+    expect(rbRunStatuses())->toBe(['failed/1'])->and(sdTargets()[0]['consecutive_failures'])->toBe(1);
+    Queue::assertNothingPushed();
+
+    // Unset: exactly as Story 2.15, and the governor's store is never opened.
+    rbSettings(['tunables.retry.base' => null, 'tunables.retry.cap' => null, 'tunables.retry.max_attempts' => null]);
+    $redis = Mockery::mock(RedisFactory::class);
+    $redis->shouldNotReceive('connection');
+    app()->instance(SourceGovernor::class, new ValkeySourceGovernor($redis));
+    rbDue($target);
+    $this->curl->queue = [FakeCurl::answer(500, '{}')];
+
+    rbAttempt($workspace, $target, 2);
+
+    expect(rbRunStatuses())->toBe(['failed/1', 'failed/1'])->and(sdTargets()[0]['consecutive_failures'])->toBe(2);
+    Queue::assertNothingPushed();
+});
+
+it('honours Retry-After up to the cap, sets the penalty, empties the bucket, and makes other targets of the source wait', function () {
+    [$workspace, $source, , $target] = sdReady();
+    rbRetryOn();
+    rbSettings(['tunables.budgets.max_fetch_rate_per_data_source' => '10']);
+    $governor = rbGovernor();
+    app()->instance(Jitter::class, new FixedJitter(0.0));
+    rbDue($target);
+    Queue::fake();
+    $seen = [];
+    rbMetrics($seen);
+    $this->curl->queue = [FakeCurl::answer(429, '{}', ['retry-after' => ['9999']])];
+
+    rbAttempt($workspace, $target, 1);
+
+    $key = $workspace.':'.$source;
+    expect(rbRunStatuses())->toBe(['retrying/1'])
+        ->and($governor->penalties[$key] - $governor->now)->toBe(60.0)
+        ->and($governor->buckets[$key]['tokens'])->toBe(0.0)
+        ->and($governor->records)->toBe([['throttled', false]])
+        ->and($seen)->toContain('dashflow.connector.throttled')->toContain('dashflow.connector.fetch_retried');
+    Queue::assertPushed(FetchJob::class, fn (FetchJob $job): bool => $job->attempt === 2 && $job->delay === 60);
+
+    // Another target of the same source asks for a call while the penalty stands: it is not sent.
+    $denied = $governor->admit($workspace, $source, app(SyncSettings::class)->governorLimits());
+    expect($denied->reason)->toBe(Admission::RATE_LIMITED)->and($denied->waitSeconds)->toBe(60);
+});
+
+it('retries a 503 with Retry-After as throttled, and a 503 without one as transient', function () {
+    [$workspace, , , $target] = sdReady();
+    rbRetryOn();
+    $governor = rbGovernor();
+    app()->instance(Jitter::class, new FixedJitter(0.0));
+    rbDue($target);
+    Queue::fake();
+    $this->curl->queue = [FakeCurl::answer(503, '{}', ['retry-after' => ['Wed, 21 Oct 2099 07:28:00 GMT']]), FakeCurl::answer(503, '{}')];
+
+    rbAttempt($workspace, $target, 1);
+    $governor->now += 61;
+    rbAttempt($workspace, $target, 1, 2);
+
+    // The date is far away: clamped to the cap. Then a plain 503 counts for the breaker.
+    Queue::assertPushed(FetchJob::class, fn (FetchJob $job): bool => $job->attempt === 2 && $job->delay === 60);
+    expect($governor->records)->toBe([['throttled', false], ['fail', false]]);
+});
+
+it('does not retry another 4xx: failed, config-error with the status, and the breaker is reset not counted', function () {
+    [$workspace, , , $target] = sdReady();
+    rbRetryOn();
+    rbSettings(['tunables.circuit_breaker.failure_count' => '2', 'tunables.circuit_breaker.cool_down' => '60']);
+    $governor = rbGovernor();
+    rbDue($target);
+    Queue::fake();
+    $this->curl->queue = [FakeCurl::answer(404, '{}'), FakeCurl::answer(404, '{}'), FakeCurl::answer(404, '{}')];
+
+    foreach ([1, 2, 3] as $seq) {
+        rbAttempt($workspace, $target, $seq);
+    }
+
+    expect(rbRunStatuses())->toBe(['failed/1', 'failed/1', 'failed/1'])
+        ->and(sdRuns()[0])->toMatchArray(['error_code' => 'config-error', 'http_status' => 404])
+        ->and($governor->breakers)->toBe([])
+        ->and(array_unique(array_column($governor->records, 0)))->toBe(['ok']);
+    Queue::assertNothingPushed();
+});
+
+it('does not retry a bad body, keeps the payload and resets the breaker', function (string $kind) {
+    [$workspace, , , $target] = sdReady();
+    rbRetryOn();
+    rbSettings(['tunables.circuit_breaker.failure_count' => '3', 'tunables.circuit_breaker.cool_down' => '60']);
+    $governor = rbGovernor();
+    rbDue($target);
+    Queue::fake();
+    $this->curl->queue = [sdOk(), sdDown($kind)];
+    rbAttempt($workspace, $target, 1);
+    $good = sdTargets()[0];
+
+    rbAttempt($workspace, $target, 2);
+
+    expect(rbRunStatuses())->toBe(['succeeded/1', 'failed/1'])
+        ->and(sdRuns()[1]['error_code'])->not->toBe('config-error')
+        ->and(sdTargets()[0])->toMatchArray(['current_payload_id' => $good['current_payload_id'], 'consecutive_failures' => 1])
+        ->and($governor->records)->toBe([['ok', false], ['ok', false]]);
+    Queue::assertNothingPushed();
+})->with(['not json' => ['html'], 'truncated' => ['truncated']]);
+
+it('does not retry a POST whose outcome is ambiguous, and retries one that cannot have been sent', function () {
+    [$workspace, , , $target] = sdReady([
+        'method' => 'POST', 'path' => '/query', 'body_template' => '{"region":{"$param":"region"}}', 'read_only_query' => true, 'confirm_read_only' => true,
+    ]);
+    rbRetryOn();
+    rbSettings(['tunables.circuit_breaker.failure_count' => '9', 'tunables.circuit_breaker.cool_down' => '60']);
+    $governor = rbGovernor();
+    app()->instance(Jitter::class, new FixedJitter(0.0));
+    rbDue($target);
+    Queue::fake();
+    $this->curl->queue = [new EgressTransportFailed('x', 28)];
+
+    rbAttempt($workspace, $target, 1);
+
+    expect(rbRunStatuses())->toBe(['failed/1'])->and($governor->records)->toBe([['fail', false]]);
+    Queue::assertNothingPushed();
+
+    $this->curl->queue = [new EgressTransportFailed('x', 7)];
+    rbAttempt($workspace, $target, 2);
+    Queue::assertPushed(FetchJob::class, fn (FetchJob $job): bool => $job->attempt === 2 && $job->dispatchSeq === 2);
+
+    $this->curl->queue = [FakeCurl::answer(500, '{}')];
+    rbAttempt($workspace, $target, 3);
+    Queue::assertPushed(FetchJob::class, 1);
+    expect(rbRunStatuses())->toBe(['failed/1', 'retrying/1', 'failed/1']);
+});
+
+it('opens the breaker, skips every call until the cool-down, and lets one probe decide', function () {
+    [$workspace, $source, , $target] = sdReady();
+    rbSettings(['tunables.circuit_breaker.failure_count' => '2', 'tunables.circuit_breaker.cool_down' => '60']);
+    $governor = rbGovernor();
+    $seen = [];
+    rbMetrics($seen);
+    $this->curl->queue = [FakeCurl::answer(500, '{}'), FakeCurl::answer(500, '{}')];
+
+    rbAttempt($workspace, $target, 1);
+    rbAttempt($workspace, $target, 2);
+    $failed = sdTargets()[0];
+
+    // Open: no call, a `skipped` run, and the target changes only by `applied_seq`.
+    rbAttempt($workspace, $target, 3);
+    $skipped = sdTargets()[0];
+
+    expect(rbRunStatuses())->toBe(['failed/1', 'failed/1', 'skipped/1'])
+        ->and(sdRuns()[2])->toMatchArray(['status' => 'skipped', 'error_code' => 'circuit-open', 'http_status' => null])
+        ->and(count($this->curl->calls))->toBe(2)
+        ->and($skipped)->toMatchArray(['applied_seq' => 3, 'consecutive_failures' => 2, 'last_checked_at' => $failed['last_checked_at']])
+        ->and($seen)->toContain('dashflow.connector.circuit_opened')->toContain('dashflow.connector.fetch_skipped')->toContain('dashflow.connector.fetch_skipped_circuit_open');
+
+    // Cool-down over: two jobs race, one wins the probe, the other is skipped. A failed probe reopens for another cool-down.
+    $governor->now += 61;
+    $limits = app(SyncSettings::class)->governorLimits();
+    $this->curl->queue = [FakeCurl::answer(500, '{}')];
+    $racer = $governor->admit($workspace, $source, $limits);
+    expect($racer->probe)->toBeTrue();
+    rbAttempt($workspace, $target, 4);
+    expect(sdRuns()[3]['status'])->toBe('skipped')->and(count($this->curl->calls))->toBe(2);
+    $governor->record($workspace, $source, CallOutcome::Failed, $limits, true);
+
+    $governor->now += 61;
+    $this->curl->queue = [FakeCurl::answer(500, '{}')];
+    rbAttempt($workspace, $target, 5);
+    expect(sdRuns()[4]['status'])->toBe('failed')->and(count($this->curl->calls))->toBe(3);
+    rbAttempt($workspace, $target, 6);
+    expect(sdRuns()[5])->toMatchArray(['status' => 'skipped', 'error_code' => 'circuit-open']);
+
+    // A successful probe closes the breaker and calls flow again.
+    $governor->now += 61;
+    $this->curl->queue = [sdOk(), sdOk('{"x":2}')];
+    rbAttempt($workspace, $target, 7);
+    rbAttempt($workspace, $target, 8);
+    expect(array_slice(rbRunStatuses(), 6))->toBe(['succeeded/1', 'succeeded/1'])->and($seen)->toContain('dashflow.connector.circuit_closed');
+});
+
+it('gives no retry to the half-open probe', function () {
+    [$workspace, $source, , $target] = sdReady();
+    rbRetryOn();
+    rbSettings(['tunables.circuit_breaker.failure_count' => '1', 'tunables.circuit_breaker.cool_down' => '60']);
+    $governor = rbGovernor();
+    app()->instance(Jitter::class, new FixedJitter(0.0));
+    rbDue($target);
+    Queue::fake();
+    $this->curl->queue = [FakeCurl::answer(500, '{}'), FakeCurl::answer(500, '{}')];
+    $governor->breakers[$workspace.':'.$source] = ['state' => 'open', 'failures' => 1, 'open_until' => $governor->now - 1, 'probe_until' => 0.0];
+
+    rbAttempt($workspace, $target, 1);
+
+    expect(rbRunStatuses())->toBe(['failed/1']);
+    Queue::assertNothingPushed();
+    expect($governor->breakers[$workspace.':'.$source]['open_until'])->toBe($governor->now + 60);
+});
+
+it('records a rate-limited skip when the bucket is empty and nothing fits, and requeues with the governor wait when it fits', function () {
+    [$workspace, , , $target] = sdReady();
+    rbSettings(['tunables.budgets.max_fetch_rate_per_data_source' => '1']);
+    rbGovernor();
+    rbDue($target);
+    Queue::fake();
+    $seen = [];
+    rbMetrics($seen);
+    $this->curl->queue = [sdOk(), sdOk('{"x":2}')];
+
+    rbAttempt($workspace, $target, 1);
+    // No retry settings: a denied call is recorded and the target moves only by `applied_seq`.
+    rbAttempt($workspace, $target, 2);
+
+    expect(rbRunStatuses())->toBe(['succeeded/1', 'skipped/1'])
+        ->and(sdRuns()[1]['error_code'])->toBe('rate-limited')
+        ->and(sdTargets()[0])->toMatchArray(['applied_seq' => 2, 'consecutive_failures' => 0])
+        ->and(count($this->curl->calls))->toBe(1)
+        ->and($seen)->toContain('dashflow.connector.fetch_skipped_rate_limited');
+    Queue::assertNothingPushed();
+
+    // With retry settings the same denial is requeued with the wait the bucket reports, and is neither an attempt nor a run.
+    rbRetryOn();
+    rbAttempt($workspace, $target, 3);
+    expect(rbRunStatuses())->toBe(['succeeded/1', 'skipped/1']);
+    Queue::assertPushed(FetchJob::class, fn (FetchJob $job): bool => $job->attempt === 1 && $job->dispatchSeq === 3 && $job->delay === 60);
+
+    // A wait that passes the next due time is a skip.
+    rbDue($target, 30);
+    rbAttempt($workspace, $target, 4);
+    expect(rbRunStatuses())->toBe(['succeeded/1', 'skipped/1', 'skipped/1']);
+});
+
+it('caps the calls in flight per Data Source: a denied call waits retry.base, and the slot is released after a call', function () {
+    [$workspace, $source, , $target] = sdReady();
+    rbRetryOn();
+    rbSettings(['fetch.data_source_concurrency' => '1']);
+    $governor = rbGovernor();
+    rbDue($target);
+    Queue::fake();
+    $this->curl->queue = [sdOk()];
+    $key = $workspace.':'.$source;
+
+    rbAttempt($workspace, $target, 1);
+    expect($governor->inflight[$key])->toBe(0);
+
+    $governor->inflight[$key] = 1;
+    rbAttempt($workspace, $target, 2);
+
+    expect(rbRunStatuses())->toBe(['succeeded/1'])->and(count($this->curl->calls))->toBe(1);
+    Queue::assertPushed(FetchJob::class, fn (FetchJob $job): bool => $job->attempt === 1 && $job->dispatchSeq === 2 && $job->delay === 2);
+
+    // Released in `finally` even when the fetch throws.
+    $governor->inflight[$key] = 0;
+    app()->instance(EndpointFetcher::class, new class implements EndpointFetcher
+    {
+        public function fetch(EndpointFetchSpec $spec): EndpointFetchResult
+        {
+            throw new RuntimeException('boom');
+        }
+    });
+    expect(fn () => rbAttempt($workspace, $target, 3))->toThrow(RuntimeException::class)
+        ->and($governor->inflight[$key])->toBe(0);
+});
+
+it('takes at most the fair share of targets per Workspace in one tick, and other Workspaces still dispatch', function () {
+    [$workspaceA, $sourceA] = sdSetup();
+    foreach (['/a', '/b', '/c'] as $path) {
+        sdCreate($sourceA, ['path' => $path]);
+    }
+    [$workspaceB, $sourceB] = sdSetup();
+    sdCreate($sourceB, ['path' => '/z']);
+    sdRelay();
+    expect(sdCount('sync_targets'))->toBe(4);
+    Queue::fake();
+    rbSettings(['fetch.workspace_fair_share' => '2']);
+
+    expect(app(DispatchDueSyncs::class)->run())->toBe(3);
+    $pushed = Queue::pushed(FetchJob::class);
+    expect($pushed->where('workspaceId', $workspaceA)->count())->toBe(2)
+        ->and($pushed->where('workspaceId', $workspaceB)->count())->toBe(1);
+
+    // Unset: the whole backlog, as before.
+    Cluster::superuser()->exec('update sync_targets set next_due_at = now() - interval \'1 second\'');
+    rbSettings(['fetch.workspace_fair_share' => null]);
+    expect(app(DispatchDueSyncs::class)->run())->toBe(4);
+});
+
+it('supersedes a late retry before any call', function () {
+    [$workspace, , , $target] = sdReady();
+    rbRetryOn();
+    $governor = rbGovernor();
+    rbDue($target);
+    $this->curl->queue = [sdOk()];
+    rbAttempt($workspace, $target, 2);
+
+    rbAttempt($workspace, $target, 1, 2);
+
+    expect(rbRunStatuses())->toBe(['succeeded/1', 'superseded/2'])
+        ->and(count($this->curl->calls))->toBe(1)
+        ->and($governor->admits)->toHaveCount(1);
+});
+
+it('records a failed run and counts one failure for a job that throws or is killed, under the fence', function () {
+    [$workspace, , , $target] = sdReady();
+    rbGovernor();
+    app()->instance(EndpointFetcher::class, new class implements EndpointFetcher
+    {
+        public function fetch(EndpointFetchSpec $spec): EndpointFetchResult
+        {
+            throw new RuntimeException('boom CANARY-sd-91c3e7');
+        }
+    });
+
+    // The synchronous queue hands the exception to `failed()`, as a worker does.
+    expect(fn () => sdRun($workspace, $target, 1))->toThrow(RuntimeException::class);
+
+    expect(sdRuns())->toHaveCount(1)
+        ->and(sdRuns()[0])->toMatchArray(['status' => 'failed', 'error_code' => 'job-failed', 'dispatch_seq' => 1, 'attempt' => 1])
+        ->and(sdRuns()[0]['request_id'])->not->toBeNull()
+        ->and(sdTargets()[0])->toMatchArray(['consecutive_failures' => 1, 'applied_seq' => 1]);
+
+    // A killed worker's job: the hook alone, once; a dispatch that has already been applied is not counted again.
+    sdDispatched($target, 2);
+    (new FetchJob($workspace, $target, 2, 1))->failed(new RuntimeException('killed'));
+    (new FetchJob($workspace, $target, 2, 1))->failed(new RuntimeException('killed'));
+    expect(array_column(sdRuns(), 'error_code'))->toBe(['job-failed', 'job-failed'])
+        ->and(sdTargets()[0]['consecutive_failures'])->toBe(2);
+    expect(json_encode(sdRuns()).(string) file_get_contents($this->logFile))->not->toContain(SD_CANARY);
+});
+
+it('admits the call, logs and does not crash when Valkey is down', function () {
+    [$workspace, , , $target] = sdReady();
+    rbRetryOn();
+    rbSettings(['tunables.circuit_breaker.failure_count' => '2', 'tunables.circuit_breaker.cool_down' => '60', 'tunables.budgets.max_fetch_rate_per_data_source' => '5']);
+    $redis = Mockery::mock(RedisFactory::class);
+    $redis->shouldReceive('connection')->andThrow(new RuntimeException('down CANARY-sd-91c3e7'));
+    app()->instance(SourceGovernor::class, new ValkeySourceGovernor($redis));
+    $this->curl->queue = [sdOk()];
+
+    sdRun($workspace, $target, 1);
+
+    $log = (string) file_get_contents($this->logFile);
+    expect(rbRunStatuses())->toBe(['succeeded/1'])
+        ->and($log)->toContain('connector.governor.unavailable')->not->toContain(SD_CANARY);
+});
+
+it('keeps a secret out of runs, logs and metrics when it is in a Retry-After or a header', function () {
+    [$workspace, , , $target] = sdReady();
+    rbRetryOn();
+    rbGovernor();
+    app()->instance(Jitter::class, new FixedJitter(0.0));
+    rbDue($target);
+    Queue::fake();
+    $seen = [];
+    rbMetrics($seen);
+    $this->curl->queue = [FakeCurl::answer(429, '{"e":"'.SD_CANARY.'"}', ['retry-after' => [SD_CANARY], 'x-secret' => [SD_CANARY]]), FakeCurl::answer(503, '', ['retry-after' => ['Thu, 01 Jan 2099 '.SD_CANARY]])];
+
+    rbAttempt($workspace, $target, 1);
+    rbAttempt($workspace, $target, 2, 2);
+
+    $everything = json_encode([
+        Cluster::rows(Cluster::superuser(), 'select * from sync_runs'), Cluster::rows(Cluster::superuser(), 'select * from audit_events'),
+        Cluster::rows(Cluster::superuser(), 'select * from outbox_events'), $seen, (string) file_get_contents($this->logFile),
+    ], JSON_THROW_ON_ERROR);
+
+    expect($everything)->not->toContain(SD_CANARY)
+        // An invalid Retry-After falls back to the jittered backoff.
+        ->and(rbRunStatuses())->toBe(['retrying/1', 'retrying/2']);
+});
+
+it('records the final failure when the retry cannot be queued, under its own run id', function () {
+    [$workspace, , , $target] = sdReady();
+    rbRetryOn();
+    rbGovernor();
+    app()->instance(Jitter::class, new FixedJitter(0.0));
+    rbDue($target);
+    $bus = Mockery::mock(BusDispatcher::class);
+    $bus->shouldReceive('dispatch')->andThrow(new RuntimeException('queue down'));
+    app()->instance(BusDispatcher::class, $bus);
+    $this->curl->queue = [FakeCurl::answer(500, '{}')];
+
+    rbAttempt($workspace, $target, 1);
+
+    $runs = sdRuns();
+    // Both rows share the start time of the call, so only the set of rows is asserted.
+    $statuses = rbRunStatuses();
+    sort($statuses);
+    expect($statuses)->toBe(['failed/1', 'retrying/1'])
+        ->and($runs[0]['id'])->not->toBe($runs[1]['id'])
+        ->and(sdTargets()[0])->toMatchArray(['applied_seq' => 1, 'consecutive_failures' => 1]);
+});
+
+it('waits at least one second and penalises for at least one second on Retry-After 0', function () {
+    [$workspace, $source, , $target] = sdReady();
+    rbRetryOn();
+    $governor = rbGovernor();
+    app()->instance(Jitter::class, new FixedJitter(0.0));
+    rbDue($target);
+    Queue::fake();
+    $this->curl->queue = [FakeCurl::answer(429, '{}', ['retry-after' => ['0']])];
+
+    rbAttempt($workspace, $target, 1);
+
+    Queue::assertPushed(FetchJob::class, fn (FetchJob $job): bool => $job->attempt === 2 && $job->delay === 1);
+    expect($governor->penalties[$workspace.':'.$source] - $governor->now)->toBe(1.0);
+});
+
+it('counts a governor wait as a requeue, not a retry', function () {
+    [$workspace, $source, , $target] = sdReady();
+    rbRetryOn();
+    rbSettings(['fetch.data_source_concurrency' => '1']);
+    $governor = rbGovernor();
+    $governor->inflight[$workspace.':'.$source] = 1;
+    rbDue($target);
+    Queue::fake();
+    $seen = [];
+    rbMetrics($seen);
+
+    rbAttempt($workspace, $target, 1);
+
+    expect($seen)->toContain('dashflow.connector.fetch_requeued')->not->toContain('dashflow.connector.fetch_retried');
+});
+
+it('gives the half-open probe lease and the concurrency slot back when the fetcher throws', function () {
+    [$workspace, $source, , $target] = sdReady();
+    rbSettings(['tunables.circuit_breaker.failure_count' => '1', 'tunables.circuit_breaker.cool_down' => '60', 'fetch.data_source_concurrency' => '1']);
+    $governor = rbGovernor();
+    $key = $workspace.':'.$source;
+    $governor->breakers[$key] = ['state' => 'open', 'failures' => 1, 'open_until' => $governor->now - 1, 'probe_until' => 0.0];
+    app()->instance(EndpointFetcher::class, new class implements EndpointFetcher
+    {
+        public function fetch(EndpointFetchSpec $spec): EndpointFetchResult
+        {
+            throw new RuntimeException('boom');
+        }
+    });
+
+    expect(fn () => rbAttempt($workspace, $target, 1))->toThrow(RuntimeException::class);
+
+    expect($governor->breakers[$key]['probe_until'])->toBe(0.0)
+        ->and($governor->breakers[$key]['state'])->toBe('open')
+        ->and($governor->inflight[$key])->toBe(0);
 });
