@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Admin\AttributeKeyController;
 use App\Http\Controllers\Admin\DataSourceController;
+use App\Http\Controllers\Admin\DataSourceHealthController;
 use App\Http\Controllers\Admin\DataSourceLockController;
 use App\Http\Controllers\Admin\EndpointController;
 use App\Http\Controllers\Admin\GroupController;
@@ -66,6 +67,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('host-allowlist', [HostAllowlistController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.host-allowlist.store');
     Route::delete('host-allowlist/{entry}', [HostAllowlistController::class, 'destroy'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.host-allowlist.destroy');
     Route::get('host-allowlist/{entry}/dependents', [HostAllowlistController::class, 'dependents'])->middleware('admin')->name('api.admin.host-allowlist.dependents');
+
+    // Data Source health (Story 2.18): the Admin overview's "Your data sources".
+    Route::get('data-source-health', DataSourceHealthController::class)->middleware('admin')->name('api.admin.data-source-health');
 
     // Data Sources (Story 2.3): `data_sources.manage`, mapped in ShellNavigation::ADMIN_API_ROUTES. `check-url` is the Base URL blur check.
     Route::get('data-sources', [DataSourceController::class, 'index'])->middleware('admin')->name('api.admin.data-sources.index');

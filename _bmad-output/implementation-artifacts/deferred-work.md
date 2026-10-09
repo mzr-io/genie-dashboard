@@ -243,3 +243,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-17-retry-rate-limit-and-break-the-circuit-on-failing-sources.md`
   summary: A killed worker's concurrency slot and half-open probe lease are freed only by TTL; skipped runs are written every interval while a breaker is open; the governor is consulted whenever only retry.cap is set; FetchJob retries re-enter every target of a sync group.
   evidence: jobFailed does not release governor state by design; no coalescing of skipped rows; GovernorLimits::active() keys off the penalty cap; groups equal one target until Story 2.20.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-18-see-data-source-health.md`
+  summary: Add probe tests for AuthFailed, SsrfBlocked and a stored-credential (api-key, basic, secret header) Data Source.
+  evidence: Verification-gap review found no probe test with a secret header or auth type other than none; `ProbeDataSource` maps these exceptions to codes that nothing asserts.

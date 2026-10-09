@@ -9,12 +9,12 @@ import {
     useId,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
+import DataSourceHealth from '@/components/DataSourceHealth.vue';
 import DataTable from '@/components/DataTable.vue';
 import type { DataTableColumn } from '@/components/DataTable.vue';
 import ListStates from '@/components/ListStates.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import RegisterDataSourceButton from '@/components/RegisterDataSourceButton.vue';
-import StatusDot from '@/components/StatusDot.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +26,7 @@ import type {
     DataSourceListMeta,
     DataSourceSortKey,
 } from '@/lib/dataSources';
+import { formatDateTime } from '@/lib/format';
 import { SIGN_IN_URL } from '@/lib/session';
 import { dataSourceLabels as labels } from '@/locales/labels';
 import { edit } from '@/routes/admin/data-sources';
@@ -33,7 +34,7 @@ import { edit } from '@/routes/admin/data-sources';
 // Data sources (Story 2.3; UX-DR-207, 261, 263, 115, 282): a data table of the APIs the workspace reads, with sortable
 // headers, search, a count caption and the generic list states (5 skeleton rows, a failure row with Retry,
 // `list-empty` with the action, `list-no-match` with Clear search). The register button is the only primary
-// button. Health, the last successful call and Blocks using it are placeholders until Stories 2.18, 2.14 and Epic 3.
+// button. Health (a dot and its word, Story 2.18) and the last successful call come from the server; Blocks using it is a placeholder until Epic 3.
 // After a save the form returns here with `?created=<id>` (or `?updated=<id>`): that row is highlighted and focused.
 const { t } = useI18n();
 const SEARCH_DEBOUNCE_MS = 300;
@@ -396,15 +397,16 @@ onBeforeUnmount(() => {
             <template #cell-auth_type="{ row }">
                 {{ labels.authTypes[row.auth_type] ?? row.auth_type }}
             </template>
-            <template #cell-health>
-                <span class="inline-flex items-center gap-2" data-test="health">
-                    <StatusDot tone="neutral" />
-                    <span>{{ labels.checking }}</span>
-                </span>
+            <template #cell-health="{ row }">
+                <DataSourceHealth :status="row.health" />
             </template>
             <template #cell-last_success="{ row }">
                 <span data-test="last-success">{{
-                    row.last_successful_call_at ?? labels.noCall
+                    row.last_successful_call_at
+                        ? labels.lastSuccess(
+                              formatDateTime(row.last_successful_call_at),
+                          )
+                        : labels.noCall
                 }}</span>
             </template>
             <template #cell-blocks="{ row }">

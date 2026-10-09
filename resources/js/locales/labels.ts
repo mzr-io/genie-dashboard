@@ -277,6 +277,19 @@ export const shellPages = {
 
 export type ShellPageKey = keyof typeof shellPages;
 
+// The Admin overview's "Platform health" panel (Story 2.18; UX-DR-114, 260): only the "Your data sources" part. The platform services part is a later story.
+export const platformHealthLabels = {
+    panel: 'Platform health',
+    sourcesTitle: 'Your data sources',
+    empty: 'No data sources yet.',
+    failed: "We couldn't load the health of your data sources.",
+    retry: 'Retry',
+    loading: 'Loading data sources',
+    // The row's accessible name: "{name}, {word}, last success {time}", or the no-call text when there was no success.
+    row: (name: string, word: string, time: string | null, noCall: string) =>
+        `${name}, ${word}, ${time === null ? noCall : `last success ${time}`}`,
+};
+
 // Labels of the shell: sidebar, icon rail, top bar and profile menu (Story 1.16; UX-DR-79..86, 160, 270).
 export const shellLabels = {
     product: 'Dashflow',
@@ -802,9 +815,21 @@ export const dataSourceLabels = {
         basic: 'Basic',
         oauth2_client_credentials: 'OAuth2 client credentials',
     } as Record<string, string>,
-    // Placeholders until Stories 2.18 (health) and 2.14 (last call) and Epic 3 (blocks) fill them.
+    // Health (Story 2.18): the word beside every dot, and the last success.
     checking: 'Checking…',
+    health: {
+        checking: 'Checking…',
+        healthy: 'Healthy',
+        degraded: 'Degraded',
+        unreachable: 'Unreachable',
+    } as Record<string, string>,
+    lastSuccess: (time: string) => `Last success ${time}`,
     noCall: '—',
+    noCallYet: 'No successful call yet',
+    // The health path field of the form: the path a probe adds to the Base URL.
+    healthPath: 'Health path (optional)',
+    healthPathHelper:
+        'A path such as /health that Dashflow requests to check this data source when you save it, and later while it has no endpoints to fetch. Leave blank to use the Base URL. No query string, fragment or placeholders.',
     notEncrypted: hostAllowlistLabels.notEncrypted,
     notEncryptedNote: 'Calls to this data source are sent over plain http.',
     edit: (name: string) => `Edit ${name}`,
@@ -981,6 +1006,15 @@ export const dataSourceLabels = {
             'This name is reserved. Choose another name for the API key.',
         'api-key-name-duplicate': 'A default header already uses this name.',
         'api-key-placement-invalid': 'Choose header or query string.',
+        'health-path-too-long':
+            'The health path can have at most 255 characters.',
+        'health-path-placeholder':
+            'The health path cannot hold {placeholders}: enter a fixed path such as /health.',
+        'health-path-required': 'Enter the health path, starting with /.',
+        'health-path-leading-slash': 'The health path must start with /.',
+        'health-path-query': 'Leave the query string out of the health path.',
+        'health-path-fragment':
+            'Leave the fragment (#) out of the health path.',
         'retention-mode-invalid': 'Choose how much raw history to keep.',
         'retention-days-invalid': 'Enter a whole number of days, 1 or more.',
         'retention-days-above-maximum':

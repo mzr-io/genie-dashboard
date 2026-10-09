@@ -147,6 +147,17 @@ final class FakeGovernor implements SourceGovernor
         return null;
     }
 
+    public function state(string $workspaceId, string $dataSourceId, ?GovernorLimits $limits = null): string
+    {
+        $b = $this->breakers[$workspaceId.':'.$dataSourceId] ?? null;
+
+        if (($limits !== null && ! $limits->breakerActive()) || $b === null || $b['state'] !== 'open') {
+            return self::STATE_CLOSED;
+        }
+
+        return $this->now < $b['open_until'] ? self::STATE_OPEN : self::STATE_HALF_OPEN;
+    }
+
     public function penalize(string $workspaceId, string $dataSourceId, int $seconds, GovernorLimits $limits): void
     {
         $k = $workspaceId.':'.$dataSourceId;

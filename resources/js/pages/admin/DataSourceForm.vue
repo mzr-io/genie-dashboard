@@ -122,6 +122,8 @@ let nextRowKey = 1;
 const form = reactive({
     name: '',
     base_url: '',
+    // The optional path a health probe adds to the Base URL (Story 2.18).
+    health_path: '',
     headers: [] as Row[],
     timeout_seconds: '',
     max_response_bytes: '',
@@ -203,6 +205,7 @@ function snapshot(): string {
     return JSON.stringify([
         form.name,
         form.base_url,
+        form.health_path,
         form.headers.map((row) => [row.name, row.value]),
         form.timeout_seconds,
         form.max_response_bytes,
@@ -239,6 +242,7 @@ const dirty = computed(
 function fill(source: DataSource): void {
     form.name = source.name;
     form.base_url = source.base_url;
+    form.health_path = source.health_path ?? '';
     form.headers = source.headers.map((header) => {
         const status = header.secret
             ? source.secrets?.[`header:${header.name.toLowerCase()}`]
@@ -688,6 +692,9 @@ function payload(): DataSourceInput {
     return {
         name: form.name.trim(),
         base_url: form.base_url.trim(),
+        ...(form.health_path.trim() !== ''
+            ? { health_path: form.health_path.trim() }
+            : {}),
         headers: form.headers
             .filter((row) => row.name !== '' || row.value !== '' || row.secret)
             .map((row) =>
@@ -764,6 +771,7 @@ function rowFor(sent: number): number {
 function fieldLabel(field: string): string {
     if (field === 'name') return labels.name;
     if (field === 'base_url') return labels.baseUrl;
+    if (field === 'health_path') return labels.healthPath;
     if (field === 'timeout_seconds') return labels.timeout;
     if (field === 'max_response_bytes') return labels.maxResponse;
     if (field === 'max_pages') return labels.maxPages;
@@ -827,6 +835,7 @@ function elementFor(field: string): string {
 const fieldOrder = [
     'name',
     'base_url',
+    'health_path',
     'auth_type',
     'api_key_name',
     'api_key_placement',
@@ -1622,6 +1631,13 @@ function flushPayload(invalid: Set<string>): DataSourceInput {
     // A field the server refused goes back to its saved value.
     if (invalid.has('name')) body.name = saved.name;
     if (invalid.has('base_url')) body.base_url = saved.base_url;
+
+    if (invalid.has('health_path')) {
+        delete body.health_path;
+
+        if (saved.health_path) body.health_path = saved.health_path;
+    }
+
     if (invalid.has('timeout_seconds'))
         body.timeout_seconds = nonSecret(saved.timeout_seconds);
     if (invalid.has('max_response_bytes'))
@@ -2206,6 +2222,27 @@ const ceilingHelper = (value: number | null): string | undefined =>
                             :request-id="urlRequestId"
                         />
                     </div>
+                    <FormField
+                        :id="fieldId('health_path')"
+                        :label="labels.healthPath"
+                        :helper="labels.healthPathHelper"
+                        :error="errors.health_path"
+                        #default="{ field }"
+                    >
+                        <Input
+                            v-bind="field"
+                            v-model="form.health_path"
+                            name="health_path"
+                            type="text"
+                            maxlength="255"
+                            autocomplete="off"
+                            autocapitalize="off"
+                            spellcheck="false"
+                            placeholder="/health"
+                            data-test="health-path"
+                            @input="errors.health_path = null"
+                        />
+                    </FormField>
                 </fieldset>
 
                 <fieldset class="grid gap-4" data-test="auth-section">

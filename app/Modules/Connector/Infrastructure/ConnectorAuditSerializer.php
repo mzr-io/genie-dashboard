@@ -42,6 +42,8 @@ final class ConnectorAuditSerializer implements AuditSerializer
             // Retention (Story 2.16): the mode as an enum and the window as a count of days.
             'retention_mode' => AuditField::Enum,
             'retention_days' => AuditField::Count,
+            // The health probe's path (Story 2.18): a keyed hash, like an Endpoint path.
+            'health_path' => AuditField::Hashed,
             'header_count' => AuditField::Count,
             'headers' => AuditField::Hashed,
             'revision' => AuditField::Count,

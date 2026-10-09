@@ -135,6 +135,16 @@ final class ValkeySourceGovernor implements SourceGovernor
         return 0
         LUA;
 
+    /** Read only: 0 closed, 1 open (inside the cool-down), 2 half-open. */
+    private const STATE = <<<'LUA'
+        local t = redis.call('TIME')
+        local now = t[1] * 1000 + math.floor(t[2] / 1000)
+        local b = redis.call('HMGET', KEYS[1], 'state', 'open_until')
+        if b[1] ~= 'open' then return 0 end
+        if now < (tonumber(b[2]) or 0) then return 1 end
+        return 2
+        LUA;
+
     private const PENALIZE = <<<'LUA'
         local t = redis.call('TIME')
         local now = t[1] * 1000 + math.floor(t[2] / 1000)
@@ -209,6 +219,25 @@ final class ValkeySourceGovernor implements SourceGovernor
             1 => self::OPENED,
             2 => self::CLOSED,
             default => null,
+        };
+    }
+
+    public function state(string $workspaceId, string $dataSourceId, ?GovernorLimits $limits = null): string
+    {
+        if ($limits !== null && ! $limits->breakerActive()) {
+            return self::STATE_CLOSED;
+        }
+
+        try {
+            $reply = (int) $this->run(self::STATE, [$this->keys($workspaceId, $dataSourceId)['breaker']], []);
+        } catch (Throwable $e) {
+            return $this->unavailable($workspaceId, $e, self::STATE_CLOSED);
+        }
+
+        return match ($reply) {
+            1 => self::STATE_OPEN,
+            2 => self::STATE_HALF_OPEN,
+            default => self::STATE_CLOSED,
         };
     }
 

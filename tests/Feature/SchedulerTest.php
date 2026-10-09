@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Ingestion\Application\DispatchDueProbesJob;
 use App\Modules\Ingestion\Application\DispatchDueSyncsJob;
 use App\Modules\Ingestion\Application\SweepRawHistoryJob;
 use App\Platform\Outbox\RelayOutboxJob;
@@ -79,4 +80,15 @@ it('schedules the raw history sweep every five minutes on queue maintenance with
     Queue::fake();
     $event->run(app());
     Queue::assertPushedOn('maintenance', SweepRawHistoryJob::class);
+});
+
+// Story 2.18: the periodic health probe tick runs every minute on queue `maintenance` (worker-compute holds the `system` credentials), onOneServer.
+it('schedules the due-probe tick every minute on queue maintenance with onOneServer', function () {
+    $event = collect(app(Schedule::class)->events())->first(fn ($e) => ($e->description ?? null) === DispatchDueProbesJob::class);
+
+    expect($event)->not->toBeNull()->and($event->onOneServer)->toBeTrue()->and($event->expression)->toBe('* * * * *');
+
+    Queue::fake();
+    $event->run(app());
+    Queue::assertPushedOn('maintenance', DispatchDueProbesJob::class);
 });

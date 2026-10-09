@@ -268,3 +268,30 @@ it('keeps a job queued before Story 2.17, with no attempt property, at attempt 1
         ->and($restored->dispatchSeq)->toBe(7)
         ->and(unserialize(serialize($job))->attempt)->toBe(3);
 });
+
+it('reads the breaker state from the Lua reply, closed when the limits make it inert or the store fails', function () {
+    $connection = new class
+    {
+        public array $replies = [0, 1, 2];
+
+        public function eval(...$args): mixed
+        {
+            return array_shift($this->replies);
+        }
+    };
+    $redis = Mockery::mock(Factory::class);
+    $redis->shouldReceive('connection')->with('queue')->andReturn($connection);
+    $governor = new ValkeySourceGovernor($redis);
+    $limits = new GovernorLimits(3, 60, 10, 2, 30, 60);
+
+    expect($governor->state('W1', 'D1', $limits))->toBe('closed')
+        ->and($governor->state('W1', 'D1', $limits))->toBe('open')
+        ->and($governor->state('W1', 'D1', $limits))->toBe('half_open')
+        ->and($governor->state('W1', 'D1', new GovernorLimits))->toBe('closed');
+
+    Log::shouldReceive('warning')->once();
+    $down = Mockery::mock(Factory::class);
+    $down->shouldReceive('connection')->andThrow(new RuntimeException('down'));
+
+    expect((new ValkeySourceGovernor($down))->state('W1', 'D1', $limits))->toBe('closed');
+});

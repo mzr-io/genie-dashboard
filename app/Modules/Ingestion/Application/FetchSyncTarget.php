@@ -57,6 +57,7 @@ final class FetchSyncTarget
         private readonly SourceGovernor $governor,
         private readonly Jitter $jitter,
         private readonly SyncSettings $settings,
+        private readonly EvaluateSourceHealth $health,
     ) {}
 
     public const CONFIG_ERROR = 'config-error';
@@ -94,6 +95,8 @@ final class FetchSyncTarget
                 $workspaceId, (string) Str::uuid7(), strtolower((string) $target->data_source_id), $targetId, $dispatchSeq, '', [], 'failed',
                 null, null, null, 'job-failed', $startedAt, null, $attempt,
             );
+
+            $this->health->evaluate($workspaceId, strtolower((string) $target->data_source_id));
         }
     }
 
@@ -185,6 +188,11 @@ final class FetchSyncTarget
             $result->status, $result->latencyMs, $result->bytes, $status === 'succeeded' ? null : $code, $startedAt,
             $status === 'succeeded' ? $outcome : null, $attempt,
         );
+
+        // Story 2.18: a final run (succeeded or failed) is evidence for the Data Source's health. A superseded run says nothing.
+        if ($status !== 'superseded') {
+            $this->health->evaluate($workspaceId, $dataSourceId);
+        }
     }
 
     /** The code of a failed run: `config-error` for anything the Admin has to fix (Story 2.17), else the ladder's own code. */
@@ -230,6 +238,11 @@ final class FetchSyncTarget
             $this->metrics->increment('dashflow.connector.circuit_opened', ['workspace_id' => $workspaceId]);
         } elseif ($transition === SourceGovernor::CLOSED) {
             $this->metrics->increment('dashflow.connector.circuit_closed', ['workspace_id' => $workspaceId]);
+        }
+
+        if ($transition !== null) {
+            // Story 2.18: the breaker opening or closing re-evaluates the Data Source's health.
+            $this->health->evaluate($workspaceId, $dataSourceId);
         }
     }
 

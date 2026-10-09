@@ -4,19 +4,19 @@ namespace App\Http\Resources;
 
 use App\Modules\Connector\Contracts\DataSource;
 use App\Modules\Connector\Contracts\SecretSlots;
+use App\Modules\Ingestion\Contracts\SourceHealth;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 /**
- * One Data Source. A credential is never part of it: a secret slot or header is only `{configured, updated_at}`. Health, the last successful call and the Blocks using it are fields of the row so Stories 2.18, 2.14
- * and Epic 3 only fill them; until then they stand at "checking", null and 0.
+ * One Data Source. A credential is never part of it: a secret slot or header is only `{configured, updated_at}`. Health and the last successful call (Story 2.18, from Ingestion, merged by the controller; "checking" and null when none is given) and the Blocks using it (Epic 3, 0 until then) are fields of the row.
  *
  * @property DataSource $resource
  */
 final class DataSourceResource extends JsonResource
 {
     /** @param  bool  $headerValues  false for the list: header names only, never the values the table does not show */
-    public function __construct(DataSource $source, private readonly bool $headerValues = true)
+    public function __construct(DataSource $source, private readonly bool $headerValues = true, private readonly ?SourceHealth $health = null)
     {
         parent::__construct($source);
     }
@@ -58,11 +58,12 @@ final class DataSourceResource extends JsonResource
             'pagination_cursor_path' => $source->pagination->cursorPath,
             'retention_mode' => $source->retention->mode,
             'retention_days' => $source->retention->days,
+            'health_path' => $source->healthPath,
             'revision' => $source->revision,
             // The soft lock's epoch (Story 2.8): public state, a form echoes it back with its lock token.
             'lock_epoch' => $source->lockEpoch,
-            'health' => DataSource::HEALTH_PENDING,
-            'last_successful_call_at' => null,
+            'health' => $this->health->status ?? DataSource::HEALTH_PENDING,
+            'last_successful_call_at' => $this->health?->lastSuccessAt,
             'blocks_using' => 0,
             'created_at' => $source->createdAt,
             'updated_at' => $source->updatedAt,

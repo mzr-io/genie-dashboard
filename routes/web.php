@@ -57,7 +57,7 @@ Route::middleware(['auth'])->group(function () {
     Route::inertia('templates', 'Placeholder', ['page' => 'templates'])->name('templates.index');
 
     Route::prefix('admin')->middleware('admin')->group(function () {
-        Route::inertia('/', 'Placeholder', ['page' => 'admin-overview'])->name('admin.overview');
+        Route::inertia('/', 'admin/Overview')->name('admin.overview');
         Route::inertia('blocks', 'Placeholder', ['page' => 'block-management'])->name('admin.blocks.index');
         Route::inertia('blocks/create', 'Placeholder', ['page' => 'create-block'])->name('admin.blocks.create');
         Route::inertia('blocks/drafts', 'Placeholder', ['page' => 'draft-blocks'])->name('admin.blocks.drafts');

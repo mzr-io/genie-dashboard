@@ -72,6 +72,9 @@ enum AuditAction: string
     // Ingestion: a sync target kept a new good response (Story 2.14). An outbox event only: IDs and sequence numbers, never the body.
     case IngestionPayloadChanged = 'ingestion.payload.changed';
 
+    // Ingestion: a Data Source's health status changed (Story 2.18). Outbox event and audit event: the Data Source id and the two statuses, nothing else.
+    case IngestionSourceHealthChanged = 'ingestion.source_health.changed';
+
     // Platform: operator actions mirrored into the Workspace audit log.
     case PlatformWorkspaceCreated = 'platform.workspace.created';
 

@@ -40,6 +40,8 @@ return [
 
         'health' => [
             'probe_interval' => $tunable('DASHFLOW_HEALTH_PROBE_INTERVAL'),
+            // Story 2.18: the rolling window, in whole seconds, over which `sync_runs` outcomes are counted for the success percentage.
+            'window' => $tunable('DASHFLOW_HEALTH_WINDOW'),
             'sampling_interval' => $tunable('DASHFLOW_HEALTH_SAMPLING_INTERVAL'),
             'threshold_healthy' => $tunable('DASHFLOW_HEALTH_THRESHOLD_HEALTHY'),
             'threshold_degraded' => $tunable('DASHFLOW_HEALTH_THRESHOLD_DEGRADED'),

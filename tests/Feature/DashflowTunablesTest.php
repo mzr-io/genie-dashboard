@@ -5,7 +5,7 @@ const AR57_TUNABLES = [
     'sync.dispatch_tick', 'sync.precompute_timeout', 'sync.hot_window', 'sync.cold_purge_after',
     'sync.prewarm_lead', 'sync.manual_refresh_window', 'sync.refresh_intervals', 'sync.live_budget',
     'sync.superseded_payload_grace',
-    'health.probe_interval', 'health.sampling_interval', 'health.threshold_healthy',
+    'health.probe_interval', 'health.window', 'health.sampling_interval', 'health.threshold_healthy',
     'health.threshold_degraded', 'health.threshold_unreachable', 'health.uptime_window',
     'health.overview_metric_windows',
     'retry.base', 'retry.cap', 'retry.max_attempts',
@@ -95,4 +95,9 @@ it('has the fetch concurrency and fair share as pending_input settings with no d
     expect(config('dashflow.fetch.data_source_concurrency'))->toBe(['env' => 'DASHFLOW_FETCH_DATA_SOURCE_CONCURRENCY', 'value' => null, 'pending_input' => true])
         ->and(config('dashflow.fetch.workspace_fair_share'))->toBe(['env' => 'DASHFLOW_FETCH_WORKSPACE_FAIR_SHARE', 'value' => null, 'pending_input' => true])
         ->and(config('dashflow.tunables'))->not->toHaveKey('fetch');
+});
+
+// Story 2.18: the health window is a pending_input tunable (an AR-57 name added here) with no default.
+it('has the health window as a pending_input tunable with no default', function () {
+    expect(config('dashflow.tunables.health.window'))->toBe(['env' => 'DASHFLOW_HEALTH_WINDOW', 'value' => null, 'pending_input' => true]);
 });

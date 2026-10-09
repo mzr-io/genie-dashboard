@@ -55,10 +55,14 @@ export type RetentionMode = 'latest' | 'window';
 // The deployment's maximum for a retention window, in days; null when none is set (then a window is refused).
 export type RetentionMeta = { max_window_days: number | null };
 
+export type HealthStatus = 'checking' | 'healthy' | 'degraded' | 'unreachable';
+
 export type DataSource = {
     data_source_id: string;
     name: string;
     base_url: string;
+    // The optional path a health probe adds to the Base URL (Story 2.18); null when none.
+    health_path?: string | null;
     scheme: 'http' | 'https';
     host: string;
     port: number;
@@ -89,8 +93,8 @@ export type DataSource = {
     revision: number;
     // The soft lock's epoch (Story 2.8): sent back with an edit, with the lock token.
     lock_epoch?: number;
-    // Placeholders the later stories fill: 'checking', null and 0.
-    health: string;
+    // Health (Story 2.18): `checking`, `healthy`, `degraded` or `unreachable`, and the time of the last success (ISO 8601, UTC).
+    health: HealthStatus;
     last_successful_call_at: string | null;
     blocks_using: number;
     created_at: string;
@@ -123,6 +127,7 @@ export type OneDataSource = {
 export type DataSourceInput = {
     name: string;
     base_url: string;
+    health_path?: string;
     headers: DefaultHeader[];
     timeout_seconds: string | null;
     max_response_bytes: string | null;
@@ -543,4 +548,38 @@ export async function pollOperation(
 
         await wait(intervalMs, signal);
     }
+}
+
+// Health of the Data Sources (Story 2.18): the dot's tone for each status. The dot is decoration; its word is the value.
+export const HEALTH_TONES: Record<
+    HealthStatus,
+    'success' | 'warning' | 'error' | 'neutral'
+> = {
+    healthy: 'success',
+    degraded: 'warning',
+    unreachable: 'error',
+    checking: 'neutral',
+};
+
+// One row of the Admin overview's "Your data sources": `GET /api/v1/admin/data-source-health`.
+export type DataSourceHealthRow = {
+    data_source_id: string;
+    name: string;
+    health: HealthStatus;
+    last_successful_call_at: string | null;
+};
+
+export const DATA_SOURCE_HEALTH_URL = '/api/v1/admin/data-source-health';
+
+export async function fetchDataSourceHealth(
+    signal?: AbortSignal,
+): Promise<DataSourceHealthRow[]> {
+    const body = await call('GET', DATA_SOURCE_HEALTH_URL, undefined, signal);
+
+    // A malformed answer is a failed load, never an empty list.
+    if (!Array.isArray(body.data)) {
+        throw new Error('data source health response is malformed');
+    }
+
+    return body.data as DataSourceHealthRow[];
 }

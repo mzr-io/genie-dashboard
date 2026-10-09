@@ -4,8 +4,10 @@ namespace App\Modules\Connector\Application;
 
 use App\Modules\Connector\Contracts\DataSourceInput;
 use App\Modules\Connector\Contracts\DataSourceUrl;
+use App\Modules\Connector\Contracts\EndpointPath;
 use App\Modules\Connector\Contracts\InvalidDataSource;
 use App\Modules\Connector\Contracts\InvalidDataSourceUrl;
+use App\Modules\Connector\Contracts\InvalidEndpointPath;
 use App\Modules\Connector\Contracts\Pagination;
 use App\Modules\Connector\Contracts\PaginationPath;
 use App\Modules\Connector\Contracts\ReservedHeaders;
@@ -41,6 +43,9 @@ final class ValidateDataSourceInput
     public const SCOPE_MAX = 512;
 
     public const PARAM_MAX = 64;
+
+    /** The longest health path (Story 2.18). */
+    public const HEALTH_PATH_MAX = 255;
 
     public const PAGE_SIZE_MAX = 1000000;
 
@@ -84,12 +89,13 @@ final class ValidateDataSourceInput
         $this->secrets($auth, $raw['secrets'] ?? null, $secretValues, $fail);
         $pagination = $this->pagination($raw, $fail);
         $retention = $this->retention($raw, $fail);
+        $healthPath = $this->healthPath($raw['health_path'] ?? null, $fail);
 
         if ($errors !== [] || $name === null || $url === null) {
             throw new InvalidDataSource($errors, $reasons);
         }
 
-        return new DataSourceInput($name, $url, $headers, $timeout, $bytes, $pages, $live, $auth, $apiKeyName, $apiKeyPlacement, $secretValues, $tokenUrl, $clientId, $scope, $pagination, $retention);
+        return new DataSourceInput($name, $url, $headers, $timeout, $bytes, $pages, $live, $auth, $apiKeyName, $apiKeyPlacement, $secretValues, $tokenUrl, $clientId, $scope, $pagination, $retention, $healthPath);
     }
 
     /** The Base URL alone, for the blur check. @throws InvalidDataSource */
@@ -281,6 +287,44 @@ final class ValidateDataSourceInput
         }
 
         return new Retention('window', $days);
+    }
+
+    /**
+     * The optional health path (Story 2.18), validated like an Endpoint path ({@see EndpointPath}: it starts with `/`, is relative, has no
+     * query, fragment, `.` or `..` segment, space or control character) with two more rules: at most 255 characters and no `{placeholder}`
+     * (nothing fills one in for a probe). Blank means none.
+     */
+    private function healthPath(mixed $value, callable $fail): ?string
+    {
+        $value = $this->optional($value);
+
+        if ($value === null) {
+            return null;
+        }
+
+        if (is_string($value) && strlen($value) > self::HEALTH_PATH_MAX) {
+            $fail('health_path', 'health-path-too-long', 'The health path can have at most '.self::HEALTH_PATH_MAX.' characters.');
+
+            return null;
+        }
+
+        try {
+            $path = EndpointPath::parse($value);
+        } catch (InvalidEndpointPath $e) {
+            // The Endpoint path's own reason, prefixed so the form maps it; one without a label there shows this message.
+            $reason = 'health-'.$e->reason;
+            $fail('health_path', $reason, $e->getMessage());
+
+            return null;
+        }
+
+        if ($path->placeholders() !== [] || str_contains($path->template, '{') || str_contains($path->template, '}')) {
+            $fail('health_path', 'health-path-placeholder', 'The health path cannot hold {placeholders}: enter a fixed path such as /health.');
+
+            return null;
+        }
+
+        return $path->template;
     }
 
     private function optional(mixed $value): mixed

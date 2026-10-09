@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Ingestion\Application\DispatchDueProbesJob;
 use App\Modules\Ingestion\Application\DispatchDueSyncsJob;
 use App\Modules\Ingestion\Application\SweepRawHistoryJob;
 use App\Modules\Ingestion\Infrastructure\SyncSettings;
@@ -34,6 +35,10 @@ match (SyncSettings::tick(config('dashflow.tunables.sync.dispatch_tick.value')))
     default => $dispatch->everyMinute(),
 };
 $dispatch->onOneServer();
+
+// The periodic health probe tick (Story 2.18) runs on queue `maintenance`, so it runs on worker-compute, the only service holding the `system`
+// database credentials. It does nothing unless `health.probe_interval` is a valid number of seconds.
+Schedule::job(new DispatchDueProbesJob, 'maintenance')->everyMinute()->onOneServer();
 
 // The retention sweep (Story 2.16) runs on queue `maintenance`, so it runs on worker-compute, the only service holding the `maintenance` database credentials.
 Schedule::job(new SweepRawHistoryJob, 'maintenance')->everyFiveMinutes()->onOneServer();

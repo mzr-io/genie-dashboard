@@ -38,6 +38,8 @@ use App\Modules\Connector\Application\ManageDataSources;
 use App\Modules\Connector\Application\ManageEgressGrants;
 use App\Modules\Connector\Application\ManageEndpoints;
 use App\Modules\Connector\Application\ManageHostAllowlist;
+use App\Modules\Connector\Application\ProbeDataSource;
+use App\Modules\Connector\Application\QuerySyncRunHistory;
 use App\Modules\Connector\Application\ReadSample;
 use App\Modules\Connector\Application\RecordEgressBlock;
 use App\Modules\Connector\Application\RecordSyncRun;
@@ -65,6 +67,8 @@ use App\Modules\Connector\Contracts\SampleFetches;
 use App\Modules\Connector\Contracts\Samples;
 use App\Modules\Connector\Contracts\SecretVault;
 use App\Modules\Connector\Contracts\SourceGovernor;
+use App\Modules\Connector\Contracts\SourceProbe;
+use App\Modules\Connector\Contracts\SyncRunHistory;
 use App\Modules\Connector\Contracts\SyncRunLog;
 use App\Modules\Connector\Contracts\TokenRequestLog;
 use App\Modules\Connector\Infrastructure\ConnectorAuditSerializer;
@@ -89,12 +93,16 @@ use App\Modules\Identity\Contracts\SessionRevocation;
 use App\Modules\Identity\Contracts\SignInMemberships;
 use App\Modules\Identity\Infrastructure\DatabaseSessionRevocation;
 use App\Modules\Identity\Infrastructure\IdentityAuditSerializer;
+use App\Modules\Ingestion\Application\ReadSourceHealths;
 use App\Modules\Ingestion\Application\ReadSyncStatuses;
+use App\Modules\Ingestion\Application\RegisterSourceHealth;
 use App\Modules\Ingestion\Application\RegisterSyncTargets;
 use App\Modules\Ingestion\Application\ResolveFetchKey;
 use App\Modules\Ingestion\Contracts\ContextDigest;
 use App\Modules\Ingestion\Contracts\FetchKeyResolver;
+use App\Modules\Ingestion\Contracts\SourceHealths;
 use App\Modules\Ingestion\Contracts\SyncStatuses;
+use App\Modules\Ingestion\Infrastructure\IngestionAuditSerializer;
 use App\Modules\Ingestion\Infrastructure\KeyFileContextDigest;
 use App\Modules\RawStore\Contracts\RawStore;
 use App\Modules\RawStore\Contracts\RawTierSweep;
@@ -195,6 +203,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(RawStore::class, PostgresRawStore::class);
         $this->app->bind(RawTierSweep::class, PostgresRawTierSweep::class);
         $this->app->bind(SyncStatuses::class, ReadSyncStatuses::class);
+        $this->app->bind(SourceHealths::class, ReadSourceHealths::class);
+        $this->app->bind(SourceProbe::class, ProbeDataSource::class);
+        $this->app->bind(SyncRunHistory::class, QuerySyncRunHistory::class);
         $this->app->singleton(OperationKinds::class);
         $this->app->singleton(MetricEmitter::class, OtelMetricEmitter::class);
         $this->app->bind(SignInMemberships::class, SignInMembershipsAdapter::class);
@@ -226,11 +237,13 @@ class AppServiceProvider extends ServiceProvider
         $serializers->register(new AccessAuditSerializer);
         $serializers->register(new ConnectorAuditSerializer);
         $serializers->register(new IdentityAuditSerializer);
+        $serializers->register(new IngestionAuditSerializer);
         $serializers->register(new PlatformAuditSerializer);
 
         // Each module registers its outbox consumers with the kernel (the kernel calls no module).
         $this->app->make(OutboxConsumers::class)->register(new AttributesOnMembershipRemoved);
         $this->app->make(OutboxConsumers::class)->register(new RegisterSyncTargets);
+        $this->app->make(OutboxConsumers::class)->register(new RegisterSourceHealth);
 
         // Each module registers the lockable resources it owns with the kernel's edit lock (the kernel calls no module).
         $this->app->make(EditLockResources::class)->register(DataSourceLockEpochs::TYPE, new DataSourceLockEpochs);

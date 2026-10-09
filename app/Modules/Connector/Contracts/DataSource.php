@@ -41,5 +41,7 @@ final readonly class DataSource
         public Pagination $pagination = new Pagination,
         /** How much raw history it keeps (Story 2.16). */
         public Retention $retention = new Retention,
+        /** The optional relative path a health probe adds to the Base URL (Story 2.18). */
+        public ?string $healthPath = null,
     ) {}
 }

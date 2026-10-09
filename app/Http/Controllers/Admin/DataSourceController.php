@@ -26,6 +26,8 @@ use App\Modules\Connector\Contracts\DataSources;
 use App\Modules\Connector\Contracts\ErrorCode;
 use App\Modules\Connector\Contracts\InvalidDataSource;
 use App\Modules\Connector\Contracts\SecretsNotConfigured;
+use App\Modules\Ingestion\Contracts\SourceHealth;
+use App\Modules\Ingestion\Contracts\SourceHealths;
 use App\Platform\Contracts\ErrorCode as PlatformErrorCode;
 use App\Platform\EditLock\EditLock;
 use App\Platform\Tenancy\WorkspaceTransaction;
@@ -58,6 +60,7 @@ final class DataSourceController extends Controller
         private readonly MembershipLookup $memberships,
         private readonly ConnectionTests $tests,
         private readonly EditLock $lock,
+        private readonly SourceHealths $healths,
     ) {}
 
     public function index(ListDataSourcesRequest $request): JsonResponse
@@ -103,11 +106,11 @@ final class DataSourceController extends Controller
         } catch (DataSourceLockLost $e) {
             // 423: the soft lock was taken over, expired or never held. Nothing was written and no secret was sealed.
             return AdminApiError::json($request, PlatformErrorCode::EditLockLost->value, 423, 'You no longer hold the edit lock on this data source.', extra: [
-                'current' => ['data' => (new DataSourceResource($e->current))->resolve($request), 'meta' => $this->meta()],
+                'current' => ['data' => $this->resource($request, $e->current)->resolve($request), 'meta' => $this->meta()],
             ]);
         } catch (DataSourceRevisionConflict $e) {
             return AdminApiError::json($request, ErrorCode::RevisionConflict->value, 409, 'This data source was changed by someone else.', extra: [
-                'current' => ['data' => (new DataSourceResource($e->current))->resolve($request), 'meta' => $this->meta()],
+                'current' => ['data' => $this->resource($request, $e->current)->resolve($request), 'meta' => $this->meta()],
             ]);
         } catch (InvalidDataSource $e) {
             return $this->invalid($request, $e);
@@ -229,10 +232,17 @@ final class DataSourceController extends Controller
         return AdminApiError::json($request, PlatformErrorCode::ValidationFailed->value, 422, errors: $e->errors, extra: $e->reasons === [] ? [] : ['reasons' => $e->reasons]);
     }
 
+    private function resource(Request $request, DataSource $source): DataSourceResource
+    {
+        $health = $this->healths->forDataSources($this->workspaceId($request), [$source->id])[$source->id] ?? new SourceHealth;
+
+        return new DataSourceResource($source, true, $health);
+    }
+
     private function one(Request $request, DataSource $source, int $status): JsonResponse
     {
         return response()->json(
-            ['data' => (new DataSourceResource($source))->resolve($request), 'meta' => $this->meta()],
+            ['data' => $this->resource($request, $source)->resolve($request), 'meta' => $this->meta()],
             $status,
             ['Cache-Control' => self::NO_STORE],
         );
@@ -259,8 +269,11 @@ final class DataSourceController extends Controller
      */
     private function body(Request $request, DataSourcePage $page, DataSourceQuery $query): array
     {
+        // Health and the last successful call come from Ingestion in one read for the whole list (Story 2.18).
+        $healths = $this->healths->forDataSources($this->workspaceId($request), array_map(fn (DataSource $row): string => $row->id, $page->rows));
+
         return [
-            'data' => array_map(fn (DataSource $row): array => (new DataSourceResource($row, false))->resolve($request), $page->rows),
+            'data' => array_map(fn (DataSource $row): array => (new DataSourceResource($row, false, $healths[$row->id] ?? null))->resolve($request), $page->rows),
             'meta' => [
                 'total' => $page->total,
                 'matched' => $page->matched,

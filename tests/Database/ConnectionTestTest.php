@@ -824,8 +824,8 @@ it('rolls the transient-secrets migration back even when transient rows exist', 
         ->execute([(string) Str::uuid7(), $workspace, (string) Str::uuid7()]);
 
     try {
-        // Eleven steps: the newest migrations are Story 2.17's (attempt), Story 2.16's (retention), Story 2.15's (conditional state), Story 2.14's (scheduled fetch), Story 2.13's (user context), Story 2.12's (user attributes), Story 2.11's (pagination), Story 2.9's (Endpoints), Story 2.8's (lock epoch) and Story 2.7's (OAuth), then the transient-secrets one.
-        $code = Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 11, '--force' => true]);
+        // Twelve steps: the newest migrations are Story 2.18's (health), Story 2.17's (attempt), Story 2.16's (retention), Story 2.15's (conditional state), Story 2.14's (scheduled fetch), Story 2.13's (user context), Story 2.12's (user attributes), Story 2.11's (pagination), Story 2.9's (Endpoints), Story 2.8's (lock epoch) and Story 2.7's (OAuth), then the transient-secrets one.
+        $code = Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 12, '--force' => true]);
         expect($code)->toBe(0)
             ->and(Cluster::rows(Cluster::superuser(), "select count(*) as n from information_schema.columns where table_name = 'secrets' and column_name = 'ephemeral'")[0]['n'])->toBe(0)
             ->and(Cluster::rows(Cluster::superuser(), 'select count(*) as n from secrets')[0]['n'])->toBe(0);

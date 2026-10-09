@@ -127,6 +127,20 @@ it('runs the dispatcher on the system connection with a fixed batch and SKIP LOC
         ->and($tick)->toContain("onQueue('maintenance')");
 });
 
+// Story 2.18: the due-probe tick takes the system connection, a fixed batch and SKIP LOCKED; the probe job is signed and rides the connector queue; the
+// evaluator and the health read model decode no JSON and the probe never touches the governor's admission or breaker.
+it('runs the due-probe tick on the system connection with a fixed batch and SKIP LOCKED, and the probe job on the connector queue', function () {
+    $root = dirname(__DIR__, 2).'/app/Modules';
+    $tick = (string) file_get_contents($root.'/Ingestion/Application/DispatchDueProbesJob.php');
+    $job = (string) file_get_contents($root.'/Ingestion/Application/ProbeDataSourceJob.php');
+    $probe = (string) file_get_contents($root.'/Connector/Application/ProbeDataSource.php');
+
+    expect($tick)->toContain("CONNECTION = 'system'")->toContain('for update skip locked')->toContain('const BATCH')->toContain("onQueue('maintenance')")->not->toContain('workspace_isolation')
+        ->and($job)->toContain("QUEUE = 'fetch-scheduled'")->toContain('implements ShouldQueue, WorkspaceScopedJob')->toContain('RunsInWorkspace')->toContain('public int $tries = 1')
+        ->and($job)->toContain("'data_sources' => [\$this->dataSourceId]")
+        ->and($probe)->toContain('FetchTransport')->not->toContain('->admit(')->not->toContain('->record(Call')->not->toContain('SourceGovernor');
+});
+
 // Story 2.16: the raw tier is deleted by RawStore's RawTierSweep and nowhere else, always on the `maintenance` connection.
 it('lets only the RawTierSweep delete from the raw tier, run by the sweep on the maintenance connection', function () {
     $app = dirname(__DIR__, 2).'/app';

@@ -94,6 +94,8 @@ final class ShellNavigation
         'api.admin.host-allowlist.store' => Permission::SettingsManage,
         'api.admin.host-allowlist.destroy' => Permission::SettingsManage,
         'api.admin.host-allowlist.dependents' => Permission::SettingsManage,
+        // The Admin overview's "Your data sources" (Story 2.18).
+        'api.admin.data-source-health' => Permission::DataSourcesManage,
         'api.admin.data-sources.index' => Permission::DataSourcesManage,
         'api.admin.data-sources.store' => Permission::DataSourcesManage,
         'api.admin.data-sources.check-url' => Permission::DataSourcesManage,
