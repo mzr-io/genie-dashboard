@@ -259,6 +259,7 @@ final class Cluster
             'operations' => self::seedOperation($workspaceId),
             'sync_runs' => self::seedSyncRun($workspaceId),
             'sync_targets' => self::seedSyncTarget($workspaceId),
+            'sync_subscriptions' => self::seedSubscription($workspaceId),
             'data_source_health' => self::seedSourceHealth($workspaceId),
             'raw_bodies' => self::seedRawBody($workspaceId),
             'raw_observations' => self::seedRawObservation($workspaceId),
@@ -428,6 +429,27 @@ final class Cluster
 
         $names = array_keys($row);
         self::superuser()->prepare('INSERT INTO sync_targets ('.implode(', ', $names).') VALUES ('.implode(', ', array_map(fn (string $n): string => $n === 'params' ? '?::jsonb' : '?', $names)).')')
+            ->execute(array_values($row));
+
+        return (string) $row['id'];
+    }
+
+    /**
+     * A subscription (Story 2.19) on `$targetId` (a new target of the Workspace unless given); `hot_until` an hour ahead unless overridden.
+     *
+     * @param  array<string, mixed>  $columns  overrides, by column name
+     */
+    public static function seedSubscription(string $workspaceId, ?string $targetId = null, array $columns = []): string
+    {
+        $id = (string) Str::uuid7();
+        $row = $columns + [
+            'id' => $id, 'workspace_id' => $workspaceId, 'sync_target_id' => $targetId ?? self::seedSyncTarget($workspaceId),
+            'block_version_id' => (string) Str::uuid7(), 'role' => 'primary', 'compute_context' => '', 'refresh_interval_seconds' => 60,
+            'last_access_at' => 'now', 'hot_until' => gmdate('c', time() + 3600),
+        ] + ['created_at' => 'now', 'updated_at' => 'now'];
+
+        $names = array_keys($row);
+        self::superuser()->prepare('INSERT INTO sync_subscriptions ('.implode(', ', $names).') VALUES ('.implode(', ', array_fill(0, count($names), '?')).')')
             ->execute(array_values($row));
 
         return (string) $row['id'];

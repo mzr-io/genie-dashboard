@@ -31,7 +31,11 @@ final class RecordProbeResult
     {
         $dataSourceId = strtolower($dataSourceId);
 
-        if ($periodic && DB::selectOne('select 1 as found from sync_targets where workspace_id = ? and data_source_id = ? and retired_at is null limit 1', [$workspaceId, $dataSourceId]) !== null) {
+        // Fetches already prove a source that has current targets. With the demand rule on (Story 2.19) only a hot target is fetched, so only a
+        // hot one that has a schedule counts (a user-scoped target is never fetched on a schedule): a source nobody watches is kept in view by this probe alone.
+        $hot = $this->sync->hotWindowSeconds() !== null ? ' and exists (select 1 from sync_subscriptions s where s.sync_target_id = sync_targets.id and s.hot_until > now()) and next_due_at is not null' : '';
+
+        if ($periodic && DB::selectOne('select 1 as found from sync_targets where workspace_id = ? and data_source_id = ? and retired_at is null'.$hot.' limit 1', [$workspaceId, $dataSourceId]) !== null) {
             return;
         }
 

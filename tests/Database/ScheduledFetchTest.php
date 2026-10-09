@@ -1258,8 +1258,8 @@ it('backfills Data as of and nulls the old byte hashes when the conditional-stat
     sdRun($workspace, $target, 1);
 
     try {
-        // Four steps: the newest migrations are Story 2.18's (health), Story 2.17's (attempt), 2.16's (retention), then 2.15's (conditional state).
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 4, '--force' => true]))->toBe(0);
+        // Five steps: the newest migrations are Story 2.19's (subscriptions), Story 2.18's (health), Story 2.17's (attempt), 2.16's (retention), then 2.15's (conditional state).
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 5, '--force' => true]))->toBe(0);
 
         // A target as 2.14 left it: a payload, the hash of the bytes and a last success.
         Cluster::superuser()->prepare('update sync_targets set content_hash = ?, last_success_at = ? where id = ?')->execute([hash('sha256', SD_BODY), '2026-10-01 10:00:00+00', $target]);

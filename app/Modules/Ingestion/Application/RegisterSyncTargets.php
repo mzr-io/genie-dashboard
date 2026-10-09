@@ -119,10 +119,12 @@ final class RegisterSyncTargets implements OutboxConsumer
             }
         }
 
-        // Every other target of the Endpoint belongs to an earlier revision (or to none): it stops being scheduled, and its payloads stay.
+        // Every other target of the Endpoint belongs to an earlier revision (or to none): it stops being scheduled, and its payloads stay. A target
+        // that a subscription made for the current revisions (another period, or user-bound data; Story 2.19) is not an earlier one and stays.
         DB::update(
-            'update sync_targets set next_due_at = null, retired_at = now(), updated_at = now() where workspace_id = ? and endpoint_id = ? and retired_at is null and (?::text is null or fetch_key <> ?::text)',
-            [$workspaceId, $endpoint->id, $key, $key],
+            'update sync_targets set next_due_at = null, retired_at = now(), updated_at = now() where workspace_id = ? and endpoint_id = ? and retired_at is null and (?::text is null or fetch_key <> ?::text) '
+            .'and (endpoint_revision_id <> ? or data_source_revision <> ?::integer)',
+            [$workspaceId, $endpoint->id, $key, $key, $endpoint->revisionId, $source->revision],
         );
     }
 

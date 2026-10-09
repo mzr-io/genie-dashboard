@@ -247,3 +247,20 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-18-see-data-source-health.md`
   summary: Add probe tests for AuthFailed, SsrfBlocked and a stored-credential (api-key, basic, secret header) Data Source.
   evidence: Verification-gap review found no probe test with a secret header or auth type other than none; `ProbeDataSource` maps these exceptions to codes that nothing asserts.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-19-refresh-only-what-is-being-watched-within-budgets.md`
+  summary: Story 2.19 Live refusal (`msg:live-not-supported`), the scheduler clamp when a Data Source loses `live_capable` or an interval is removed, and the Data Source impact list with its Admin-notification event.
+  evidence: Split at the planning checkpoint; no Block or interval picker exists yet to use them.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-19-refresh-only-what-is-being-watched-within-budgets.md`
+  summary: Test the workspace fair share and batch cap in the hot dispatch path of `DispatchDueSyncs`.
+  evidence: Verification-gap review: `DemandRefreshTest` forces `workspace_fair_share` to null; the existing fair-share test runs with the demand rule off.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-19-refresh-only-what-is-being-watched-within-budgets.md`
+  summary: Check that a `scopeByCaller` Endpoint without a user-bound parameter does not become a scheduled shared target in `RegisterSubscription`.
+  evidence: Unverified: `userScoped` is `bound !== null`; read `Endpoint::requiresUserContext` to settle it (medium if not covered).
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-19-refresh-only-what-is-being-watched-within-budgets.md`
+  summary: Give `hot_targets` and `cold_targets` gauge semantics, and the subscription refusal its own metric name.
+  evidence: `MetricEmitter` is counter-only, so the sweep adds levels every run.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-19-refresh-only-what-is-being-watched-within-budgets.md`
+  summary: Purge shared per-period targets that subscriptions created once they go cold.
+  evidence: The cold purge covers only `user_scoped` targets, so each period or compute context leaves a permanent shared target.

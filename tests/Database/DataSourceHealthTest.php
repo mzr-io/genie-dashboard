@@ -706,6 +706,25 @@ it('skips a periodic probe of a source that has current sync targets, but not a 
     expect($this->curl->calls)->toHaveCount(1)->and(hlHealth()[0]['status'])->toBe('healthy');
 });
 
+it('with the demand rule on, skips a periodic probe only for a source with a hot scheduled target', function () {
+    [$workspace] = hlSetup();
+    hlSettings(['tunables.sync.hot_window' => '600']);
+    $idle = hlSource($workspace, 'Idle');
+    $hot = hlSource($workspace, 'Hot');
+    $userScoped = hlSource($workspace, 'Per user');
+    Cluster::seedSyncTarget($workspace, ['data_source_id' => $idle, 'next_due_at' => '2020-01-01', 'refresh_interval_seconds' => 60]);
+    Cluster::seedSubscription($workspace, Cluster::seedSyncTarget($workspace, ['data_source_id' => $hot, 'next_due_at' => '2020-01-01', 'refresh_interval_seconds' => 60]));
+    Cluster::seedSubscription($workspace, Cluster::seedSyncTarget($workspace, ['data_source_id' => $userScoped, 'user_scoped' => true]));
+    $this->curl->queue = [FakeCurl::answer(200, '{}'), FakeCurl::answer(200, '{}')];
+
+    hlProbe($workspace, $hot, true);
+    expect($this->curl->calls)->toBe([]);
+
+    hlProbe($workspace, $idle, true);
+    hlProbe($workspace, $userScoped, true);
+    expect($this->curl->calls)->toHaveCount(2);
+});
+
 it('gives role system only the probe columns, only rows that can be due, and one column to change', function () {
     [$workspace] = hlSetup();
     $due = hlSource($workspace, 'Due', ['next_probe_at' => '2026-10-01 00:00:00+00']);
@@ -816,7 +835,7 @@ it('adds the health table and the health path in one migration that rolls back a
     expect($columns('data_sources', 'health_path'))->toBe(1)->and($columns('data_source_health', 'status'))->toBe(1);
 
     try {
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 1, '--force' => true]))->toBe(0)
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 2, '--force' => true]))->toBe(0)
             ->and($columns('data_sources', 'health_path'))->toBe(0)->and($columns('data_source_health', 'status'))->toBe(0);
     } finally {
         Artisan::call('migrate', ['--database' => 'migrator', '--force' => true]);

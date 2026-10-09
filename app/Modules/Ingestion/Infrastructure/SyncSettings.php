@@ -92,6 +92,57 @@ final class SyncSettings
         return self::seconds($this->config->get('dashflow.fetch.workspace_fair_share.value'));
     }
 
+    /**
+     * `sync.hot_window` in whole seconds (Story 2.19): how long a subscription stays hot after its last access. Null when unset or malformed:
+     * the demand rule is then off, subscriptions never turn hot and the dispatcher keeps scheduling every target (Story 2.14).
+     */
+    public function hotWindowSeconds(): ?int
+    {
+        return self::seconds($this->config->get('dashflow.tunables.sync.hot_window.value'));
+    }
+
+    /** `budgets.max_hot_keys_per_workspace`: the most hot targets of one Workspace kept at their own interval; null (no cap) when unset or malformed. */
+    public function maxHotKeysPerWorkspace(): ?int
+    {
+        return self::seconds($this->config->get('dashflow.tunables.budgets.max_hot_keys_per_workspace.value'));
+    }
+
+    /** `budgets.max_new_cold_keys_per_membership_per_hour`: the most new per-user targets one member may cause in an hour; null (no cap) when unset or malformed. */
+    public function maxNewColdKeysPerMembershipPerHour(): ?int
+    {
+        return self::seconds($this->config->get('dashflow.tunables.budgets.max_new_cold_keys_per_membership_per_hour.value'));
+    }
+
+    /**
+     * Every entry of `refresh_intervals`, ascending and without repeats; null when it is unset or any entry is not a positive whole number.
+     *
+     * @return list<int>|null
+     */
+    public function refreshIntervals(): ?array
+    {
+        if (self::smallest($this->config->get('dashflow.tunables.sync.refresh_intervals.value')) === null) {
+            return null;
+        }
+
+        $entries = array_map(fn (string $entry): int => (int) trim($entry), explode(',', (string) $this->config->get('dashflow.tunables.sync.refresh_intervals.value')));
+        $entries = array_values(array_unique($entries));
+        sort($entries);
+
+        return $entries;
+    }
+
+    /** The next larger entry of `refresh_intervals` than `$interval` (the budget widening, Story 2.19), or null when there is none or the list is unset. */
+    public function widened(int $interval): ?int
+    {
+        foreach ($this->refreshIntervals() ?? [] as $entry) {
+            if ($entry > $interval) {
+                return $entry;
+            }
+        }
+
+        return null;
+    }
+
     /** A positive whole number of seconds (digits only), or null. */
     public static function seconds(mixed $setting): ?int
     {
