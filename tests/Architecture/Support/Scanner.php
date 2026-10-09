@@ -12,7 +12,7 @@ use RecursiveIteratorIterator;
  */
 final class Scanner
 {
-    /** @var array{edges: array<string, list<string>>, kernel: string, tables: array<string, list<string>>, global_tables: list<string>, json_decode_banned: list<string>} */
+    /** @var array{edges: array<string, list<string>>, kernel: string, tables: array<string, list<string>>, global_tables: list<string>, json_decode_banned: list<string>, json_decode_banned_paths?: list<string>} */
     private array $rules;
 
     public function __construct(?array $rules = null)
@@ -100,7 +100,7 @@ final class Scanner
     }
 
     /**
-     * `json_decode` calls inside the banned modules.
+     * `json_decode` calls inside the banned modules and the banned kernel paths (the lossless decoder itself).
      *
      * @return list<string>
      */
@@ -109,7 +109,14 @@ final class Scanner
         $violations = [];
 
         foreach ($this->owned($appRoot) as [$file, $owner]) {
-            if (! in_array($owner, $this->rules['json_decode_banned'], true)) {
+            $relative = substr($file, strlen(rtrim($appRoot, '/')) + 1);
+            $bannedPath = false;
+
+            foreach ($this->rules['json_decode_banned_paths'] ?? [] as $path) {
+                $bannedPath = $bannedPath || str_starts_with($relative, rtrim($path, '/').'/');
+            }
+
+            if (! $bannedPath && ! in_array($owner, $this->rules['json_decode_banned'], true)) {
                 continue;
             }
 
@@ -153,6 +160,38 @@ final class Scanner
     }
 
     /**
+     * Any file under `$appRoot` that makes an outbound request around the guard: curl, the `Http` facade, Guzzle, raw sockets,
+     * or `file_get_contents` / `fopen` on an http(s) URL. Only NativeCurlClient may use curl.
+     *
+     * @return list<string>
+     */
+    public function egressViolations(string $appRoot): array
+    {
+        $violations = [];
+        $pattern = '/\bcurl_(?:init|setopt|setopt_array|multi_init)\s*\(|\bHttp::|\bGuzzleHttp\\\\Client\b|\bfsockopen\s*\(|\bpfsockopen\s*\(|\bstream_socket_client\s*\(|\b(?:file_get_contents|fopen)\s*\(\s*[\'"]https?:\/\//i';
+
+        foreach ($this->files($appRoot) as $file) {
+            $relative = substr($file, strlen(rtrim($appRoot, '/')) + 1);
+
+            // HealthChecker only probes this container's own listening port on 127.0.0.1: no Data Source, no outside host.
+            if (in_array($relative, ['Modules/Connector/Infrastructure/NativeCurlClient.php', 'Modules/Connector/Infrastructure/NativeCurlClient.php.stub', 'Support/Health/HealthChecker.php'], true)) {
+                continue;
+            }
+
+            $code = $this->stripComments((string) file_get_contents($file));
+            $code = str_replace('\\\\', '\\', $code);
+
+            if (preg_match_all($pattern, $code, $matches, PREG_OFFSET_CAPTURE)) {
+                foreach ($matches[0] as [$text, $offset]) {
+                    $violations[] = "{$file}:{$this->lineAt($code, $offset)} makes an outbound request with {$text}; use EgressTransport";
+                }
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
      * Migrations creating a non-global table without `workspace_id`.
      *
      * @return list<string>
@@ -180,8 +219,41 @@ final class Scanner
                 $end = $segments[$i + 1][1] ?? strlen($code);
                 $body = substr($code, $offset, $end - $offset);
 
+                // A partition takes its columns, `workspace_id` included, from its partitioned parent.
+                if (preg_match('/\A\w+"?\s+partition\s+of\b/i', $body) === 1) {
+                    continue;
+                }
+
                 if (! in_array(strtolower($table), $this->rules['global_tables'], true) && ! str_contains($body, 'workspace_id')) {
                     $violations[] = "{$file} creates table {$table} without workspace_id";
+                }
+            }
+        }
+
+        return $violations;
+    }
+
+    /**
+     * A migration that creates a partitioned table or a partition must also switch on row-level security: a partition queried
+     * directly is checked by its own policy, not its parent's, so `ENABLE` and `FORCE ROW LEVEL SECURITY` and a policy
+     * have to appear in the same migration (Story 2.5).
+     *
+     * @return list<string>
+     */
+    public function partitionViolations(string $migrationsDir): array
+    {
+        $violations = [];
+
+        foreach ($this->files($migrationsDir) as $file) {
+            $code = $this->stripComments((string) file_get_contents($file));
+
+            if (preg_match('/\bpartition\s+(?:by|of)\b/i', $code) !== 1) {
+                continue;
+            }
+
+            foreach (['enable row level security', 'force row level security', 'create policy'] as $needed) {
+                if (stripos($code, $needed) === false) {
+                    $violations[] = "{$file} creates a partitioned table or a partition without `{$needed}`";
                 }
             }
         }

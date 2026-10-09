@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { Settings2, UserRound } from '@lucide/vue';
+import type { Component } from 'vue';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { signInLabels as labels } from '@/locales/labels';
 
@@ -9,9 +11,19 @@ export type Role = 'user' | 'admin';
 const role = defineModel<Role>({ required: true });
 defineProps<{ id: string }>();
 
-const cards: { value: Role; title: string; hint: string }[] = [
-    { value: 'user', title: labels.roleUser, hint: labels.roleUserHint },
-    { value: 'admin', title: labels.roleAdmin, hint: labels.roleAdminHint },
+const cards: { value: Role; title: string; hint: string; icon: Component }[] = [
+    {
+        value: 'user',
+        title: labels.roleUser,
+        hint: labels.roleUserHint,
+        icon: UserRound,
+    },
+    {
+        value: 'admin',
+        title: labels.roleAdmin,
+        hint: labels.roleAdminHint,
+        icon: Settings2,
+    },
 ];
 </script>
 
@@ -30,19 +42,31 @@ const cards: { value: Role; title: string; hint: string }[] = [
             :key="card.value"
             :for="`${id}-${card.value}`"
             :data-test="`role-card-${card.value}`"
-            class="relative flex cursor-pointer flex-col gap-1 rounded-lg border border-border-default bg-surface-card p-4 pr-10 transition-colors has-data-[state=checked]:border-2 has-data-[state=checked]:border-accent-ink-strong has-data-[state=checked]:bg-accent-soft has-data-[state=checked]:p-[15px] has-data-[state=checked]:pr-[39px]"
+            class="group relative flex cursor-pointer flex-col gap-3 rounded-lg border border-border-default bg-surface-card p-4 transition-colors hover:border-border-control has-focus-visible:ring-2 has-focus-visible:ring-accent-ink-strong has-focus-visible:ring-offset-2 has-data-[state=checked]:border-2 has-data-[state=checked]:border-accent-ink-strong has-data-[state=checked]:bg-accent-soft has-data-[state=checked]:p-[15px]"
         >
-            <RadioGroupItem
-                :id="`${id}-${card.value}`"
-                :value="card.value"
-                class="absolute top-4 right-4"
-            />
-            <span class="type-title-sm text-text-primary">
-                {{ card.title }}<span class="sr-only"> · </span>
+            <!-- The radio sits in its own positioned box: .hit-area sets position: relative on the radio itself. -->
+            <span
+                class="absolute top-4 right-4 flex group-has-data-[state=checked]:top-[15px] group-has-data-[state=checked]:right-[15px]"
+            >
+                <RadioGroupItem
+                    :id="`${id}-${card.value}`"
+                    :value="card.value"
+                />
             </span>
-            <span class="type-caption text-text-secondary">{{
-                card.hint
-            }}</span>
+            <span
+                class="flex size-9 items-center justify-center rounded-md bg-surface-sunken text-text-secondary transition-colors group-has-data-[state=checked]:bg-surface-card group-has-data-[state=checked]:text-accent-ink-strong"
+                aria-hidden="true"
+            >
+                <component :is="card.icon" class="size-5" />
+            </span>
+            <span class="flex flex-col gap-0.5">
+                <span class="type-title-sm text-text-primary">
+                    {{ card.title }}<span class="sr-only"> · </span>
+                </span>
+                <span class="type-caption text-text-secondary">{{
+                    card.hint
+                }}</span>
+            </span>
         </label>
     </RadioGroup>
 </template>

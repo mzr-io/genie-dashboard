@@ -13,3 +13,16 @@ export function formatDay(value: string | Date): string {
 
     return `${date.getUTCDate()} ${MONTHS.format(date)} ${date.getUTCFullYear()}`;
 }
+
+// "10:42": the hour and minute of a moment in the viewer's own time zone, 24-hour; an unparsable value gives "".
+export function formatTime(value: string | Date): string {
+    const date = value instanceof Date ? value : new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+        return '';
+    }
+
+    const pad = (n: number): string => String(n).padStart(2, '0');
+
+    return `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}

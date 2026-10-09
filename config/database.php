@@ -207,6 +207,29 @@ return [
         ],
 
         /*
+        | The retention sweep's role (`maintenance`, Story 2.16): the only role with DELETE on the raw tier, never BYPASSRLS. Only the
+        | worker-compute service is given DB_MAINTENANCE_*. It connects straight to PostgreSQL (like `system`), so a sweep never shares a
+        | pooled server connection with `app`; each Workspace is swept in its own transaction with its Workspace context set.
+        */
+        'maintenance' => [
+            'driver' => 'pgsql',
+            'url' => env('DB_MAINTENANCE_URL'),
+            'host' => env('DB_MAINTENANCE_HOST', env('DB_HOST', '127.0.0.1')),
+            'port' => env('DB_MAINTENANCE_PORT', env('DB_PORT', '5432')),
+            'database' => env('DB_MAINTENANCE_DATABASE', env('DB_DATABASE', 'laravel')),
+            'username' => env('DB_MAINTENANCE_USERNAME', 'maintenance'),
+            'password' => env('DB_MAINTENANCE_PASSWORD', ''),
+            'charset' => env('DB_CHARSET', 'utf8'),
+            'prefix' => '',
+            'prefix_indexes' => true,
+            'search_path' => 'public',
+            'sslmode' => env('DB_SSLMODE', 'prefer'),
+            'options' => [
+                PDO::ATTR_TIMEOUT => (int) env('DB_CONNECT_TIMEOUT', 5),
+            ],
+        ],
+
+        /*
         | The operator command's role (`operator`): INSERT-only grants on workspaces, invitations and
         | operator_audit. Only the one-off `operator` Compose service is given DB_OPERATOR_*; the web
         | and worker services never hold these credentials.

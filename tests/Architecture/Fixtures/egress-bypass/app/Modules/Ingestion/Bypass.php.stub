@@ -1,0 +1,12 @@
+<?php
+
+namespace App\Modules\Ingestion\Application;
+
+final class Bypass
+{
+    public function fetch(): string
+    {
+        // curl_init() in a comment is ignored.
+        return \Illuminate\Support\Facades\Http::get('https://example.com')->body().file_get_contents('https://example.com/x').curl_init('x');
+    }
+}

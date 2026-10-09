@@ -27,7 +27,7 @@ use Throwable;
  * Only AuditAction cases are accepted. Values pass through the module's AuditSerializer allowlist:
  * IDs and enums plain, everything else a keyed hash. `audit_events` is append-only for role `app`.
  */
-final class Audit
+class Audit
 {
     /** The second connection used by recordSecurityEvent (config/database.php). */
     public const SECURITY_CONNECTION = 'security_audit';

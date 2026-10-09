@@ -40,6 +40,8 @@ return [
 
         'health' => [
             'probe_interval' => $tunable('DASHFLOW_HEALTH_PROBE_INTERVAL'),
+            // Story 2.18: the rolling window, in whole seconds, over which `sync_runs` outcomes are counted for the success percentage.
+            'window' => $tunable('DASHFLOW_HEALTH_WINDOW'),
             'sampling_interval' => $tunable('DASHFLOW_HEALTH_SAMPLING_INTERVAL'),
             'threshold_healthy' => $tunable('DASHFLOW_HEALTH_THRESHOLD_HEALTHY'),
             'threshold_degraded' => $tunable('DASHFLOW_HEALTH_THRESHOLD_DEGRADED'),
@@ -130,6 +132,92 @@ return [
             'preview_latency' => $tunable('DASHFLOW_TARGET_PREVIEW_LATENCY'),
         ],
 
+    ],
+
+    // Outbound guard settings (Story 2.2). Each is `pending_input` with no default and kept outside `tunables`, the closed
+    // AR-57 list. Unset: no deployment CIDR beyond the built-in undeniable ranges, no SSRF alert, and the operator grant
+    // commands refuse to run (no password hash).
+    'egress' => [
+        // Comma-separated CIDRs of the deployment's own networks (database, cache, internal services): never reachable.
+        'deployment_cidrs' => $tunable('DASHFLOW_EGRESS_DEPLOYMENT_CIDRS'),
+        // The SSRF alert fires when one Workspace has more than `alert_threshold` blocks within `alert_window` seconds.
+        'alert_threshold' => $tunable('DASHFLOW_EGRESS_ALERT_THRESHOLD'),
+        'alert_window' => $tunable('DASHFLOW_EGRESS_ALERT_WINDOW'),
+        // bcrypt hash of the operator's password, checked by `dashflow:egress:grant` and `:revoke`. Given to the operator service only.
+        'operator_password_hash' => $tunable('DASHFLOW_EGRESS_OPERATOR_PASSWORD_HASH'),
+    ],
+
+    // Fetch fairness and concurrency (Story 2.17), kept outside `tunables` like `egress`. Both are `pending_input` with no default and
+    // unset means off: `data_source_concurrency` is the most calls in flight per Data Source (a Valkey counter, leased for
+    // `tunables.guards.platform_timeout_ceiling` when that is set), `workspace_fair_share` the most targets one dispatch tick takes per
+    // Workspace. Retry, breaker and bucket numbers are `tunables.retry`, `tunables.circuit_breaker` and
+    // `tunables.budgets.max_fetch_rate_per_data_source` (whole calls per minute).
+    'fetch' => [
+        'data_source_concurrency' => $tunable('DASHFLOW_FETCH_DATA_SOURCE_CONCURRENCY'),
+        'workspace_fair_share' => $tunable('DASHFLOW_FETCH_WORKSPACE_FAIR_SHARE'),
+    ],
+
+    // Raw history retention (Story 2.16), kept outside `tunables` like `egress`. `max_window_days` is `pending_input` with no
+    // default: the longest `window(N days)` an Admin may choose. Unset or malformed: a window is refused (422
+    // `retention-window-unavailable`) and the form shows the option disabled; `latest` always works. The sweep's two timings are
+    // `tunables.sync.superseded_payload_grace` and `tunables.sync.cold_purge_after` (whole seconds; unset or malformed: inert).
+    'retention' => [
+        'max_window_days' => $tunable('DASHFLOW_RETENTION_MAX_WINDOW_DAYS'),
+    ],
+
+    // The soft edit lock (Story 2.8), kept outside `tunables` like `egress`. The lock's TTL is `tunables.timeouts.edit_lock_ttl`
+    // (seconds; unset = the soft lock is disabled and a form is protected by its `revision` only). `flush_timeout_seconds` is
+    // `pending_input` with no default: how long a take-over waits for the holder to save and acknowledge before it completes
+    // anyway. Unset: a take-over does not wait and discards the holder's unsaved changes, with a notice.
+    'edit_lock' => [
+        'flush_timeout_seconds' => $tunable('DASHFLOW_EDIT_LOCK_FLUSH_TIMEOUT_SECONDS'),
+    ],
+
+    // Write-only secrets (Story 2.4), kept outside `tunables` like `egress`. The platform's public key for the `cred`
+    // purpose (base64 of a 32-byte X25519 key) and its version are `pending_input` with no default and are not secret:
+    // every role may seal to it, only `worker-connector` holds the private key (the `key-cred` mount). Unset or invalid:
+    // saving a secret is refused (503) and nothing is stored. The key file path defaults to the Compose secret mount.
+    'secrets' => [
+        'cred_public_key' => $tunable('DASHFLOW_SECRETS_CRED_PUBLIC_KEY'),
+        'cred_key_version' => $tunable('DASHFLOW_SECRETS_CRED_KEY_VERSION'),
+        'cred_key_path' => $tunable('DASHFLOW_SECRETS_CRED_KEY_PATH', '/run/secrets/key-cred'),
+        // OAuth token cache (Story 2.7): the 32-byte key (base64) that seals cached access tokens is read, on worker-connector
+        // only, from the `key-token` mount. A missing or placeholder key means a token is used for one call and never cached.
+        'token_key_path' => $tunable('DASHFLOW_SECRETS_TOKEN_KEY_PATH', '/run/secrets/key-token'),
+        // Sample Responses (Story 2.10): the 32-byte key (base64) that seals the body of an Endpoint test in the Valkey cache is
+        // read from the `key-data` mount (web and the workers hold it). Unlike a token, a sample is never kept in the clear:
+        // with no usable key the test fails with `blob_unavailable` and nothing is stored.
+        'data_key_path' => $tunable('DASHFLOW_SECRETS_DATA_KEY_PATH', '/run/secrets/key-data'),
+        // User attributes (Story 2.12): values are sealed under the same `data` key, and the 32-byte `digest` key (base64, the
+        // `key-digest` mount, `web` only) keys the blind index that lets equal values be found without decrypting. With either
+        // key unusable (as with the dev placeholders) saving or reading an attribute value answers 503 and nothing is stored.
+        'digest_key_path' => $tunable('DASHFLOW_SECRETS_DIGEST_KEY_PATH', '/run/secrets/key-digest'),
+    ],
+
+    // OAuth2 client credentials (Story 2.7), kept outside `tunables`. `token_skew_seconds` is `pending_input` with no
+    // default: a cached token lives `expires_in` minus this many seconds, and unset means no skew at all.
+    'oauth' => [
+        'token_skew_seconds' => $tunable('DASHFLOW_OAUTH_TOKEN_SKEW_SECONDS'),
+    ],
+
+    // Connection-test rate limits (Story 2.5), kept outside `tunables` like `egress`. Every one is `pending_input` with no
+    // default: at most `membership_limit` tests per person and `workspace_limit` per Workspace in any `window` seconds. A
+    // limit that is unset does not apply, and with no window nothing is limited. Over a limit the API answers 429 with
+    // `retry_after` and enqueues nothing.
+    'connection_test' => [
+        'membership_limit' => $tunable('DASHFLOW_CONNECTION_TEST_MEMBERSHIP_LIMIT'),
+        'workspace_limit' => $tunable('DASHFLOW_CONNECTION_TEST_WORKSPACE_LIMIT'),
+        'window' => $tunable('DASHFLOW_CONNECTION_TEST_WINDOW'),
+    ],
+
+    // Endpoint-test (Fetch sample) rate limits (Story 2.10), kept outside `tunables` like `connection_test`. Every one is
+    // `pending_input` with no default: at most `membership_limit` tests per person and `workspace_limit` per Workspace in any
+    // `window_seconds`. A limit that is unset does not apply, and with no window nothing is limited. Over a limit the API
+    // answers 429 with `retry_after` and enqueues nothing.
+    'sample_fetch' => [
+        'membership_limit' => $tunable('DASHFLOW_SAMPLE_FETCH_MEMBERSHIP_LIMIT'),
+        'workspace_limit' => $tunable('DASHFLOW_SAMPLE_FETCH_WORKSPACE_LIMIT'),
+        'window' => $tunable('DASHFLOW_SAMPLE_FETCH_WINDOW_SECONDS'),
     ],
 
     // Load-test harness targets (Story 1.25), read by `npm run load` (load/config.mjs) from the environment.

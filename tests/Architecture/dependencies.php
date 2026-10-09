@@ -9,6 +9,8 @@
  * 'tables': the tables each module (or the kernel) owns. A module touches only its own tables.
  * 'global_tables': tables without workspace_id. Any other table must carry workspace_id.
  * 'json_decode_banned': modules that must use the lossless JSON parser (NFR exact numbers).
+ * 'json_decode_banned_paths': kernel paths (under app/) where `json_decode` is banned too: the lossless decoder itself, so it
+ *          cannot quietly delegate to PHP's decoder (Story 2.6).
  */
 
 return [
@@ -26,7 +28,7 @@ return [
         'Operator' => ['Access', 'Connector'],
         'Access' => ['Identity'],
         'Identity' => [],
-        'Connector' => [],
+        'Connector' => ['Access'],
         'RawStore' => [],
         'BlockTypes' => [],
         'Settings' => [],
@@ -46,9 +48,11 @@ return [
         ],
         'Connector' => [
             'data_sources', 'endpoints', 'endpoint_revisions', 'secrets',
-            'host_allowlist_entries', 'endpoint_usage',
+            'host_allowlist_entries', 'host_allowlist_versions', 'egress_grants', 'endpoint_usage',
+            // Connector writes the run history until Ingestion exists (Story 2.5): the first partitioned table.
+            'sync_runs',
         ],
-        'Ingestion' => ['sync_targets', 'sync_subscriptions', 'sync_generations', 'sync_runs'],
+        'Ingestion' => ['sync_targets', 'sync_subscriptions', 'sync_generations', 'data_source_health'],
         'RawStore' => ['raw_bodies', 'raw_observations'],
         'Datasets' => ['datasets', 'dataset_fields'],
         'Results' => ['block_results', 'block_viewers', 'mapping_health_incidents'],
@@ -73,4 +77,6 @@ return [
     ],
 
     'json_decode_banned' => ['Ingestion', 'RawStore', 'Mapping', 'Results'],
+
+    'json_decode_banned_paths' => ['Platform/Json'],
 ];

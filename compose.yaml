@@ -61,6 +61,49 @@ x-app-env: &app-env
     # 422 `access.invitations_not_configured` and `dashflow:workspace:create` refuses to run). Every role gets it
     # because the web role creates invitations and the operator service shares this block.
     DASHFLOW_INVITATION_LIFETIME: ${DASHFLOW_INVITATION_LIFETIME:-}
+    # The Data source soft lock (Story 2.8; pending_input, empty = unset): the lock's TTL in seconds (unset = the lock is
+    # disabled and the form is protected by its `revision` only) and how long a take-over waits for the holder's flush
+    # in seconds (unset = it does not wait).
+    DASHFLOW_EDIT_LOCK_TTL: ${DASHFLOW_EDIT_LOCK_TTL:-}
+    DASHFLOW_EDIT_LOCK_FLUSH_TIMEOUT_SECONDS: ${DASHFLOW_EDIT_LOCK_FLUSH_TIMEOUT_SECONDS:-}
+    # Outbound guard (Story 2.2; pending_input, empty = unset): the deployment's own CIDRs (never reachable) and the SSRF
+    # alert threshold and window in seconds (the alert is off unless both are set).
+    DASHFLOW_EGRESS_DEPLOYMENT_CIDRS: ${DASHFLOW_EGRESS_DEPLOYMENT_CIDRS:-}
+    DASHFLOW_EGRESS_ALERT_THRESHOLD: ${DASHFLOW_EGRESS_ALERT_THRESHOLD:-}
+    DASHFLOW_EGRESS_ALERT_WINDOW: ${DASHFLOW_EGRESS_ALERT_WINDOW:-}
+    # Write-only secrets (Story 2.4; pending_input, empty = unset): the platform's public key for the `cred` purpose
+    # (base64) and its version. Public values, so every role gets them; saving a secret is refused while they are unset.
+    # The private key stays in the `key-cred` mount of worker-connector alone.
+    DASHFLOW_SECRETS_CRED_PUBLIC_KEY: ${DASHFLOW_SECRETS_CRED_PUBLIC_KEY:-}
+    DASHFLOW_SECRETS_CRED_KEY_VERSION: ${DASHFLOW_SECRETS_CRED_KEY_VERSION:-}
+    # Where worker-connector reads the private key (a path, not key material; empty = the default /run/secrets/key-cred).
+    DASHFLOW_SECRETS_CRED_KEY_PATH: ${DASHFLOW_SECRETS_CRED_KEY_PATH:-}
+    # OAuth2 client credentials (Story 2.7): where worker-connector reads the key that seals cached access tokens (a path, not
+    # key material; empty = the default /run/secrets/key-token), and the seconds taken off a token's `expires_in` before it
+    # is cached (pending_input; empty = unset = no skew).
+    DASHFLOW_SECRETS_TOKEN_KEY_PATH: ${DASHFLOW_SECRETS_TOKEN_KEY_PATH:-}
+    DASHFLOW_OAUTH_TOKEN_SKEW_SECONDS: ${DASHFLOW_OAUTH_TOKEN_SKEW_SECONDS:-}
+    # Connection-test rate limits (Story 2.5; pending_input, empty = unset): at most the membership limit per person and the
+    # workspace limit per Workspace in any `window` seconds. A limit that is unset does not apply, and with no window nothing
+    # is limited. The web role enforces them when a test is requested.
+    DASHFLOW_CONNECTION_TEST_MEMBERSHIP_LIMIT: ${DASHFLOW_CONNECTION_TEST_MEMBERSHIP_LIMIT:-}
+    DASHFLOW_CONNECTION_TEST_WORKSPACE_LIMIT: ${DASHFLOW_CONNECTION_TEST_WORKSPACE_LIMIT:-}
+    DASHFLOW_CONNECTION_TEST_WINDOW: ${DASHFLOW_CONNECTION_TEST_WINDOW:-}
+    # Endpoint-test (Fetch sample) rate limits (Story 2.10; pending_input, empty = unset = not limited), counted like the
+    # connection test's, and where web and worker-connector read the key that seals a Sample Response (a path, not key
+    # material; empty = the default /run/secrets/key-data).
+    DASHFLOW_SAMPLE_FETCH_MEMBERSHIP_LIMIT: ${DASHFLOW_SAMPLE_FETCH_MEMBERSHIP_LIMIT:-}
+    DASHFLOW_SAMPLE_FETCH_WORKSPACE_LIMIT: ${DASHFLOW_SAMPLE_FETCH_WORKSPACE_LIMIT:-}
+    DASHFLOW_SAMPLE_FETCH_WINDOW_SECONDS: ${DASHFLOW_SAMPLE_FETCH_WINDOW_SECONDS:-}
+    DASHFLOW_SECRETS_DATA_KEY_PATH: ${DASHFLOW_SECRETS_DATA_KEY_PATH:-}
+    # User attributes (Story 2.12): where web reads the key that keys the blind index of attribute values (a path, not key
+    # material; empty = the default /run/secrets/key-digest). Values are sealed under the `data` key above.
+    DASHFLOW_SECRETS_DIGEST_KEY_PATH: ${DASHFLOW_SECRETS_DIGEST_KEY_PATH:-}
+    # Scheduled fetch (Story 2.14). The scheduler fires the dispatcher every DASHFLOW_DISPATCH_TICK seconds (the nearest Laravel sub-minute
+    # step; the proposed 5 when empty). DASHFLOW_REFRESH_INTERVALS (pending_input; empty = unset) is the comma-separated list of refresh
+    # intervals in whole seconds: a sync target takes the smallest, and with none set a target is registered and never scheduled.
+    DASHFLOW_DISPATCH_TICK: ${DASHFLOW_DISPATCH_TICK:-5}
+    DASHFLOW_REFRESH_INTERVALS: ${DASHFLOW_REFRESH_INTERVALS:-}
     # OpenTelemetry (OTLP) export; with no endpoint the stack runs and logs one warning per process.
     OTEL_SERVICE_NAME: ${OTEL_SERVICE_NAME:-dashflow}
     OTEL_EXPORTER_OTLP_ENDPOINT: ${OTEL_EXPORTER_OTLP_ENDPOINT:-}
@@ -256,6 +299,8 @@ services:
             <<: *app-env
             VALKEY_USERNAME: worker-connector
             VALKEY_PASSWORD: ${VALKEY_PASSWORD_WORKER_CONNECTOR:-dashflow-dev-worker-connector}
+        # `key-data` seals the Sample Response blob (Story 2.10) and opens the member attribute values a Fetch as user resolves
+        # (Story 2.13); `key-digest` is not mounted here, so the vault is checked with `assertReadable()`, never `assertAvailable()`.
         secrets:
             - key-cred
             - key-token
@@ -280,6 +325,11 @@ services:
             DB_SYSTEM_PORT: '5432'
             DB_SYSTEM_USERNAME: system
             DB_SYSTEM_PASSWORD: ${POSTGRES_SYSTEM_PASSWORD:-dashflow-dev-system}
+            # ... and the `maintenance` credentials: the retention sweep is the only deleter of the raw tier (Story 2.16).
+            DB_MAINTENANCE_HOST: postgres
+            DB_MAINTENANCE_PORT: '5432'
+            DB_MAINTENANCE_USERNAME: maintenance
+            DB_MAINTENANCE_PASSWORD: ${POSTGRES_MAINTENANCE_PASSWORD:-dashflow-dev-maintenance}
         secrets:
             - key-data
         healthcheck:
@@ -292,6 +342,7 @@ services:
     # One-off operator commands, not started by `docker compose up` (profile `operator`). The only service
     # holding the `operator` database credentials. Create a Workspace and invite its first Admin with:
     #   docker compose run --rm operator php artisan dashflow:workspace:create "Name" label admin@example.com
+    # Check, grant and revoke private-range access for a Workspace (Story 2.2) with dashflow:egress:check, :grant and :revoke.
     operator:
         <<: *app
         profiles: ['operator']
@@ -308,6 +359,9 @@ services:
             DB_OPERATOR_USERNAME: operator
             DB_OPERATOR_PASSWORD: ${POSTGRES_OPERATOR_PASSWORD:-dashflow-dev-operator}
             DASHFLOW_INVITATION_LIFETIME: ${DASHFLOW_INVITATION_LIFETIME:-}
+            # bcrypt hash `dashflow:egress:grant` and `:revoke` check the operator's password against (pending_input;
+            # empty = unset, so they refuse). Only this service holds it.
+            DASHFLOW_EGRESS_OPERATOR_PASSWORD_HASH: ${DASHFLOW_EGRESS_OPERATOR_PASSWORD_HASH:-}
         depends_on:
             postgres:
                 condition: service_healthy

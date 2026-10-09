@@ -30,7 +30,7 @@ trap cleanup EXIT
 migrated="$(psql_in -d "$SOURCE" -c "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace where n.nspname = 'public' and c.relname = 'workspace_memberships'")"
 [[ "$migrated" == "1" ]] || fail "$SOURCE is not migrated (run the Database suite first)"
 
-# Tenant tables: every table with workspace_id that is not listed as global. The list comes from the PHP source
+# Tenant tables: every table with workspace_id that is not listed as global (a partitioned table and each of its partitions). The list comes from the PHP source
 # of truth (tests/Architecture/dependencies.php): bin/tools passes it in DASHFLOW_GLOBAL_TABLES, else it is read here.
 if [[ -z "${DASHFLOW_GLOBAL_TABLES:-}" ]]; then
     DASHFLOW_GLOBAL_TABLES="$("$ROOT/bin/tools" php -r 'echo implode(",", (require "tests/Architecture/dependencies.php")["global_tables"]);')" \
@@ -82,6 +82,14 @@ union all
 select 'SECURITY DEFINER function ' || p.proname || ' is owned by ' || pg_get_userbyid(p.proowner) || ', not migrator'
   from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef and pg_get_userbyid(p.proowner) <> 'migrator'
 union all
+select 'partitioned table ' || c.relname || ' kept no partition after the restore'
+  from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'p'
+   and not exists (select 1 from pg_inherits i where i.inhparent = c.oid)
+union all
+select 'partitioned table ' || c.relname || ' lost its DEFAULT partition'
+  from pg_class c where c.relnamespace = 'public'::regnamespace and c.relkind = 'p'
+   and not exists (select 1 from pg_inherits i join pg_class k on k.oid = i.inhrelid where i.inhparent = c.oid and pg_get_expr(k.relpartbound, k.oid) = 'DEFAULT')
+union all
 select 'no SECURITY DEFINER function survived the restore'
  where not exists (select 1 from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef)
 SQL
@@ -96,6 +104,7 @@ declare -A COMPARE=(
     ["roles and attributes"]="select rolname, rolsuper, rolbypassrls, rolcanlogin from pg_roles where rolname in ($ROLES) order by 1"
     ["table grants"]="select grantee, table_name, privilege_type from information_schema.role_table_grants where table_schema = 'public' and grantee in ($ROLES) order by 1, 2, 3"
     ["default privileges"]="select pg_get_userbyid(defaclrole), defaclnamespace::regnamespace::text, defaclobjtype, defaclacl::text from pg_default_acl order by 1, 2, 3"
+    ["partition layout (parent, partition, bound, key)"]="select p.relname, c.relname, pg_get_expr(c.relpartbound, c.oid), pg_get_partkeydef(p.oid) from pg_inherits i join pg_class c on c.oid = i.inhrelid join pg_class p on p.oid = i.inhparent where p.relnamespace = 'public'::regnamespace order by 1, 2"
     ["function owners and EXECUTE grants"]="select p.proname, p.prosecdef, pg_get_userbyid(p.proowner), coalesce(p.proacl::text, '') from pg_proc p where p.pronamespace = 'public'::regnamespace order by 1, 2"
 )
 for label in "${!COMPARE[@]}"; do

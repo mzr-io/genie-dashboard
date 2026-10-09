@@ -16,6 +16,7 @@ import DataTable from '@/components/DataTable.vue';
 import type { DataTableColumn } from '@/components/DataTable.vue';
 import InviteUserForm from '@/components/InviteUserForm.vue';
 import MemberAccessEditor from '@/components/MemberAccessEditor.vue';
+import MemberAttributesEditor from '@/components/MemberAttributesEditor.vue';
 import InviteUserLink from '@/components/InviteUserLink.vue';
 import ListStates from '@/components/ListStates.vue';
 import PageHeader from '@/components/PageHeader.vue';
@@ -45,6 +46,7 @@ import {
     inviteLabels,
     shellPages,
     statusLabels,
+    userAttributeLabels,
     userListLabels as labels,
 } from '@/locales/labels';
 import { useToasts } from '@/stores/toasts';
@@ -87,6 +89,8 @@ const heldPermissions = computed(() =>
 );
 // The member whose Roles & permissions editor is expanded under its row (Story 1.22), if any.
 const editing = ref<string | null>(null);
+// The member whose Attributes editor is expanded under its row (Story 2.12), if any: only one editor is open at a time.
+const attributing = ref<string | null>(null);
 // Deactivate and Reactivate (Story 1.24): the member awaiting confirmation, the row highlighted after a save and the
 // inline reasons of refused changes (409 and 403), by row key.
 const confirming = ref<Member | null>(null);
@@ -340,7 +344,44 @@ function toggleEdit(row: Member): void {
     const key = memberKey(row);
 
     highlighted.value = null;
+    attributing.value = null;
     editing.value = editing.value === key ? null : key;
+}
+
+// The Attributes action (Story 2.12): `users.manage`, on members other than the Admin's own row (fails closed while the
+// person's own membership ID is unknown).
+function attributesAllowed(row: Member): boolean {
+    return (
+        row.kind === 'member' &&
+        can.value['users.manage'] === true &&
+        membershipId.value !== null &&
+        row.membership_id !== membershipId.value
+    );
+}
+
+function toggleAttributes(row: Member): void {
+    const key = memberKey(row);
+
+    highlighted.value = null;
+    editing.value = null;
+    attributing.value = attributing.value === key ? null : key;
+}
+
+function closeAttributes(row: Member): void {
+    attributing.value = null;
+    void nextTick(() =>
+        document
+            .querySelector<HTMLElement>(
+                `[data-test="edit-attributes"][data-member="${memberKey(row)}"]`,
+            )
+            ?.focus(),
+    );
+}
+
+function attributesGone(): void {
+    attributing.value = null;
+    toasts.add({ kind: 'error', message: userAttributeLabels.memberGone });
+    void load();
 }
 
 function closeEditor(row: Member): void {
@@ -744,13 +785,21 @@ onBeforeUnmount(() => {
                 :sort-key="sortKey"
                 :sort-direction="direction"
                 :busy="refreshing"
-                :expanded="editing"
+                :expanded="editing ?? attributing"
                 :highlighted="highlighted"
                 @row-blur="clearHighlight"
                 @sort="sortBy"
             >
                 <template #detail="{ row }">
+                    <MemberAttributesEditor
+                        v-if="attributing === memberKey(row)"
+                        :key="`attributes-${memberKey(row)}`"
+                        :member="row"
+                        @gone="attributesGone"
+                        @close="closeAttributes(row)"
+                    />
                     <MemberAccessEditor
+                        v-else
                         :key="memberKey(row)"
                         :member="row"
                         :held="heldPermissions"
@@ -848,6 +897,36 @@ onBeforeUnmount(() => {
                         >
                             {{ editBlock(row) }}
                         </p>
+                        <Button
+                            v-if="attributesAllowed(row)"
+                            type="button"
+                            variant="secondary"
+                            size="sm"
+                            :aria-expanded="
+                                attributing === memberKey(row)
+                                    ? 'true'
+                                    : 'false'
+                            "
+                            :aria-label="
+                                attributing === memberKey(row)
+                                    ? userAttributeLabels.closeFor(
+                                          row.name || row.email,
+                                      )
+                                    : userAttributeLabels.attributesFor(
+                                          row.name || row.email,
+                                      )
+                            "
+                            :aria-controls="
+                                attributing === memberKey(row)
+                                    ? `detail-${memberKey(row)}`
+                                    : undefined
+                            "
+                            :data-member="memberKey(row)"
+                            data-test="edit-attributes"
+                            @click="toggleAttributes(row)"
+                        >
+                            {{ userAttributeLabels.attributes }}
+                        </Button>
                         <Button
                             v-if="
                                 !statusBlocked(row) && row.status === 'active'

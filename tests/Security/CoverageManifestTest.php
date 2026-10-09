@@ -23,6 +23,10 @@ function securityManifest(): array
             'Database/PoolingTest.php' => ['keeps interleaved requests for Workspaces A and B apart on one server connection'],
             'Database/WorkspaceSwitchTest.php' => ['answers 404 for an object ID of another Workspace in every tenant table that exists, and 200 for its own'],
             'Database/TenantLeakCoverageTest.php' => ['passes the context-free and cross-Workspace leak checks for every tenant table'],
+            'Database/PartitionsTest.php' => [
+                'holds ENABLE and FORCE ROW LEVEL SECURITY and the Workspace policy on the parent and on every partition, owned by migrator',
+                'returns nothing from any partition with no context, and never another Workspace\'s rows, even when the partition is queried directly',
+            ],
         ]],
         'CSRF on sign-in' => ['tests' => [
             'Security/CsrfTest.php' => [
@@ -80,6 +84,64 @@ function securityManifest(): array
             'Feature/Queue/SignedJobTest.php' => ['never unserializes or runs a tampered payload, logs a security event and does not retry'],
             'Unit/JobSignerTest.php' => ['rejects a payload whose signed fields changed'],
             'Database/WorkspaceJobTest.php' => ['carries workspace_id in the serialised command, so the job signature covers it'],
+        ]],
+        'SSRF: every undeniable address class, odd IP spellings and mixed answers are denied, whatever the grants' => ['tests' => [
+            'Unit/EgressGuardTest.php' => [
+                'denies the whole request as blocked_address when any resolved address is undeniable',
+                'classifies every spelling of a blocked IP literal and never resolves it',
+                'never lets a grant lift an undeniable class',
+                'classifies the deployment CIDRs as undeniable, even with a grant that covers them',
+            ],
+            'Unit/BlockedAddressClassTest.php' => ['classifies an address as undeniable, whatever a grant says'],
+        ]],
+        'SSRF: a private range is allowed only for the Workspace holding an operator grant' => ['tests' => [
+            'Unit/EgressGuardTest.php' => ['denies a private address without a grant as host_not_allowlisted, and allows it for the Workspace holding the grant only'],
+            'Database/EgressGrantsTest.php' => [
+                'allows a granted private range for that Workspace only',
+                'refuses a CIDR that is undeniable, overlaps one, overlaps the deployment, is public, is malformed or is already granted, and writes nothing',
+                'records a denial as a connector.egress.blocked security event with reason, host and port and never an address',
+            ],
+        ]],
+        'SSRF: pinned connection, rebinding, redirects and proxy variables' => ['tests' => [
+            'Database/EgressTransportTest.php' => [
+                'connects to exactly the address the guard checked: the host and port are pinned with CURLOPT_RESOLVE',
+                'resolves the name once: a name that answers public and then loopback never reaches loopback (rebinding)',
+                'refuses a redirect to another origin, a non-allowlisted host, another port or an https-to-http downgrade, sends nothing more and audits it',
+                'ignores every proxy variable: the proxy option is empty and NO_PROXY is *',
+                'does not follow a redirect inside curl and ignores proxy variables set in the environment (httpoxy)',
+            ],
+        ]],
+        'write-only secrets: never returned, logged or audited; the web tier cannot open them' => ['tests' => [
+            'Database/DataSourceSecretsTest.php' => [
+                'leaves no canary in logs, audit rows, outbox, responses or the page props across every credential flow',
+                'opens a stored secret only where the private key is mounted: on web it fails with KeyringUnavailable',
+                'builds a FetchRequest with secret_refs and the credential scheme only, never a value or ciphertext',
+            ],
+        ]],
+        'soft lock: a holder whose lock was lost or taken over never saves, and never stores a secret' => ['tests' => [
+            'Database/EditLockTest.php' => [
+                'takes over after the holder flushes: its work is saved, the epoch rises, it is told, and its later save gets 423 with no secret stored',
+                'refuses a save that carries no claim, a stale epoch or a token that does not hold the lock, and writes nothing',
+                'never lets a lock grant access: 403 without data_sources.manage, 404 for a Data Source of another Workspace',
+                'keeps the lock token out of logs, audit and the stored Data Source',
+            ],
+        ]],
+        'Operations: only the requesting membership reads an Operation, and its summary holds no body or secret' => ['tests' => [
+            'Database/ConnectionTestTest.php' => [
+                'shows an Operation only to the membership that started it: anyone else gets a 404 with no body',
+                'uses typed secrets from an unsaved form through a transient row, deletes it at completion and saves nothing',
+                'records one sync_runs row for the attempt with a sanitised URL template, the numbers and no body',
+            ],
+            'Database/OperationsTest.php' => [
+                'cleans up in a finally when the handler throws, fails the Operation with a generic code and logs the class only',
+                'answers status only to the membership that asked, in the Workspace it was asked in',
+            ],
+        ]],
+        'connection test: a failure never shows a resolved address and a block is audited' => ['tests' => [
+            'Database/ConnectionTestTest.php' => [
+                'answers a host that is not on the allowlist with host-not-allowlisted, audits it and counts it towards the alert',
+                'answers a host that resolves to a blocked address with blocked-address and never shows the address',
+            ],
         ]],
         'fail closed on missing context' => ['tests' => [
             'Database/RowLevelSecurityTest.php' => ['returns zero rows from every tenant table when no context is set'],

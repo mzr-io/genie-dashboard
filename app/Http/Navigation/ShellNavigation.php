@@ -55,10 +55,15 @@ final class ShellNavigation
 
     /**
      * Admin page routes that are not navigation items (a view of a parent item): route name => the permission it needs.
-     * The Groups view of User configuration (Story 1.23) is one; User configuration links to it.
+     * The Groups view of User configuration (Story 1.23), the Host allowlist of System settings (Story 2.1) and the Data source form (Story 2.3) are such pages; their parents link to them.
      */
     public const ADMIN_PAGES = [
         'admin.users.groups' => Permission::UsersManage,
+        'admin.settings.host-allowlist' => Permission::SettingsManage,
+        'admin.settings.user-attributes' => Permission::SettingsManage,
+        'admin.data-sources.create' => Permission::DataSourcesManage,
+        'admin.data-sources.edit' => Permission::DataSourcesManage,
+        'admin.data-sources.endpoints' => Permission::DataSourcesManage,
     ];
 
     /**
@@ -80,6 +85,38 @@ final class ShellNavigation
         'api.admin.groups.destroy' => Permission::UsersManage,
         'api.admin.groups.members.store' => Permission::UsersManage,
         'api.admin.groups.members.destroy' => Permission::UsersManage,
+        'api.admin.user-attributes.index' => Permission::SettingsManage,
+        'api.admin.user-attributes.store' => Permission::SettingsManage,
+        'api.admin.user-attributes.update' => Permission::SettingsManage,
+        'api.admin.members.attributes.show' => Permission::UsersManage,
+        'api.admin.members.attributes.update' => Permission::UsersManage,
+        'api.admin.host-allowlist.index' => Permission::SettingsManage,
+        'api.admin.host-allowlist.store' => Permission::SettingsManage,
+        'api.admin.host-allowlist.destroy' => Permission::SettingsManage,
+        'api.admin.host-allowlist.dependents' => Permission::SettingsManage,
+        // The Admin overview's "Your data sources" (Story 2.18).
+        'api.admin.data-source-health' => Permission::DataSourcesManage,
+        'api.admin.data-sources.index' => Permission::DataSourcesManage,
+        'api.admin.data-sources.store' => Permission::DataSourcesManage,
+        'api.admin.data-sources.check-url' => Permission::DataSourcesManage,
+        'api.admin.data-sources.test-connection' => Permission::DataSourcesManage,
+        'api.admin.data-sources.show' => Permission::DataSourcesManage,
+        'api.admin.data-sources.update' => Permission::DataSourcesManage,
+        'api.admin.data-sources.endpoints.index' => Permission::DataSourcesManage,
+        'api.admin.data-sources.endpoints.store' => Permission::DataSourcesManage,
+        'api.admin.data-sources.endpoints.show' => Permission::DataSourcesManage,
+        'api.admin.data-sources.endpoints.update' => Permission::DataSourcesManage,
+        'api.admin.data-sources.endpoints.test' => Permission::DataSourcesManage,
+        'api.admin.data-sources.endpoints.samples.show' => Permission::DataSourcesManage,
+        // Fetch as user (Story 2.13) also needs `data.preview_as_user`, which the controller checks and records as a security event when missing.
+        'api.admin.data-sources.endpoints.fetch-as-user' => Permission::DataSourcesManage,
+        'api.admin.data-sources.binding-options' => Permission::DataSourcesManage,
+        'api.admin.data-sources.lock.acquire' => Permission::DataSourcesManage,
+        'api.admin.data-sources.lock.heartbeat' => Permission::DataSourcesManage,
+        'api.admin.data-sources.lock.release' => Permission::DataSourcesManage,
+        'api.admin.data-sources.lock.takeover' => Permission::DataSourcesManage,
+        'api.admin.data-sources.lock.takeover.status' => Permission::DataSourcesManage,
+        'api.admin.data-sources.lock.flush' => Permission::DataSourcesManage,
     ];
 
     /** Whether the route name is an Admin item or Admin API route (the gate fails closed for any other route without a key). */

@@ -91,4 +91,43 @@ describe('TechnicalDetails (mounted)', () => {
         expect(wrapper.html()).not.toContain('502');
         expect(wrapper.find('button').exists()).toBe(false);
     });
+
+    // Story 2.5: a failed call to a source adds the host and the collapsed reason code.
+    it('shows the host and the reason code of a failed call, and only when given', async () => {
+        const wrapper = mount(TechnicalDetails, {
+            props: { ...props, host: 'api.example.com', reason: 'http_503' },
+            attachTo: document.body,
+        });
+
+        expect(wrapper.get('[data-field="host"]').text()).toBe(
+            'api.example.com',
+        );
+        expect(wrapper.get('[data-field="reason"]').text()).toBe('http_503');
+        expect(wrapper.text()).toContain('Host');
+        expect(wrapper.text()).toContain('Reason code');
+
+        const plain = mount(TechnicalDetails, {
+            props,
+            attachTo: document.body,
+        });
+        expect(plain.find('[data-field="host"]').exists()).toBe(false);
+        expect(plain.find('[data-field="reason"]').exists()).toBe(false);
+    });
+
+    it('discloses on host or reason alone, and leaves out its own copy button when the card has one', () => {
+        const only = mount(TechnicalDetails, {
+            props: { area: 'admin', host: 'api.example.com' },
+        });
+        const noCopy = mount(TechnicalDetails, {
+            props: { ...props, copy: false },
+        });
+
+        expect(only.find('button[aria-expanded]').exists()).toBe(true);
+        expect(noCopy.findAll('button').map((b) => b.text())).not.toContain(
+            'Copy request ID',
+        );
+        expect(noCopy.get('[data-field="request-id"]').text()).toBe(
+            'req-8f3a2c',
+        );
+    });
 });

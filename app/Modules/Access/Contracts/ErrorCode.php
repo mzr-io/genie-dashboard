@@ -8,6 +8,7 @@ namespace App\Modules\Access\Contracts;
  */
 enum ErrorCode: string
 {
+    case AttributesUnavailable = 'access.attributes_unavailable';
     case ContextMissing = 'access.context_missing';
     case InvitationsNotConfigured = 'access.invitations_not_configured';
     case LastUsersManageHolder = 'access.last_users_manage_holder';

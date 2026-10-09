@@ -5,7 +5,7 @@ const AR57_TUNABLES = [
     'sync.dispatch_tick', 'sync.precompute_timeout', 'sync.hot_window', 'sync.cold_purge_after',
     'sync.prewarm_lead', 'sync.manual_refresh_window', 'sync.refresh_intervals', 'sync.live_budget',
     'sync.superseded_payload_grace',
-    'health.probe_interval', 'health.sampling_interval', 'health.threshold_healthy',
+    'health.probe_interval', 'health.window', 'health.sampling_interval', 'health.threshold_healthy',
     'health.threshold_degraded', 'health.threshold_unreachable', 'health.uptime_window',
     'health.overview_metric_windows',
     'retry.base', 'retry.cap', 'retry.max_attempts',
@@ -66,10 +66,38 @@ it('reads a tunable from its environment variable', function () {
     }
 });
 
+// Story 2.16: the maximum retention window is a pending_input setting kept outside the closed `tunables` list, like `egress`.
+it('has the maximum retention window as a pending_input setting with no default, outside the tunables', function () {
+    $setting = config('dashflow.retention.max_window_days');
+
+    expect($setting)->toBe(['env' => 'DASHFLOW_RETENTION_MAX_WINDOW_DAYS', 'value' => null, 'pending_input' => true])
+        ->and(config('dashflow.tunables'))->not->toHaveKey('retention');
+
+    putenv('DASHFLOW_RETENTION_MAX_WINDOW_DAYS=90');
+    try {
+        $config = require dirname(__DIR__, 2).'/config/dashflow.php';
+        expect($config['retention']['max_window_days']['value'])->toBe('90');
+    } finally {
+        putenv('DASHFLOW_RETENTION_MAX_WINDOW_DAYS');
+    }
+});
+
 it('lists no tunable outside the AR-57 names', function () {
     $present = collect(config('dashflow.tunables'))
         ->flatMap(fn ($group, $area) => collect($group)->keys()->map(fn ($key) => "{$area}.{$key}"))
         ->all();
 
     expect($present)->toEqualCanonicalizing(AR57_TUNABLES);
+});
+
+// Story 2.17: concurrency and fair share are pending_input settings kept outside the closed `tunables` list, like `egress`.
+it('has the fetch concurrency and fair share as pending_input settings with no default, outside the tunables', function () {
+    expect(config('dashflow.fetch.data_source_concurrency'))->toBe(['env' => 'DASHFLOW_FETCH_DATA_SOURCE_CONCURRENCY', 'value' => null, 'pending_input' => true])
+        ->and(config('dashflow.fetch.workspace_fair_share'))->toBe(['env' => 'DASHFLOW_FETCH_WORKSPACE_FAIR_SHARE', 'value' => null, 'pending_input' => true])
+        ->and(config('dashflow.tunables'))->not->toHaveKey('fetch');
+});
+
+// Story 2.18: the health window is a pending_input tunable (an AR-57 name added here) with no default.
+it('has the health window as a pending_input tunable with no default', function () {
+    expect(config('dashflow.tunables.health.window'))->toBe(['env' => 'DASHFLOW_HEALTH_WINDOW', 'value' => null, 'pending_input' => true]);
 });

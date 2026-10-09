@@ -11,9 +11,3 @@ parameters:
         - routes/
 
     level: 7
-
-    ignoreErrors:
-        # Job middleware for the jobs of later stories; the Database suite exercises it through a fixture job.
-        -
-            identifier: trait.unused
-            path: app/Platform/Tenancy/RunsInWorkspace.php

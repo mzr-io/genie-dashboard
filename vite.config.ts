@@ -48,6 +48,7 @@ export default defineConfig({
     lint: {
         ignorePatterns: [
             'vendor/**',
+            'tests/Fixtures/json/**',
             'node_modules/**',
             'public/**',
             'bootstrap/ssr/**',
@@ -77,6 +78,7 @@ export default defineConfig({
             '_bmad/**',
             '_bmad-output/**',
             '.claude/**',
+            'tests/Fixtures/json/**',
             'composer.json',
             'resources/js/components/ui/*',
             'resources/views/mail/*',

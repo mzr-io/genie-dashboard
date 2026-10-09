@@ -10,11 +10,15 @@ import { controlLabels as labels } from '@/locales/labels';
 // value is then required. Nothing here autosaves.
 defineOptions({ inheritAttrs: false });
 
-const props = defineProps<{
-    modelValue?: string;
-    savedAt?: string | Date | null;
-    replacing?: boolean;
-}>();
+const props = withDefaults(
+    defineProps<{
+        modelValue?: string;
+        savedAt?: string | Date | null;
+        replacing?: boolean;
+    }>(),
+    // Without a default Vue reads an absent boolean as false, which would show "saved" for a secret that was never set.
+    { replacing: undefined },
+);
 
 const emit = defineEmits<{
     (e: 'update:modelValue', value: string): void;

@@ -40,9 +40,52 @@ enum AuditAction: string
     case AccessGroupChanged = 'access.group.changed';
     case AccessAttributeChanged = 'access.attribute.changed';
     case AccessAttributeKeyCreated = 'access.attribute_key.created';
+    case AccessAttributeKeyRenamed = 'access.attribute_key.renamed';
+
+    // Connector: the Workspace host allowlist.
+    case ConnectorHostAllowlistEntryCreated = 'connector.host_allowlist_entry.created';
+    case ConnectorHostAllowlistEntryRemoved = 'connector.host_allowlist_entry.removed';
+
+    // Connector: Data Sources (Story 2.3).
+    case ConnectorDataSourceCreated = 'connector.data_source.created';
+    case ConnectorDataSourceUpdated = 'connector.data_source.updated';
+
+    // Connector: Endpoints of a Data Source (Story 2.9). Ids, the method, revision numbers, counts and keyed hashes only.
+    case ConnectorEndpointCreated = 'connector.endpoint.created';
+    case ConnectorEndpointRevised = 'connector.endpoint.revised';
+    case ConnectorEndpointReadOnlyFlagSet = 'connector.endpoint.read_only_flag_set';
+
+    // Connector: an Endpoint was tested (Story 2.10). The Endpoint id, the method and the revision tested only; never a value, the path or a body.
+    case ConnectorEndpointTested = 'connector.endpoint.tested';
+
+    // Connector: an Admin fetched an Endpoint as a member (Story 2.13). The Endpoint id, the target membership id and the revision only; never a value.
+    case ConnectorFetchAsUserPerformed = 'connector.fetch_as_user.performed';
+
+    // Connector: a credential set, replaced or removed (Story 2.4); the value is never part of the event, only its keyed hash.
+    case ConnectorDataSourceSecretChanged = 'connector.data_source.secret_changed';
+
+    // Connector: outbound guard (Story 2.2). A block is a security event; a grant is an operator action mirrored here.
+    case ConnectorEgressBlocked = 'connector.egress.blocked';
+    case ConnectorEgressGrantCreated = 'connector.egress_grant.created';
+    case ConnectorEgressGrantRevoked = 'connector.egress_grant.revoked';
+
+    // Ingestion: a sync target kept a new good response (Story 2.14). An outbox event only: IDs and sequence numbers, never the body. A sync group's run (Story 2.20) adds `sync_group_id`, `generation_id`, `generation_complete` and `failed_side`.
+    case IngestionPayloadChanged = 'ingestion.payload.changed';
+
+    // Ingestion: a Data Source's health status changed (Story 2.18). Outbox event and audit event: the Data Source id and the two statuses, nothing else.
+    case IngestionSourceHealthChanged = 'ingestion.source_health.changed';
 
     // Platform: operator actions mirrored into the Workspace audit log.
     case PlatformWorkspaceCreated = 'platform.workspace.created';
+
+    // Platform: an asynchronous Operation ended (Story 2.5). An outbox event only: IDs and enums, never the summary.
+    case PlatformOperationCompleted = 'platform.operation.completed';
+
+    // Platform: someone asked the holder of an edit lock to flush its work before a take-over (Story 2.8). An outbox event only: IDs and enums.
+    case PlatformEditLockFlushRequested = 'platform.edit_lock.flush_requested';
+
+    // Platform: an edit lock was taken over (Story 2.8): the epoch rose and the lock changed hands. An outbox event only: IDs, an enum and a boolean.
+    case PlatformEditLockTaken = 'platform.edit_lock.taken';
 
     /** The case for `$action`, or an exception: an unknown string never reaches storage. */
     public static function fromString(string $action): self

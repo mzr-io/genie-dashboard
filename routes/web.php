@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\HelpController;
+use App\Modules\Connector\Contracts\DataSources;
 use App\Modules\Identity\Http\InvitationController;
 use App\Modules\Identity\Http\InvitationResponseHeaders;
 use App\Modules\Identity\Http\WorkspaceSwitchController;
@@ -8,6 +9,7 @@ use App\Platform\Tenancy\WorkspaceTransaction;
 use App\Support\Health\HealthChecker;
 use App\Support\Health\Role;
 use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 // Health probes skip the web middleware group: no session, so they never touch PostgreSQL themselves.
 Route::withoutMiddleware('web')->group(function () {
@@ -55,18 +57,33 @@ Route::middleware(['auth'])->group(function () {
     Route::inertia('templates', 'Placeholder', ['page' => 'templates'])->name('templates.index');
 
     Route::prefix('admin')->middleware('admin')->group(function () {
-        Route::inertia('/', 'Placeholder', ['page' => 'admin-overview'])->name('admin.overview');
+        Route::inertia('/', 'admin/Overview')->name('admin.overview');
         Route::inertia('blocks', 'Placeholder', ['page' => 'block-management'])->name('admin.blocks.index');
         Route::inertia('blocks/create', 'Placeholder', ['page' => 'create-block'])->name('admin.blocks.create');
         Route::inertia('blocks/drafts', 'Placeholder', ['page' => 'draft-blocks'])->name('admin.blocks.drafts');
         Route::inertia('blocks/published', 'Placeholder', ['page' => 'published-blocks'])->name('admin.blocks.published');
         Route::inertia('categories', 'Placeholder', ['page' => 'block-categories'])->name('admin.categories.index');
         Route::inertia('templates', 'Placeholder', ['page' => 'dashboard-templates'])->name('admin.templates.index');
-        Route::inertia('data-sources', 'Placeholder', ['page' => 'data-sources'])->name('admin.data-sources.index');
+        Route::inertia('data-sources', 'admin/DataSources')->name('admin.data-sources.index');
+        // Register and edit (Story 2.3): views of the Data sources item, mapped in ShellNavigation::ADMIN_PAGES.
+        // Both carry the deployment's maximum retention window (Story 2.16; null: none set, so the form disables the window option).
+        Route::get('data-sources/create', fn () => Inertia::render('admin/DataSourceForm', ['retentionMaxWindowDays' => app(DataSources::class)->maxRetentionWindowDays()]))
+            ->name('admin.data-sources.create');
+        Route::get('data-sources/{dataSource}/edit', fn (string $dataSource) => Inertia::render('admin/DataSourceForm', ['dataSourceId' => strtolower($dataSource), 'retentionMaxWindowDays' => app(DataSources::class)->maxRetentionWindowDays()]))
+            ->whereUuid('dataSource')
+            ->name('admin.data-sources.edit');
+        // The Endpoints tab of a Data Source (Story 2.9): list, add and edit on one page.
+        Route::get('data-sources/{dataSource}/endpoints', fn (string $dataSource) => Inertia::render('admin/DataSourceEndpoints', ['dataSourceId' => strtolower($dataSource)]))
+            ->whereUuid('dataSource')
+            ->name('admin.data-sources.endpoints');
         Route::inertia('users', 'admin/Users')->name('admin.users.index');
         // The Groups view of User configuration (Story 1.23): same permission, mapped in ShellNavigation::ADMIN_PAGES.
         Route::inertia('users/groups', 'admin/UserGroups')->name('admin.users.groups');
-        Route::inertia('settings', 'Placeholder', ['page' => 'system-settings'])->name('admin.settings.index');
+        Route::inertia('settings', 'admin/SystemSettings')->name('admin.settings.index');
+        // The Host allowlist of System settings (Story 2.1): a view of the settings item, not a navigation item.
+        Route::inertia('settings/host-allowlist', 'admin/HostAllowlist')->name('admin.settings.host-allowlist');
+        // User attributes of System settings (Story 2.12): a view of the settings item, mapped in ShellNavigation::ADMIN_PAGES.
+        Route::inertia('settings/user-attributes', 'admin/UserAttributes')->name('admin.settings.user-attributes');
         Route::inertia('audit', 'Placeholder', ['page' => 'audit-log'])->name('admin.audit.index');
     });
 });

@@ -158,7 +158,8 @@ final class Cluster
 
     /**
      * Tables in `public` that carry a `workspace_id` column and are not listed as global
-     * (`invitations` names the Workspace an invitee joins but is a global table).
+     * (`invitations` names the Workspace an invitee joins but is a global table). A partition is not listed:
+     * its partitioned parent stands for it here, and {@see self::partitions()} covers it on its own.
      *
      * @return list<string>
      */
@@ -168,7 +169,7 @@ final class Cluster
             SELECT c.relname FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
             JOIN pg_attribute a ON a.attrelid = c.oid AND a.attname = 'workspace_id' AND NOT a.attisdropped
-            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition
             ORDER BY c.relname
             SQL);
 
@@ -178,7 +179,7 @@ final class Cluster
     }
 
     /**
-     * Every ordinary table in `public`.
+     * Every ordinary or partitioned table in `public`, a partition not listed (its parent stands for it).
      *
      * @return list<string>
      */
@@ -187,11 +188,31 @@ final class Cluster
         $rows = self::rows(self::superuser(), <<<'SQL'
             SELECT c.relname FROM pg_class c
             JOIN pg_namespace n ON n.oid = c.relnamespace
-            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p')
+            WHERE n.nspname = 'public' AND c.relkind IN ('r', 'p') AND NOT c.relispartition
             ORDER BY c.relname
             SQL);
 
         return array_column($rows, 'relname');
+    }
+
+    /**
+     * Every partition in `public`, with its partitioned parent.
+     *
+     * @return list<array{partition: string, parent: string}>
+     */
+    public static function partitions(): array
+    {
+        /** @var list<array{partition: string, parent: string}> $rows */
+        $rows = self::rows(self::superuser(), <<<'SQL'
+            SELECT c.relname AS partition, p.relname AS parent FROM pg_class c
+            JOIN pg_inherits i ON i.inhrelid = c.oid
+            JOIN pg_class p ON p.oid = i.inhparent
+            JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public' AND c.relispartition
+            ORDER BY p.relname, c.relname
+            SQL);
+
+        return $rows;
     }
 
     public static function workspace(string $name, string $status = 'active', ?string $label = null): string
@@ -226,6 +247,23 @@ final class Cluster
             'workspace_settings' => self::seedSettings($workspaceId),
             'user_groups' => self::seedGroup($workspaceId),
             'group_members' => self::seedGroupMember($workspaceId),
+            'user_attribute_keys' => self::seedAttributeKey($workspaceId),
+            'user_attributes' => self::seedAttribute($workspaceId),
+            'host_allowlist_entries' => self::seedHostEntry($workspaceId),
+            'host_allowlist_versions' => self::seedHostVersion($workspaceId),
+            'egress_grants' => self::seedEgressGrant($workspaceId),
+            'data_sources' => self::seedDataSource($workspaceId),
+            'secrets' => self::seedSecret($workspaceId),
+            'endpoints' => self::seedEndpoint($workspaceId),
+            'endpoint_revisions' => self::seedEndpointRevision($workspaceId),
+            'operations' => self::seedOperation($workspaceId),
+            'sync_runs' => self::seedSyncRun($workspaceId),
+            'sync_targets' => self::seedSyncTarget($workspaceId),
+            'sync_subscriptions' => self::seedSubscription($workspaceId),
+            'sync_generations' => self::seedGeneration($workspaceId),
+            'data_source_health' => self::seedSourceHealth($workspaceId),
+            'raw_bodies' => self::seedRawBody($workspaceId),
+            'raw_observations' => self::seedRawObservation($workspaceId),
             default => null,
         };
     }
@@ -273,6 +311,220 @@ final class Cluster
             ->execute([$id, $workspaceId, $name ?? 'Group '.$id]);
 
         return $id;
+    }
+
+    public static function seedAttributeKey(string $workspaceId, ?string $keyId = null, string $type = 'text'): string
+    {
+        $id = (string) Str::uuid7();
+        $keyId ??= 'k'.str_replace('-', '', substr($id, 24));
+        self::superuser()->prepare('INSERT INTO user_attribute_keys (id, workspace_id, key_id, label, value_type, revision, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, now(), now())')
+            ->execute([$id, $workspaceId, $keyId, 'Label '.$id, $type]);
+
+        return $id;
+    }
+
+    private static function seedAttribute(string $workspaceId): string
+    {
+        $id = (string) Str::uuid7();
+        $statement = self::superuser()->prepare("INSERT INTO user_attributes (id, workspace_id, membership_id, attribute_key_id, value_ciphertext, value_blind_index, blind_index_version, updated_at) VALUES (?, ?, ?, ?, decode('00', 'hex'), 'seed', 1, now())");
+        $statement->execute([$id, $workspaceId, self::seedMembership($workspaceId), self::seedAttributeKey($workspaceId)]);
+
+        return $id;
+    }
+
+    public static function seedHostEntry(string $workspaceId, string $host = '', int $port = 443, string $scheme = 'https'): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO host_allowlist_entries (id, workspace_id, host, scheme, port, added_by_membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $host === '' ? 'host-'.$id.'.example.test' : $host, $scheme, $port, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    public static function seedDataSource(string $workspaceId, ?string $name = null, string $host = 'api.example.com', int $port = 443, string $scheme = 'https'): string
+    {
+        $id = (string) Str::uuid7();
+        $url = $scheme.'://'.$host.($port === ($scheme === 'https' ? 443 : 80) ? '' : ':'.$port);
+        self::superuser()->prepare('INSERT INTO data_sources (id, workspace_id, name, base_url, scheme, host, port, created_by_membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $name ?? 'Source '.$id, $url, $scheme, $host, $port, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /** A sealed-looking row (not real ciphertext) for a new Data Source of the Workspace; leak tests never open it. */
+    public static function seedSecret(string $workspaceId, ?string $dataSourceId = null, string $slot = 'bearer_token'): string
+    {
+        $id = (string) Str::uuid7();
+        $dataSourceId ??= self::seedDataSource($workspaceId);
+        self::superuser()->prepare("INSERT INTO secrets (id, workspace_id, data_source_id, slot, purpose, key_version, key_ref, ciphertext, created_at, updated_at) VALUES (?, ?, ?, ?, 'cred', 1, 'test-key-ref', decode('00ff', 'hex'), now(), now())")
+            ->execute([$id, $workspaceId, $dataSourceId, $slot]);
+
+        return $id;
+    }
+
+    /** An Endpoint of a Data Source with its revision 1 and the pointer (written in one transaction: the pointer's foreign key is deferred). Returns the Endpoint's ID. */
+    public static function seedEndpoint(string $workspaceId, ?string $dataSourceId = null, string $path = '/api/v2/finance/revenue'): string
+    {
+        return self::seedEndpointWithRevision($workspaceId, $dataSourceId, $path)[0];
+    }
+
+    /** The first revision of a new Endpoint of the Workspace. Returns the revision's ID. */
+    public static function seedEndpointRevision(string $workspaceId, ?string $dataSourceId = null, string $path = '/api/v2/finance/revenue'): string
+    {
+        return self::seedEndpointWithRevision($workspaceId, $dataSourceId, $path)[1];
+    }
+
+    /** @return array{0: string, 1: string} the Endpoint's ID and its revision 1's ID */
+    private static function seedEndpointWithRevision(string $workspaceId, ?string $dataSourceId, string $path): array
+    {
+        $id = (string) Str::uuid7();
+        $revisionId = (string) Str::uuid7();
+        $dataSourceId ??= self::seedDataSource($workspaceId);
+        $pdo = self::superuser();
+        $membership = (string) Str::uuid7();
+
+        $pdo->beginTransaction();
+        $pdo->prepare('INSERT INTO endpoints (id, workspace_id, data_source_id, revision, current_revision_id, created_by_membership_id, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $dataSourceId, $revisionId, $membership]);
+        $pdo->prepare("INSERT INTO endpoint_revisions (id, workspace_id, endpoint_id, revision, method, path_template, path_ast, params, headers, body_template, read_only_query, created_at, created_by_membership_id) VALUES (?, ?, ?, 1, 'GET', ?, '[]'::jsonb, '[]'::jsonb, '[]'::jsonb, NULL, false, now(), ?)")
+            ->execute([$revisionId, $workspaceId, $id, $path, $membership]);
+        $pdo->commit();
+
+        return [$id, $revisionId];
+    }
+
+    /** An Operation of the Workspace, started by a made-up membership (there is no foreign key across modules). */
+    public static function seedOperation(string $workspaceId, ?string $requester = null, string $status = 'queued', string $kind = 'connection_test', string $expires = '1 hour'): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO operations (id, workspace_id, kind, requester_membership_id, subject_type, status, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, 'data_source_draft', ?, now() + ?::interval, now(), now())")
+            ->execute([$id, $workspaceId, $kind, $requester ?? (string) Str::uuid7(), $status, $expires]);
+
+        return $id;
+    }
+
+    /** A run of the Workspace, started now (so it lands in the current month's partition). */
+    public static function seedSyncRun(string $workspaceId, string $startedAt = 'now()'): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO sync_runs (id, workspace_id, kind, url_template, status, started_at, created_at, updated_at) VALUES (?, ?, 'connection_test', 'https://api.example.com/v1', 'succeeded', {$startedAt}, now(), now())")
+            ->execute([$id, $workspaceId]);
+
+        return $id;
+    }
+
+    /**
+     * A sync target of the Workspace (Story 2.14), registered for made-up Connector ids (no foreign key crosses a module). The group is the
+     * target itself, as until Story 2.20.
+     *
+     * @param  array<string, mixed>  $columns  overrides, by column name
+     */
+    public static function seedSyncTarget(string $workspaceId, array $columns = []): string
+    {
+        $id = (string) Str::uuid7();
+        $row = $columns + [
+            'id' => $id, 'workspace_id' => $workspaceId, 'fetch_key' => 'fk1:'.hash('sha256', $id), 'data_source_id' => (string) Str::uuid7(),
+            'endpoint_id' => (string) Str::uuid7(), 'endpoint_revision_id' => (string) Str::uuid7(), 'data_source_revision' => 1,
+            'params' => '{}', 'sync_group_id' => $id, 'refresh_interval_seconds' => null, 'next_due_at' => null,
+        ] + ['created_at' => 'now', 'updated_at' => 'now'];
+
+        $names = array_keys($row);
+        self::superuser()->prepare('INSERT INTO sync_targets ('.implode(', ', $names).') VALUES ('.implode(', ', array_map(fn (string $n): string => $n === 'params' ? '?::jsonb' : '?', $names)).')')
+            ->execute(array_values($row));
+
+        return (string) $row['id'];
+    }
+
+    /**
+     * A subscription (Story 2.19) on `$targetId` (a new target of the Workspace unless given); `hot_until` an hour ahead unless overridden.
+     *
+     * @param  array<string, mixed>  $columns  overrides, by column name
+     */
+    public static function seedSubscription(string $workspaceId, ?string $targetId = null, array $columns = []): string
+    {
+        $id = (string) Str::uuid7();
+        $row = $columns + [
+            'id' => $id, 'workspace_id' => $workspaceId, 'sync_target_id' => $targetId ?? self::seedSyncTarget($workspaceId),
+            'block_version_id' => (string) Str::uuid7(), 'role' => 'primary', 'compute_context' => '', 'refresh_interval_seconds' => 60,
+            'last_access_at' => 'now', 'hot_until' => gmdate('c', time() + 3600),
+        ] + ['created_at' => 'now', 'updated_at' => 'now'];
+
+        $names = array_keys($row);
+        self::superuser()->prepare('INSERT INTO sync_subscriptions ('.implode(', ', $names).') VALUES ('.implode(', ', array_fill(0, count($names), '?')).')')
+            ->execute(array_values($row));
+
+        return (string) $row['id'];
+    }
+
+    /** A complete generation (Story 2.20) of a new group of two targets of the Workspace. */
+    public static function seedGeneration(string $workspaceId): string
+    {
+        $primary = self::seedSyncTarget($workspaceId);
+        $comparison = self::seedSyncTarget($workspaceId, ['sync_group_id' => $primary, 'group_primary_target_id' => $primary]);
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare(
+            'INSERT INTO sync_generations (id, workspace_id, sync_group_id, primary_target_id, comparison_target_id, dispatch_seq, primary_ok, comparison_ok, complete, primary_payload_id, comparison_payload_id, primary_payload_seq, comparison_payload_seq) '
+            .'VALUES (?, ?, ?, ?, ?, 1, true, true, true, ?, ?, 1, 1)',
+        )->execute([$id, $workspaceId, $primary, $primary, $comparison, (string) Str::uuid7(), (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /**
+     * The health row (Story 2.18) of a Data Source of the Workspace (made up unless given: no foreign key crosses a module).
+     *
+     * @param  array<string, mixed>  $columns  overrides, by column name
+     */
+    public static function seedSourceHealth(string $workspaceId, array $columns = []): string
+    {
+        $id = (string) Str::uuid7();
+        $row = $columns + ['id' => $id, 'workspace_id' => $workspaceId, 'data_source_id' => (string) Str::uuid7()] + ['created_at' => 'now', 'updated_at' => 'now'];
+
+        $names = array_keys($row);
+        self::superuser()->prepare('INSERT INTO data_source_health ('.implode(', ', $names).') VALUES ('.implode(', ', array_fill(0, count($names), '?')).')')
+            ->execute(array_values($row));
+
+        return (string) $row['id'];
+    }
+
+    /** A stored body (`{}`) of a made-up target of the Workspace. */
+    public static function seedRawBody(string $workspaceId, ?string $targetId = null, string $body = '{}'): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO raw_bodies (id, workspace_id, sync_target_id, content_hash, size_bytes, body, created_at) VALUES (?, ?, ?, ?, ?, decode(?, 'hex'), now())")
+            ->execute([$id, $workspaceId, $targetId ?? (string) Str::uuid7(), hash('sha256', $body), strlen($body), bin2hex($body)]);
+
+        return $id;
+    }
+
+    /** An observation (and the body it names) of the Workspace, observed now (so it lands in the current month's partition). */
+    public static function seedRawObservation(string $workspaceId, string $observedAt = 'now()'): string
+    {
+        $target = (string) Str::uuid7();
+        $payload = self::seedRawBody($workspaceId, $target);
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO raw_observations (id, workspace_id, sync_target_id, payload_id, seq, content_hash, size_bytes, dispatch_seq, observed_at) VALUES (?, ?, ?, ?, 1, ?, 2, 1, {$observedAt})")
+            ->execute([$id, $workspaceId, $target, $payload, hash('sha256', '{}')]);
+
+        return $id;
+    }
+
+    public static function seedEgressGrant(string $workspaceId, string $cidr = '10.0.0.0/8', bool $revoked = false): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO egress_grants (id, workspace_id, cidr, reason, granted_by, granted_at, revoked_at, revoked_by) VALUES (?, ?, ?, ?, ?, now(), '.($revoked ? 'now()' : 'NULL').', '.($revoked ? "'operator:test'" : 'NULL').')')
+            ->execute([$id, $workspaceId, $cidr, 'test grant', 'operator:test']);
+
+        return $id;
+    }
+
+    /** The Workspace's list-level version row; its generated `id` is the Workspace ID. */
+    public static function seedHostVersion(string $workspaceId, int $revision = 0): string
+    {
+        self::superuser()->prepare('INSERT INTO host_allowlist_versions (workspace_id, revision, created_at, updated_at) VALUES (?, ?, now(), now()) ON CONFLICT (workspace_id) DO NOTHING')
+            ->execute([$workspaceId, $revision]);
+
+        return $workspaceId;
     }
 
     private static function seedGroupMember(string $workspaceId): string

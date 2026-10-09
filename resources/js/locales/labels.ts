@@ -4,6 +4,8 @@ export const technicalDetailsLabels = {
     title: 'Technical details',
     status: 'HTTP status',
     path: 'Field path',
+    host: 'Host',
+    reason: 'Reason code',
     requestId: 'Request ID',
     copy: 'Copy request ID',
     copied: 'Copied',
@@ -274,6 +276,19 @@ export const shellPages = {
 } as const;
 
 export type ShellPageKey = keyof typeof shellPages;
+
+// The Admin overview's "Platform health" panel (Story 2.18; UX-DR-114, 260): only the "Your data sources" part. The platform services part is a later story.
+export const platformHealthLabels = {
+    panel: 'Platform health',
+    sourcesTitle: 'Your data sources',
+    empty: 'No data sources yet.',
+    failed: "We couldn't load the health of your data sources.",
+    retry: 'Retry',
+    loading: 'Loading data sources',
+    // The row's accessible name: "{name}, {word}, last success {time}", or the no-call text when there was no success.
+    row: (name: string, word: string, time: string | null, noCall: string) =>
+        `${name}, ${word}, ${time === null ? noCall : `last success ${time}`}`,
+};
 
 // Labels of the shell: sidebar, icon rail, top bar and profile menu (Story 1.16; UX-DR-79..86, 160, 270).
 export const shellLabels = {
@@ -561,6 +576,855 @@ export const groupLabels = {
     unchanged: 'Nothing to save: the name is as it was.',
     emptyCell: '—',
 } as const;
+
+// Labels of System settings and its Host allowlist (Story 2.1; UX-DR-262, 263). The messages for the standard
+// states (`list-empty`, `msg:saved`, `msg:perm-denied`, the load failure) come from the catalogue and `shellLabels`.
+export const settingsLabels = {
+    pageTitle: 'System settings',
+    pageSubtitle: 'Settings that apply to the whole workspace.',
+    sections: 'Settings',
+    hostAllowlist: 'Host allowlist',
+    hostAllowlistSummary:
+        'The hosts this workspace may call. Dashflow contacts only hosts you approve here.',
+    userAttributes: 'User attributes',
+    userAttributesSummary:
+        "The attributes, such as a region or an employee number, that endpoints can use to return only each user's own data.",
+} as const;
+
+// Labels of System settings > User attributes and of the member Attributes editor (Story 2.12; UX-DR-115, 23, 263, 282).
+// Its other messages are the catalogue's `saved`, `throttled`, `perm-denied` and `save-failed`.
+export const userAttributeLabels = {
+    pageTitle: 'User attributes',
+    pageSubtitle:
+        "Define the attributes that can be set for each member. Endpoints use them to return only a member's own data.",
+    items: 'attributes',
+    action: '+ Add attribute',
+    back: 'Back to System settings',
+    caption: 'User attributes with their key id, label and type',
+    tableRegion: 'User attributes table',
+    toolbar: 'User attributes tools',
+    search: 'Search attributes',
+    searchPlaceholder: 'Search by key id or label',
+    clearSearch: 'Clear search',
+    count: (matched: number, total: number) =>
+        `${matched} of ${total} ${total === 1 ? 'attribute' : 'attributes'}`,
+    columns: { key_id: 'Key id', label: 'Label', value_type: 'Type' },
+    actions: 'Actions',
+    types: {
+        text: 'Text',
+        identifier: 'Identifier',
+        integer: 'Whole number',
+    } as Record<string, string>,
+    typeHelpers: {
+        text: 'Up to 256 characters of visible text.',
+        identifier: 'Up to 128 letters, digits, dots, hyphens or underscores.',
+        integer: 'A whole number of up to 18 digits, such as 42 or -7.',
+    } as Record<string, string>,
+    // The inline add form.
+    addTitle: 'Add an attribute',
+    addRegion: 'Add an attribute',
+    save: 'Add attribute',
+    cancel: 'Cancel',
+    keyId: 'Key id',
+    keyIdHelper:
+        'Lower case letters, digits and underscores, starting with a letter, up to 48 characters. It cannot be changed later.',
+    label: 'Label',
+    labelHelper: 'Up to 64 characters. You can rename it later.',
+    type: 'Type',
+    typeHelper: 'Chosen once: the type cannot be changed later.',
+    added: (label: string) => `${label} added to the user attributes.`,
+    // Field errors by the server's reason.
+    reasons: {
+        duplicate: 'This is already used. Choose another.',
+    } as Record<string, string>,
+    keyIdTaken: 'This key id is already used. Choose another.',
+    labelTaken: 'This label is already used. Choose another.',
+    keyIdInvalid:
+        'Use lower case letters, digits and underscores, starting with a letter (up to 48 characters).',
+    labelInvalid:
+        'Enter a label of 1 to 64 characters, without control or invisible characters.',
+    typeInvalid: 'Choose a type.',
+    // Inline rename.
+    rename: 'Rename',
+    renameFor: (label: string) => `Rename ${label}`,
+    renameField: (keyId: string) => `Label for ${keyId}`,
+    renameSave: 'Save label',
+    renameSaveFor: (label: string) => `Save the new label for ${label}`,
+    renameCancel: 'Cancel',
+    renamed: (label: string) => `Label changed to ${label}.`,
+    conflict:
+        'Someone else changed this attribute. The latest label is shown. Check it, then save again if you still want to.',
+    gone: 'This attribute no longer exists. The list has been refreshed.',
+    // Member Attributes editor (User configuration).
+    attributes: 'Attributes',
+    attributesFor: (name: string) => `Edit attributes for ${name}`,
+    closeFor: (name: string) => `Close the attributes editor for ${name}`,
+    memberRegion: (name: string) => `Attributes for ${name}`,
+    memberTitle: (name: string) => `Attributes for ${name}`,
+    memberSubtitle:
+        'These values are stored encrypted. They are shown only here, to people who manage users.',
+    memberNone:
+        'No attributes are defined yet. Define them in System settings > User attributes.',
+    memberNoneAction: 'Open User attributes',
+    memberSave: 'Save attributes',
+    memberClose: 'Close',
+    memberLoading: 'Loading attributes',
+    memberNotSet: 'Not set',
+    memberHelper: (type: string) =>
+        `${type}. A value cannot be cleared once set.`,
+    memberSaved: (name: string) => `Attributes updated for ${name}.`,
+    memberUnchanged: 'Nothing to save: no value was changed.',
+    memberReasons: {
+        empty: 'Enter a value.',
+        too_long: 'This value is too long.',
+        invalid: 'This value is not valid for this type.',
+        undefined_key: 'This attribute is not defined any more.',
+    } as Record<string, string>,
+    memberUnavailable:
+        'Attributes are unavailable right now because the keys that protect them are not set up. Nothing was saved. Ask an operator to check them.',
+    memberSelf: "You can't change your own attributes.",
+    memberGone:
+        'This member is no longer in the workspace. The list has been refreshed.',
+    retry: 'Retry',
+} as const;
+
+export const hostAllowlistLabels = {
+    pageTitle: 'Host allowlist',
+    pageSubtitle:
+        'Dashflow only contacts hosts on this list. Adding a host does not contact it.',
+    items: 'hosts',
+    action: '+ Add host',
+    back: 'Back to System settings',
+    caption:
+        'Hosts this workspace may call, with scheme, port and who added them',
+    tableRegion: 'Host allowlist table',
+    toolbar: 'Host allowlist tools',
+    search: 'Search hosts',
+    searchPlaceholder: 'Search by host',
+    clearSearch: 'Clear search',
+    count: (matched: number, total: number) =>
+        `${matched} of ${total} ${total === 1 ? 'host' : 'hosts'}`,
+    sorted: (column: string, descending: boolean) =>
+        `Sorted by ${column}, ${descending ? 'descending' : 'ascending'}`,
+    columns: {
+        host: 'Host',
+        scheme: 'Scheme',
+        port: 'Port',
+        added_by: 'Added by',
+        added: 'Added on',
+    },
+    actions: 'Actions',
+    notEncrypted: 'Not encrypted',
+    notEncryptedNote: 'Calls to this host are sent over plain http.',
+    unknownMember: 'Unknown member',
+    // The inline add form.
+    add: '+ Add host',
+    addTitle: 'Add a host',
+    addRegion: 'Add a host',
+    save: 'Add host',
+    cancel: 'Cancel',
+    host: 'Host',
+    hostHelper:
+        'A host name or IP address, with a port if it is not the default, such as api.example.com:8443. No scheme, path or wildcard.',
+    scheme: 'Scheme',
+    schemeHttps: 'https',
+    schemeHttp: 'http',
+    schemeHelper:
+        'https is encrypted. Plain http is allowed for now and is marked Not encrypted.',
+    schemeNotice: 'Plain http is not encrypted.',
+    // Field errors by the server's reason.
+    reasons: {
+        empty: 'Enter a host.',
+        whitespace:
+            'The host cannot contain spaces. Remove them and try again.',
+        forbidden_character:
+            'Enter a host name only: no scheme, path, query, user name, wildcard or percent sign.',
+        non_ascii:
+            'Use the ASCII (punycode) form of the host name, such as xn--bcher-kva.example.',
+        malformed:
+            'Enter a host, or a host and port such as api.example.com:8443. Put an IPv6 address in square brackets.',
+        invalid_label:
+            'Each part of a host name uses letters, digits and inner hyphens only.',
+        too_long: 'The host name is too long.',
+        numeric_address:
+            'Write an IP address as four numbers separated by dots, or as an IPv6 address in square brackets.',
+        blocked_address: 'This address is in a range that cannot be allowed.',
+        invalid_port: 'The port must be a number from 1 to 65535.',
+        invalid_scheme: 'Choose https or http.',
+        duplicate: 'This host and port are already on the allowlist.',
+    } as Record<string, string>,
+    hostInvalid: 'This host is not valid. Check it and try again.',
+    // Changes.
+    added: (host: string) => `${host} added to the host allowlist.`,
+    removed: (host: string) => `${host} removed from the host allowlist.`,
+    // The list changed under the Admin (409): the page shows the fresh list and keeps what was typed.
+    conflict:
+        'The host allowlist was changed by someone else. The list below is up to date. Check your entry, then add it again.',
+    conflictRemove:
+        'The host allowlist was changed by someone else. The list is up to date. Remove the host again if you still want to.',
+    gone: 'This host is no longer on the allowlist. The list has been refreshed.',
+    // Removal (UX-DR-262: alertdialog, focus on Cancel, the destructive button repeats the host).
+    remove: 'Remove',
+    removeFor: (host: string) => `Remove ${host}`,
+    removeTitle: (host: string) => `Remove ${host}?`,
+    removeImpact: (host: string) =>
+        `${host} will no longer be an approved host. Calls to it are refused from now on.`,
+    removeDependents: (names: string[]) =>
+        `${names.length === 1 ? 'This data source' : 'These data sources'} will be blocked on the next call: ${names.join(', ')}.`,
+    removeNoDependents: 'No data sources use this host.',
+    removeDependentsFailed:
+        "We couldn't check which data sources use this host. They may be blocked on their next call.",
+    removeObject: (host: string) => host,
+    removeVerb: 'Remove',
+} as const;
+
+// Labels of the Data sources list and form (Story 2.3; UX-DR-207, 115, 261, 263, 23, 26, 22, 37, 39, 274, 282). The
+// messages for the standard states (`list-empty`, `list-no-match`, `msg:saved`, `msg:perm-denied`, the allowlist miss
+// `host-not-allowlisted`, the save failure) come from the catalogue and `shellLabels`.
+export const dataSourceLabels = {
+    pageTitle: 'Data sources',
+    pageSubtitle:
+        'The APIs this workspace reads. Dashflow only calls hosts on the host allowlist.',
+    items: 'data sources',
+    // The phrase of `list-empty` ("No data sources yet. Register a data source to start.").
+    action: 'Register a data source',
+    register: '+ Register data source',
+    caption:
+        'Data sources of this workspace, with host, authentication, health, last successful call and the blocks using them',
+    tableRegion: 'Data sources table',
+    toolbar: 'Data source tools',
+    search: 'Search data sources',
+    searchPlaceholder: 'Search by name or host',
+    clearSearch: 'Clear search',
+    count: (matched: number, total: number) =>
+        `${matched} of ${total} ${total === 1 ? 'data source' : 'data sources'}`,
+    sorted: (column: string, descending: boolean) =>
+        `Sorted by ${column}, ${descending ? 'descending' : 'ascending'}`,
+    columns: {
+        name: 'Name',
+        host: 'Host',
+        auth_type: 'Auth type',
+        health: 'Health',
+        last_success: 'Last successful call',
+        blocks: 'Blocks using it',
+    },
+    authTypes: {
+        none: 'None',
+        api_key: 'API key',
+        bearer: 'Bearer token',
+        basic: 'Basic',
+        oauth2_client_credentials: 'OAuth2 client credentials',
+    } as Record<string, string>,
+    // Health (Story 2.18): the word beside every dot, and the last success.
+    checking: 'Checking…',
+    health: {
+        checking: 'Checking…',
+        healthy: 'Healthy',
+        degraded: 'Degraded',
+        unreachable: 'Unreachable',
+    } as Record<string, string>,
+    lastSuccess: (time: string) => `Last success ${time}`,
+    noCall: '—',
+    noCallYet: 'No successful call yet',
+    // The health path field of the form: the path a probe adds to the Base URL.
+    healthPath: 'Health path (optional)',
+    healthPathHelper:
+        'A path such as /health that Dashflow requests to check this data source when you save it, and later while it has no endpoints to fetch. Leave blank to use the Base URL. No query string, fragment or placeholders.',
+    notEncrypted: hostAllowlistLabels.notEncrypted,
+    notEncryptedNote: 'Calls to this data source are sent over plain http.',
+    edit: (name: string) => `Edit ${name}`,
+    saved: (name: string) => `${name} registered.`,
+    gone: 'This data source no longer exists.',
+    // The form.
+    registerTitle: 'Register data source',
+    editTitle: 'Edit data source',
+    registerSubtitle:
+        'Describe the API. Saving does not contact it, and the host must be on the host allowlist.',
+    editSubtitle: (name: string) => `Changes to ${name} apply to later calls.`,
+    back: 'Back to Data sources',
+    formRegion: 'Data source',
+    connection: 'Connection',
+    name: 'Name',
+    nameHelper:
+        'Up to 64 characters. Each data source in the workspace needs its own name.',
+    baseUrl: 'Base URL',
+    baseUrlHelper:
+        'Where the API lives, such as https://api.example.com/v1. No user name, query string or fragment.',
+    headers: 'Default headers',
+    headersHelper:
+        'Sent with every call to this data source. Credentials are not headers here: they are added separately and never shown again.',
+    headersNone: 'No default headers.',
+    addHeader: '+ Add header',
+    headerName: (n: number) => `Header ${n} name`,
+    headerValue: (n: number) => `Header ${n} value`,
+    removeHeaderButton: 'Remove',
+    removeHeader: (n: number) => `Remove header ${n}`,
+    headerRemoved: (n: number) => `Header ${n} removed.`,
+    limits: 'Limits',
+    limitsHelper: 'Leave a limit blank to use the platform setting.',
+    timeout: 'Timeout (seconds)',
+    maxResponse: 'Maximum response size (bytes)',
+    maxPages: 'Maximum pages',
+    ceiling: (value: number) => `The platform limit is ${value}.`,
+    // Retention (Story 2.16): how much raw history the Data Source keeps.
+    retention: 'Retention',
+    retentionHelper:
+        'Choose how much raw history to keep. Older data is deleted by the next sweep, which runs every few minutes. The current data is never deleted.',
+    retentionModeLabel: 'Raw history',
+    retentionModes: {
+        latest: 'Latest only',
+        window: 'Keep a window',
+    } as Record<string, string>,
+    retentionLatestHelper:
+        'Keeps the current data. Superseded data is deleted after the grace period set for this deployment.',
+    retentionWindowUnavailable:
+        'Not available: no maximum window is set for this deployment.',
+    retentionDays: 'Days to keep',
+    retentionDaysHelper: (max: number | null) =>
+        max === null
+            ? 'A whole number of days, 1 or more.'
+            : `A whole number of days, from 1 to ${max}.`,
+    // Pagination (Story 2.11): how the API pages its answers. The Pagination section sits in the Limits area.
+    pagination: 'Pagination',
+    paginationHelper:
+        'Choose how this API splits its answers into pages. Dashflow follows the pages up to the limits above and merges them into one response. Nothing is saved from a test.',
+    paginationStyle: 'Pagination style',
+    paginationStyles: {
+        none: 'None (one request)',
+        page: 'Page number',
+        offset: 'Offset',
+        cursor: 'Cursor',
+        link_header: 'Link header',
+    } as Record<string, string>,
+    paginationStyleHelper: {
+        none: 'The API returns everything in one answer.',
+        page: 'Sends the page number, starting at 1, until a page has no records.',
+        offset: 'Sends the offset, starting at 0 and growing by the records received, until a page has no records.',
+        cursor: 'Sends the cursor read from each answer, as a plain value, until an answer has none.',
+        link_header:
+            'Follows the next link in the Link header, only on the same address as the request.',
+    } as Record<string, string>,
+    paginationParam: (style: string) =>
+        style === 'cursor'
+            ? 'Cursor parameter'
+            : style === 'offset'
+              ? 'Offset parameter'
+              : 'Page parameter',
+    paginationParamHelper: 'The query parameter that carries it, such as page.',
+    paginationSizeParam: 'Page size parameter (optional)',
+    paginationSizeParamHelper:
+        'The query parameter that carries the page size, such as limit. Leave blank to send no size.',
+    paginationSize: 'Page size',
+    paginationSizeHelper: 'How many records to ask for in each page.',
+    paginationRecordsPath: 'Records path (optional)',
+    paginationRecordsPathHelper:
+        'Where the records array sits in each page, such as data.items. Leave blank when the answer itself is the array.',
+    paginationCursorPath: 'Cursor path',
+    paginationCursorPathHelper:
+        'Where the next cursor sits in each answer, such as meta.next. No cursor ends the run.',
+    refresh: 'Refresh',
+    live: 'Supports Live refresh (~30 s)',
+    liveHelper:
+        'Only turn this on if the API can handle a call every 30 seconds per block.',
+    save: 'Save',
+    create: 'Register data source',
+    cancel: 'Cancel',
+    saving: 'Saving…',
+    loading: 'Loading the data source',
+    loadFailed: "We couldn't load these settings. Try again.",
+    notFound: 'This data source no longer exists.',
+    // Save is unavailable until the Base URL's host is allowed (`aria-disabled`, reason adjacent: UX-DR-22).
+    saveBlocked:
+        "Save is unavailable until the base URL's host is on the workspace allowlist.",
+    saveBlockedUrl: 'Save is unavailable until the base URL is accepted.',
+    saveBlockedToken:
+        "Save is unavailable until the token URL's host is on the workspace allowlist.",
+    saveBlockedTokenUrl: 'Save is unavailable until the token URL is accepted.',
+    tokenUrlRequired: 'Enter the token URL.',
+    clientIdRequired: 'Enter the client ID.',
+    nameRequired: 'Enter a name.',
+    baseUrlRequired: 'Enter the base URL.',
+    // The same refusals for the OAuth2 token URL (Story 2.7), by the server's reason.
+    tokenUrlReasons: {
+        empty: 'Enter the token URL.',
+        'too-long': 'The token URL is too long.',
+        whitespace:
+            'The token URL cannot contain spaces. Remove them and try again.',
+        malformed:
+            'Enter a full address such as https://auth.example.com/oauth/token.',
+        scheme: 'The token URL must start with http:// or https://.',
+        userinfo: 'Leave the user name and password out of the token URL.',
+        query: 'Leave the query string out of the token URL.',
+        fragment: 'Leave the fragment (#) out of the token URL.',
+        'invalid-host':
+            'The host is not valid. Use a host name, or an IP address that is not in a private or reserved range.',
+        'https-required':
+            'This workspace requires https. Change the token URL to start with https://.',
+    } as Record<string, string>,
+    // Field errors by the server's reason; a reason without an entry shows the server's own message.
+    reasons: {
+        'name-required': 'Enter a name.',
+        'name-too-long': 'The name can have at most 64 characters.',
+        'name-invalid-characters':
+            'The name contains characters that are not allowed. Remove control or invisible characters.',
+        'name-taken':
+            'A data source with this name already exists. Choose another name.',
+        empty: 'Enter the base URL.',
+        'too-long': 'The base URL is too long.',
+        whitespace:
+            'The base URL cannot contain spaces. Remove them and try again.',
+        malformed: 'Enter a full address such as https://api.example.com/v1.',
+        scheme: 'The base URL must start with http:// or https://.',
+        userinfo: 'Leave the user name and password out of the base URL.',
+        query: 'Leave the query string out of the base URL.',
+        fragment: 'Leave the fragment (#) out of the base URL.',
+        'invalid-host':
+            'The host is not valid. Use a host name, or an IP address that is not in a private or reserved range.',
+        'https-required':
+            'This workspace requires https. Change the base URL to start with https://.',
+        'header-name-invalid':
+            "A header name uses letters, digits and the characters ! # $ % & ' * + - . ^ _ ` | ~ only.",
+        'header-name-reserved':
+            'This header cannot be set as a default header. Credentials are added separately.',
+        'header-name-duplicate': 'This header is already listed.',
+        'header-value-invalid':
+            'A header value uses visible ASCII characters only, on one line. Remove line breaks and other special characters.',
+        'header-value-too-long': 'This header value is too long.',
+        'too-many-headers': 'There are too many default headers.',
+        'not-positive-integer':
+            'Enter a whole number greater than zero, or leave it blank to use the platform setting.',
+        'above-ceiling':
+            'This is above the platform limit. Enter a smaller number.',
+        'invalid-boolean': 'Choose on or off.',
+        'headers-invalid':
+            'The default headers are not valid. Reload the page and try again.',
+        'auth-type-invalid': 'Choose an authentication type.',
+        'api-key-name-required': 'Enter the name the API key is sent under.',
+        'api-key-name-invalid':
+            "The name uses letters, digits and the characters ! # $ % & ' * + - . ^ _ ` | ~ only.",
+        'api-key-name-reserved':
+            'This name is reserved. Choose another name for the API key.',
+        'api-key-name-duplicate': 'A default header already uses this name.',
+        'api-key-placement-invalid': 'Choose header or query string.',
+        'health-path-too-long':
+            'The health path can have at most 255 characters.',
+        'health-path-placeholder':
+            'The health path cannot hold {placeholders}: enter a fixed path such as /health.',
+        'health-path-required': 'Enter the health path, starting with /.',
+        'health-path-leading-slash': 'The health path must start with /.',
+        'health-path-query': 'Leave the query string out of the health path.',
+        'health-path-fragment':
+            'Leave the fragment (#) out of the health path.',
+        'retention-mode-invalid': 'Choose how much raw history to keep.',
+        'retention-days-invalid': 'Enter a whole number of days, 1 or more.',
+        'retention-days-above-maximum':
+            'This is above the maximum window. Enter a smaller number.',
+        'retention-days-not-allowed':
+            'A number of days applies only to a window of history.',
+        'retention-window-unavailable':
+            'Keeping a window of history is not available: no maximum is set for this deployment.',
+        'pagination-style-invalid': 'Choose how this API pages its answers.',
+        'pagination-param-required': 'Enter the query parameter name.',
+        'pagination-param-invalid':
+            'A query parameter name uses letters, digits and the characters _ . ~ - only, up to 64 characters.',
+        'pagination-size-param-required':
+            'Enter the query parameter that carries the page size, or clear the page size.',
+        'pagination-size-invalid':
+            'Enter a whole number greater than zero for the page size, or clear the page size parameter.',
+        'pagination-size-param-duplicate':
+            'The page size needs a different query parameter from the page, offset or cursor.',
+        'pagination-path-required':
+            'Enter where the next cursor sits in the response, such as meta.next.',
+        'pagination-path-invalid':
+            'A path is keys and array positions separated by dots, such as data.items: letters, digits, _ and - only, at most 8 parts.',
+        'secret-required': 'Enter a new value.',
+        'secret-values-refused':
+            'This form cannot carry a secret value. Remove it and try again.',
+        'secret-value-invalid':
+            'A credential uses visible ASCII characters only, on one line. Remove line breaks and other special characters.',
+        'secret-value-too-long': 'This credential is too long.',
+        'secret-slot-unused':
+            'This credential does not belong to the chosen authentication type.',
+        'secrets-invalid':
+            'The credentials are not valid. Reload the page and try again.',
+        'oauth-client-id-required': 'Enter the client ID.',
+        'oauth-client-id-invalid':
+            'The client ID uses visible ASCII characters only, without spaces.',
+        'oauth-scope-invalid':
+            'The scope is names separated by single spaces, using visible ASCII characters only.',
+    } as Record<string, string>,
+    // Someone else saved first (409): the typed values stay.
+    conflict:
+        'This data source was changed by someone else. Your changes are still here. Review them, then save again to keep them, or reload to see the latest.',
+    reload: 'Reload latest',
+    reloaded: 'Showing the latest saved values.',
+    // Authentication (Story 2.4; UX-DR-29, 207, 23, 248). Secrets are write-only: a saved one shows only its date.
+    authentication: 'Authentication',
+    authenticationHelper:
+        'Credentials are stored sealed and never shown again. Leave a saved credential alone to keep it.',
+    authType: 'Authentication type',
+    authOptions: {
+        none: 'None',
+        api_key: 'API key',
+        bearer: 'Bearer token',
+        basic: 'Basic (user name and password)',
+        oauth2_client_credentials: 'OAuth2 client credentials',
+    } as Record<string, string>,
+    apiKeyName: 'API key name',
+    apiKeyNameHelper:
+        'The header or query parameter the key is sent under, such as X-Api-Key.',
+    apiKeyPlacement: 'Send the key in',
+    placementHeader: 'A header (recommended)',
+    placementQuery: 'The query string',
+    queryWarning:
+        "A key in the query string can end up in the API's logs and in proxies. Use a header if the API allows it.",
+    apiKey: 'API key',
+    bearerToken: 'Token',
+    basicUsername: 'User name',
+    basicPassword: 'Password',
+    // OAuth2 client credentials (Story 2.7): the client secret is write-only like every other credential.
+    oauthTokenUrl: 'Token URL',
+    oauthTokenUrlHelper:
+        'Where Dashflow asks for an access token, such as https://auth.example.com/oauth/token. It must be on your workspace allowlist.',
+    oauthClientId: 'Client ID',
+    oauthClientSecret: 'Client secret',
+    oauthScope: 'Scope (optional)',
+    oauthScopeHelper: 'Names separated by spaces. Leave blank to ask for none.',
+    secretHeader: 'Secret',
+    secretHeaderHint:
+        'Mark a header as secret to store its value sealed. It is then shown as set, never in full.',
+    secretHeaderValue: (n: number) => `Header ${n} value (secret)`,
+    confirmPassword: 'Your password',
+    confirmPasswordHelper:
+        'Confirm your password to change credentials or the authentication type.',
+    confirmPasswordWrong: 'The password is incorrect.',
+    credentialsUnavailable:
+        'Credentials cannot be saved until the platform key is configured. Ask an operator to set it, then try again.',
+    // Test connection (Story 2.5; UX-DR-135, 207, 22, 70, 276). The result text itself is the catalogue's `test-ok`,
+    // `fetch-failed`, `host-not-allowlisted` and `blocked-address`.
+    testConnection: 'Test connection',
+    testing: 'Testing…',
+    testRunning: 'A test is already running. Wait for its result.',
+    testThrottled: (seconds: number) =>
+        `Too many tests. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`,
+    testFailedTitle: 'Connection test failed',
+    testSourceFallback: 'this data source',
+    testHint:
+        'Calls the base URL once with these headers and credentials. Nothing is saved.',
+    // Story 2.6: the card also shows the catalogue's `not-json` and `response-too-large`.
+    // Story 2.7: the catalogue is closed to the canonical rows of EXPERIENCE.md, so this message lives here.
+    authFailed: (source: string) =>
+        `Authentication failed. ${source} did not accept these credentials. Check the client ID, the client secret and the scope, then test again.`,
+    // Story 2.11: the catalogue is closed too, so the page-limit message lives here. `pages` is the cap that was reached.
+    tooManyPages: (pages: number) =>
+        `Too many pages: this endpoint needs more than ${pages} pages, the page limit. Nothing was shown, so no totals are wrong. Narrow the request with parameters, or raise the page limit on the data source.`,
+    // The page a paged call stopped at, in the card's title.
+    failedPage: (page: number) => `Page ${page}`,
+} as const;
+
+// The Endpoints tab of a Data source (Story 2.9): the list, and the add and edit form with its `method-prefix`,
+// `parameters-table`, header rows, body template and the POST read-only confirmation. The catalogue is pinned, so the
+// copy that is not one of its canonical messages lives here (`post-readonly`, `list-empty`, `list-no-match`, `saved` and
+// `perm-denied` come from the catalogue).
+export const endpointLabels = {
+    tabsLabel: 'Data source sections',
+    tabSettings: 'Settings',
+    tabEndpoints: 'Endpoints',
+    pageTitle: 'Endpoints',
+    pageSubtitle: (name: string) =>
+        `The requests Blocks can select from ${name}. Saving does not send any request.`,
+    sourceFallback: 'this data source',
+    items: 'endpoints',
+    // The phrase of `list-empty` ("No endpoints yet. Add an endpoint to start.").
+    action: 'Add an endpoint',
+    add: '+ Add endpoint',
+    caption:
+        'Endpoints of this data source, with method, path, revision and last update',
+    tableRegion: 'Endpoints table',
+    toolbar: 'Endpoint tools',
+    search: 'Search endpoints',
+    searchPlaceholder: 'Search by path or method',
+    clearSearch: 'Clear search',
+    count: (matched: number, total: number) =>
+        `${matched} of ${total} ${total === 1 ? 'endpoint' : 'endpoints'}`,
+    columns: {
+        method: 'Method',
+        path: 'Path',
+        revision: 'Revision',
+        updated: 'Updated',
+    },
+    edit: (method: string, path: string) => `Edit ${method} ${path}`,
+    revisionValue: (n: number) => `r${n}`,
+    back: 'Back to Data sources',
+    missing: 'This data source no longer exists.',
+    // Test endpoint (Story 2.10; UX-DR-135, 25, 26, 70, 276, 279, 282). The failure messages are the catalogue's (`fetch-failed`,
+    // `host-not-allowlisted`, `blocked-address`, `not-json`, `response-too-large`) and the auth-failed label; the success line
+    // is built here because the catalogue's `fetch-ok` reports a record count and a path that exist only after Mapping.
+    testEndpoint: 'Test endpoint',
+    testAction: (method: string, path: string) => `Test ${method} ${path}`,
+    testActions: 'Actions',
+    testTitle: 'Test endpoint',
+    testSubtitle:
+        'Sends this request once, with the values below, to the data source. The response is kept for a few minutes, only for you, and is never saved.',
+    testValues: 'Test values',
+    testValuesHelper:
+        'Each parameter needs a value. A fixed parameter starts with its saved value; a date or period parameter takes a date written YYYY-MM-DD.',
+    testValuesNone: 'This endpoint has no parameters. It is sent as it is.',
+    testFieldHeader: (name: string) => `${name} header`,
+    testFieldHint: (text: string) =>
+        `A date, written YYYY-MM-DD. Filled in as ${text} when fetched.`,
+    testRun: 'Run test',
+    testRetry: 'Run the test again',
+    testRunning: 'A test is already running. Wait for its result.',
+    testMissing: (name: string) => `Enter a value for ${name} to run the test.`,
+    testThrottled: (seconds: number) =>
+        `Too many tests. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`,
+    testing: 'Testing…',
+    testBack: 'Back to endpoints',
+    testFailedTitle: 'Endpoint test failed',
+    testOk: (status: number, ms: number) => `✓ ${status} · ${ms} ms`,
+    testGone: 'This endpoint no longer exists. Go back to the list.',
+    // The Endpoint changed while the test ran (or before it started): the result is for a revision that is no longer current.
+    testStale: (current: number | null) =>
+        current === null
+            ? 'This result is not current. The endpoint was changed while the test ran.'
+            : `This result is not current. The endpoint was changed to revision r${current} while the test ran.`,
+    testStaleRetry: 'Retry',
+    sampleExpired:
+        'The sample is no longer available. Run the test again to see it.',
+    sampleHeading: 'Sample response',
+    sampleRegion: 'Sample response body',
+    sampleStatus: (status: number, ms: number) => `Status ${status}, ${ms} ms`,
+    sampleCopy: 'Copy sample',
+    sampleCopied: 'Copied.',
+    sampleCopyFailed: "Couldn't copy. Select the text and copy it by hand.",
+    // The form.
+    addTitle: 'Add endpoint',
+    editTitle: 'Edit endpoint',
+    formRegion: 'Endpoint',
+    request: 'Request',
+    endpoint: 'Endpoint',
+    endpointHelper:
+        'The method and the path, such as /api/v2/finance/revenue. The path is added to the data source base URL, and {name} marks a value that is filled in from a parameter.',
+    methodLabel: 'Method',
+    methodOptions: [
+        { value: 'GET', label: 'GET' },
+        { value: 'POST', label: 'POST' },
+    ] as { value: string; label: string }[],
+    pathLabel: 'Path',
+    pathPlaceholder: '/api/v2/finance/revenue',
+    parameters: 'Parameters',
+    parametersHelper:
+        'Each {name} in the path needs a parameter. A parameter that is not in the path is sent in the query string, or filled into the body template.',
+    parametersNone: 'No parameters.',
+    addParameter: '+ Add parameter',
+    headers: 'Headers',
+    headersHelper:
+        'Sent with this request, after the data source default headers. Credentials are added to the data source, not here.',
+    headersNone: 'No headers.',
+    addHeader: '+ Add header',
+    nameColumn: 'Name',
+    bindingColumn: 'Binding',
+    valueColumn: 'Value',
+    removeColumn: 'Remove',
+    paramName: (n: number) => `Parameter ${n} name`,
+    paramBinding: (n: number) => `Parameter ${n} binding`,
+    paramValue: (n: number) => `Parameter ${n} value`,
+    removeParam: (n: number) => `Remove parameter ${n}`,
+    paramRemoved: (n: number) => `Parameter ${n} removed.`,
+    headerName: (n: number) => `Header ${n} name`,
+    headerBinding: (n: number) => `Header ${n} binding`,
+    headerValue: (n: number) => `Header ${n} value`,
+    removeHeaderRow: (n: number) => `Remove header ${n}`,
+    headerRemoved: (n: number) => `Header ${n} removed.`,
+    removeRow: 'Remove',
+    bindings: {
+        fixed: 'Fixed value',
+        date_range_from: 'Date range: from',
+        date_range_to: 'Date range: to',
+        period_start: 'Block period: start',
+        period_end: 'Block period: end',
+        user_id: 'User ID',
+        user_email: 'User email',
+        user_group: 'User group',
+        user_attribute: 'User attribute',
+    } as Record<string, string>,
+    // The Binding select (Story 2.13): the user-context group, the attribute options (by label) and the tag of a bound row.
+    userContextGroup: 'User context',
+    attributeOption: (label: string) => `Attribute: ${label}`,
+    attributeUnknown: (keyId: string) => `Attribute: ${keyId}`,
+    userContextTag: 'user context',
+    // The bound row's value text: never a value. Read out as one phrase.
+    userContextResolved: 'user context',
+    sharedData: 'shared data',
+    sharedDataHint:
+        'Everyone with access to a block that uses this endpoint sees the same data.',
+    userContextHint:
+        "Filled in from the signed-in user's own data. Users can't change it.",
+    dataColumn: 'Data',
+    // The scheduled fetch of an Endpoint (Story 2.14): the time of the last good response, or why there is none.
+    syncColumn: 'Last success',
+    lastSuccess: (time: string) => `Last success ${time}`,
+    noSuccessYet: 'No successful call yet',
+    lastChecked: (time: string) => `Checked ${time}`,
+    dataAsOf: (time: string) => `Data as of ${time}`,
+    notScheduled: 'Not scheduled',
+    // The reason a fetch is not scheduled, by the server's reason; the date-bound rows without a test value are named.
+    notScheduledReasons: {
+        user_context:
+            'Data that depends on the user is fetched when someone subscribes to it, not on a schedule.',
+        test_values: (names: string[]) =>
+            `Add a test date for ${names.join(', ')} to schedule it.`,
+        no_interval: 'No refresh interval has been set.',
+    },
+    testValuesTitle: 'Test dates for the schedule',
+    testValuesFormHelper:
+        'The scheduled fetch needs one date for each date range or period row. Each is written YYYY-MM-DD. A fixed row keeps its saved value.',
+    testValueLabel: (name: string) => `Test date for ${name}`,
+    testValueHeaderName: (name: string) => `${name} header`,
+    scopeByCaller: "Keep each user's data separate",
+    scopeByCallerHelper:
+        'Fetches are kept per user instead of shared. Available when a parameter or header uses user context.',
+    // Fetch as user (Story 2.13). The failure messages are the catalogue's, plus `access.context_missing` (a label here).
+    fetchAsUser: 'Fetch as user',
+    fetchAsUserAction: (method: string, path: string) =>
+        `Fetch ${method} ${path} as a user`,
+    fetchAsUserTitle: 'Fetch as user',
+    fetchAsUserSubtitle:
+        'Sends this request once as the member you choose, using their own ID, email, group and attributes. The response is kept for a few minutes, only for you, and is never saved. The member is notified.',
+    fetchAsUserMember: 'Member',
+    fetchAsUserMemberSearch: 'Search members',
+    fetchAsUserMemberChoose: 'Choose a member',
+    fetchAsUserMemberNone: 'No active members match.',
+    fetchAsUserMemberRequired: 'Choose a member to fetch as.',
+    fetchAsUserRun: 'Fetch as user',
+    fetchAsUserFailedTitle: 'Fetch as user failed',
+    fetchAsUserNoPermission: "You don't have permission to fetch as a user.",
+    contextMemberUnavailable:
+        'This member is no longer active, so nothing was sent.',
+    contextMissing: (keys: string[]) =>
+        keys.length === 0
+            ? "This member's data can't be sent with this request, so nothing was sent."
+            : `This member has no value for ${keys.join(', ')}, so nothing was sent.`,
+    userBoundNotice:
+        'This endpoint uses user context. Use Fetch as user to see what a member would get.',
+    boundPrefix: 'Filled in when fetched:',
+    boundHint: (text: string) => `Filled in when fetched: ${text}`,
+    body: 'Body template',
+    bodyHelper:
+        'JSON sent as the request body. Write a parameter as {"$param": "name"}, as a whole value. It cannot be written inside text or used as a key.',
+    bodyPlaceholder: '{ "from": { "$param": "from" } }',
+    postReadonlyBlocked:
+        'Save is unavailable until you confirm that this POST only reads data.',
+    riskTitle: 'Confirm a read-only POST',
+    riskDescription:
+        'Dashflow will send this POST to the data source whenever a block needs its data. Confirm only if the endpoint reads and never changes anything.',
+    riskConfirm: 'Confirm read-only',
+    save: 'Save',
+    saving: 'Saving…',
+    cancel: 'Cancel',
+    loadFailed: "We couldn't load this endpoint. Try again.",
+    endpointGone: 'This endpoint no longer exists. Go back to the list.',
+    discardTitle: 'Discard your changes?',
+    discardVerb: 'Discard',
+    discardObject: 'changes',
+    saveFailed: "We couldn't save this endpoint. Try again.",
+    throttled: 'Too many saves. Wait a minute, then try again.',
+    // Someone else saved first (409): the typed values stay.
+    conflict:
+        'This endpoint was changed by someone else. Your changes are still here. Review them, then save again to keep them, or reload to see the latest.',
+    reload: 'Reload latest',
+    reloaded: 'Showing the latest saved values.',
+    // Field errors by the server's reason; a reason without an entry shows the server's own message.
+    reasons: {
+        'method-not-allowed':
+            'Only GET and POST are allowed. Dashflow never sends a request that changes data.',
+        'path-required': 'Enter the path, starting with /.',
+        'path-too-long': 'The path is too long.',
+        'path-absolute':
+            'Enter a path such as /api/v2/revenue, not a full address. It is added to the data source base URL.',
+        'path-protocol-relative':
+            'Enter a path such as /api/v2/revenue, not a host. It is added to the data source base URL.',
+        'path-leading-slash': 'The path must start with /.',
+        'path-invalid-characters':
+            'The path cannot contain spaces, control characters or characters outside ASCII. Percent-encode them.',
+        'path-backslash': 'The path cannot contain a backslash.',
+        'path-query':
+            'Leave the query string out of the path. Add query values as parameters.',
+        'path-fragment': 'Leave the fragment (#) out of the path.',
+        'path-empty-segment':
+            'The path cannot have an empty segment (// or a trailing /).',
+        'path-dot-segment': 'The path cannot have a . or .. segment.',
+        'path-encoded-separator':
+            'The path cannot contain an encoded separator (%2f or %5c).',
+        'path-too-many-segments': 'The path has too many segments.',
+        'path-placeholder-invalid':
+            'A placeholder is a whole segment written {name}, starting with a letter and using letters, digits and _ only.',
+        'path-placeholder-duplicate': 'A placeholder is used more than once.',
+        'path-param-missing':
+            'Every {name} in the path needs a parameter. Add the missing one.',
+        'params-invalid': 'The parameters are not valid. Reload the page.',
+        'too-many-params': 'There are too many parameters.',
+        'param-name-invalid':
+            'A parameter name uses letters, digits and the characters _ . ~ - only.',
+        'param-name-duplicate': 'This parameter is already listed.',
+        'param-value-required': 'Enter a value.',
+        'param-value-invalid':
+            "A path value cannot be empty, '.', '..' or contain '/'. Other values cannot hold control characters.",
+        'param-value-too-long': 'This value is too long.',
+        'binding-invalid': 'Choose a binding.',
+        'binding-attribute-unknown':
+            'Choose one of the attributes defined for this workspace.',
+        'scope-requires-user-context':
+            'Keeping data per user needs a parameter or header bound to user context.',
+        'scope-invalid': 'The setting is not valid.',
+        'headers-invalid': 'The headers are not valid. Reload the page.',
+        'too-many-headers': 'There are too many headers.',
+        'header-name-invalid':
+            "A header name uses letters, digits and the characters ! # $ % & ' * + - . ^ _ ` | ~ only.",
+        'header-name-reserved':
+            'This header cannot be set on an endpoint. Credentials are added to the data source.',
+        'header-name-duplicate': 'This header is already listed.',
+        'header-value-invalid':
+            'A header value uses visible ASCII characters only, on one line. Remove line breaks and other special characters.',
+        'body-template-invalid': "The body template isn't valid JSON.",
+        'body-template-too-long': 'The body template is too long.',
+        'body-template-too-deep': 'The body template is nested too deeply.',
+        'body-template-not-allowed': 'Only a POST endpoint has a body.',
+        'body-template-param-invalid':
+            'A parameter is written {"$param": "name"}, alone in its object.',
+        'body-template-param-unknown':
+            'The body template uses a parameter that is not declared. Add it to the parameters.',
+        'body-template-interpolation':
+            'A parameter replaces a whole value only. It cannot be written inside text or used as a key.',
+        'post-readonly-required': 'A POST must be marked as a read-only query.',
+        'post-confirmation-required': 'Confirm that this POST only reads data.',
+    } as Record<string, string>,
+} as const;
+
+// The soft lock on the Data source form (Story 2.8). The banner (`draft-locked`) and the notice (`draft-taken-over`) come from
+// the catalogue, which is pinned; what it does not cover lives here, among it the notice for a holder whose changes were
+// not saved before the take-over.
+export const editLockLabels = {
+    takeOver: 'Take over editing',
+    close: 'Close',
+    waiting: (name: string) =>
+        `Waiting for ${name} to save their changes. This form becomes editable as soon as they have.`,
+    takingOver: 'Taking over…',
+    // The notice for a holder that did not confirm its flush: no claim that anything was saved.
+    takenOverUnsaved: (name: string, time: string) =>
+        `${name} took over editing at ${time}. Changes you had not saved were not kept.`,
+    lost: 'You no longer hold the edit lock on this data source, so nothing was saved. Reload the page to edit again.',
+    takeOverFailed: "We couldn't take over editing. Try again.",
+    readOnly: 'This form is read-only while it is locked.',
+    someone: 'Another admin',
+    unavailable:
+        "We couldn't check whether someone else is editing this data source, so it is read-only for now.",
+    retry: 'Try again',
+} as const;
+
+// Units of a size for people (Story 2.6), smallest first, 1024 apart.
+export const byteUnitLabels = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
 
 // Labels of the session-expiry warning (Story 1.15). Its message (`session-warning`) and the toast after
 // signing back in (`session-expired`) come from the catalogue.

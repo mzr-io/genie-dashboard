@@ -1,8 +1,17 @@
 <?php
 
+use App\Http\Controllers\Admin\AttributeKeyController;
+use App\Http\Controllers\Admin\DataSourceController;
+use App\Http\Controllers\Admin\DataSourceHealthController;
+use App\Http\Controllers\Admin\DataSourceLockController;
+use App\Http\Controllers\Admin\EndpointController;
 use App\Http\Controllers\Admin\GroupController;
+use App\Http\Controllers\Admin\HostAllowlistController;
 use App\Http\Controllers\Admin\InvitationController;
+use App\Http\Controllers\Admin\MemberAttributeController;
 use App\Http\Controllers\Admin\MemberController;
+use App\Http\Controllers\OperationController;
+use App\Http\Middleware\RejectsSecretValues;
 use App\Modules\Identity\Http\SessionController;
 use Illuminate\Support\Facades\Route;
 
@@ -45,4 +54,54 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::delete('groups/{group}', [GroupController::class, 'destroy'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.groups.destroy');
     Route::post('groups/{group}/members/{membership}', [GroupController::class, 'addMember'])->middleware(['admin', 'throttle:60,1'])->name('api.admin.groups.members.store');
     Route::delete('groups/{group}/members/{membership}', [GroupController::class, 'removeMember'])->middleware(['admin', 'throttle:60,1'])->name('api.admin.groups.members.destroy');
+
+    // User attributes (Story 2.12): the catalogue of keys (`settings.manage`) and a member's values (`users.manage`), mapped in ShellNavigation::ADMIN_API_ROUTES.
+    Route::get('user-attributes', [AttributeKeyController::class, 'index'])->middleware('admin')->name('api.admin.user-attributes.index');
+    Route::post('user-attributes', [AttributeKeyController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.user-attributes.store');
+    Route::put('user-attributes/{key}', [AttributeKeyController::class, 'update'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.user-attributes.update');
+    Route::get('members/{membership}/attributes', [MemberAttributeController::class, 'show'])->middleware('admin')->name('api.admin.members.attributes.show');
+    Route::put('members/{membership}/attributes', [MemberAttributeController::class, 'update'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.members.attributes.update');
+
+    // The Workspace host allowlist (Story 2.1): `settings.manage`, mapped in ShellNavigation::ADMIN_API_ROUTES.
+    Route::get('host-allowlist', [HostAllowlistController::class, 'index'])->middleware('admin')->name('api.admin.host-allowlist.index');
+    Route::post('host-allowlist', [HostAllowlistController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.host-allowlist.store');
+    Route::delete('host-allowlist/{entry}', [HostAllowlistController::class, 'destroy'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.host-allowlist.destroy');
+    Route::get('host-allowlist/{entry}/dependents', [HostAllowlistController::class, 'dependents'])->middleware('admin')->name('api.admin.host-allowlist.dependents');
+
+    // Data Source health (Story 2.18): the Admin overview's "Your data sources".
+    Route::get('data-source-health', DataSourceHealthController::class)->middleware('admin')->name('api.admin.data-source-health');
+
+    // Data Sources (Story 2.3): `data_sources.manage`, mapped in ShellNavigation::ADMIN_API_ROUTES. `check-url` is the Base URL blur check.
+    Route::get('data-sources', [DataSourceController::class, 'index'])->middleware('admin')->name('api.admin.data-sources.index');
+    Route::post('data-sources', [DataSourceController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.data-sources.store');
+    Route::post('data-sources/check-url', [DataSourceController::class, 'checkUrl'])->middleware(['admin', RejectsSecretValues::class, 'throttle:60,1,data-source-check'])->name('api.admin.data-sources.check-url');
+    // Test connection (Story 2.5): starts an Operation; nothing is saved, nothing is called from this tier. Typed secrets are accepted here.
+    Route::post('data-sources/test-connection', [DataSourceController::class, 'testConnection'])->middleware(['admin', 'throttle:30,1,data-source-test'])->name('api.admin.data-sources.test-connection');
+    Route::get('data-sources/{dataSource}', [DataSourceController::class, 'show'])->middleware('admin')->name('api.admin.data-sources.show');
+    Route::put('data-sources/{dataSource}', [DataSourceController::class, 'update'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.data-sources.update');
+
+    // Endpoints of a Data Source (Story 2.9): same permission, mapped in ShellNavigation::ADMIN_API_ROUTES. Nothing here sends a request.
+    Route::get('data-sources/{dataSource}/endpoints', [EndpointController::class, 'index'])->middleware('admin')->name('api.admin.data-sources.endpoints.index');
+    Route::post('data-sources/{dataSource}/endpoints', [EndpointController::class, 'store'])->middleware(['admin', 'throttle:30,1,data-source-endpoints'])->name('api.admin.data-sources.endpoints.store');
+    Route::get('data-sources/{dataSource}/endpoints/{endpoint}', [EndpointController::class, 'show'])->middleware('admin')->name('api.admin.data-sources.endpoints.show');
+    Route::put('data-sources/{dataSource}/endpoints/{endpoint}', [EndpointController::class, 'update'])->middleware(['admin', 'throttle:30,1,data-source-endpoints'])->name('api.admin.data-sources.endpoints.update');
+    // Test an Endpoint (Story 2.10): starts a `sample_fetch` Operation; the Sample Response is read back by the requester alone. Nothing is called from this tier.
+    Route::post('data-sources/{dataSource}/endpoints/{endpoint}/test', [EndpointController::class, 'test'])->middleware(['admin', 'throttle:30,1,data-source-endpoint-test'])->name('api.admin.data-sources.endpoints.test');
+    Route::get('data-sources/{dataSource}/endpoints/{endpoint}/samples/{operation}', [EndpointController::class, 'sample'])->middleware(['admin', 'throttle:120,1,data-source-endpoint-sample'])->name('api.admin.data-sources.endpoints.samples.show');
+    // Fetch as user (Story 2.13): `data_sources.manage` through the gate, `data.preview_as_user` in the controller (403 and a security event). Throttled like Test endpoint.
+    Route::post('data-sources/{dataSource}/endpoints/{endpoint}/fetch-as-user', [EndpointController::class, 'fetchAsUser'])->middleware(['admin', 'throttle:30,1,data-source-endpoint-test'])->name('api.admin.data-sources.endpoints.fetch-as-user');
+    // The Binding select's options (Story 2.13): the fixed user-context bindings and each defined attribute key (id and label), never a value.
+    Route::get('data-sources/{dataSource}/binding-options', [EndpointController::class, 'bindingOptions'])->middleware('admin')->name('api.admin.data-sources.binding-options');
+
+    // The Data source soft lock (Story 2.8): acquire, heartbeat, release (also by beacon), take over (request, then poll) and
+    // the holder's flush acknowledgement. Same permission; none of them takes a secret value; the heartbeat and the polls send `X-Background: 1`.
+    Route::post('data-sources/{dataSource}/lock', [DataSourceLockController::class, 'acquire'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.acquire');
+    Route::put('data-sources/{dataSource}/lock', [DataSourceLockController::class, 'heartbeat'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.heartbeat');
+    Route::post('data-sources/{dataSource}/lock/release', [DataSourceLockController::class, 'release'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.release');
+    Route::post('data-sources/{dataSource}/lock/takeover', [DataSourceLockController::class, 'takeover'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.takeover');
+    Route::get('data-sources/{dataSource}/lock/takeover', [DataSourceLockController::class, 'takeoverStatus'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.takeover.status');
+    Route::post('data-sources/{dataSource}/lock/flush', [DataSourceLockController::class, 'flush'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.flush');
 });
+
+// Operations (Story 2.5): the summary of an asynchronous Operation, for the membership that started it and nobody else.
+Route::middleware(['auth:sanctum', 'throttle:120,1,operation-status'])->get('operations/{operation}', [OperationController::class, 'show'])->name('api.operations.show');

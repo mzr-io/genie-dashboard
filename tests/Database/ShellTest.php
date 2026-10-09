@@ -189,7 +189,7 @@ it('gates an Admin page request on the permission: a denied item answers 403 (St
 
     shellSignIn('root@example.test', 'admin');
     $this->get(route('admin.users.index'))->assertForbidden()->assertInertia(fn ($page) => $page->component('Forbidden'));
-    $this->get(route('admin.overview'))->assertOk()->assertInertia(fn ($page) => $page->component('Placeholder')->where('page', 'admin-overview'));
+    $this->get(route('admin.overview'))->assertOk()->assertInertia(fn ($page) => $page->component('admin/Overview'));
 });
 
 it('signs out: rotates the session ID, ends the session, lands on sign-in and audits identity.signout.completed', function () {

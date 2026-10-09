@@ -115,3 +115,166 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-1-25-verify-security-and-load-readiness-with-test-suites-and-a-load-test-skeleton.md`
   summary: Add a negative run for `bin/test-restore` (a scratch copy with FORCE RLS removed or DELETE granted to `app` must fail), real-browser axe with contrast, layout and error-state coverage, and the full backup and restore drill.
   evidence: The restore check has only been seen passing; axe runs in happy-dom without layout, so contrast, reflow and dialog or error states are unchecked; the full drill is Epic 9.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-manage-the-workspace-host-allowlist.md`
+  summary: Test the host-allowlist version-row lock with two live connections.
+  evidence: The stale tests run sequentially; dropping `for update` in `ManageHostAllowlist::lockVersion` would pass them. Needs the two-connection helper already deferred in Story 1.23.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-manage-the-workspace-host-allowlist.md`
+  summary: Story 2.2 must review `BlockedAddress` for documentation and benchmark ranges (192.0.2.0/24, 198.51.100.0/24, 203.0.113.0/24, 198.18.0.0/15, 2001:db8::/32) and decide about reserved host names (`localhost`, `*.internal`).
+  evidence: Story 2.1 blocks only the classes the spec names and accepts any non-IP name; the EgressGuard classifier reuses `BlockedAddress` as the single list.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-guard-every-outbound-url-with-egressguard-and-operator-private-range-grants.md`
+  summary: Add a replay path for a failed Workspace-audit mirror of an egress grant or revoke.
+  evidence: The mirror runs after the operator commit; on failure the row and `operator_audit` entry exist but a retry fails as already_granted or not_granted.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-guard-every-outbound-url-with-egressguard-and-operator-private-range-grants.md`
+  summary: Replace the single shared operator password hash with real operator identities, add a cross-run lockout, and keep the hash out of container env.
+  evidence: Operator re-confirmation is one bcrypt hash in an env setting; the three-attempt limit resets on every run and the hash is visible via docker inspect.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-guard-every-outbound-url-with-egressguard-and-operator-private-range-grants.md`
+  summary: Add a response-size ceiling to the egress transport (Story 2.6) and pin all checked records for dual-stack fallback (Story 2.14).
+  evidence: NativeCurlClient buffers the whole body and pins only addresses[0]; no caller exists yet.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-register-and-edit-a-data-source.md`
+  summary: Test the concurrent duplicate-name path (SQLSTATE 23505) of Data Source create and update with two live connections.
+  evidence: `ManageDataSources::nameTaken` is never executed; the pre-check catches every sequential duplicate.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-register-and-edit-a-data-source.md`
+  summary: Add paging for the Data Source list, a retire or delete action, and an outbox event for Data Source changes when a consuming story needs them.
+  evidence: The list ships every row; the `app` role has no DELETE; downstream consumers (health, Blocks) will need an invalidation signal.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-4-add-authentication-and-write-only-secrets-to-a-data-source.md`
+  summary: Decide whether changing the Base URL of a Data Source that holds a credential should require password re-confirmation.
+  evidence: The spec requires confirmation for secret and auth-type changes only; repointing a stored credential to another allowlisted host is allowed without it.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-4-add-authentication-and-write-only-secrets-to-a-data-source.md`
+  summary: Story 2.5 must add `SecretVault::resolve(SecretRef, SecretContext)` that reads the secrets row and opens it, and key-version selection with a distinct KeyringMismatch for rotation.
+  evidence: FetchRequest carries only SecretRef(id, slot) but `open()` takes a ciphertext, and `open()` always uses the single mounted key regardless of the stored key_version or key_ref.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-5-test-a-data-source-connection.md`
+  summary: Commit an Operation's `running` status first and run the handler and its network call outside the Workspace transaction.
+  evidence: `RunsInWorkspace` wraps the whole job, so `running` is never observable by pollers and a row lock is held for the outbound call.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-5-test-a-data-source-connection.md`
+  summary: Move the expired-secrets purge and `sync_runs` partition upkeep to the `maintenance` role, drop UPDATE on `sync_runs` from `app`, and add retention for `operations` and `sync_runs`.
+  evidence: `connector_purge_expired_secrets()` is executable by `app` and crosses Workspaces; `operations` has no sweep; a non-empty DEFAULT partition has no repair or alert path.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-6-accept-only-json-losslessly-and-within-limits.md`
+  summary: Decide whether to add a built-in depth and response-size ceiling that the pending_input settings can only lower.
+  evidence: With both settings unset nothing is capped; the README records a worker segfault when PHP frees a body nested 300,000 levels deep, and a gzip bomb is unbounded in memory until a limit is configured.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-7-use-oauth2-client-credentials.md`
+  summary: Add single-flight locking for OAuth token refresh and restrict the 401 retry to idempotent requests when Story 2.9 adds read-only POST.
+  evidence: DirectFetchTransport::token() does get, request, put with no lock, so parallel jobs stampede the token endpoint; the retry resends the whole request.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-8-prevent-overwriting-with-a-soft-lock.md`
+  summary: Back the edit lock with a DB-recorded token (or re-grant by token when the cache entry is lost and the epoch is unchanged) and make completion transactional with the cache write.
+  evidence: The lock lives only in the cache; a rollback after completion or an eviction leaves the cache and lock_epoch out of step, so the holder's next save is a 423 and typed work is lost, though no overwrite can occur.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-8-prevent-overwriting-with-a-soft-lock.md`
+  summary: Add the Reverb private-channel push (and its Echo client and channel auth) for the edit-lock flush request as a consumer of platform.edit_lock.flush_requested.
+  evidence: The architecture names a realtime push with polling as the same-semantics fallback; only polling exists because no Reverb or Echo wiring is in the app.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-9-register-endpoints-on-a-data-source.md`
+  summary: Decide whether saving an Endpoint must honour the Data Source soft lock from Story 2.8.
+  evidence: ManageEndpoints::create and revise never check who holds the Data Source edit lock; the spec is silent, so two Admins can edit Endpoints and the Data Source form at once.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-9-register-endpoints-on-a-data-source.md`
+  summary: Add a value type to Endpoint parameters so a fixed value can be a number or boolean at a typed body position, and test concurrent revises with two connections.
+  evidence: Fixed values are stored as strings only; nothing renders a request yet, and the revise row lock is only tested sequentially.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-10-test-an-endpoint-and-see-the-sample-response.md`
+  summary: Decide whether a POST sample test should fetch a fresh OAuth token before the first send when the cached token may have expired.
+  evidence: A POST is never retried, so a POST sent with an expired cached token ends as auth-failed and needs a manual re-run; the token request itself is idempotent.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-10-test-an-endpoint-and-see-the-sample-response.md`
+  summary: Audit sample reads and consider consuming the sample blob after the first read.
+  evidence: ReadSample can be called repeatedly until the Operation expires and reads are not recorded.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-11-follow-pagination-up-to-the-limits.md`
+  summary: Carry the Operation's expiry into FetchRequest as a run deadline for paged fetches and add a merged-size ceiling.
+  evidence: Each page has its own timeout but nothing bounds the whole run; the merged records are held as a decoded tree and sealed into one cache value, so memory can exceed the byte cap.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-12-define-user-attributes-for-user-context-binding.md`
+  summary: Setting member attributes does not check the target membership's status (e.g. removed or invited).
+  evidence: ManageMemberAttributes::member() only matches id and workspace; unverified (maybe-false, medium if true) — settle by checking which membership statuses can exist and whether values on them matter.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-12-define-user-attributes-for-user-context-binding.md`
+  summary: AttributesOnMembershipRemoved subject-only (`membership:{id}`) fallback has no test.
+  evidence: The only consumer test supplies data.membership_id, so the fallback branch is unexercised; add a case when the removal flow emits the event.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-13-bind-endpoint-parameters-and-headers-to-user-context.md`
+  summary: Fetch as user on an Endpoint with requires_user_context false still audits and emits the notification event for the target member.
+  evidence: StartFetchAsUser does not check the flag; unverified whether product wants it refused (maybe-false, medium if real).
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-13-bind-endpoint-parameters-and-headers-to-user-context.md`
+  summary: binding-options member list is capped at 50 with no cursor, has no throttle, and its filtering/search and shared rate-limit budget are not asserted by tests.
+  evidence: EndpointController::bindingOptions hard-codes pageSize 50 and carries only the admin middleware; no test passes search or mixes Test endpoint and Fetch as user against one limit.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-14-fetch-each-endpoint-on-a-schedule-and-keep-the-last-good-response.md`
+  summary: Scheduled fetch runs inside the workspace job transaction (connection held during slow HTTP), FetchJob has no timeout or failed() handler, and PostgresRawStore copies large bodies as hex several times.
+  evidence: FetchJob uses RunsInWorkspace around FetchSyncTarget; a killed job leaves no sync_runs row; put() uses bin2hex.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-14-fetch-each-endpoint-on-a-schedule-and-keep-the-last-good-response.md`
+  summary: Targets for deleted or disabled Endpoints and permanently failing targets (non-read-only POST) are never retired and re-run every tick; no unique-active-target-per-Endpoint constraint; data_source.updated may re-register only a partial Endpoint list; targets registered before refresh_intervals is set wait for the next save.
+  evidence: RegisterSyncTargets reacts only to created/revised/data_source.updated; unverified (maybe-false) for paging and the race.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-14-fetch-each-endpoint-on-a-schedule-and-keep-the-last-good-response.md`
+  summary: Admin UI shows only last success; consecutive failures and last attempt are not visible.
+  evidence: SyncStatus has only succeeded/waiting/not_scheduled; health belongs to a later story.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-15-use-conditional-requests-and-skip-unchanged-data.md`
+  summary: Bodies that cannot be canonicalised (duplicate keys, deep nesting) are always treated as changed, and the not_modified_without_payload reason is not stored on the run.
+  evidence: CanonicalBodyHash returns null so content_hash stays null; error code falls back to fetch-failed. Falling back to a byte hash would stop repeat payload.changed events.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-15-use-conditional-requests-and-skip-unchanged-data.md`
+  summary: Canonicalisation runs under the target row lock, and stored validators are not reset on credential rotation unless the Data Source revision bumps.
+  evidence: commitSuccess hashes after select for update; unverified whether secret or OAuth rotation bumps data_source_revision (maybe-false, medium if not).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-16-choose-how-much-raw-history-a-data-source-keeps.md`
+  summary: Saving a retention change bumps data_source_revision, which re-keys sync targets (old target retired with its payload, new target has no current payload until refetched), so retention edits are not independent of fetch state.
+  evidence: ManageDataSources::update revision+1 and ResolveFetchKey hashes data_source_revision; needs a decision whether retention should be excluded from the revision bump (conflicts with epic AC wording about leaving current_payload_id untouched).
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-16-choose-how-much-raw-history-a-data-source-keeps.md`
+  summary: Sweep robustness: one failing target rolls back a Workspace's whole sweep every run, the 20-target cold limit can starve behind un-purgeable targets, only 1000 rows per rule per run, no overlap guard on SweepRawHistoryJob, no failure/duration metrics.
+  evidence: SweepRawHistory sweeps each Workspace in one runIsolated transaction and logs only the exception class.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-16-choose-how-much-raw-history-a-data-source-keeps.md`
+  summary: A Data Source saved as window(N) cannot be edited for unrelated fields once the deployment maximum is lowered or unset until the Admin switches to Latest only.
+  evidence: Validator checks the maximum on every save; the form shows the window radio selected but disabled.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-17-retry-rate-limit-and-break-the-circuit-on-failing-sources.md`
+  summary: The ValkeySourceGovernor Lua scripts (breaker, probe lease, bucket, concurrency) are never run by the automated suite; tests use FakeGovernor.
+  evidence: Test image has no Valkey or phpredis; the scripts were run by hand against valkey/valkey:9-alpine (empty-bucket path not exercised). Add a Database-suite test against the Docker Valkey queue store when the image supports it.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-17-retry-rate-limit-and-break-the-circuit-on-failing-sources.md`
+  summary: A killed worker's concurrency slot and half-open probe lease are freed only by TTL; skipped runs are written every interval while a breaker is open; the governor is consulted whenever only retry.cap is set; FetchJob retries re-enter every target of a sync group.
+  evidence: jobFailed does not release governor state by design; no coalescing of skipped rows; GovernorLimits::active() keys off the penalty cap; groups equal one target until Story 2.20.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-18-see-data-source-health.md`
+  summary: Add probe tests for AuthFailed, SsrfBlocked and a stored-credential (api-key, basic, secret header) Data Source.
+  evidence: Verification-gap review found no probe test with a secret header or auth type other than none; `ProbeDataSource` maps these exceptions to codes that nothing asserts.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-19-refresh-only-what-is-being-watched-within-budgets.md`
+  summary: Story 2.19 Live refusal (`msg:live-not-supported`), the scheduler clamp when a Data Source loses `live_capable` or an interval is removed, and the Data Source impact list with its Admin-notification event.
+  evidence: Split at the planning checkpoint; no Block or interval picker exists yet to use them.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-19-refresh-only-what-is-being-watched-within-budgets.md`
+  summary: Test the workspace fair share and batch cap in the hot dispatch path of `DispatchDueSyncs`.
+  evidence: Verification-gap review: `DemandRefreshTest` forces `workspace_fair_share` to null; the existing fair-share test runs with the demand rule off.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-19-refresh-only-what-is-being-watched-within-budgets.md`
+  summary: Check that a `scopeByCaller` Endpoint without a user-bound parameter does not become a scheduled shared target in `RegisterSubscription`.
+  evidence: Unverified: `userScoped` is `bound !== null`; read `Endpoint::requiresUserContext` to settle it (medium if not covered).
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-19-refresh-only-what-is-being-watched-within-budgets.md`
+  summary: Give `hot_targets` and `cold_targets` gauge semantics, and the subscription refusal its own metric name.
+  evidence: `MetricEmitter` is counter-only, so the sweep adds levels every run.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-19-refresh-only-what-is-being-watched-within-budgets.md`
+  summary: Purge shared per-period targets that subscriptions created once they go cold.
+  evidence: The cold purge covers only `user_scoped` targets, so each period or compute context leaves a permanent shared target.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-20-fetch-comparison-data-together-as-a-sync-group.md`
+  summary: Story 2.20 Data Source detail view showing a group run as one run with both sides' outcomes.
+  evidence: Split at the planning checkpoint; no sync-runs read path or UI exists and `sync_runs` is Connector-owned.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-20-fetch-comparison-data-together-as-a-sync-group.md`
+  summary: Test the group fetch under governor denial, retry and requeue, a moved revision and a late comparison, and give the re-emit exclusion test a real caught-up consumer.
+  evidence: Verification-gap review: `SyncGroupTest` sets no retry or governor tunables, and its caught-up assertion is vacuous.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-20-fetch-comparison-data-together-as-a-sync-group.md`
+  summary: Make the payload re-emit sweep compare against the payload carried by the last consumed event, skip subjects with no consumer, and bound its run across Workspaces.
+  evidence: It compares `payload_seq` with the outbox `subject_seq` (different counters), re-emits every stored target every ~5 minutes while no consumer exists, and a 55 s job can end before late Workspaces.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-20-fetch-comparison-data-together-as-a-sync-group.md`
+  summary: Decide how compute tells a failing group (both sides failed, no generation) from a never-fetched one, add `find(generationId)`, and tie raw retention and pruning to generations.
+  evidence: `comparisonUnavailable` only reads the newest generation; generations name payload ids retention may purge and have no pruning path.

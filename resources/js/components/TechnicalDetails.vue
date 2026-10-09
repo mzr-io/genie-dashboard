@@ -12,9 +12,14 @@ type Props = {
     status?: number | null;
     path?: string | null;
     requestId?: string | null;
+    // A failed call to a source (Story 2.5): the host that was called and the collapsed reason code.
+    host?: string | null;
+    reason?: string | null;
+    // Whether the panel has its own Copy request ID button (a card that has its own turns it off).
+    copy?: boolean;
 };
 
-const props = defineProps<Props>();
+const props = withDefaults(defineProps<Props>(), { copy: true });
 
 // Each row shows only when it has a value; with none at all there is nothing to disclose.
 const hasStatus = computed(
@@ -22,15 +27,22 @@ const hasStatus = computed(
 );
 const hasPath = computed(() => !!props.path);
 const hasRequestId = computed(() => !!props.requestId);
+const hasHost = computed(() => !!props.host);
+const hasReason = computed(() => !!props.reason);
 const hasDetails = computed(
-    () => hasStatus.value || hasPath.value || hasRequestId.value,
+    () =>
+        hasStatus.value ||
+        hasPath.value ||
+        hasRequestId.value ||
+        hasHost.value ||
+        hasReason.value,
 );
 
 const open = ref(false);
 const copyState = ref<'idle' | 'copied' | 'failed'>('idle');
 const panelId = useId();
 
-async function copy(requestId: string): Promise<void> {
+async function copyId(requestId: string): Promise<void> {
     // On failure the request ID stays visible in the panel, so it can be selected by hand.
     copyState.value = (await copyText(requestId)) ? 'copied' : 'failed';
 }
@@ -68,6 +80,18 @@ async function copy(requestId: string): Promise<void> {
                         {{ path }}
                     </dd>
                 </template>
+                <template v-if="hasHost">
+                    <dt class="text-text-muted">{{ labels.host }}</dt>
+                    <dd data-field="host" class="font-mono break-all">
+                        {{ host }}
+                    </dd>
+                </template>
+                <template v-if="hasReason">
+                    <dt class="text-text-muted">{{ labels.reason }}</dt>
+                    <dd data-field="reason" class="font-mono break-all">
+                        {{ reason }}
+                    </dd>
+                </template>
                 <template v-if="hasRequestId">
                     <dt class="text-text-muted">{{ labels.requestId }}</dt>
                     <dd data-field="request-id" class="font-mono break-all">
@@ -75,12 +99,15 @@ async function copy(requestId: string): Promise<void> {
                     </dd>
                 </template>
             </dl>
-            <div v-if="hasRequestId" class="mt-2 flex items-center gap-3">
+            <div
+                v-if="hasRequestId && copy"
+                class="mt-2 flex items-center gap-3"
+            >
                 <Button
                     type="button"
                     variant="secondary"
                     size="sm"
-                    @click="copy(requestId as string)"
+                    @click="copyId(requestId as string)"
                 >
                     {{ labels.copy }}
                 </Button>
