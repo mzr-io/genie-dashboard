@@ -21,5 +21,7 @@ final readonly class Draft
         public string $updatedAt,
         public ?string $categoryId = null,
         public array $config = [],
+        /** @var array<string, mixed> the wizard's `draft_ui_state.state` (Story 3.5): acknowledged warnings and slot statuses; empty when the read did not ask for it */
+        public array $uiState = [],
     ) {}
 }

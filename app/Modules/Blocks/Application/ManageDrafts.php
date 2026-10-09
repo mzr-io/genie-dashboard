@@ -8,6 +8,7 @@ use App\Modules\Blocks\Contracts\DraftExists;
 use App\Modules\Blocks\Contracts\DraftLockLost;
 use App\Modules\Blocks\Contracts\DraftNotFound;
 use App\Modules\Blocks\Contracts\DraftPage;
+use App\Modules\Blocks\Contracts\DraftPublished;
 use App\Modules\Blocks\Contracts\DraftRevisionConflict;
 use App\Modules\Blocks\Contracts\Drafts;
 use App\Modules\Blocks\Contracts\InvalidDraft;
@@ -41,7 +42,7 @@ final class ManageDrafts implements Drafts
     private const COLUMNS = 'v.id, v.block_id, v.name, b.type_key, coalesce(c.name, b.category) AS category, b.category_id, v.version, v.revision, v.lock_epoch, coalesce(u.step, 1) AS step, b.owner_membership_id, '
         .'to_char(v.created_at, '.self::STAMP.') AS created, to_char(v.updated_at, '.self::STAMP.') AS updated';
 
-    private const WITH_CONFIG = ', v.config::text AS config';
+    private const WITH_CONFIG = ', v.config::text AS config, u.state::text AS ui_state';
 
     private const FROM = 'FROM block_versions v JOIN blocks b ON b.id = v.block_id LEFT JOIN draft_ui_state u ON u.block_version_id = v.id LEFT JOIN block_categories c ON c.id = b.category_id';
 
@@ -131,11 +132,11 @@ final class ManageDrafts implements Drafts
         });
     }
 
-    public function save(DraftActor $actor, string $draftId, string $name, ?string $type, int $revision, int $lockEpoch, ?array $config = null, ?int $step = null, ?string $categoryId = null): Draft
+    public function save(DraftActor $actor, string $draftId, string $name, ?string $type, int $revision, int $lockEpoch, ?array $config = null, ?int $step = null, ?string $categoryId = null, ?array $uiState = null): Draft
     {
-        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $name, $type, $revision, $lockEpoch, $config, $step, $categoryId): Draft {
+        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $name, $type, $revision, $lockEpoch, $config, $step, $categoryId, $uiState): Draft {
             // With the stored config, so a 409 or 423 body shows the real document.
-            $before = $this->fetch($actor->workspaceId, $draftId, true, true) ?? throw new DraftNotFound;
+            $before = $this->fetch($actor->workspaceId, $draftId, true, true) ?? throw $this->notADraft($actor->workspaceId, $draftId);
 
             // The edit lock first, as on the Data Source form: a take-over saves the holder's work and so raises the revision as well.
             if ($before->lockEpoch !== $lockEpoch) {
@@ -176,25 +177,43 @@ final class ManageDrafts implements Drafts
                 );
             }
 
-            if ($step !== null) {
-                $this->saveStep($actor->workspaceId, $before->id, $step);
+            if ($step !== null || $uiState !== null) {
+                $this->saveUiState($actor->workspaceId, $before->id, $step, $uiState);
             }
 
             return $this->fetch($actor->workspaceId, $before->id, false, true) ?? throw new DraftNotFound;
         });
     }
 
-    /** Where the wizard reopens the Draft: the row exists from the start, but a Draft seeded without one gets it here. */
-    private function saveStep(string $workspaceId, string $versionId, int $step): void
+    /**
+     * Where the wizard reopens the Draft: the step and the wizard's own state. The row exists from the start, but a Draft seeded without one
+     * gets it here. A state replaces the stored one (the client sends it whole); a field left null is left as it is.
+     *
+     * @param  array<mixed>|null  $uiState
+     */
+    private function saveUiState(string $workspaceId, string $versionId, ?int $step, ?array $uiState): void
     {
-        $changed = DB::update('update draft_ui_state set step = ?, updated_at = ? where workspace_id = ? and block_version_id = ?', [$step, now(), $workspaceId, $versionId]);
+        $state = $uiState === null ? null : DraftConfig::encodeUiState($uiState);
+
+        $changed = DB::update(
+            'update draft_ui_state set step = coalesce(?, step), state = coalesce(?::jsonb, state), updated_at = ? where workspace_id = ? and block_version_id = ?',
+            [$step, $state, now(), $workspaceId, $versionId],
+        );
 
         if ($changed === 0) {
             DB::insert(
                 'insert into draft_ui_state (id, workspace_id, block_version_id, step, state, updated_at) values (?, ?, ?, ?, ?::jsonb, ?)',
-                [(string) Str::uuid7(), $workspaceId, $versionId, $step, '{}', now()],
+                [(string) Str::uuid7(), $workspaceId, $versionId, $step ?? 1, $state ?? '{}', now()],
             );
         }
+    }
+
+    /** Why a save found no Draft: the version is past Draft (published), or it is gone or discarded (a 404). */
+    private function notADraft(string $workspaceId, string $id): Throwable
+    {
+        $row = Str::isUuid($id) ? DB::selectOne('select state from block_versions where workspace_id = ? and id = ?', [$workspaceId, strtolower($id)]) : null;
+
+        return $row !== null && $row->state !== 'discarded' ? new DraftPublished : new DraftNotFound;
     }
 
     /** A category of this Workspace that is not archived (row-level security hides every other Workspace's). */
@@ -306,6 +325,7 @@ final class ManageDrafts implements Drafts
             updatedAt: (string) $row->updated,
             categoryId: $row->category_id === null ? null : strtolower((string) $row->category_id),
             config: isset($row->config) ? DraftConfig::decode((string) $row->config) : [],
+            uiState: isset($row->ui_state) ? DraftConfig::decodeUiState((string) $row->ui_state) : [],
         );
     }
 

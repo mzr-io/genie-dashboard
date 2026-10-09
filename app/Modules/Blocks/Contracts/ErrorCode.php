@@ -16,4 +16,6 @@ enum ErrorCode: string
     case SecretValuesRefused = 'blocks.secret_values_refused';
     /** A Draft's `config` has a value outside the Block Type's limits or of the wrong type (Story 3.4): HTTP 422 with field errors. */
     case InvalidConfig = 'blocks.invalid_config';
+    /** The version being saved is no longer a Draft, it was published (Story 3.5): HTTP 409. A discarded Draft stays a 404. */
+    case DraftPublished = 'blocks.draft_published';
 }

@@ -1,27 +1,39 @@
 <script setup lang="ts">
-import { Head, Link } from '@inertiajs/vue3';
+import { Head, Link, router, usePage } from '@inertiajs/vue3';
 import {
     computed,
     nextTick,
+    watch,
     onBeforeUnmount,
     onMounted,
     reactive,
     ref,
+    useId,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
+import BlockedReason from '@/components/BlockedReason.vue';
 import GatedAction from '@/components/GatedAction.vue';
+import UnsavedChangesDialog from '@/components/UnsavedChangesDialog.vue';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import ConflictChooser from '@/components/wizard/ConflictChooser.vue';
 import ConfigureBlockStep from '@/components/wizard/ConfigureBlockStep.vue';
 import LivePreview from '@/components/wizard/LivePreview.vue';
 import WizardStepper from '@/components/wizard/WizardStepper.vue';
+import { useOfflineAction } from '@/composables/useOfflineAction';
 import { announce } from '@/lib/announce';
+import { registerFlush } from '@/lib/flushRegistry';
+import { registerUnsavedForm } from '@/lib/unsavedForms';
+import { clearPending, readPending, stashPending } from '@/lib/wizardPending';
+import type { PendingChanges, PendingDelta } from '@/lib/wizardPending';
+import { ErrorCode } from '@/types/error-codes';
 import {
     BLOCK_TYPES,
     DESCRIPTION_MAX,
     FIELD_IDS,
     NAME_MAX,
+    PUBLISHED_BLOCKS_URL,
     STEP_COUNT,
     WizardError,
     blockTypeFor,
@@ -40,6 +52,7 @@ import type {
     SaveBody,
     StepForm,
     WizardDraft,
+    WizardUiState,
 } from '@/lib/blockWizard';
 import { SIGN_IN_URL } from '@/lib/session';
 import { blockWizardLabels as labels } from '@/locales/labels';
@@ -47,7 +60,10 @@ import { useToasts } from '@/stores/toasts';
 
 // The Create block wizard (Story 3.4): five steps with a progress `nav`, Step 1 (Configure Block) and a sticky live preview in steps 1 to 3.
 // It opens a Draft from `?draft=<id>&step=<n>`, or starts one on the first Save draft or Continue. Steps 2 to 5 are placeholders until their
-// stories. There is no autosave yet (Story 3.5): the Admin saves with Save draft or Continue, and an unsaved change warns before leaving.
+// stories. The Admin saves with Save draft or Continue; with `tunables.timeouts.autosave_debounce` set (Story 3.5) the Draft also saves itself
+// after each pause in editing (a compare-and-set with `X-Background: 1`, so it never extends the idle session). The page recovers from an
+// expired session (the pending changes wait in sessionStorage and are replayed after sign-in), from going offline, from a failed save, from a
+// revision conflict (the Admin chooses a version) and from the Draft having been published, and asks before leaving with unsaved changes.
 const { t } = useI18n();
 const toasts = useToasts();
 
@@ -66,6 +82,24 @@ const reached = ref(1);
 const current = ref(1);
 const saving = ref(false);
 const dirty = ref(false);
+// Story 3.5: the wizard's own recovery state.
+const saveFailed = ref<string | null>(null);
+const stopped = ref(false);
+const conflict = ref<WizardDraft | null>(null);
+const resolving = ref(false);
+const leaveOpen = ref(false);
+const uiState = reactive<WizardUiState>({
+    acknowledged_warnings: [],
+    slot_statuses: {},
+});
+let changeSeq = 0;
+let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
+let leaveTarget: string | null = null;
+let leaving = false;
+let stashed = false;
+const { offline, reason: offlineReason } = useOfflineAction();
+const saveFailedId = useId();
+const saveReasonId = useId();
 const errors = reactive<Record<string, string | undefined>>({});
 
 const type = BLOCK_TYPES[0];
@@ -130,6 +164,10 @@ function applyDraft(next: WizardDraft): void {
     form.type = known.key;
     form.icon = next.config.icon ?? null;
     form.display = mergedDisplay(known, next.config.display);
+    uiState.acknowledged_warnings = [
+        ...(next.ui_state?.acknowledged_warnings ?? []),
+    ];
+    uiState.slot_statuses = { ...next.ui_state?.slot_statuses };
 }
 
 function general(): BlockCategory | null {
@@ -140,11 +178,19 @@ function general(): BlockCategory | null {
     );
 }
 
-function sessionEnded(error: unknown): boolean {
+// The session ended: keep the pending changes for the replay after sign-in, then go to sign-in. `acknowledged` is true only for the
+// session-expiry flush, the one that was told the session was about to end.
+function sessionEnded(error: unknown, acknowledged = false): boolean {
     if (
         error instanceof WizardError &&
         (error.status === 401 || error.status === 419)
     ) {
+        if (dirty.value) {
+            stash(acknowledged);
+        }
+
+        // The redirect must not be blocked by this page's own leave prompt; the changes are already kept.
+        leaving = true;
         window.location.assign(SIGN_IN_URL);
 
         return true;
@@ -170,6 +216,16 @@ async function load(): Promise<void> {
             current.value = Number.isNaN(requestedStep)
                 ? reached.value
                 : Math.min(clampStep(requestedStep), reached.value);
+            state.value = 'ready';
+
+            // Changes kept when the session ended come back now, saved against the revision they were made on.
+            const pending = readPending(id);
+
+            if (pending) {
+                await replay(pending, loaded);
+            }
+
+            return;
         }
 
         state.value = 'ready';
@@ -243,6 +299,8 @@ function onBlur(field: string): void {
 
 function onChange(): void {
     dirty.value = true;
+    changeSeq += 1;
+    scheduleAutosave();
 }
 
 // ---- Saving ----------------------------------------------------------------------------------------------------
@@ -275,13 +333,134 @@ function showFieldErrors(fields: Record<string, string[]>): void {
     }
 }
 
-// Starts the Draft when there is none, then saves the form. `step` is the furthest step the Draft reaches. Returns whether it was saved.
-async function persist(step: number): Promise<boolean> {
-    if (saving.value) {
+// What a save sends, without the revision and epoch it is decided against: also what waits in sessionStorage across a sign-in.
+function deltaOf(step: number): PendingDelta {
+    return {
+        name: form.name.trim(),
+        type: form.type,
+        category_id: form.categoryId || null,
+        step,
+        config: configOf(),
+        ui_state: {
+            acknowledged_warnings: [...(uiState.acknowledged_warnings ?? [])],
+            slot_statuses: { ...uiState.slot_statuses },
+        },
+    };
+}
+
+// Keeps the pending changes in sessionStorage (never a secret: the wizard has none, and the store drops any secret-named key).
+function stash(acknowledged: boolean): boolean {
+    const target = draft.value;
+
+    if (target === null) {
         return false;
     }
 
+    const kept = stashPending({
+        draftId: target.draft_id,
+        baseRevision: target.revision,
+        lockEpoch: target.lock_epoch,
+        viewStep: current.value,
+        acknowledged,
+        delta: deltaOf(reached.value),
+    });
+
+    stashed = stashed || kept;
+
+    return kept;
+}
+
+// ---- Autosave --------------------------------------------------------------------------------------------------
+
+// The debounce is a `pending_input` tunable, shared with the page; unset means autosave is inert and no value is invented here.
+const debounceMs = computed<number | null>(() => {
+    const value = (
+        usePage().props as { autosave?: { debounce_ms?: number | null } }
+    ).autosave?.debounce_ms;
+
+    return typeof value === 'number' && Number.isFinite(value) && value > 0
+        ? value
+        : null;
+});
+
+function cancelAutosave(): void {
+    if (autosaveTimer) {
+        clearTimeout(autosaveTimer);
+        autosaveTimer = null;
+    }
+}
+
+// A Draft saves with a name and a valid size alone; a change that would be refused is not sent until it is fixed.
+function savable(): boolean {
+    const name = form.name.trim();
+
+    return (
+        name !== '' &&
+        name.length <= NAME_MAX &&
+        form.description.trim().length <= DESCRIPTION_MAX &&
+        Object.keys(validateDisplay(form.display, blockType.value)).length === 0
+    );
+}
+
+function scheduleAutosave(): void {
+    cancelAutosave();
+
+    if (
+        debounceMs.value === null ||
+        draft.value === null ||
+        stopped.value ||
+        conflict.value !== null ||
+        offline.value
+    ) {
+        return;
+    }
+
+    autosaveTimer = setTimeout(() => {
+        autosaveTimer = null;
+        void autosave();
+    }, debounceMs.value);
+}
+
+async function autosave(): Promise<void> {
+    if (!dirty.value || !savable()) {
+        return;
+    }
+
+    await persist(reached.value, 'auto');
+}
+
+// ---- Persisting ------------------------------------------------------------------------------------------------
+
+// Saves go one after another: a manual save waits for the autosave in flight, and the later state is what the last one sends.
+let chain: Promise<unknown> = Promise.resolve();
+
+function persist(
+    step: number,
+    kind: 'manual' | 'auto' | 'flush' = 'manual',
+): Promise<boolean> {
+    const run = chain.then(() => save(step, kind));
+
+    chain = run.catch(() => undefined);
+
+    return run;
+}
+
+// Starts the Draft when there is none, then saves the form. `step` is the furthest step the Draft reaches. Returns whether it was saved.
+// An autosave or a flush is a background call: no field errors on the form, and `X-Background: 1`.
+async function save(
+    step: number,
+    kind: 'manual' | 'auto' | 'flush',
+): Promise<boolean> {
+    if (stopped.value || conflict.value !== null) {
+        return false;
+    }
+
+    if (kind !== 'manual' && !dirty.value) {
+        return true;
+    }
+
     saving.value = true;
+    const seq = changeSeq;
 
     try {
         let target = draft.value;
@@ -293,65 +472,248 @@ async function persist(step: number): Promise<boolean> {
         }
 
         const body: SaveBody = {
-            name: form.name.trim(),
-            type: form.type,
+            ...deltaOf(step),
             expected_revision: target.revision,
             lock_epoch: target.lock_epoch,
-            category_id: form.categoryId || null,
-            step,
-            config: configOf(),
         };
 
-        draft.value = await saveWizardDraft(target.draft_id, body);
-        dirty.value = false;
+        draft.value = await saveWizardDraft(target.draft_id, body, {
+            background: kind !== 'manual',
+        });
+        // Changes made while this save was in flight are still unsaved.
+        dirty.value = changeSeq !== seq;
+        saveFailed.value = null;
+        clearPending();
+
+        if (dirty.value) {
+            scheduleAutosave();
+        }
 
         return true;
     } catch (error) {
-        if (sessionEnded(error)) {
-            return false;
-        }
-
-        if (error instanceof WizardError && error.status === 422) {
-            showFieldErrors(error.fields);
-
-            // The icon picker shows no error text, so an icon error counts as unmapped.
-            if (
-                Object.keys(FIELD_IDS).some(
-                    (key) => key !== 'icon' && errors[key],
-                )
-            ) {
-                await focusFirstError();
-            } else {
-                // Nothing the form can point at (an icon, a step, a refused secret): say so, and move focus to the message.
-                toasts.add({ kind: 'error', message: t('save-failed.form') });
-                await nextTick();
-                document
-                    .querySelector<HTMLElement>(
-                        '[data-slot="toast"] [data-slot="toast-dismiss"]',
-                    )
-                    ?.focus();
-            }
-        } else if (error instanceof WizardError && error.status === 409) {
-            toasts.add({ kind: 'error', message: labels.conflict });
-        } else if (error instanceof WizardError && error.status === 423) {
-            toasts.add({ kind: 'error', message: labels.lockLost });
-        } else if (error instanceof WizardError && error.status === 404) {
-            state.value = 'notfound';
-        } else {
-            toasts.add({
-                kind: 'error',
-                message:
-                    error instanceof WizardError && error.status === 429
-                        ? t('throttled')
-                        : t('save-failed.form'),
-            });
-        }
+        await failed(error, kind);
 
         return false;
     } finally {
         saving.value = false;
     }
 }
+
+async function focusSaveFailed(): Promise<void> {
+    await nextTick();
+    document.getElementById(saveFailedId)?.focus();
+}
+
+// What each way a save can fail leads to. Every change stays in the form, and nothing is saved over a conflict without a choice.
+async function failed(
+    error: unknown,
+    kind: 'manual' | 'auto' | 'flush',
+): Promise<void> {
+    if (sessionEnded(error, kind === 'flush')) {
+        return;
+    }
+
+    if (error instanceof WizardError) {
+        if (
+            error.status === 409 &&
+            error.code === ErrorCode.BlocksDraftPublished
+        ) {
+            stopped.value = true;
+            cancelAutosave();
+            saveFailed.value = null;
+            await nextTick();
+            document
+                .querySelector<HTMLElement>('[data-test=draft-published]')
+                ?.focus();
+
+            return;
+        }
+
+        if (error.status === 409 && error.current) {
+            conflict.value = error.current;
+            cancelAutosave();
+
+            return;
+        }
+
+        if (error.status === 409) {
+            toasts.add({ kind: 'error', message: labels.conflict });
+
+            return;
+        }
+
+        if (error.status === 423) {
+            toasts.add({ kind: 'error', message: labels.lockLost });
+
+            return;
+        }
+
+        if (error.status === 404) {
+            state.value = 'notfound';
+
+            return;
+        }
+
+        // Offline: the changes wait, the banner says so, and they save when the connection is back.
+        if (error.status === 0 && offline.value) {
+            if (kind === 'flush') {
+                stash(true);
+            }
+
+            return;
+        }
+
+        if (error.status === 422 && kind === 'manual') {
+            await showFieldFailure(error);
+
+            return;
+        }
+    }
+
+    // A flush that could not reach the server keeps the changes for the next sign-in instead.
+    if (kind === 'flush') {
+        stash(true);
+    }
+
+    saveFailed.value =
+        error instanceof WizardError && error.status === 429
+            ? t('throttled')
+            : t('save-failed.draft');
+    await focusSaveFailed();
+}
+
+async function showFieldFailure(error: WizardError): Promise<void> {
+    showFieldErrors(error.fields);
+
+    // The icon picker shows no error text, so an icon error counts as unmapped.
+    if (Object.keys(FIELD_IDS).some((key) => key !== 'icon' && errors[key])) {
+        await focusFirstError();
+
+        return;
+    }
+
+    // Nothing the form can point at (an icon, a step, a refused secret): say so, and move focus to the message.
+    toasts.add({ kind: 'error', message: t('save-failed.form') });
+    await nextTick();
+    document
+        .querySelector<HTMLElement>(
+            '[data-slot="toast"] [data-slot="toast-dismiss"]',
+        )
+        ?.focus();
+}
+
+async function retrySave(): Promise<void> {
+    saveFailed.value = null;
+
+    if (await persist(reached.value)) {
+        announce(labels.saved, 'polite');
+    }
+}
+
+// The session-expiry warning's flush (Story 3.5): true when the changes are safe, saved or kept for the next sign-in.
+async function flush(): Promise<boolean> {
+    if (stopped.value || conflict.value !== null || !dirty.value) {
+        return true;
+    }
+
+    stashed = false;
+
+    if (offline.value || draft.value === null) {
+        return stash(true);
+    }
+
+    return (await persist(reached.value, 'flush')) || stashed;
+}
+
+// After sign-in: the kept changes are applied to the form and saved against the revision they were made on. A revision that has moved on
+// opens the chooser with both versions; anything else leaves the changes in the form, unsaved, with the failure shown.
+async function replay(
+    pending: PendingChanges,
+    loaded: WizardDraft,
+): Promise<void> {
+    applyDraft({
+        ...loaded,
+        name: pending.delta.name,
+        type: pending.delta.type,
+        category_id: pending.delta.category_id ?? loaded.category_id,
+        config: pending.delta.config ?? loaded.config,
+        ui_state: pending.delta.ui_state ?? loaded.ui_state,
+    });
+    draft.value = loaded;
+    dirty.value = true;
+    changeSeq += 1;
+    saving.value = true;
+
+    try {
+        const saved = await saveWizardDraft(loaded.draft_id, {
+            ...pending.delta,
+            expected_revision: pending.baseRevision,
+            lock_epoch: pending.lockEpoch,
+        });
+
+        applyDraft(saved);
+        draft.value = saved;
+        dirty.value = false;
+        clearPending();
+        reached.value = clampStep(Math.max(loaded.step, saved.step));
+        current.value = Math.min(clampStep(pending.viewStep), reached.value);
+        showWizardUrl(saved.draft_id);
+
+        if (pending.acknowledged) {
+            toasts.add({ kind: 'info', message: t('session-expired') });
+        }
+    } catch (error) {
+        await failed(error, 'manual');
+    } finally {
+        saving.value = false;
+    }
+}
+
+// The chooser: both versions are shown and the Admin picks one. Keeping the Admin's saves it over the version that is there now.
+async function keepMine(): Promise<void> {
+    const theirs = conflict.value;
+
+    if (!theirs || resolving.value) {
+        return;
+    }
+
+    resolving.value = true;
+    draft.value = theirs;
+    conflict.value = null;
+
+    try {
+        if (await persist(reached.value)) {
+            announce(labels.conflictKept, 'polite');
+        }
+    } finally {
+        resolving.value = false;
+    }
+}
+
+function useTheirs(): void {
+    const theirs = conflict.value;
+
+    if (!theirs) {
+        return;
+    }
+
+    applyDraft(theirs);
+    draft.value = theirs;
+    reached.value = clampStep(theirs.step);
+    current.value = Math.min(current.value, reached.value);
+    dirty.value = false;
+    conflict.value = null;
+    clearPending();
+    announce(labels.conflictTook, 'polite');
+}
+
+const mineVersion = computed(() => ({
+    name: form.name.trim(),
+    description: form.description.trim(),
+    width: form.display.width,
+    height: form.display.height,
+    savedAt: null,
+}));
 
 async function saveDraft(): Promise<void> {
     if (!validate(false)) {
@@ -410,10 +772,104 @@ function onPublish(): void {
 }
 
 function beforeUnload(event: BeforeUnloadEvent): void {
-    if (dirty.value) {
+    if (dirty.value && !stopped.value && !leaving) {
         event.preventDefault();
     }
 }
+
+// ---- Leaving with unsaved changes -------------------------------------------------------------------------------
+
+const DRAFT_BLOCKS_PAGE = '/admin/blocks/drafts';
+
+// Any visit away from the wizard with changes not saved asks first: Save draft, Discard changes or Keep editing.
+const stopBefore = router.on('before', (event) => {
+    if (leaving || !dirty.value || stopped.value) {
+        return;
+    }
+
+    leaveTarget = event.detail.visit.url.href;
+    leaveOpen.value = true;
+
+    return false;
+});
+
+// The Back button: no changes returns directly, changes ask through the guard above.
+function leaveWizard(): void {
+    router.visit(DRAFT_BLOCKS_PAGE);
+}
+
+function discardAndLeave(): void {
+    leaving = true;
+    dirty.value = false;
+    clearPending();
+
+    if (leaveTarget) {
+        router.visit(leaveTarget);
+    }
+}
+
+function keepEditing(): void {
+    leaveTarget = null;
+}
+
+// Save from the leave question: only a saved Draft lets the Admin go; a refused save keeps them here with the failure shown.
+async function saveAndLeave(): Promise<void> {
+    const target = leaveTarget;
+
+    if (!(await persist(reached.value))) {
+        leaveTarget = null;
+
+        return;
+    }
+
+    leaving = true;
+
+    if (target) {
+        router.visit(target);
+    }
+}
+
+const stopRegistry = registerUnsavedForm({
+    id: 'block-wizard',
+    isDirty: () => dirty.value && !stopped.value,
+    save: () => persist(reached.value),
+});
+const stopFlush = registerFlush(flush);
+
+// Back online: the changes made while offline are saved, in the order they were made (the last state is what the Draft keeps).
+watch(offline, (isOffline) => {
+    if (isOffline) {
+        cancelAutosave();
+
+        return;
+    }
+
+    if (dirty.value && debounceMs.value !== null && draft.value !== null) {
+        void autosave();
+    }
+});
+
+// A reason a save cannot run right now, shown beside Save draft and Continue.
+const saveBlocked = computed<string | undefined>(() =>
+    stopped.value
+        ? labels.publishedBody
+        : conflict.value !== null
+          ? labels.conflictTitle
+          : offline.value
+            ? offlineReason.value
+            : undefined,
+);
+
+// The line that tells how the Draft stands; shown only where autosave is on.
+const autosaveStatus = computed(() =>
+    debounceMs.value === null || draft.value === null || stopped.value
+        ? ''
+        : saving.value
+          ? labels.saving
+          : dirty.value
+            ? ''
+            : labels.saved,
+);
 
 onMounted(() => {
     window.addEventListener('beforeunload', beforeUnload);
@@ -422,6 +878,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     window.removeEventListener('beforeunload', beforeUnload);
+    cancelAutosave();
+    stopBefore();
+    stopRegistry();
+    stopFlush();
 });
 </script>
 
@@ -454,15 +914,54 @@ onBeforeUnmount(() => {
                 class="flex flex-wrap items-start gap-2"
                 data-slot="wizard-actions"
             >
-                <Button
-                    type="button"
-                    variant="secondary"
-                    :aria-disabled="saving ? 'true' : undefined"
-                    data-test="save-draft"
-                    @click="saveDraft"
-                >
-                    {{ saving ? labels.saving : labels.saveDraft }}
-                </Button>
+                <span class="inline-flex flex-col items-start gap-1">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        :blocked="saveBlocked !== undefined"
+                        :blocked-reason="saveBlocked"
+                        :aria-describedby="
+                            saveBlocked ? saveReasonId : undefined
+                        "
+                        data-test="save-draft"
+                        @click="saveDraft"
+                    >
+                        {{
+                            saving && !autosaveStatus
+                                ? labels.saving
+                                : labels.saveDraft
+                        }}
+                    </Button>
+                    <BlockedReason v-if="saveBlocked" :id="saveReasonId">{{
+                        saveBlocked
+                    }}</BlockedReason>
+                    <p
+                        v-if="saveFailed"
+                        :id="saveFailedId"
+                        tabindex="-1"
+                        role="alert"
+                        data-test="save-failed"
+                        class="type-body-sm text-error-text"
+                    >
+                        {{ saveFailed }}
+                        <button
+                            type="button"
+                            class="underline"
+                            data-test="retry-save"
+                            @click="retrySave"
+                        >
+                            {{ labels.retrySave }}
+                        </button>
+                    </p>
+                    <p
+                        role="status"
+                        aria-live="polite"
+                        data-test="autosave-status"
+                        class="type-caption text-text-muted empty:hidden"
+                    >
+                        {{ autosaveStatus }}
+                    </p>
+                </span>
                 <Button
                     type="button"
                     variant="secondary"
@@ -474,6 +973,13 @@ onBeforeUnmount(() => {
                 <GatedAction
                     permission="blocks.publish"
                     :reason="t('perm-publish')"
+                    :also-blocked="
+                        offline
+                            ? offlineReason
+                            : stopped
+                              ? labels.publishedBody
+                              : undefined
+                    "
                     variant="primary"
                     data-test="publish"
                     @click="onPublish"
@@ -536,6 +1042,37 @@ onBeforeUnmount(() => {
         </section>
 
         <template v-else>
+            <section
+                v-if="stopped"
+                tabindex="-1"
+                role="alert"
+                data-test="draft-published"
+                class="flex flex-col items-start gap-3 rounded-lg border border-border-default bg-surface-card p-4"
+            >
+                <h2 class="type-title-sm text-text-primary">
+                    {{ labels.publishedTitle }}
+                </h2>
+                <p class="type-body-sm text-text-secondary">
+                    {{ labels.publishedBody }}
+                </p>
+                <Button as-child variant="secondary">
+                    <Link
+                        :href="PUBLISHED_BLOCKS_URL"
+                        data-test="published-link"
+                        >{{ labels.publishedLink }}</Link
+                    >
+                </Button>
+            </section>
+
+            <ConflictChooser
+                v-if="conflict"
+                :mine="mineVersion"
+                :theirs="conflict"
+                :busy="resolving"
+                @keep-mine="keepMine"
+                @use-theirs="useTheirs"
+            />
+
             <WizardStepper
                 :steps="steps"
                 :current="current"
@@ -568,8 +1105,20 @@ onBeforeUnmount(() => {
                         />
                         <div class="flex justify-end gap-2">
                             <Button
+                                type="button"
+                                variant="secondary"
+                                data-test="leave"
+                                @click="leaveWizard"
+                            >
+                                {{ labels.back }}
+                            </Button>
+                            <Button
                                 type="submit"
-                                :aria-disabled="saving ? 'true' : undefined"
+                                :blocked="saveBlocked !== undefined"
+                                :blocked-reason="saveBlocked"
+                                :aria-describedby="
+                                    saveBlocked ? saveReasonId : undefined
+                                "
                                 data-test="continue"
                             >
                                 {{ labels.continue }}
@@ -619,5 +1168,13 @@ onBeforeUnmount(() => {
                 </div>
             </div>
         </template>
+
+        <UnsavedChangesDialog
+            v-model:open="leaveOpen"
+            :save-label="labels.saveDraft"
+            @save="saveAndLeave"
+            @discard="discardAndLeave"
+            @keep="keepEditing"
+        />
     </div>
 </template>

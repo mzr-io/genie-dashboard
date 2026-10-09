@@ -297,3 +297,13 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-4-configure-block-step-1-with-a-live-preview.md`
   summary: Recover the wizard from 409/423 on save (reload revision/epoch or show both versions) and read block types/heights from the registry instead of the generated constant.
   evidence: After a 409/423 the wizard keeps the stale revision so every retry fails until reload; client hardcodes kpi-card. Recovery is Story 3.5/3.6; second block type arrives in Epic 5.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-5-autosave-continuously-and-recover-from-expiry-offline-and-save-failure.md`
+  summary: Replay that gets 401 again re-stashes with the reloaded revision as base, and a single PENDING_KEY slot lets one Draft's stash overwrite another's
+  evidence: Review edge-case hunter; wizardPending.ts uses one key, BlockWizard stash() uses draft.value.revision. Unverified severity medium.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-5-autosave-continuously-and-recover-from-expiry-offline-and-save-failure.md`
+  summary: Leave guard replays a blocked non-GET visit as a bare GET, and manual Save draft double-click can queue two saves
+  evidence: Review hunters; router.on('before') stores only the URL, save() no longer short-circuits when saving. Unverified.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-5-autosave-continuously-and-recover-from-expiry-offline-and-save-failure.md`
+  summary: Add tests for beforeunload guard and owner-mismatch drop in readPending; consider autosave retry after failure and stashing on 404 while dirty
+  evidence: Verification-gap and edge-case reviews; no test dispatches beforeunload.

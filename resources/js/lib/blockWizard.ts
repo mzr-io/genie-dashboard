@@ -47,9 +47,16 @@ export type DraftConfig = {
 
 export type BlockCategory = { id: string; name: string; archived: boolean };
 
+// The wizard's own state (Story 3.5), kept in `draft_ui_state`: never part of the version's config.
+export type WizardUiState = {
+    acknowledged_warnings?: string[];
+    slot_statuses?: Record<string, string>;
+};
+
 export type WizardDraft = DraftBlock & {
     category_id: string | null;
     config: DraftConfig;
+    ui_state?: WizardUiState;
 };
 
 // Step 1's form state: the page owns it, the step edits it in place.
@@ -241,6 +248,7 @@ async function call(
     path: string,
     payload?: unknown,
     signal?: AbortSignal,
+    background = false,
 ): Promise<Body> {
     let response: Response;
 
@@ -252,6 +260,8 @@ async function call(
             headers: {
                 Accept: 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
+                // An autosave is not the Admin's own action: it must not extend the idle session (`IdleTimeout`).
+                ...(background ? { 'X-Background': '1' } : {}),
                 ...(method === 'GET'
                     ? {}
                     : {
@@ -331,20 +341,47 @@ export type SaveBody = {
     category_id?: string | null;
     step?: number;
     config?: DraftConfig;
+    ui_state?: WizardUiState;
 };
 
+// `background`: an autosave or flush, sent with `X-Background: 1` so it does not extend the idle session. Save draft and Continue are the
+// Admin's own actions and never set it.
 export async function saveWizardDraft(
     id: string,
     body: SaveBody,
+    options: { background?: boolean } = {},
 ): Promise<WizardDraft> {
     return asDraft(
         await call(
             'PUT',
             `${DRAFT_BLOCKS_URL}/${encodeURIComponent(id)}`,
             body,
+            undefined,
+            options.background === true,
         ),
     );
 }
+
+// One side of the revision-conflict chooser: the fields the Admin can tell apart at a glance.
+export type Version = {
+    name: string;
+    description: string;
+    width: number | null;
+    height: string | null;
+    savedAt: string | null;
+};
+
+export function versionOf(draft: WizardDraft): Version {
+    return {
+        name: draft.name,
+        description: draft.config.description ?? '',
+        width: draft.config.display?.width ?? null,
+        height: draft.config.display?.height ?? null,
+        savedAt: draft.updated_at,
+    };
+}
+
+export const PUBLISHED_BLOCKS_URL = '/admin/blocks/published';
 
 export async function fetchCategories(
     signal?: AbortSignal,

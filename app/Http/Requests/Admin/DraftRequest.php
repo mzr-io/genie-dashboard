@@ -36,6 +36,11 @@ final class DraftRequest extends FormRequest
                 'category_id' => ['nullable', 'uuid'],
                 'step' => ['nullable', 'integer', 'between:1,5'],
                 'config' => ['nullable', 'array', 'max:20'],
+                'ui_state' => ['nullable', 'array', 'max:10'],
+                'ui_state.acknowledged_warnings' => ['nullable', 'array', 'max:100'],
+                'ui_state.acknowledged_warnings.*' => ['string', 'max:100'],
+                'ui_state.slot_statuses' => ['nullable', 'array', 'max:50'],
+                'ui_state.slot_statuses.*' => ['string', 'max:40'],
             ];
         }
 
@@ -72,6 +77,19 @@ final class DraftRequest extends FormRequest
         $config = $this->input('config');
 
         return is_array($config) ? $config : null;
+    }
+
+    /** The wizard's own state (Story 3.5): acknowledged warnings and slot statuses. Only those two keys are kept. */
+    /** @return array<string, mixed>|null */
+    public function uiState(): ?array
+    {
+        $state = $this->input('ui_state');
+
+        if (! is_array($state)) {
+            return null;
+        }
+
+        return array_intersect_key($state, ['acknowledged_warnings' => true, 'slot_statuses' => true]);
     }
 
     public function step(): ?int

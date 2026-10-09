@@ -27,7 +27,9 @@ final class DraftResource extends JsonResource
     {
         $draft = $this->resource;
 
-        $config = $this->withConfig ? ['config' => $draft->config === [] ? ['schema_version' => 1] : $draft->config] : [];
+        $config = $this->withConfig
+            ? ['config' => $draft->config === [] ? ['schema_version' => 1] : $draft->config, 'ui_state' => $draft->uiState === [] ? (object) [] : $draft->uiState]
+            : [];
 
         return [
             'draft_id' => $draft->id,

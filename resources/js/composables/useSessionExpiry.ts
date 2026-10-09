@@ -1,6 +1,7 @@
 import { router } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { announce, resetOnce } from '@/lib/announce';
+import { runFlushes } from '@/lib/flushRegistry';
 import { clearFormDrafts, saveFormDrafts } from '@/lib/formDrafts';
 import {
     SIGN_IN_URL,
@@ -19,6 +20,9 @@ export const POLL_MS = 60_000;
 // Retry delays when the confirming call at zero cannot reach the server.
 export const RETRY_BASE_MS = 1000;
 export const RETRY_MAX_MS = 15_000;
+// The registered flushes (`lib/flushRegistry`) run when the warning opens and once more this many seconds before the session ends: late
+// enough to catch what was typed after the warning, early enough for the save to arrive while the session still lives.
+export const FLUSH_LEAD_SECONDS = 5;
 // A mark is spoken by its own label when the tick is this close to it; later joins hear the real time.
 const MARK_TOLERANCE_S = 5;
 
@@ -47,6 +51,8 @@ export function useSessionExpiry(options: Options) {
     let confirming = false;
     let ended = false;
     let signingOut = false;
+    let flushedAtWarning = false;
+    let flushedLate = false;
     let unmounted = false;
     // Bumped by every call that decides the deadline: an older response never overwrites a newer one.
     let sequence = 0;
@@ -207,11 +213,25 @@ export function useSessionExpiry(options: Options) {
             }
 
             resetAnnouncements();
+            flushedAtWarning = false;
+            flushedLate = false;
 
             return;
         }
 
         open.value = true;
+
+        // Pending work goes to the server while the session lives; the flush is a background call and never extends it.
+        if (!flushedAtWarning) {
+            flushedAtWarning = true;
+            flushedLate = flushedLate || left <= FLUSH_LEAD_SECONDS;
+            void runFlushes();
+        }
+
+        if (left <= FLUSH_LEAD_SECONDS && !flushedLate) {
+            flushedLate = true;
+            void runFlushes();
+        }
 
         // One announcement per tick at most: the latest mark crossed. Marks above it are marked as spoken so
         // joining mid-countdown does not read 2:00, 1:00 and 0:30 together.

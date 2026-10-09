@@ -878,6 +878,26 @@ export const blockWizardLabels = {
         'This draft was changed somewhere else. Reload the page to see the latest version.',
     lockLost: 'Someone else is now editing this draft. Reload the page.',
     notReady: 'Finish the earlier steps first.',
+    // Autosave and recovery (Story 3.5). `offline-editing`, `save-failed.draft`, `unsaved-changes` and `session-expired` come from the catalogue.
+    retrySave: 'Retry',
+    publishedTitle: 'This draft was published',
+    publishedBody:
+        'Someone published this draft, so it can no longer be edited here and nothing more will be saved.',
+    publishedLink: 'Go to Published blocks',
+    conflictTitle: 'This draft was changed somewhere else',
+    conflictBody:
+        'Choose which version to keep. Nothing is overwritten until you choose.',
+    conflictMine: 'Your version',
+    conflictTheirs: 'Saved version',
+    conflictName: 'Name',
+    conflictDescription: 'Description',
+    conflictSize: 'Size',
+    conflictSavedAt: 'Last saved',
+    conflictNone: '(none)',
+    conflictKeepMine: 'Keep my version',
+    conflictUseTheirs: 'Use the saved version',
+    conflictKept: 'Your version was saved.',
+    conflictTook: 'The saved version is now open.',
     // Progress.
     progress: 'Create block progress',
     notStarted: '(not started)',

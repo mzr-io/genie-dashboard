@@ -1,9 +1,11 @@
 <?php
 
+use App\Http\Middleware\HandleInertiaRequests;
 use App\Modules\Blocks\Contracts\BlockCategories;
 use App\Modules\Blocks\Contracts\ErrorCode as BlocksErrorCode;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Database\Support\Cluster;
@@ -248,3 +250,80 @@ it('requires blocks.edit to read a Draft or the categories', function () {
     $this->getJson('/api/v1/admin/blocks/categories', BD_HEADERS)->assertForbidden();
     expect(bwCategories())->toBe([]);
 });
+
+// ---- Story 3.5: autosave ----
+
+it('stores the wizard state in draft_ui_state beside the step, reads it back, and keeps it out of the config and the audit', function () {
+    $workspace = Cluster::workspace('Acme');
+    bdAdmin($workspace);
+    $id = bdCreate()->assertCreated()->json('data.draft_id');
+    $auditsBefore = count(bdAudits());
+
+    $state = ['acknowledged_warnings' => ['type-mismatch:headline_value', 'type-mismatch:headline_value', 'empty-sample'], 'slot_statuses' => ['headline_value' => 'review', 'status_badge' => 'unmapped']];
+    $saved = bdSave($id, 1, 1, ['step' => 3, 'ui_state' => $state + ['extra' => 'ignored']])->assertOk();
+
+    expect($saved->json('data.ui_state'))->toEqual(['acknowledged_warnings' => ['type-mismatch:headline_value', 'empty-sample'], 'slot_statuses' => ['headline_value' => 'review', 'status_badge' => 'unmapped']])
+        ->and($saved->json('data.step'))->toBe(3)
+        ->and(json_decode(bdRows('draft_ui_state')[0]['state'], true))->toHaveKeys(['acknowledged_warnings', 'slot_statuses'])->not->toHaveKey('extra')
+        ->and(json_decode(bdRows()[0]['config'], true))->toBe(['schema_version' => 1])
+        ->and(count(bdAudits()))->toBe($auditsBefore);
+
+    $this->getJson(BD_URL."/{$id}", BD_HEADERS)->assertOk()->assertJsonPath('data.ui_state.slot_statuses.headline_value', 'review');
+
+    // A later save without ui_state leaves it as it is; one with an empty state clears it.
+    bdSave($id, 2, 1, ['step' => 3])->assertOk()->assertJsonPath('data.ui_state.slot_statuses.status_badge', 'unmapped');
+    bdSave($id, 3, 1, ['ui_state' => ['acknowledged_warnings' => [], 'slot_statuses' => []]])->assertOk()->assertJsonPath('data.ui_state.acknowledged_warnings', []);
+});
+
+it('refuses a secret-valued key in ui_state with 422 and stores nothing', function () {
+    $workspace = Cluster::workspace('Acme');
+    bdAdmin($workspace);
+    $id = bdCreate()->assertCreated()->json('data.draft_id');
+
+    bdSave($id, 1, 1, ['ui_state' => ['slot_statuses' => ['api_key' => 'abc123'], 'password' => 'hunter2']])
+        ->assertStatus(422)->assertJsonPath('error.code', BlocksErrorCode::SecretValuesRefused->value);
+
+    expect((int) bdRows()[0]['revision'])->toBe(1)
+        ->and(bdRows('draft_ui_state')[0]['state'])->toBe('{}');
+});
+
+it('refuses a malformed ui_state with 422', function () {
+    $workspace = Cluster::workspace('Acme');
+    bdAdmin($workspace);
+    $id = bdCreate()->assertCreated()->json('data.draft_id');
+
+    bdSave($id, 1, 1, ['ui_state' => ['acknowledged_warnings' => [['x']]]])->assertStatus(422);
+    bdSave($id, 1, 1, ['ui_state' => 'text'])->assertStatus(422);
+    expect((int) bdRows()[0]['revision'])->toBe(1);
+});
+
+it('answers 409 blocks.draft_published when the version is no longer a Draft, writes nothing, and keeps a discarded Draft a 404', function () {
+    $workspace = Cluster::workspace('Acme');
+    bdAdmin($workspace);
+    $id = bdCreate()->assertCreated()->json('data.draft_id');
+    $gone = bdCreate(['name' => 'Other'])->assertCreated()->json('data.draft_id');
+    $this->deleteJson(BD_URL."/{$gone}", [], BD_HEADERS)->assertOk();
+
+    // The published state arrives with Story 3.19; until then the version is moved past Draft by hand, and the constraint put back.
+    $db = Cluster::superuser();
+    $db->exec('ALTER TABLE block_versions DROP CONSTRAINT block_versions_state_check');
+
+    try {
+        $db->prepare("UPDATE block_versions SET state = 'published' WHERE id = ?")->execute([$id]);
+
+        bdSave($id, 1, 1)->assertStatus(409)->assertJsonPath('error.code', BlocksErrorCode::DraftPublished->value);
+        expect((int) Cluster::rows($db, 'select revision from block_versions where id = ?', [$id])[0]['revision'])->toBe(1);
+        bdSave($gone, 1, 1)->assertNotFound();
+        bdSave((string) Str::uuid7(), 1, 1)->assertNotFound();
+    } finally {
+        $db->prepare("UPDATE block_versions SET state = 'draft' WHERE id = ?")->execute([$id]);
+        $db->exec("ALTER TABLE block_versions ADD CONSTRAINT block_versions_state_check CHECK (state IN ('draft', 'discarded'))");
+    }
+});
+
+it('shares the autosave debounce with the page only when it is a whole positive number of milliseconds', function (mixed $value, ?int $expected) {
+    config(['dashflow.tunables.timeouts.autosave_debounce.value' => $value]);
+    $share = (new HandleInertiaRequests)->share(Request::create('/admin/blocks/create'));
+
+    expect($share['autosave'])->toBe(['debounce_ms' => $expected]);
+})->with([[null, null], ['', null], ['800', 800], [1200, 1200], ['0', null], ['-5', null], ['1s', null], ['08', null]]);

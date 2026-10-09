@@ -38,13 +38,15 @@ interface Drafts
      * limits (Story 3.4); a field left null is left as it is.
      *
      * @param  array<mixed>|null  $config
+     * @param  array<mixed>|null  $uiState  the wizard's own state (Story 3.5), stored in `draft_ui_state.state`; never part of the version's config
      *
      * @throws DraftNotFound the Draft does not exist or was discarded
+     * @throws DraftPublished the version is no longer a Draft (it was published)
      * @throws DraftLockLost the epoch is stale
      * @throws DraftRevisionConflict the revision is stale
      * @throws InvalidDraft an unknown Block Type or category, or a config outside the limits
      */
-    public function save(DraftActor $actor, string $draftId, string $name, ?string $type, int $revision, int $lockEpoch, ?array $config = null, ?int $step = null, ?string $categoryId = null): Draft;
+    public function save(DraftActor $actor, string $draftId, string $name, ?string $type, int $revision, int $lockEpoch, ?array $config = null, ?int $step = null, ?string $categoryId = null, ?array $uiState = null): Draft;
 
     /**
      * Marks the Draft discarded and audits it; the rows are deleted later by the `maintenance` worker.

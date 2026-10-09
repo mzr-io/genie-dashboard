@@ -16,6 +16,7 @@ use App\Modules\Blocks\Contracts\DraftActor;
 use App\Modules\Blocks\Contracts\DraftExists;
 use App\Modules\Blocks\Contracts\DraftLockLost;
 use App\Modules\Blocks\Contracts\DraftNotFound;
+use App\Modules\Blocks\Contracts\DraftPublished;
 use App\Modules\Blocks\Contracts\DraftRevisionConflict;
 use App\Modules\Blocks\Contracts\Drafts;
 use App\Modules\Blocks\Contracts\ErrorCode;
@@ -92,12 +93,15 @@ final class DraftController extends Controller
     public function update(DraftRequest $request, string $draft): JsonResponse
     {
         try {
-            $saved = $this->drafts->save($this->actor($request), $draft, $request->name(), $request->type(), $request->expectedRevision(), $request->lockEpoch(), $request->config(), $request->step(), $request->categoryId());
+            $saved = $this->drafts->save($this->actor($request), $draft, $request->name(), $request->type(), $request->expectedRevision(), $request->lockEpoch(), $request->config(), $request->step(), $request->categoryId(), $request->uiState());
         } catch (DraftNotFound) {
             abort(404);
         } catch (DraftLockLost $e) {
             // 423: the soft lock was taken over. Nothing was written.
             return AdminApiError::json($request, PlatformErrorCode::EditLockLost->value, 423, 'You no longer hold the edit lock on this draft.', extra: ['current' => ['data' => $this->resource($request, $e->current)]]);
+        } catch (DraftPublished) {
+            // 409 with its own code: the wizard stops saving and points to Published blocks; a revision conflict is a different choice.
+            return AdminApiError::json($request, ErrorCode::DraftPublished->value, 409, 'This draft was published.');
         } catch (DraftRevisionConflict $e) {
             return AdminApiError::json($request, ErrorCode::RevisionConflict->value, 409, 'This draft was changed by someone else.', extra: ['current' => ['data' => $this->resource($request, $e->current)]]);
         } catch (InvalidDraft $e) {

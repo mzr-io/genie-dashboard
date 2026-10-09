@@ -195,6 +195,48 @@ final class DraftConfig
         return is_array($plain) ? $plain : ['schema_version' => self::SCHEMA_VERSION];
     }
 
+    /**
+     * The wizard's own state (Story 3.5) as the stored document: the acknowledged warnings (a list of strings) and the slot statuses (a map
+     * of strings). Anything else is dropped. It is never part of a version's config.
+     *
+     * @param  array<mixed>  $state
+     */
+    public static function encodeUiState(array $state): string
+    {
+        $warnings = [];
+
+        foreach (is_array($state['acknowledged_warnings'] ?? null) ? $state['acknowledged_warnings'] : [] as $warning) {
+            if (is_string($warning)) {
+                $warnings[] = $warning;
+            }
+        }
+
+        $statuses = [];
+
+        foreach (is_array($state['slot_statuses'] ?? null) ? $state['slot_statuses'] : [] as $slot => $status) {
+            if (is_string($status)) {
+                $statuses[(string) $slot] = $status;
+            }
+        }
+
+        return LosslessJson::encode(new JsonObject([
+            'acknowledged_warnings' => array_values(array_unique($warnings)),
+            'slot_statuses' => new JsonObject($statuses),
+        ]));
+    }
+
+    /** @return array<string, mixed> */
+    public static function decodeUiState(?string $json): array
+    {
+        if ($json === null || $json === '') {
+            return [];
+        }
+
+        $plain = self::plain(LosslessJson::decode($json));
+
+        return is_array($plain) ? $plain : [];
+    }
+
     /** Every array of a config is an object (it holds no lists); whole numbers go out as the lexemes the codec writes. */
     private static function toObjects(mixed $value): mixed
     {

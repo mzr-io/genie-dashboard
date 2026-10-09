@@ -12,7 +12,7 @@ const AR57_TUNABLES = [
     'circuit_breaker.failure_count', 'circuit_breaker.cool_down',
     'guards.max_pages', 'guards.max_bytes', 'guards.depth_limit', 'guards.platform_timeout_ceiling',
     'guards.require_https',
-    'timeouts.connect_timeout', 'timeouts.total_timeout', 'timeouts.draft_sample_ttl', 'timeouts.edit_lock_ttl',
+    'timeouts.connect_timeout', 'timeouts.total_timeout', 'timeouts.draft_sample_ttl', 'timeouts.edit_lock_ttl', 'timeouts.autosave_debounce',
     'budgets.max_hot_keys_per_workspace', 'budgets.max_fetch_rate_per_data_source',
     'budgets.max_new_cold_keys_per_membership_per_hour',
     'numbers.decimal_scale',

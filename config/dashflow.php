@@ -74,6 +74,8 @@ return [
             'total_timeout' => $tunable('DASHFLOW_TOTAL_TIMEOUT'),
             'draft_sample_ttl' => $tunable('DASHFLOW_DRAFT_SAMPLE_TTL'),
             'edit_lock_ttl' => $tunable('DASHFLOW_EDIT_LOCK_TTL'),
+            // Story 3.5: whole milliseconds the Create block wizard waits after the last change before it autosaves. Unset: no autosave.
+            'autosave_debounce' => $tunable('DASHFLOW_AUTOSAVE_DEBOUNCE'),
         ],
 
         'budgets' => [
