@@ -338,6 +338,8 @@ export type SaveBody = {
     type: string;
     expected_revision: number;
     lock_epoch: number;
+    // The soft lock's per-tab token (Story 3.6); the server checks it against the lock itself.
+    lock_token?: string;
     category_id?: string | null;
     step?: number;
     config?: DraftConfig;

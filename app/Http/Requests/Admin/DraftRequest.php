@@ -33,6 +33,7 @@ final class DraftRequest extends FormRequest
                 'type' => ['nullable', 'string', 'max:64'],
                 'expected_revision' => ['required', 'integer', 'min:1'],
                 'lock_epoch' => ['required', 'integer', 'min:1'],
+                'lock_token' => ['nullable', 'string', 'max:128'],
                 'category_id' => ['nullable', 'uuid'],
                 'step' => ['nullable', 'integer', 'between:1,5'],
                 'config' => ['nullable', 'array', 'max:20'],
@@ -114,6 +115,14 @@ final class DraftRequest extends FormRequest
     public function lockEpoch(): int
     {
         return (int) $this->input('lock_epoch');
+    }
+
+    /** The wizard's lock token; an empty string when it sent none. */
+    public function lockToken(): string
+    {
+        $value = $this->input('lock_token');
+
+        return is_string($value) ? $value : '';
     }
 
     /** A 422 in the Admin API's own envelope, with the field errors the page shows. */

@@ -22,6 +22,7 @@ use App\Modules\Blocks\Contracts\Drafts;
 use App\Modules\Blocks\Contracts\ErrorCode;
 use App\Modules\Blocks\Contracts\InvalidDraft;
 use App\Platform\Contracts\ErrorCode as PlatformErrorCode;
+use App\Platform\EditLock\EditLock;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -42,6 +43,7 @@ final class DraftController extends Controller
         private readonly BlockCategories $categories,
         private readonly MembershipLookup $memberships,
         private readonly MemberNames $names,
+        private readonly EditLock $lock,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -93,7 +95,8 @@ final class DraftController extends Controller
     public function update(DraftRequest $request, string $draft): JsonResponse
     {
         try {
-            $saved = $this->drafts->save($this->actor($request), $draft, $request->name(), $request->type(), $request->expectedRevision(), $request->lockEpoch(), $request->config(), $request->step(), $request->categoryId(), $request->uiState());
+            $actor = $this->actor($request);
+            $saved = $this->drafts->save($actor, $draft, $request->name(), $request->type(), $request->expectedRevision(), $request->lockEpoch(), $request->config(), $request->step(), $request->categoryId(), $request->uiState(), $this->holdsLock($request, $actor, $draft));
         } catch (DraftNotFound) {
             abort(404);
         } catch (DraftLockLost $e) {
@@ -111,13 +114,45 @@ final class DraftController extends Controller
         return $this->one($request, $saved, 200);
     }
 
+    /**
+     * The check that the save's lock token still holds the soft lock (Story 3.6), as on the Data source form: with the lock enabled a
+     * missing token is a lost lock, and the server never trusts the claim. Null when the lock is off (the epoch check alone applies).
+     *
+     * @return (\Closure(): bool)|null
+     */
+    private function holdsLock(DraftRequest $request, DraftActor $actor, string $draft): ?\Closure
+    {
+        if (! $this->lock->enabled()) {
+            return null;
+        }
+
+        return $this->claim($request->lockToken(), $request->lockEpoch(), $actor, $draft);
+    }
+
+    /** @return (\Closure(): bool)|null */
+    private function claim(mixed $token, ?int $epoch, DraftActor $actor, string $draft): ?\Closure
+    {
+        if (! $this->lock->enabled()) {
+            return null;
+        }
+
+        $token = is_string($token) && strlen($token) <= 128 ? $token : '';
+
+        return fn (): bool => $token !== '' && $epoch !== null && $this->lock->holds($actor->workspaceId, Drafts::LOCK_TYPE, $draft, $actor->membershipId, $token, $epoch);
+    }
+
     /** Discards the Draft: it is hidden and cannot be saved at once; its rows are deleted afterwards by the `maintenance` worker. */
     public function destroy(Request $request, string $draft): JsonResponse
     {
         try {
-            $this->drafts->discard($this->actor($request), $draft);
+            $actor = $this->actor($request);
+            $epoch = $request->input('lock_epoch');
+            $epoch = is_numeric($epoch) ? (int) $epoch : null;
+            $this->drafts->discard($actor, $draft, $epoch, $this->claim($request->input('lock_token'), $epoch, $actor, $draft));
         } catch (DraftNotFound) {
             abort(404);
+        } catch (DraftLockLost $e) {
+            return AdminApiError::json($request, PlatformErrorCode::EditLockLost->value, 423, 'You no longer hold the edit lock on this draft.', extra: ['current' => ['data' => $this->resource($request, $e->current)]]);
         }
 
         return response()->json(['data' => ['draft_id' => strtolower($draft), 'state' => 'discarded']], 200, ['Cache-Control' => self::NO_STORE]);

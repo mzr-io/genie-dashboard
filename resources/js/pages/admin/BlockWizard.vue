@@ -12,6 +12,7 @@ import {
 } from 'vue';
 import { useI18n } from 'vue-i18n';
 import BlockedReason from '@/components/BlockedReason.vue';
+import EditLockBanner from '@/components/EditLockBanner.vue';
 import GatedAction from '@/components/GatedAction.vue';
 import UnsavedChangesDialog from '@/components/UnsavedChangesDialog.vue';
 import { Badge } from '@/components/ui/badge';
@@ -21,8 +22,11 @@ import ConflictChooser from '@/components/wizard/ConflictChooser.vue';
 import ConfigureBlockStep from '@/components/wizard/ConfigureBlockStep.vue';
 import LivePreview from '@/components/wizard/LivePreview.vue';
 import WizardStepper from '@/components/wizard/WizardStepper.vue';
+import { useEditLock } from '@/composables/useEditLock';
 import { useOfflineAction } from '@/composables/useOfflineAction';
 import { announce } from '@/lib/announce';
+import { DRAFT_BLOCKS_URL } from '@/lib/draftBlocks';
+import { lockClient } from '@/lib/editLock';
 import { registerFlush } from '@/lib/flushRegistry';
 import { registerUnsavedForm } from '@/lib/unsavedForms';
 import { clearPending, readPending, stashPending } from '@/lib/wizardPending';
@@ -54,8 +58,9 @@ import type {
     WizardDraft,
     WizardUiState,
 } from '@/lib/blockWizard';
+import { DataSourceError } from '@/lib/dataSources';
 import { SIGN_IN_URL } from '@/lib/session';
-import { blockWizardLabels as labels } from '@/locales/labels';
+import { blockWizardLabels as labels, draftLockLabels } from '@/locales/labels';
 import { useToasts } from '@/stores/toasts';
 
 // The Create block wizard (Story 3.4): five steps with a progress `nav`, Step 1 (Configure Block) and a sticky live preview in steps 1 to 3.
@@ -64,6 +69,8 @@ import { useToasts } from '@/stores/toasts';
 // after each pause in editing (a compare-and-set with `X-Background: 1`, so it never extends the idle session). The page recovers from an
 // expired session (the pending changes wait in sessionStorage and are replayed after sign-in), from going offline, from a failed save, from a
 // revision conflict (the Admin chooses a version) and from the Draft having been published, and asks before leaving with unsaved changes.
+// The Draft is soft-locked (Story 3.6, the shared `useEditLock`): the first editor holds the lock and heartbeats while active; anyone else sees
+// the page read-only with the `draft-locked` banner and can take over, which makes the holder flush its autosave first.
 const { t } = useI18n();
 const toasts = useToasts();
 
@@ -218,10 +225,13 @@ async function load(): Promise<void> {
                 : Math.min(clampStep(requestedStep), reached.value);
             state.value = 'ready';
 
+            // The lock comes first: every save carries its token, so changes kept when the session ended can only be replayed by the holder.
+            await acquire();
+
             // Changes kept when the session ended come back now, saved against the revision they were made on.
             const pending = readPending(id);
 
-            if (pending) {
+            if (pending && !readOnly.value) {
                 await replay(pending, loaded);
             }
 
@@ -370,6 +380,91 @@ function stash(acknowledged: boolean): boolean {
     return kept;
 }
 
+// ---- The soft lock (Story 3.6) ----------------------------------------------------------------------------------
+
+// The Draft's lock: acquired when the wizard opens a Draft (or right after it starts one), renewed while the Admin is active, released on
+// leave. Without it the page is read-only. A take-over makes the holder flush: the wizard's own save, so the taker loads the post-flush revision.
+function lockAuthExpired(error: unknown): boolean {
+    if (
+        error instanceof DataSourceError &&
+        (error.status === 401 || error.status === 419)
+    ) {
+        return sessionEnded(new WizardError(error.status));
+    }
+
+    return false;
+}
+
+// Loads the Draft again after a take-over, without the skeleton: the holder's flush is in it.
+async function reloadDraft(): Promise<boolean> {
+    const id = draft.value?.draft_id ?? params.get('draft');
+
+    if (!id) {
+        return false;
+    }
+
+    try {
+        const loaded = await fetchWizardDraft(id);
+
+        applyDraft(loaded);
+        draft.value = loaded;
+        reached.value = clampStep(Math.max(loaded.step, reached.value));
+        dirty.value = false;
+        changeSeq += 1;
+
+        return true;
+    } catch (error) {
+        // The failure and Retry path: the page shows its load error, and the lock is not taken on stale data.
+        if (!sessionEnded(error)) {
+            state.value = 'error';
+        }
+
+        return false;
+    }
+}
+
+const {
+    lock,
+    readOnly,
+    notice: lockNotice,
+    claim,
+    acquire,
+    retryAcquire,
+    takeOver,
+    endLock,
+} = useEditLock({
+    client: lockClient(DRAFT_BLOCKS_URL),
+    id: () => draft.value?.draft_id ?? params.get('draft'),
+    labels: draftLockLabels,
+    expectLock: () => params.get('draft') !== null,
+    authExpired: lockAuthExpired,
+    reload: reloadDraft,
+    restart: load,
+    activityGated: true,
+    // Waits for a save in flight; the holder's flush is the wizard's own save, never a partial or invalid one.
+    canFlush: () => state.value === 'ready' && !saving.value,
+    flush: async () => {
+        if (stopped.value || conflict.value !== null) {
+            return false;
+        }
+
+        if (!dirty.value) {
+            return true;
+        }
+
+        return savable() && (await persist(reached.value, 'handover'));
+    },
+    onEnded: () => cancelAutosave(),
+    onReloaded: () => announce(labels.reloaded, 'polite'),
+});
+
+// What a save says about the lock: the token that holds it, when it is on.
+function tokenOf(): { lock_token?: string } {
+    const held = claim();
+
+    return held ? { lock_token: held.token } : {};
+}
+
 // ---- Autosave --------------------------------------------------------------------------------------------------
 
 // The debounce is a `pending_input` tunable, shared with the page; unset means autosave is inert and no value is invented here.
@@ -410,7 +505,8 @@ function scheduleAutosave(): void {
         draft.value === null ||
         stopped.value ||
         conflict.value !== null ||
-        offline.value
+        offline.value ||
+        readOnly.value
     ) {
         return;
     }
@@ -436,7 +532,7 @@ let chain: Promise<unknown> = Promise.resolve();
 
 function persist(
     step: number,
-    kind: 'manual' | 'auto' | 'flush' = 'manual',
+    kind: 'manual' | 'auto' | 'flush' | 'handover' = 'manual',
 ): Promise<boolean> {
     const run = chain.then(() => save(step, kind));
 
@@ -449,9 +545,10 @@ function persist(
 // An autosave or a flush is a background call: no field errors on the form, and `X-Background: 1`.
 async function save(
     step: number,
-    kind: 'manual' | 'auto' | 'flush',
+    kind: 'manual' | 'auto' | 'flush' | 'handover',
 ): Promise<boolean> {
-    if (stopped.value || conflict.value !== null) {
+    // Read-only (someone else holds the lock, or it was lost): nothing is sent, and the server would refuse it anyway.
+    if (stopped.value || conflict.value !== null || readOnly.value) {
         return false;
     }
 
@@ -469,12 +566,20 @@ async function save(
             target = await createWizardDraft(form.name.trim(), form.type);
             draft.value = target;
             showWizardUrl(target.draft_id);
+            // A Draft this tab just started has no other editor: take its lock before the first save.
+            await acquire();
+
+            // Not the holder (blocked, unavailable): a save would carry no token and be refused as a lost lock.
+            if (readOnly.value) {
+                return false;
+            }
         }
 
         const body: SaveBody = {
             ...deltaOf(step),
             expected_revision: target.revision,
             lock_epoch: target.lock_epoch,
+            ...tokenOf(),
         };
 
         draft.value = await saveWizardDraft(target.draft_id, body, {
@@ -507,9 +612,9 @@ async function focusSaveFailed(): Promise<void> {
 // What each way a save can fail leads to. Every change stays in the form, and nothing is saved over a conflict without a choice.
 async function failed(
     error: unknown,
-    kind: 'manual' | 'auto' | 'flush',
+    kind: 'manual' | 'auto' | 'flush' | 'handover',
 ): Promise<void> {
-    if (sessionEnded(error, kind === 'flush')) {
+    if (sessionEnded(error, kind === 'flush' || kind === 'handover')) {
         return;
     }
 
@@ -543,7 +648,11 @@ async function failed(
         }
 
         if (error.status === 423) {
-            toasts.add({ kind: 'error', message: labels.lockLost });
+            // The lock was taken over, expired or never held: nothing was written. The page is read-only with the lost-lock notice,
+            // which never claims a save; what was typed stays on the page.
+            cancelAutosave();
+            saveFailed.value = null;
+            endLock(null);
 
             return;
         }
@@ -556,7 +665,7 @@ async function failed(
 
         // Offline: the changes wait, the banner says so, and they save when the connection is back.
         if (error.status === 0 && offline.value) {
-            if (kind === 'flush') {
+            if (kind === 'flush' || kind === 'handover') {
                 stash(true);
             }
 
@@ -570,8 +679,9 @@ async function failed(
         }
     }
 
+    // A take-over flush that failed is not acknowledged: the taker waits for the flush timeout, and the failure is shown here as for any save.
     // A flush that could not reach the server keeps the changes for the next sign-in instead.
-    if (kind === 'flush') {
+    if (kind === 'flush' || kind === 'handover') {
         stash(true);
     }
 
@@ -649,6 +759,7 @@ async function replay(
             ...pending.delta,
             expected_revision: pending.baseRevision,
             lock_epoch: pending.lockEpoch,
+            ...tokenOf(),
         });
 
         applyDraft(saved);
@@ -716,6 +827,10 @@ const mineVersion = computed(() => ({
 }));
 
 async function saveDraft(): Promise<void> {
+    if (readOnly.value) {
+        return;
+    }
+
     if (!validate(false)) {
         await focusFirstError();
 
@@ -728,6 +843,10 @@ async function saveDraft(): Promise<void> {
 }
 
 async function onContinue(): Promise<void> {
+    if (readOnly.value) {
+        return;
+    }
+
     if (!validate(true)) {
         await focusFirstError();
 
@@ -853,11 +972,13 @@ watch(offline, (isOffline) => {
 const saveBlocked = computed<string | undefined>(() =>
     stopped.value
         ? labels.publishedBody
-        : conflict.value !== null
-          ? labels.conflictTitle
-          : offline.value
-            ? offlineReason.value
-            : undefined,
+        : readOnly.value
+          ? draftLockLabels.readOnly
+          : conflict.value !== null
+            ? labels.conflictTitle
+            : offline.value
+              ? offlineReason.value
+              : undefined,
 );
 
 // The line that tells how the Draft stands; shown only where autosave is on.
@@ -974,11 +1095,13 @@ onBeforeUnmount(() => {
                     permission="blocks.publish"
                     :reason="t('perm-publish')"
                     :also-blocked="
-                        offline
-                            ? offlineReason
-                            : stopped
-                              ? labels.publishedBody
-                              : undefined
+                        readOnly
+                            ? draftLockLabels.readOnly
+                            : offline
+                              ? offlineReason
+                              : stopped
+                                ? labels.publishedBody
+                                : undefined
                     "
                     variant="primary"
                     data-test="publish"
@@ -988,6 +1111,16 @@ onBeforeUnmount(() => {
                 </GatedAction>
             </div>
         </header>
+
+        <EditLockBanner
+            :mode="lock.mode"
+            :notice="lockNotice"
+            :takeover-failed="lock.takeoverFailed"
+            :labels="draftLockLabels"
+            :close-href="DRAFT_BLOCKS_PAGE"
+            @take-over="takeOver"
+            @retry="retryAcquire"
+        />
 
         <div
             v-if="state === 'loading'"
@@ -1094,15 +1227,24 @@ onBeforeUnmount(() => {
                         novalidate
                         class="flex flex-col gap-4"
                         data-test="step-1"
+                        :aria-label="
+                            readOnly ? draftLockLabels.readOnly : undefined
+                        "
                         @submit.prevent="onContinue"
                     >
-                        <ConfigureBlockStep
-                            :form="form"
-                            :errors="errors"
-                            :categories="categories"
-                            @change="onChange"
-                            @blur="onBlur"
-                        />
+                        <fieldset
+                            :disabled="readOnly"
+                            class="m-0 flex min-w-0 flex-col gap-4 border-0 p-0"
+                            data-test="form-fields"
+                        >
+                            <ConfigureBlockStep
+                                :form="form"
+                                :errors="errors"
+                                :categories="categories"
+                                @change="onChange"
+                                @blur="onBlur"
+                            />
+                        </fieldset>
                         <div class="flex justify-end gap-2">
                             <Button
                                 type="button"

@@ -6,6 +6,7 @@ use App\Http\Controllers\Admin\DataSourceController;
 use App\Http\Controllers\Admin\DataSourceHealthController;
 use App\Http\Controllers\Admin\DataSourceLockController;
 use App\Http\Controllers\Admin\DraftController;
+use App\Http\Controllers\Admin\DraftLockController;
 use App\Http\Controllers\Admin\EndpointController;
 use App\Http\Controllers\Admin\GroupController;
 use App\Http\Controllers\Admin\HostAllowlistController;
@@ -82,6 +83,14 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('blocks/drafts', [DraftController::class, 'store'])->middleware(['admin', RejectsSecretValues::class.':blocks', 'throttle:30,1,block-drafts'])->name('api.admin.blocks.drafts.store');
     Route::put('blocks/drafts/{draft}', [DraftController::class, 'update'])->whereUuid('draft')->middleware(['admin', RejectsSecretValues::class.':blocks', 'throttle:120,1,block-drafts-save'])->name('api.admin.blocks.drafts.update');
     Route::delete('blocks/drafts/{draft}', [DraftController::class, 'destroy'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-drafts'])->name('api.admin.blocks.drafts.destroy');
+
+    // The Draft block soft lock (Story 3.6): the same protocol as the Data source one, behind `blocks.edit`; none takes a secret value.
+    Route::post('blocks/drafts/{draft}/lock', [DraftLockController::class, 'acquire'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.acquire');
+    Route::put('blocks/drafts/{draft}/lock', [DraftLockController::class, 'heartbeat'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.heartbeat');
+    Route::post('blocks/drafts/{draft}/lock/release', [DraftLockController::class, 'release'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.release');
+    Route::post('blocks/drafts/{draft}/lock/takeover', [DraftLockController::class, 'takeover'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.takeover');
+    Route::get('blocks/drafts/{draft}/lock/takeover', [DraftLockController::class, 'takeoverStatus'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.takeover.status');
+    Route::post('blocks/drafts/{draft}/lock/flush', [DraftLockController::class, 'flush'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.flush');
 
     // Data Sources (Story 2.3): `data_sources.manage`, mapped in ShellNavigation::ADMIN_API_ROUTES. `check-url` is the Base URL blur check.
     Route::get('data-sources', [DataSourceController::class, 'index'])->middleware('admin')->name('api.admin.data-sources.index');

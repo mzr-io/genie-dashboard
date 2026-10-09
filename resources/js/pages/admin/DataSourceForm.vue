@@ -11,8 +11,8 @@ import {
     watch,
 } from 'vue';
 import { useI18n } from 'vue-i18n';
-import Banner from '@/components/Banner.vue';
 import BlockedReason from '@/components/BlockedReason.vue';
+import EditLockBanner from '@/components/EditLockBanner.vue';
 import DataSourceTabs from '@/components/DataSourceTabs.vue';
 import FetchErrorCard from '@/components/FetchErrorCard.vue';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
@@ -28,6 +28,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
+import { useEditLock } from '@/composables/useEditLock';
 import { announce } from '@/lib/announce';
 import {
     checkBaseUrl,
@@ -53,16 +54,7 @@ import type {
     PaginationStyle,
     RetentionMode,
 } from '@/lib/dataSources';
-import {
-    acknowledgeFlush,
-    acquireLock,
-    heartbeatLock,
-    pollTakeover,
-    releaseLock,
-    requestTakeover,
-} from '@/lib/editLock';
-import type { Granted, LockAnswer, LockHolder } from '@/lib/editLock';
-import { formatTime } from '@/lib/formatDate';
+import { dataSourceLockClient } from '@/lib/editLock';
 import { SIGN_IN_URL } from '@/lib/session';
 import { registerUnsavedForm } from '@/lib/unsavedForms';
 import {
@@ -1307,204 +1299,42 @@ const testSource = computed(
 
 // ---- The soft lock (Story 2.8) --------------------------------------------------------------------------------------
 
-// `off`: no lock (the soft lock is disabled, or this is the create form). `pending`: the edit form has not had its first
-// answer yet. `unavailable`: the lock could not be asked (read-only, with Retry). `holding`: this tab holds it. `blocked`:
-// someone else does. `waiting`: a take-over was requested. `ended`: this tab held it and lost it.
-type LockMode =
-    | 'off'
-    | 'pending'
-    | 'unavailable'
-    | 'holding'
-    | 'blocked'
-    | 'waiting'
-    | 'ended';
-type TakenOver = Extract<LockAnswer, { status: 'taken_over' }>;
-
-const LOCK_POLL_MS = 1000;
-const lock = reactive({
-    mode: (editing.value ? 'pending' : 'off') as LockMode,
-    token: null as string | null,
-    epoch: null as number | null,
-    csrf: null as string | null,
-    holder: null as LockHolder | null,
-    // Who took the lock over, when, and whether this tab's flush was confirmed first; null when it was simply lost.
-    ended: null as {
-        by: string | null;
-        at: string | null;
-        saved: boolean;
-    } | null,
-    takeoverFailed: false,
+// The state machine is the shared `useEditLock` composable (also the Draft wizard's, Story 3.6). A take-over asks the holder's heartbeat
+// to flush: this form saves its valid non-secret fields through the normal update, and the composable acknowledges when that worked.
+const {
+    lock,
+    readOnly,
+    notice: lockNotice,
+    claim,
+    acquire,
+    retryAcquire,
+    takeOver,
+    endLock,
+} = useEditLock({
+    client: dataSourceLockClient,
+    id: () => props.dataSourceId,
+    labels: editLockLabels,
+    expectLock: () => editing.value,
+    authExpired,
+    reload: load,
+    restart: start,
+    canFlush: () => !saving.value && state.value === 'ready',
+    flush: async () =>
+        JSON.stringify(flushPayload(new Set())) === flushBaseline ||
+        (await flushSave()),
+    // Nothing typed is kept when the lock is lost, least of all a secret.
+    onEnded: () => {
+        clearSecretInputs();
+        form.confirm_password = '';
+    },
+    onReloaded: () => announce(labels.reloaded, 'polite'),
 });
-const readOnly = computed(
-    () => editing.value && lock.mode !== 'off' && lock.mode !== 'holding',
-);
-
-let heartbeatTimer: ReturnType<typeof setInterval> | null = null;
-let pollTimer: ReturnType<typeof setInterval> | null = null;
-let takerToken: string | null = null;
-let beating = false;
-let polling = false;
-let flushing = false;
-
-function stopLockTimers(): void {
-    if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-    }
-
-    if (pollTimer) {
-        clearInterval(pollTimer);
-        pollTimer = null;
-    }
-}
-
-// What a save says about the lock; the server checks it against the lock itself and never trusts it.
-function claim(): LockClaim | null {
-    return lock.mode === 'holding' && lock.token && lock.epoch !== null
-        ? { epoch: lock.epoch, token: lock.token }
-        : null;
-}
 
 async function start(): Promise<void> {
     await load();
 
     if (state.value === 'ready' && editing.value && lock.mode === 'pending') {
         await acquire();
-    }
-}
-
-// The lock could not be asked: read-only until it can (the server would refuse a save without it anyway).
-async function retryAcquire(): Promise<void> {
-    lock.mode = 'pending';
-    await acquire();
-}
-
-async function acquire(): Promise<void> {
-    try {
-        applyHeld(await acquireLock(props.dataSourceId as string));
-    } catch (error) {
-        if (!authExpired(error)) {
-            lock.mode = 'unavailable';
-        }
-    }
-}
-
-function applyHeld(answer: LockAnswer): void {
-    if (!answer.enabled) {
-        stopLockTimers();
-        lock.mode = 'off';
-
-        return;
-    }
-
-    if (answer.status === 'granted') {
-        hold(answer);
-    } else if (answer.status === 'held') {
-        lock.holder = answer.holder;
-        lock.mode = 'blocked';
-    } else {
-        lock.mode = 'unavailable';
-    }
-}
-
-function hold(answer: Granted): void {
-    stopLockTimers();
-    lock.mode = 'holding';
-    lock.token = answer.token;
-    lock.epoch = answer.epoch;
-    lock.csrf = answer.csrf_token ?? lock.csrf;
-    lock.holder = null;
-    lock.ended = null;
-    // A heartbeat three times within the TTL, so one missed call does not lose the lock.
-    heartbeatTimer = setInterval(
-        () => void heartbeat(),
-        Math.max(1, Math.floor((answer.ttl_seconds * 1000) / 3)),
-    );
-}
-
-async function heartbeat(): Promise<void> {
-    const token = lock.token;
-
-    if (!token || beating) {
-        return;
-    }
-
-    beating = true;
-
-    try {
-        const answer = await heartbeatLock(props.dataSourceId as string, token);
-
-        if (lock.token !== token) {
-            return;
-        }
-
-        if (!answer.enabled) {
-            stopLockTimers();
-            lock.mode = 'off';
-        } else if (answer.status === 'taken_over') {
-            endLock(answer);
-        } else if (answer.status === 'lost') {
-            endLock(null);
-        } else if (answer.status === 'granted' && answer.flush_requested) {
-            await flush();
-        }
-    } catch (error) {
-        // A failed call is not a verdict: the next tick asks again.
-        authExpired(error);
-    } finally {
-        beating = false;
-    }
-}
-
-// The lock is gone: the form is read-only with the notice, and nothing typed is kept, least of all a secret.
-function endLock(answer: TakenOver | null): void {
-    stopLockTimers();
-    lock.token = null;
-    lock.epoch = null;
-    lock.mode = 'ended';
-    lock.ended = answer
-        ? {
-              by: answer.taken_over_by?.name ?? null,
-              at: answer.taken_over_by?.at ?? null,
-              saved: answer.flush_acknowledged,
-          }
-        : null;
-    clearSecretInputs();
-    form.confirm_password = '';
-}
-
-// Someone asked to take over: save what is valid and not secret, then say so. Nothing is acknowledged unless it was saved,
-// so a failed save leaves the taker to wait for the flush timeout rather than lose this tab's work silently.
-async function flush(): Promise<void> {
-    const token = lock.token;
-
-    if (flushing || saving.value || !token || state.value !== 'ready') {
-        return;
-    }
-
-    flushing = true;
-
-    try {
-        if (JSON.stringify(flushPayload(new Set())) !== flushBaseline) {
-            if (!(await flushSave())) {
-                return;
-            }
-        }
-
-        const answer = await acknowledgeFlush(
-            props.dataSourceId as string,
-            token,
-        );
-
-        if (answer.enabled && answer.status === 'taken_over') {
-            endLock(answer);
-        } else if (answer.enabled && answer.status === 'lost') {
-            endLock(null);
-        }
-    } catch (error) {
-        authExpired(error);
-    } finally {
-        flushing = false;
     }
 }
 
@@ -1720,171 +1550,6 @@ function flushPayload(invalid: Set<string>): DataSourceInput {
     return body;
 }
 
-async function takeOver(): Promise<void> {
-    if (lock.mode !== 'blocked') {
-        return;
-    }
-
-    lock.takeoverFailed = false;
-    lock.mode = 'waiting';
-
-    try {
-        const answer = await requestTakeover(props.dataSourceId as string);
-
-        if (!answer.enabled) {
-            lock.mode = 'off';
-            await load();
-        } else if (answer.status === 'granted') {
-            await becomeHolder(answer);
-        } else if (answer.status === 'waiting') {
-            takerToken = answer.token;
-            pollTimer = setInterval(() => void poll(), LOCK_POLL_MS);
-        } else {
-            applyHeld(answer);
-            lock.mode = 'blocked';
-        }
-    } catch (error) {
-        if (authExpired(error)) {
-            return;
-        }
-
-        lock.mode = 'blocked';
-        lock.takeoverFailed = true;
-    }
-}
-
-async function poll(): Promise<void> {
-    const token = takerToken;
-
-    if (!token || polling) {
-        return;
-    }
-
-    polling = true;
-
-    try {
-        const answer = await pollTakeover(props.dataSourceId as string, token);
-
-        if (takerToken !== token) {
-            return;
-        }
-
-        if (!answer.enabled) {
-            stopLockTimers();
-            takerToken = null;
-            lock.mode = 'off';
-            await load();
-        } else if (answer.status === 'granted') {
-            await becomeHolder(answer);
-        } else if (answer.status === 'held') {
-            stopLockTimers();
-            takerToken = null;
-            applyHeld(answer);
-        } else if (answer.status === 'free') {
-            // The holder let go: a poll never grants, so take the lock the ordinary way.
-            stopLockTimers();
-            takerToken = null;
-
-            const fresh = await acquireLock(props.dataSourceId as string);
-
-            if (fresh.enabled && fresh.status === 'granted') {
-                await becomeHolder(fresh);
-            } else {
-                applyHeld(fresh);
-            }
-        }
-    } catch (error) {
-        // A failed poll is asked again; only an ended session stops it.
-        authExpired(error);
-    } finally {
-        polling = false;
-    }
-}
-
-// The take-over completed: reload the Data Source (the holder's flush is in it) and edit.
-async function becomeHolder(answer: Granted): Promise<void> {
-    stopLockTimers();
-    takerToken = null;
-    await load();
-    hold(answer);
-    announce(labels.reloaded, 'polite');
-}
-
-// Closing the tab or leaving the page frees the lock (or withdraws a pending take-over) by beacon.
-// A page restored from the back-forward cache has no lock (it was released on pagehide): take it again.
-function onPageShow(event: PageTransitionEvent): void {
-    if (event.persisted && editing.value) {
-        stopLockTimers();
-        lock.token = null;
-        lock.epoch = null;
-        lock.mode = 'pending';
-        void start();
-    }
-}
-
-// Hidden tabs throttle timers, so a short TTL can pass unnoticed: ask at once when the tab is seen again.
-function onVisible(): void {
-    if (document.visibilityState === 'visible' && lock.mode === 'holding') {
-        void heartbeat();
-    }
-}
-
-function releaseNow(): void {
-    const id = props.dataSourceId;
-
-    if (!id) {
-        return;
-    }
-
-    const token = lock.mode === 'holding' ? lock.token : takerToken;
-
-    if (token) {
-        releaseLock(id, token, lock.csrf);
-
-        if (lock.mode === 'holding') {
-            lock.token = null;
-        }
-
-        takerToken = null;
-    }
-}
-
-const lockNotice = computed((): string | null => {
-    if (lock.mode === 'blocked' && lock.holder) {
-        return t('draft-locked', {
-            user: lock.holder.name,
-            time: formatTime(lock.holder.since),
-        });
-    }
-
-    if (lock.mode === 'unavailable') {
-        return editLockLabels.unavailable;
-    }
-
-    if (lock.mode === 'waiting') {
-        return editLockLabels.waiting(
-            lock.holder?.name ?? editLockLabels.someone,
-        );
-    }
-
-    if (lock.mode === 'ended') {
-        const ended = lock.ended;
-
-        if (!ended) {
-            return editLockLabels.lost;
-        }
-
-        const user = ended.by ?? editLockLabels.someone;
-        const time = ended.at ? formatTime(ended.at) : '';
-
-        return ended.saved
-            ? t('draft-taken-over', { user, time })
-            : editLockLabels.takenOverUnsaved(user, time);
-    }
-
-    return null;
-});
-
 // ---- Leaving with unsaved edits ------------------------------------------------------------------------------------
 
 const stopBefore = router.on('before', (event) => {
@@ -1934,19 +1599,11 @@ const stopRegistry = registerUnsavedForm({
 
 onMounted(() => {
     window.addEventListener('beforeunload', onBeforeUnload);
-    window.addEventListener('pagehide', releaseNow);
-    window.addEventListener('pageshow', onPageShow);
-    document.addEventListener('visibilitychange', onVisible);
     void start();
 });
 
 onBeforeUnmount(() => {
     window.removeEventListener('beforeunload', onBeforeUnload);
-    window.removeEventListener('pagehide', releaseNow);
-    window.removeEventListener('pageshow', onPageShow);
-    document.removeEventListener('visibilitychange', onVisible);
-    stopLockTimers();
-    releaseNow();
     checkController?.abort();
     tokenController?.abort();
     testController?.abort();
@@ -1994,58 +1651,15 @@ const ceilingHelper = (value: number | null): string | undefined =>
             current="settings"
         />
 
-        <section
-            v-if="lockNotice"
-            role="status"
-            aria-live="polite"
-            class="grid max-w-2xl gap-3"
-            :data-mode="lock.mode"
-            data-test="lock-banner"
-        >
-            <Banner :variant="lock.mode === 'blocked' ? 'info' : 'warning'">
-                <span data-test="lock-notice">{{ lockNotice }}</span>
-            </Banner>
-            <div
-                v-if="
-                    lock.mode === 'blocked' ||
-                    lock.mode === 'ended' ||
-                    lock.mode === 'unavailable'
-                "
-                class="flex flex-wrap items-center gap-3"
-            >
-                <Button
-                    v-if="lock.mode === 'blocked'"
-                    type="button"
-                    variant="secondary"
-                    data-test="take-over"
-                    @click="takeOver"
-                >
-                    {{ editLockLabels.takeOver }}
-                </Button>
-                <Button
-                    v-if="lock.mode === 'unavailable'"
-                    type="button"
-                    variant="secondary"
-                    data-test="lock-retry"
-                    @click="retryAcquire"
-                >
-                    {{ editLockLabels.retry }}
-                </Button>
-                <Button as-child variant="secondary">
-                    <Link :href="index().url" data-test="lock-close">{{
-                        editLockLabels.close
-                    }}</Link>
-                </Button>
-            </div>
-            <p
-                v-if="lock.takeoverFailed"
-                role="alert"
-                class="type-body-sm text-error-text"
-                data-test="takeover-failed"
-            >
-                {{ editLockLabels.takeOverFailed }}
-            </p>
-        </section>
+        <EditLockBanner
+            :mode="lock.mode"
+            :notice="lockNotice"
+            :takeover-failed="lock.takeoverFailed"
+            :labels="editLockLabels"
+            :close-href="index().url"
+            @take-over="takeOver"
+            @retry="retryAcquire"
+        />
 
         <p
             v-if="state === 'forbidden'"

@@ -100,22 +100,25 @@ beforeEach(() => {
     replies = [];
     vi.stubGlobal(
         'fetch',
-        vi.fn(async (url: string, init?: { method?: string }) => {
-            calls.push({ url, method: init?.method ?? 'GET' });
-            const next = replies.shift();
+        vi.fn(
+            async (url: string, init?: { method?: string; body?: string }) => {
+                calls.push({ url, method: init?.method ?? 'GET' });
+                bodies.push(init?.body ?? null);
+                const next = replies.shift();
 
-            if (!next) {
-                throw new Error(`unexpected request ${url}`);
-            }
+                if (!next) {
+                    throw new Error(`unexpected request ${url}`);
+                }
 
-            const reply = await next;
+                const reply = await next;
 
-            return {
-                ok: reply.ok,
-                status: reply.status,
-                json: async () => reply.json,
-            };
-        }),
+                return {
+                    ok: reply.ok,
+                    status: reply.status,
+                    json: async () => reply.json,
+                };
+            },
+        ),
     );
 });
 
@@ -127,6 +130,8 @@ afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
 });
+
+const bodies: Array<string | null> = [];
 
 describe('Draft blocks list', () => {
     it('shows 5 skeleton rows while loading', async () => {
@@ -310,6 +315,67 @@ describe('Discarding a Draft', () => {
         expect($$('[data-slot="data-row"]')).toHaveLength(1);
         expect($('[data-slot="data-row"]')?.textContent).toContain('Headcount');
         expect($('[role="alertdialog"]')).toBeNull();
+    });
+
+    it('takes the soft lock for the moment when the server asks for the claim, and discards with its token and epoch', async () => {
+        replies = [ok(list([draft()]))];
+        await mountPage();
+
+        bodies.length = 0;
+        replies = [
+            refused(423, { error: { code: 'platform.edit_lock_lost' } }),
+            ok({
+                data: {
+                    enabled: true,
+                    status: 'granted',
+                    token: 'tok-9',
+                    epoch: 1,
+                    ttl_seconds: 30,
+                    flush_requested: false,
+                },
+            }),
+            ok({ data: { draft_id: 'd-1', state: 'discarded' } }),
+            ok(list([])),
+        ];
+        await click($('[data-test="discard"]'));
+        const confirm = Array.from(
+            $('[role="alertdialog"]')?.querySelectorAll('button') ?? [],
+        ).find((b) => b.textContent?.includes(labels.discard + ' '));
+        await click(confirm ?? null);
+
+        expect(calls.slice(1, 4).map((c) => `${c.method} ${c.url}`)).toEqual([
+            'DELETE /api/v1/admin/blocks/drafts/d-1',
+            'POST /api/v1/admin/blocks/drafts/d-1/lock',
+            'DELETE /api/v1/admin/blocks/drafts/d-1',
+        ]);
+        expect(JSON.parse(bodies[2] ?? '{}')).toEqual({
+            lock_token: 'tok-9',
+            lock_epoch: 1,
+        });
+    });
+
+    it('keeps the row when someone else holds the lock', async () => {
+        replies = [ok(list([draft()]))];
+        await mountPage();
+
+        replies = [
+            refused(423, { error: { code: 'platform.edit_lock_lost' } }),
+            ok({
+                data: {
+                    enabled: true,
+                    status: 'held',
+                    holder: { name: 'Ada', since: '2026-10-09T09:00:00Z' },
+                },
+            }),
+        ];
+        await click($('[data-test="discard"]'));
+        const confirm = Array.from(
+            $('[role="alertdialog"]')?.querySelectorAll('button') ?? [],
+        ).find((b) => b.textContent?.includes(labels.discard + ' '));
+        await click(confirm ?? null);
+
+        expect($$('[data-slot="data-row"]')).toHaveLength(1);
+        expect(useToasts().items).toHaveLength(1);
     });
 
     it('tells the person when the Draft was already gone and reloads', async () => {

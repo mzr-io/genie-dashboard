@@ -39,19 +39,23 @@ interface Drafts
      *
      * @param  array<mixed>|null  $config
      * @param  array<mixed>|null  $uiState  the wizard's own state (Story 3.5), stored in `draft_ui_state.state`; never part of the version's config
+     * @param  (\Closure(): bool)|null  $holdsLock  checks, inside the transaction, that the caller's lock token still holds the soft lock (Story 3.6)
      *
      * @throws DraftNotFound the Draft does not exist or was discarded
      * @throws DraftPublished the version is no longer a Draft (it was published)
-     * @throws DraftLockLost the epoch is stale
+     * @throws DraftLockLost the epoch is stale or the token does not hold the lock
      * @throws DraftRevisionConflict the revision is stale
      * @throws InvalidDraft an unknown Block Type or category, or a config outside the limits
      */
-    public function save(DraftActor $actor, string $draftId, string $name, ?string $type, int $revision, int $lockEpoch, ?array $config = null, ?int $step = null, ?string $categoryId = null, ?array $uiState = null): Draft;
+    public function save(DraftActor $actor, string $draftId, string $name, ?string $type, int $revision, int $lockEpoch, ?array $config = null, ?int $step = null, ?string $categoryId = null, ?array $uiState = null, ?\Closure $holdsLock = null): Draft;
 
     /**
      * Marks the Draft discarded and audits it; the rows are deleted later by the `maintenance` worker.
      *
+     * @param  (\Closure(): bool)|null  $holdsLock  checks, inside the transaction, that the caller's lock token still holds the soft lock
+     *
      * @throws DraftNotFound the Draft does not exist or is already discarded
+     * @throws DraftLockLost the epoch is stale or the token does not hold the lock
      */
-    public function discard(DraftActor $actor, string $draftId): void;
+    public function discard(DraftActor $actor, string $draftId, ?int $lockEpoch = null, ?\Closure $holdsLock = null): void;
 }

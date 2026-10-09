@@ -307,3 +307,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-5-autosave-continuously-and-recover-from-expiry-offline-and-save-failure.md`
   summary: Add tests for beforeunload guard and owner-mismatch drop in readPending; consider autosave retry after failure and stashing on 404 while dirty
   evidence: Verification-gap and edge-case reviews; no test dispatches beforeunload.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-6-soft-lock-a-draft-and-take-over-editing.md`
+  summary: Idle holder suspends heartbeats so a take-over flush request never reaches it, and a slow flush holds the heartbeat guard so the lock can lapse mid-flush
+  evidence: Review edge-case and blind hunters; useEditLock activityGated/beating logic. Unverified severity medium.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-6-soft-lock-a-draft-and-take-over-editing.md`
+  summary: Lock UI polish: focus move to banner when lock is lost, form aria-label landmark, read-only for wizard steps 2-5 and stepper, ttl_seconds guard, shared limiter/route factory, DataSourceError coupling
+  evidence: Review blind hunter; steps 2-5 do not exist yet (3.7+), the rest is cosmetic or structural.

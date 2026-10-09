@@ -132,14 +132,14 @@ final class ManageDrafts implements Drafts
         });
     }
 
-    public function save(DraftActor $actor, string $draftId, string $name, ?string $type, int $revision, int $lockEpoch, ?array $config = null, ?int $step = null, ?string $categoryId = null, ?array $uiState = null): Draft
+    public function save(DraftActor $actor, string $draftId, string $name, ?string $type, int $revision, int $lockEpoch, ?array $config = null, ?int $step = null, ?string $categoryId = null, ?array $uiState = null, ?\Closure $holdsLock = null): Draft
     {
-        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $name, $type, $revision, $lockEpoch, $config, $step, $categoryId, $uiState): Draft {
+        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $name, $type, $revision, $lockEpoch, $config, $step, $categoryId, $uiState, $holdsLock): Draft {
             // With the stored config, so a 409 or 423 body shows the real document.
             $before = $this->fetch($actor->workspaceId, $draftId, true, true) ?? throw $this->notADraft($actor->workspaceId, $draftId);
 
             // The edit lock first, as on the Data Source form: a take-over saves the holder's work and so raises the revision as well.
-            if ($before->lockEpoch !== $lockEpoch) {
+            if ($before->lockEpoch !== $lockEpoch || ($holdsLock !== null && $holdsLock() !== true)) {
                 throw new DraftLockLost($before);
             }
 
@@ -228,10 +228,15 @@ final class ManageDrafts implements Drafts
         }
     }
 
-    public function discard(DraftActor $actor, string $draftId): void
+    public function discard(DraftActor $actor, string $draftId, ?int $lockEpoch = null, ?\Closure $holdsLock = null): void
     {
-        $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId): void {
+        $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $lockEpoch, $holdsLock): void {
             $draft = $this->fetch($actor->workspaceId, $draftId, true) ?? throw new DraftNotFound;
+
+            // The same edit-lock claim as a save: a discard by a non-holder or with a stale epoch changes nothing.
+            if (($lockEpoch !== null && $draft->lockEpoch !== $lockEpoch) || ($holdsLock !== null && $holdsLock() !== true)) {
+                throw new DraftLockLost($draft);
+            }
 
             DB::update(
                 "update block_versions set state = 'discarded', discarded_at = ?, updated_at = ? where workspace_id = ? and id = ? and state = 'draft'",

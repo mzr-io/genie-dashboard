@@ -29,7 +29,7 @@ final class RejectsSecretValues
             throw new \InvalidArgumentException('RejectsSecretValues takes the module connector or blocks.');
         }
 
-        if (self::containsSecretValue($request->all())) {
+        if (self::containsSecretValue($request->all(), 0, $module === 'blocks')) {
             $code = $module === 'blocks' ? BlocksErrorCode::SecretValuesRefused : ErrorCode::SecretValuesRefused;
 
             return AdminApiError::json($request, $code->value, 422, 'This request cannot carry a secret value.', extra: ['reason' => 'secret-values-refused']);
@@ -39,7 +39,7 @@ final class RejectsSecretValues
     }
 
     /** Whether any field, at any depth, is a secret-valued one. */
-    public static function containsSecretValue(mixed $value, int $depth = 0): bool
+    public static function containsSecretValue(mixed $value, int $depth = 0, bool $allowLockToken = false): bool
     {
         if (! is_array($value)) {
             return false;
@@ -55,11 +55,16 @@ final class RejectsSecretValues
         }
 
         foreach ($value as $name => $inner) {
+            // The soft lock's per-tab token (Story 3.6) is a random identifier, not a credential: it rides a Draft save at the top level only, and only on the `blocks` profile.
+            if ($allowLockToken && $depth === 0 && $name === 'lock_token' && is_string($inner) && strlen($inner) <= 128) {
+                continue;
+            }
+
             if (is_string($name) && $name !== 'secret' && self::isSecretName($name) && $inner !== null && $inner !== '' && $inner !== [] && ! is_bool($inner)) {
                 return true;
             }
 
-            if (self::containsSecretValue($inner, $depth + 1)) {
+            if (self::containsSecretValue($inner, $depth + 1, $allowLockToken)) {
                 return true;
             }
         }

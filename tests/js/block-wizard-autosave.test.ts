@@ -158,6 +158,15 @@ beforeEach(() => {
     vi.stubGlobal(
         'fetch',
         vi.fn(async (url: string, init?: any) => {
+            // The soft lock (Story 3.6) is off in these tests; block-wizard-lock.test.ts covers it.
+            if (/\/lock(\/|$)/.test(url)) {
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => ({ data: { enabled: false } }),
+                };
+            }
+
             calls.push({
                 url,
                 method: init?.method ?? 'GET',

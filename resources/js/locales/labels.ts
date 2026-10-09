@@ -876,7 +876,8 @@ export const blockWizardLabels = {
     retry: 'Retry',
     conflict:
         'This draft was changed somewhere else. Reload the page to see the latest version.',
-    lockLost: 'Someone else is now editing this draft. Reload the page.',
+    // After a take-over: the wizard shows the holder's last saved version.
+    reloaded: 'Showing the latest saved version of this draft.',
     notReady: 'Finish the earlier steps first.',
     // Autosave and recovery (Story 3.5). `offline-editing`, `save-failed.draft`, `unsaved-changes` and `session-expired` come from the catalogue.
     retrySave: 'Retry',
@@ -1645,6 +1646,32 @@ export const editLockLabels = {
         "We couldn't check whether someone else is editing this data source, so it is read-only for now.",
     retry: 'Try again',
 } as const;
+
+// The wording the soft lock's banner and composable need, so a resource can word it its own way.
+export type EditLockLabelSet = {
+    takeOver: string;
+    close: string;
+    waiting: (name: string) => string;
+    takenOverUnsaved: (name: string, time: string) => string;
+    lost: string;
+    takeOverFailed: string;
+    readOnly: string;
+    someone: string;
+    unavailable: string;
+    retry: string;
+};
+
+// The same banner on a Draft block (Story 3.6): draft-specific wording for what a Data source's says about "this form". `draft-locked` and
+// `draft-taken-over` come from the catalogue.
+export const draftLockLabels: EditLockLabelSet = {
+    ...editLockLabels,
+    waiting: (name: string) =>
+        `Waiting for ${name} to save their changes. This draft becomes editable as soon as they have.`,
+    lost: 'You no longer hold the edit lock on this draft, so your latest changes were not saved. Reload the page to edit again.',
+    readOnly: 'This draft is read-only while someone else is editing it.',
+    unavailable:
+        "We couldn't check whether someone else is editing this draft, so it is read-only for now.",
+};
 
 // Units of a size for people (Story 2.6), smallest first, 1024 apart.
 export const byteUnitLabels = ['B', 'KB', 'MB', 'GB', 'TB'] as const;

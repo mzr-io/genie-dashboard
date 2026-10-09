@@ -1,3 +1,5 @@
+import { lockClient } from '@/lib/editLock';
+import type { LockAnswer } from '@/lib/editLock';
 import { xsrfToken } from '@/lib/session';
 
 // Client of the Draft blocks API (Story 3.3): `/api/v1/admin/blocks/drafts`. The server owns every rule; the list page reads the
@@ -49,6 +51,7 @@ async function call(
     method: 'GET' | 'DELETE',
     path: string,
     signal?: AbortSignal,
+    payload?: unknown,
 ): Promise<unknown> {
     let response: Response;
 
@@ -61,7 +64,11 @@ async function call(
                 Accept: 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
                 ...(method === 'GET' ? {} : { 'X-XSRF-TOKEN': xsrfToken() }),
+                ...(payload === undefined
+                    ? {}
+                    : { 'Content-Type': 'application/json' }),
             },
+            ...(payload === undefined ? {} : { body: JSON.stringify(payload) }),
         });
     } catch (error) {
         if (signal?.aborted) {
@@ -112,8 +119,44 @@ export async function fetchDraftBlocks(
 }
 
 // Discards a Draft: the server hides it at once; its rows are deleted afterwards.
+// With the soft lock on (Story 3.6) the server refuses a discard that does not carry the lock claim (423): the list takes the lock for
+// the moment, discards with its token and epoch, and lets go. A Draft someone else is editing stays (the 423 is rethrown).
 export async function discardDraftBlock(id: string): Promise<void> {
-    await call('DELETE', `${DRAFT_BLOCKS_URL}/${encodeURIComponent(id)}`);
+    const url = `${DRAFT_BLOCKS_URL}/${encodeURIComponent(id)}`;
+
+    try {
+        await call('DELETE', url);
+
+        return;
+    } catch (error) {
+        if (!(error instanceof DraftBlockError) || error.status !== 423) {
+            throw error;
+        }
+    }
+
+    const client = lockClient(DRAFT_BLOCKS_URL);
+    let answer: LockAnswer;
+
+    try {
+        answer = await client.acquire(id);
+    } catch {
+        throw new DraftBlockError(423);
+    }
+
+    if (!answer.enabled || answer.status !== 'granted') {
+        throw new DraftBlockError(423);
+    }
+
+    try {
+        await call('DELETE', url, undefined, {
+            lock_token: answer.token,
+            lock_epoch: answer.epoch,
+        });
+    } catch (error) {
+        client.release(id, answer.token, answer.csrf_token ?? null);
+
+        throw error;
+    }
 }
 
 // The wizard address of a Draft, opened at its step. Built from the ID as text, never from markup.

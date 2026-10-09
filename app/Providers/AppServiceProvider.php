@@ -255,6 +255,7 @@ class AppServiceProvider extends ServiceProvider
         // The Data source soft lock (Story 2.8) has its own bucket, per person: several tabs polling and heartbeating once a
         // second must not exhaust it, and exhausting it must not throttle anything else.
         RateLimiter::for('data-source-lock', fn (Request $request): Limit => Limit::perMinute(600)->by('data-source-lock|'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+        RateLimiter::for('draft-lock', fn (Request $request): Limit => Limit::perMinute(600)->by('draft-lock|'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
 
         // Each module registers its audit allowlist with the kernel (the kernel calls no module).
         $serializers = $this->app->make(AuditSerializers::class);
@@ -272,7 +273,7 @@ class AppServiceProvider extends ServiceProvider
 
         // Each module registers the lockable resources it owns with the kernel's edit lock (the kernel calls no module).
         $this->app->make(EditLockResources::class)->register(DataSourceLockEpochs::TYPE, new DataSourceLockEpochs);
-        // A Draft block's epoch (Story 3.3); the lock endpoints themselves come with Story 3.6.
+        // A Draft block's epoch (Story 3.3); its lock endpoints are `DraftLockController` (Story 3.6).
         $this->app->make(EditLockResources::class)->register(DraftLockEpochs::TYPE, new DraftLockEpochs);
 
         // Each module registers its Operation kinds with the kernel (the kernel calls no module). A connection test runs on
