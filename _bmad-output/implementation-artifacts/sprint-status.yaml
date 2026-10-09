@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-06-2026 11:46
-last_updated: 10-09-2026 14:30
+last_updated: 10-09-2026 15:30
 project: rmg-dashboard-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -88,7 +88,7 @@ development_status:
 
   epic-3: in-progress
   3-1-register-the-block-type-contract-v1-and-the-kpi-card-package: review
-  3-2-see-the-kpi-card-in-every-state-rendered-safely-and-exactly: backlog
+  3-2-see-the-kpi-card-in-every-state-rendered-safely-and-exactly: review
   3-3-start-save-and-discard-a-draft-block: backlog
   3-4-configure-block-step-1-with-a-live-preview: backlog
   3-5-autosave-continuously-and-recover-from-expiry-offline-and-sa: backlog

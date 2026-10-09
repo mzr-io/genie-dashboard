@@ -17,6 +17,9 @@ const state = shallowRef<Formatting>({
     timeZone: undefined,
 });
 
+// Whether the person saved a locale at all, so a workspace locale can stand in for a missing choice (Story 3.2).
+const userChoseLocale = shallowRef(false);
+
 function usableLocale(locale: string | null | undefined): string {
     if (!locale) {
         return DEFAULT_LOCALE;
@@ -50,6 +53,8 @@ export function configureFormatting(profile: {
     locale?: string | null;
     timeZone?: string | null;
 }): void {
+    userChoseLocale.value = Boolean(profile.locale);
+
     const next: Formatting = {
         locale: usableLocale(profile.locale),
         timeZone: usableTimeZone(profile.timeZone),
@@ -65,6 +70,15 @@ export function configureFormatting(profile: {
 
 export function currentFormatting(): Formatting {
     return state.value;
+}
+
+// The locale chain: the person's saved locale, then the workspace's, then the catalogue default.
+export function resolveLocale(workspaceLocale?: string | null): string {
+    if (userChoseLocale.value) {
+        return state.value.locale;
+    }
+
+    return usableLocale(workspaceLocale);
 }
 
 // A plain decimal, with an optional sign and exponent: the only strings that are formatted.
@@ -85,12 +99,13 @@ const LOSSLESS_DIGITS = 100;
 export function formatNumber(
     value: string | number | bigint,
     options: Intl.NumberFormatOptions = {},
+    localeOverride?: string,
 ): string {
     if (!readable(value)) {
         return '';
     }
 
-    const { locale } = state.value;
+    const locale = localeOverride ?? state.value.locale;
     const input = typeof value === 'string' ? value.trim() : value;
 
     return new Intl.NumberFormat(locale, {
@@ -103,9 +118,14 @@ export function formatCurrency(
     value: string | number | bigint,
     currency: string,
     options: Intl.NumberFormatOptions = {},
+    localeOverride?: string,
 ): string {
     try {
-        return formatNumber(value, { style: 'currency', currency, ...options });
+        return formatNumber(
+            value,
+            { style: 'currency', currency, ...options },
+            localeOverride,
+        );
     } catch {
         // An unknown currency code is not guessed at.
         return '';
@@ -124,6 +144,7 @@ function toDate(value: string | number | Date): Date | null {
 export function formatDate(
     value: string | number | Date,
     options: Intl.DateTimeFormatOptions = { dateStyle: 'medium' },
+    localeOverride?: string,
 ): string {
     const date = toDate(value);
 
@@ -133,7 +154,7 @@ export function formatDate(
 
     // A date without a time ("2026-10-07") names a calendar day, not an instant: it stays that day everywhere.
     const dayOnly = typeof value === 'string' && DATE_ONLY.test(value.trim());
-    const { locale } = state.value;
+    const locale = localeOverride ?? state.value.locale;
     const timeZone = dayOnly ? 'UTC' : state.value.timeZone;
 
     return new Intl.DateTimeFormat(locale, { ...options, timeZone }).format(
@@ -147,8 +168,74 @@ export function formatDateTime(
         dateStyle: 'medium',
         timeStyle: 'short',
     },
+    localeOverride?: string,
 ): string {
-    return formatDate(value, options);
+    return formatDate(value, options, localeOverride);
+}
+
+// "3 hours ago" / "in 2 days": the largest whole unit between `value` and `now`. "" for an unparsable date.
+export function formatRelativeTime(
+    value: string | number | Date,
+    now: Date = new Date(),
+    localeOverride?: string,
+): string {
+    const date = toDate(value);
+
+    if (date === null) {
+        return '';
+    }
+
+    const seconds = Math.round((date.getTime() - now.getTime()) / 1000);
+    const steps: [Intl.RelativeTimeFormatUnit, number][] = [
+        ['year', 31536000],
+        ['month', 2592000],
+        ['day', 86400],
+        ['hour', 3600],
+        ['minute', 60],
+    ];
+    const [unit, size] = steps.find(([, s]) => Math.abs(seconds) >= s) ?? [
+        'second',
+        1,
+    ];
+
+    return new Intl.RelativeTimeFormat(localeOverride ?? state.value.locale, {
+        numeric: 'auto',
+    }).format(Math.trunc(seconds / size), unit);
+}
+
+// A length of time given in whole seconds (a decimal string), as "1 hr 5 min 3 sec". "" when it is not a number of seconds.
+export function formatDuration(
+    seconds: string,
+    localeOverride?: string,
+): string {
+    if (!/^\d+(\.\d*)?$/.test(seconds.trim())) {
+        return '';
+    }
+
+    let rest = BigInt(seconds.trim().split('.')[0]);
+    const locale = localeOverride ?? state.value.locale;
+    const parts: string[] = [];
+
+    for (const [unit, size] of [
+        ['hour', 3600n],
+        ['minute', 60n],
+        ['second', 1n],
+    ] as const) {
+        const count = rest / size;
+        rest %= size;
+
+        if (count > 0n || (unit === 'second' && parts.length === 0)) {
+            parts.push(
+                formatNumber(
+                    count,
+                    { style: 'unit', unit, unitDisplay: 'short' },
+                    locale,
+                ),
+            );
+        }
+    }
+
+    return parts.join(' ');
 }
 
 // A size for people (Story 2.6): 1024-based steps, one fraction digit at most, the unit from `labels.ts`.

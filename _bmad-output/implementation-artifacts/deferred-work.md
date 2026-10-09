@@ -282,3 +282,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-1-register-the-block-type-contract-v1-and-the-kpi-card-package.md`
   summary: Verify each package's Shaper class autoloads under its `BlockTypes\<Key>\V<N>` namespace and exposes `shape()`.
   evidence: The registry only checks that Shaper.php exists; a namespace mismatch passes boot and fails at shaping time. Shaper is a stub until Story 3.2.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-2-see-the-kpi-card-in-every-state-rendered-safely-and-exactly.md`
+  summary: Add a shared Shaper-output fixture asserted in Pest and mounted in Vitest, and generate payload/descriptor types from schema.json instead of hand-writing payload.ts.
+  evidence: PHP Shaper keys and payload.ts can drift with both suites green; enums are duplicated in Shaper, payload.ts and display.ts. Also the `icon` slot renders as literal text until icons are mapped.

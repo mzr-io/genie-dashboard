@@ -124,6 +124,7 @@
         "resources/js/**/*.d.ts",
         "resources/js/**/*.tsx",
         "resources/js/**/*.vue",
-        "block-types/**/*.vue"
+        "block-types/**/*.vue",
+        "block-types/**/*.ts"
     ]
 }

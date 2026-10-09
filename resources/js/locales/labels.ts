@@ -32,6 +32,37 @@ export const controlLabels = {
     sortBy: (column: string) => `Sort by ${column}`,
 } as const;
 
+// Labels of the kpi-card Block Type's renderer (Story 3.2). The canonical catalogue is closed, so the card's own copy lives here.
+export const kpiCardLabels = {
+    fallbackTitle: 'KPI card',
+    noChange: 'No change',
+    better: '· better',
+    worse: '· worse',
+    empty: 'No data to show yet.',
+    errorMessage: "This block couldn't load.",
+    headlineField: 'Headline value',
+    up: 'Up',
+    down: 'Down',
+    flat: 'No change',
+    betterSpoken: 'better',
+    worseSpoken: 'worse',
+    favourableSpoken: 'favourable',
+    unfavourableSpoken: 'unfavourable',
+    staleGeneric: 'Stale: last update time unknown',
+    // "Up 12.5% vs last month, better"
+    deltaSpoken: (
+        direction: string,
+        value: string,
+        label: string | null,
+        judgement: string | null,
+    ) =>
+        [
+            value === '' ? direction : `${direction} ${value}`,
+            label ? ` ${label}` : '',
+            judgement ? `, ${judgement}` : '',
+        ].join(''),
+} as const;
+
 // Labels of dialogs, toasts, banners and landmarks (Story 1.9). Buttons repeat across screens,
 // so they live here once.
 export const overlayLabels = {
