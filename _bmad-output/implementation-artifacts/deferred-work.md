@@ -328,3 +328,13 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-8-paste-sample-json-and-inspect-it-with-exact-numbers.md`
   summary: Audit event (metadata only) for storing/erasing a personal-data sample; map 409/404 on store to dedicated client messages; ignore stale restore responses; replace Go-to-line string splitting with a structured message
   evidence: Review hunters; spec allowed no audit, other items low impact.
+
+- source_spec: `spec-3-9-fetch-a-sample-from-the-api.md`
+  summary: Concurrent Draft fetches can overwrite each other, and `sample_revision` restarts at 1 after a purge.
+  evidence: storeFetched checks only the lock epoch; the preview cache of Story 3.10 keys on (Draft, sample_revision). Unverified.
+- source_spec: `spec-3-9-fetch-a-sample-from-the-api.md`
+  summary: Add tests for `fetchBodyOf`/`stepGate` date mapping, 401/419 `auth-error`, PollTimeout card, and a 409 for a published Draft fetch.
+  evidence: Verification-gap review found no existing coverage; paths mirror the paste flow.
+- source_spec: `spec-3-9-fetch-a-sample-from-the-api.md`
+  summary: Draft fetch writes no audit event, and `bindings.*` validation skips dotted parameter names.
+  evidence: Reviewer findings; not exercised by the current acceptance criteria.

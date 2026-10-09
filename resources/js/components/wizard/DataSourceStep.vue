@@ -18,6 +18,7 @@ import {
     customRangeError,
     endpointOf,
     endpointText,
+    fetchBodyOf,
     isSharedData,
     paramRows,
     refreshText,
@@ -81,10 +82,15 @@ const shared = computed(() => isSharedData(chosenEndpoint.value));
 const noSources = computed(
     () => props.catalog.sources !== null && props.catalog.sources.length === 0,
 );
-// Fetch is built in Story 3.9: until then it is always blocked, with the form's own reason first.
-const fetchReason = computed(
-    () => props.gate.fetch ?? props.alsoBlocked ?? labels.fetchSoon,
+// Why Fetch cannot run (Story 3.9): the form's own reason first, then offline (`offline-editing`); the sample section adds the lock and the
+// acknowledgement.
+const fetchReason = computed(() => props.gate.fetch ?? props.alsoBlocked);
+const sourceName = computed(
+    () => chosenSource.value?.name ?? labels.dataSource,
 );
+// What the request is now: the page-level form, read when Fetch is activated.
+const currentKey = computed(() => requestKey(source.value));
+const fetchBody = () => fetchBodyOf(source.value, props.form.display.period);
 const rangeError = computed(() => customRangeError(source.value));
 const liveCapable = computed(() => chosenSource.value?.live_capable === true);
 
@@ -109,6 +115,14 @@ watch(
 function sampleAccepted(): void {
     source.value.outOfDate = false;
     emit('change');
+}
+
+// A fetch stored a sample (Story 3.9). It clears the out-of-date mark only when it was taken with the current parameters.
+function sampleFetched(current: boolean): void {
+    if (current) {
+        source.value.outOfDate = false;
+        emit('change');
+    }
 }
 
 // Applies an edit and, when it changed what the request is, marks the sample out of date.
@@ -733,7 +747,11 @@ const sourceLabel = (s: { name: string; health: string }) =>
             :also-blocked="alsoBlocked"
             :fetch-reason="fetchReason"
             :out-of-date="source.outOfDate"
+            :fetch-body="fetchBody"
+            :request-key="currentKey"
+            :source-name="sourceName"
             @accepted="sampleAccepted"
+            @fetched="sampleFetched"
             @auth-error="(error) => emit('auth-error', error)"
         />
     </div>

@@ -26,7 +26,7 @@ use Illuminate\Support\Str;
 use Throwable;
 
 /**
- * Pasted samples of Drafts (Story 3.8), in the Workspace's transaction under row-level security.
+ * Pasted and fetched samples of Drafts (Stories 3.8, 3.9), in the Workspace's transaction under row-level security.
  *
  * {@see self::check()} applies the platform's two `pending_input` limits (the byte ceiling `tunables.guards.max_bytes` and the depth
  * limit `tunables.guards.depth_limit`, the same ones Story 2.6 applies to a fetch) and reads the text with {@see LosslessJson}, which keeps
@@ -92,7 +92,24 @@ final class ManageDraftSamples implements DraftSamples
 
     public function store(DraftActor $actor, string $draftId, string $text, bool $containsPersonalData, int $lockEpoch, ?\Closure $holdsLock = null): StoredSample
     {
-        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $text, $containsPersonalData, $lockEpoch, $holdsLock): StoredSample {
+        return $this->write($actor, $draftId, $text, $containsPersonalData, $lockEpoch, $holdsLock, null);
+    }
+
+    public function storeFetched(DraftActor $actor, string $draftId, string $text, int $lockEpoch, int $status, int $latencyMs, string $requestKey): StoredSample
+    {
+        // The Admin acknowledged the personal-data notice when the fetch was started: it is required there, before anything is queued.
+        return $this->write($actor, $draftId, $text, true, $lockEpoch, null, ['status' => $status, 'latency_ms' => $latencyMs, 'request_key' => $requestKey]);
+    }
+
+    /**
+     * One writer for both origins: the Draft's row lock, the lock epoch (and the lock claim of a paste), the acknowledgement, the limits, the TTL, the sealing and
+     * the replacement in place, which raises `sample_revision`. `$fetch` is set for a fetched sample.
+     *
+     * @param  array{status: int, latency_ms: int, request_key: string}|null  $fetch
+     */
+    private function write(DraftActor $actor, string $draftId, string $text, bool $containsPersonalData, int $lockEpoch, ?\Closure $holdsLock, ?array $fetch): StoredSample
+    {
+        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $text, $containsPersonalData, $lockEpoch, $holdsLock, $fetch): StoredSample {
             $row = Str::isUuid($draftId)
                 ? DB::selectOne("select id, lock_epoch from block_versions where workspace_id = ? and id = ? and state = 'draft' for update", [$actor->workspaceId, strtolower($draftId)])
                 : null;
@@ -123,16 +140,24 @@ final class ManageDraftSamples implements DraftSamples
             $now = Carbon::now('UTC');
             $expires = $now->copy()->addSeconds($ttl);
 
-            // One row per Draft: the unique index on the version is the conflict target, and a new paste takes the place of the old one.
-            DB::statement(
-                'insert into draft_samples (id, workspace_id, block_version_id, source, body, size_bytes, created_at, expires_at, contains_personal_data, created_by_membership_id) '
-                .'values (?, ?, ?, ?, ?, ?, ?, ?, true, ?) '
+            // One row per Draft: the unique index on the version is the conflict target, and a new sample takes the place of the old one.
+            $stored = DB::selectOne(
+                'insert into draft_samples (id, workspace_id, block_version_id, source, body, size_bytes, created_at, expires_at, contains_personal_data, created_by_membership_id, request_key, fetch_status, fetch_latency_ms) '
+                .'values (?, ?, ?, ?, ?, ?, ?, ?, true, ?, ?, ?, ?) '
                 .'on conflict (block_version_id) do update set source = excluded.source, body = excluded.body, size_bytes = excluded.size_bytes, '
-                .'created_at = excluded.created_at, expires_at = excluded.expires_at, contains_personal_data = excluded.contains_personal_data, created_by_membership_id = excluded.created_by_membership_id',
-                [(string) Str::uuid7(), $actor->workspaceId, $id, 'paste', $sealed, strlen($text), self::stamp($now), self::stamp($expires), $actor->membershipId],
+                .'created_at = excluded.created_at, expires_at = excluded.expires_at, contains_personal_data = excluded.contains_personal_data, created_by_membership_id = excluded.created_by_membership_id, '
+                .'request_key = excluded.request_key, fetch_status = excluded.fetch_status, fetch_latency_ms = excluded.fetch_latency_ms, sample_revision = draft_samples.sample_revision + 1 '
+                .'returning sample_revision',
+                [
+                    (string) Str::uuid7(), $actor->workspaceId, $id, $fetch === null ? 'paste' : 'fetch', $sealed, strlen($text), self::stamp($now), self::stamp($expires), $actor->membershipId,
+                    $fetch['request_key'] ?? null, $fetch['status'] ?? null, $fetch['latency_ms'] ?? null,
+                ],
             );
 
-            return new StoredSample($text, self::ORIGIN, strlen($text), $now->format('Y-m-d\TH:i:s\Z'), $expires->format('Y-m-d\TH:i:s\Z'), true, $check);
+            return new StoredSample(
+                $text, $fetch === null ? self::ORIGIN : self::ORIGIN_FETCHED, strlen($text), $now->format('Y-m-d\TH:i:s\Z'), $expires->format('Y-m-d\TH:i:s\Z'), true, $check,
+                (int) ($stored->sample_revision ?? 1), $fetch['request_key'] ?? null, $fetch['status'] ?? null, $fetch['latency_ms'] ?? null,
+            );
         });
     }
 
@@ -149,7 +174,7 @@ final class ManageDraftSamples implements DraftSamples
 
             $id = strtolower((string) $draft->id);
             $row = DB::selectOne(
-                "select body, source, size_bytes, contains_personal_data, to_char(created_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') as pasted_at, "
+                "select body, source, size_bytes, contains_personal_data, sample_revision, request_key, fetch_status, fetch_latency_ms, to_char(created_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') as pasted_at, "
                 ."to_char(expires_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') as ends_at "
                 .'from draft_samples where workspace_id = ? and block_version_id = ? and expires_at > ? and body <> \'\'',
                 [$workspaceId, $id, self::stamp(Carbon::now('UTC'))],
@@ -163,7 +188,11 @@ final class ManageDraftSamples implements DraftSamples
             $check = $this->check($text);
 
             // A sample that was valid when it was stored and no longer passes (a limit was lowered) is shown as a failed check: the text is still there to read.
-            return new StoredSample($text, self::ORIGIN, (int) $row->size_bytes, (string) $row->pasted_at, (string) $row->ends_at, (bool) $row->contains_personal_data, $check);
+            return new StoredSample(
+                $text, $row->source === 'fetch' ? self::ORIGIN_FETCHED : self::ORIGIN, (int) $row->size_bytes, (string) $row->pasted_at, (string) $row->ends_at, (bool) $row->contains_personal_data, $check,
+                (int) $row->sample_revision, $row->request_key === null ? null : (string) $row->request_key,
+                $row->fetch_status === null ? null : (int) $row->fetch_status, $row->fetch_latency_ms === null ? null : (int) $row->fetch_latency_ms,
+            );
         });
     }
 

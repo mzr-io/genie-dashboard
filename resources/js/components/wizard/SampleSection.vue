@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { FileJson } from '@lucide/vue';
-import { computed, nextTick, ref, useId } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import Banner from '@/components/Banner.vue';
 import BlockedReason from '@/components/BlockedReason.vue';
+import FetchErrorCard from '@/components/FetchErrorCard.vue';
 import SegmentedControl from '@/components/SegmentedControl.vue';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -13,15 +14,22 @@ import SampleTree from '@/components/wizard/SampleTree.vue';
 import SectionCard from '@/components/wizard/SectionCard.vue';
 import { announce } from '@/lib/announce';
 import {
+    belongsToEarlierParameters,
     caretAt,
     checkSample,
     clockText,
+    failureOf,
+    fetchedFacts,
+    fetchSample,
     restoreSample,
     shapeText,
+    startSampleFetch,
     storeReasonOf,
     storeSample,
 } from '@/lib/blockSample';
 import type {
+    FetchBody,
+    FetchSummary,
     SampleCheck,
     SampleClaim,
     SampleMode,
@@ -29,11 +37,11 @@ import type {
     StoreReason,
 } from '@/lib/blockSample';
 import { WizardError } from '@/lib/blockWizard';
+import { DataSourceError, PollTimeout, pollOperation } from '@/lib/dataSources';
 import { blockSampleLabels as labels } from '@/locales/labels';
 import { blockSourceLabels } from '@/locales/labels';
 
-// The Sample Response of Step 2 (Story 3.8, the paste half): a segmented control (Fetch from API, which stays inert until Story 3.9, and Paste
-// sample JSON), a `json-textarea` that is checked on paste and on blur, and the accepted sample's summary, badge and structure. The server
+// The Sample Response of Step 2: a segmented control (Fetch from API, Story 3.9, and Paste sample JSON, Story 3.8), a `json-textarea` that is checked on paste and on blur, and the accepted sample's summary, badge and structure. The server
 // reads the text with the platform's lossless decoder and keeps it (encrypted, one per Draft, with an end time); the browser never parses it.
 // The state belongs to the page (the Continue gate and the step summary read it); this component edits it in place. Nothing is stored in
 // sessionStorage: a sample comes back from the server when the Draft reopens.
@@ -45,13 +53,20 @@ const props = defineProps<{
     readOnly: boolean;
     // Why nothing can be fetched or saved right now (offline), beyond the form's own reason.
     alsoBlocked?: string;
-    fetchReason: string;
+    // Why Fetch cannot run (the form's own reason, else offline); undefined when it can.
+    fetchReason?: string;
     outOfDate: boolean;
+    // Fetch from API (Story 3.9): what the request is now, its key, and the Data Source's name for the error card.
+    fetchBody: () => FetchBody;
+    requestKey: string;
+    sourceName: string;
 }>();
 
 const emit = defineEmits<{
     // The sample was accepted: the out-of-date flag clears and the Draft is dirty.
     (e: 'accepted'): void;
+    // A fetch stored a sample; `current` says it was taken with the Draft's current parameters, so the out-of-date flag may clear.
+    (e: 'fetched', current: boolean): void;
     (e: 'auth-error', error: unknown): void;
 }>();
 
@@ -62,6 +77,11 @@ const statusId = useId();
 const ackId = useId();
 const useReasonId = useId();
 const fetchReasonId = useId();
+const fetchAckId = useId();
+const fetchStatusId = useId();
+const card = ref<InstanceType<typeof FetchErrorCard> | null>(null);
+let controller: AbortController | null = null;
+let waitTimer: ReturnType<typeof setInterval> | null = null;
 const jsonShown = ref(false);
 let pasted = false;
 let runSeq = 0;
@@ -177,7 +197,269 @@ const useBlocked = computed<string | undefined>(() => {
     return state.value.ack ? undefined : labels.needAck;
 });
 
+const fetching = computed(() => state.value.fetch);
+const fetchedLine = computed<string>(() => {
+    const facts = fetchedFacts(stored.value);
+
+    if (facts === null) {
+        return '';
+    }
+
+    return facts.count !== null && facts.path !== null
+        ? t('fetch-ok', {
+              status: facts.status,
+              ms: facts.ms,
+              count: facts.count,
+              path: facts.path,
+          })
+        : labels.fetchOkNoRecords(facts.status, facts.ms);
+});
+const earlier = computed(() =>
+    belongsToEarlierParameters(stored.value, props.requestKey),
+);
+const running = computed(() => fetching.value.phase === 'running');
+
+// Why Fetch cannot run: the form's own reason first (a missing choice, then offline), then the lock, the acknowledgement and a wait.
+const fetchBlocked = computed<string | undefined>(() => {
+    if (props.fetchReason) {
+        return props.fetchReason;
+    }
+
+    if (props.readOnly || props.claim() === null) {
+        return labels.needLock;
+    }
+
+    if (!fetching.value.ack) {
+        return labels.needAck;
+    }
+
+    return fetching.value.wait !== null
+        ? labels.waitFor(fetching.value.wait)
+        : undefined;
+});
+
+function setFetchAck(value: boolean | 'indeterminate'): void {
+    fetching.value.ack = value === true;
+}
+
+// The button shows the wait that a 429 asked for.
+function startWait(seconds: number): void {
+    if (waitTimer !== null) {
+        clearInterval(waitTimer);
+    }
+
+    fetching.value.wait = Math.max(1, Math.ceil(seconds));
+    waitTimer = setInterval(() => {
+        const left = (fetching.value.wait ?? 0) - 1;
+
+        if (left <= 0) {
+            fetching.value.wait = null;
+
+            if (waitTimer !== null) {
+                clearInterval(waitTimer);
+                waitTimer = null;
+            }
+
+            return;
+        }
+
+        fetching.value.wait = left;
+    }, 1000);
+}
+
+function ended(error: unknown): boolean {
+    return (
+        (error instanceof WizardError || error instanceof DataSourceError) &&
+        (error.status === 401 || error.status === 419)
+    );
+}
+
+// What a fetch the server would not start says, in words: a setting that is unset (named), a value that does not fit, a lost lock.
+function refusalOf(error: WizardError): string {
+    const reason = error.body.reason;
+
+    if (error.status === 423) {
+        return labels.storeLocked;
+    }
+
+    if (reason === 'setting_not_configured') {
+        return labels.settingNotConfigured(
+            typeof error.body.setting === 'string' ? error.body.setting : null,
+        );
+    }
+
+    if (reason === 'ttl_not_configured') {
+        return labels.ttlNotConfigured;
+    }
+
+    if (reason === 'limit_not_configured') {
+        const found = error.body.check as SampleCheck | undefined;
+
+        return labels.notConfigured(found?.setting ?? null);
+    }
+
+    if (reason === 'acknowledgement_required') {
+        return labels.ackRequired;
+    }
+
+    if (reason === 'endpoint_not_found') {
+        return labels.endpointGone;
+    }
+
+    // A value the Endpoint refuses: the server's own message names the parameter.
+    return Object.values(error.fields)[0]?.[0] ?? labels.fetchRefused;
+}
+
+async function runFetch(): Promise<void> {
+    const draftId = props.draftId;
+    const claim = props.claim();
+
+    if (running.value) {
+        return;
+    }
+
+    // Retry on the card is not `aria-disabled` itself: say why nothing happened.
+    if (
+        fetchBlocked.value !== undefined ||
+        draftId === null ||
+        claim === null
+    ) {
+        fetching.value.refusal = fetchBlocked.value ?? labels.needLock;
+
+        return;
+    }
+
+    controller?.abort();
+    controller = new AbortController();
+    const mine = controller;
+    const fetchState = fetching.value;
+
+    fetchState.phase = 'running';
+    fetchState.refusal = null;
+    fetchState.failure = null;
+
+    try {
+        const started = await startSampleFetch(
+            draftId,
+            props.fetchBody(),
+            fetchState.ack,
+            claim,
+        );
+        const operation = await pollOperation(
+            started.operation_id,
+            mine.signal,
+        );
+        const result = operation.result as Partial<FetchSummary> | null;
+
+        if (operation.status === 'stale') {
+            fetchState.phase = 'stale';
+            announce(labels.fetchStale, 'polite');
+
+            return;
+        }
+
+        if (operation.status === 'expired') {
+            fetchState.phase = 'expired';
+            announce(labels.fetchExpired, 'polite');
+
+            return;
+        }
+
+        if (operation.status === 'succeeded' && result?.ok) {
+            let found: Awaited<ReturnType<typeof fetchSample>> = null;
+
+            try {
+                found = await fetchSample(draftId);
+            } catch (error) {
+                if (ended(error)) {
+                    throw error;
+                }
+            }
+
+            if (mine.signal.aborted) {
+                return;
+            }
+
+            // Gone already (the sample's lifetime, or the Draft was discarded): the fetch has to be made again.
+            if (found === null) {
+                fetchState.phase = 'expired';
+
+                return;
+            }
+
+            state.value.stored = found;
+            state.value.pastedAt = new Date(found.pasted_at);
+            fetchState.phase = 'ok';
+            announce(fetchedLine.value, 'polite');
+            emit('fetched', found.request_key === props.requestKey);
+
+            return;
+        }
+
+        fetchState.failure = failureOf(result, operation.status);
+        fetchState.phase = 'failure';
+        await nextTick();
+        card.value?.focus();
+    } catch (error) {
+        if (mine.signal.aborted) {
+            return;
+        }
+
+        if (ended(error)) {
+            fetchState.phase = 'idle';
+            emit('auth-error', error);
+
+            return;
+        }
+
+        if (error instanceof WizardError) {
+            fetchState.phase = 'idle';
+
+            if (error.status === 429) {
+                const after = error.body.retry_after;
+
+                startWait(typeof after === 'number' ? after : 5);
+
+                return;
+            }
+
+            fetchState.refusal =
+                error.status === 422 || error.status === 423
+                    ? refusalOf(error)
+                    : labels.fetchStartFailed;
+
+            return;
+        }
+
+        // The Operation could not be read, or no worker answered: a failed call like any other, with its card.
+        fetchState.failure = failureOf(
+            null,
+            error instanceof PollTimeout ? 'no_worker_responded' : null,
+        );
+        fetchState.phase = 'failure';
+        await nextTick();
+        card.value?.focus();
+    }
+}
+
+function pasteInstead(): void {
+    setMode('paste');
+    void nextTick(() => document.getElementById(textId)?.focus());
+}
+
+onBeforeUnmount(() => {
+    controller?.abort();
+
+    if (waitTimer !== null) {
+        clearInterval(waitTimer);
+    }
+});
+
 function setMode(value: string): void {
+    // A fetch still running must not land over what the Admin switches to.
+    controller?.abort();
+    fetching.value.phase =
+        fetching.value.phase === 'running' ? 'idle' : fetching.value.phase;
     state.value.mode = value as SampleMode;
 }
 
@@ -363,6 +645,12 @@ function setAck(value: boolean | 'indeterminate'): void {
             @update:model-value="setMode"
         />
 
+        <Banner v-if="earlier" variant="warning">
+            <span data-test="earlier-parameters">{{
+                labels.earlierParameters
+            }}</span>
+        </Banner>
+
         <Banner v-if="outOfDate" variant="warning">
             <span data-test="out-of-date">{{
                 blockSourceLabels.outOfDate
@@ -388,19 +676,149 @@ function setAck(value: boolean | 'indeterminate'): void {
 
         <div
             v-if="sample.mode === 'fetch'"
-            class="flex flex-col items-start gap-1"
+            class="grid gap-3"
+            data-test="fetch-panel"
         >
-            <Button
-                type="button"
-                variant="secondary"
-                :blocked="true"
-                :blocked-reason="fetchReason"
-                :aria-describedby="fetchReasonId"
-                data-test="fetch"
+            <div class="flex items-start gap-2">
+                <Checkbox
+                    :id="fetchAckId"
+                    :model-value="fetching.ack"
+                    required
+                    class="mt-1"
+                    data-test="fetch-personal-data"
+                    :disabled="readOnly"
+                    @update:model-value="setFetchAck"
+                />
+                <div class="grid gap-0.5">
+                    <Label :for="fetchAckId">
+                        {{ labels.ackLabel }}
+                        <span aria-hidden="true" class="text-error-text"
+                            >*</span
+                        >
+                    </Label>
+                    <p class="type-caption text-text-muted">
+                        {{ labels.fetchAckHint }}
+                    </p>
+                </div>
+            </div>
+
+            <div class="flex flex-col items-start gap-1">
+                <Button
+                    type="button"
+                    variant="secondary"
+                    :blocked="fetchBlocked !== undefined || running"
+                    :blocked-reason="fetchBlocked"
+                    :aria-describedby="
+                        running
+                            ? fetchStatusId
+                            : fetchBlocked
+                              ? fetchReasonId
+                              : undefined
+                    "
+                    data-test="fetch"
+                    @click="runFetch"
+                >
+                    {{
+                        fetching.wait !== null
+                            ? labels.waitButton(fetching.wait)
+                            : blockSourceLabels.fetch
+                    }}
+                </Button>
+                <BlockedReason
+                    v-if="fetchBlocked && !running"
+                    :id="fetchReasonId"
+                    >{{ fetchBlocked }}</BlockedReason
+                >
+            </div>
+
+            <p
+                v-if="running"
+                :id="fetchStatusId"
+                role="status"
+                class="type-body-sm text-text-secondary"
+                data-test="fetch-running"
             >
-                {{ blockSourceLabels.fetch }}
-            </Button>
-            <BlockedReason :id="fetchReasonId">{{ fetchReason }}</BlockedReason>
+                {{ labels.fetching }}
+            </p>
+            <p
+                v-if="fetching.refusal"
+                role="alert"
+                class="type-body-sm text-error-text"
+                data-test="fetch-refusal"
+            >
+                {{ fetching.refusal }}
+            </p>
+
+            <FetchErrorCard
+                v-if="fetching.phase === 'failure' && fetching.failure"
+                ref="card"
+                :code="fetching.failure.code"
+                :source="sourceName"
+                :heading="labels.fetchFailedTitle"
+                :status="fetching.failure.status"
+                :request-id="fetching.failure.requestId"
+                :host="fetching.failure.host"
+                :reason="fetching.failure.reason"
+                :size-bytes="fetching.failure.sizeBytes"
+                :limit-bytes="fetching.failure.limitBytes"
+                :page="fetching.failure.page"
+                :pages="fetching.failure.pages"
+                @retry="runFetch"
+            >
+                <template #actions>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        data-test="paste-instead"
+                        @click="pasteInstead"
+                        >{{ labels.pasteInstead }}</Button
+                    >
+                </template>
+            </FetchErrorCard>
+
+            <div
+                v-if="fetching.phase === 'expired'"
+                class="flex flex-wrap items-center gap-2"
+                data-test="fetch-expired"
+            >
+                <p class="type-body-sm text-warning-text">
+                    {{ labels.fetchExpired }}
+                </p>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    data-test="fetch-expired-retry"
+                    @click="runFetch"
+                    >{{ labels.fetchRetry }}</Button
+                >
+            </div>
+            <div
+                v-if="fetching.phase === 'stale'"
+                class="flex flex-wrap items-center gap-2"
+                data-test="fetch-stale"
+            >
+                <p class="type-body-sm text-warning-text">
+                    {{ labels.fetchStale }}
+                </p>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    data-test="fetch-stale-retry"
+                    @click="runFetch"
+                    >{{ labels.fetchRetry }}</Button
+                >
+            </div>
+
+            <p
+                v-if="fetchedLine"
+                class="type-body-sm text-success-text"
+                data-test="fetch-ok"
+            >
+                {{ fetchedLine }}
+            </p>
         </div>
 
         <div v-else class="grid gap-3" data-test="paste">
@@ -540,10 +958,15 @@ function setAck(value: boolean | 'indeterminate'): void {
                     class="type-caption text-text-secondary tabular-nums"
                     data-test="sample-summary"
                     >{{
-                        labels.summary(
-                            clockText(stored.pasted_at),
-                            stored.size_bytes,
-                        )
+                        stored.origin === 'fetched'
+                            ? labels.fetchedSummary(
+                                  clockText(stored.pasted_at),
+                                  stored.size_bytes,
+                              )
+                            : labels.summary(
+                                  clockText(stored.pasted_at),
+                                  stored.size_bytes,
+                              )
                     }}</span
                 >
                 <span

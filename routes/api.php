@@ -92,6 +92,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::get('blocks/drafts/{draft}/sample', [DraftSampleController::class, 'show'])->whereUuid('draft')->middleware(['admin', 'throttle:60,1,block-sample-read'])->name('api.admin.blocks.drafts.sample.show');
     Route::put('blocks/drafts/{draft}/sample', [DraftSampleController::class, 'store'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-sample-store'])->name('api.admin.blocks.drafts.sample.store');
 
+    // Fetch from API (Story 3.9): starts a `draft_sample_fetch` Operation (`blocks.edit`, the Draft's edit-lock claim); the result is read back with the sample route.
+    Route::post('blocks/drafts/{draft}/sample/fetch', [DraftSampleController::class, 'fetch'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-sample-fetch'])->name('api.admin.blocks.drafts.sample.fetch');
+
     // What wizard Step 2 reads (Story 3.7): `blocks.edit`, so an Admin who may build blocks but not manage Data Sources can still choose one.
     Route::get('blocks/data-sources', [BlockSourceController::class, 'dataSources'])->middleware('admin')->name('api.admin.blocks.data-sources.index');
     Route::get('blocks/data-sources/{dataSource}/endpoints', [BlockSourceController::class, 'endpoints'])->whereUuid('dataSource')->middleware('admin')->name('api.admin.blocks.data-sources.endpoints.index');

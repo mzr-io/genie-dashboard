@@ -28,6 +28,19 @@ final class SampleFetchSettings
         return $this->window() === null ? null : $this->whole('workspace_limit');
     }
 
+    /**
+     * The environment variable of the first setting a Draft's Fetch needs and that is not set to a whole number (Story 3.9), or null when all
+     * are: the window and the per-membership limit. Unlike a Test endpoint, a Draft's Fetch is refused while one is unset (no number is invented).
+     */
+    public function missingForDraftFetch(): ?string
+    {
+        if ($this->whole('window') === null) {
+            return 'DASHFLOW_SAMPLE_FETCH_WINDOW_SECONDS';
+        }
+
+        return $this->whole('membership_limit') === null ? 'DASHFLOW_SAMPLE_FETCH_MEMBERSHIP_LIMIT' : null;
+    }
+
     private function whole(string $name): ?int
     {
         $value = $this->config->get("dashflow.sample_fetch.{$name}.value");

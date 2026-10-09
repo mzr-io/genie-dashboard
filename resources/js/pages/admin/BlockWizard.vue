@@ -176,7 +176,13 @@ const sourceSummary = computed<string | null>(() => {
     return sample.stored
         ? [
               named,
-              blockSampleLabels.pastedAt(clockText(sample.stored.pasted_at)),
+              sample.stored.origin === 'fetched'
+                  ? blockSampleLabels.fetchedAt(
+                        clockText(sample.stored.pasted_at),
+                    )
+                  : blockSampleLabels.pastedAt(
+                        clockText(sample.stored.pasted_at),
+                    ),
           ]
               .filter((part) => part !== null)
               .join(' · ')

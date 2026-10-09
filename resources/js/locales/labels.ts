@@ -1728,9 +1728,12 @@ export const blockSourceLabels = {
     outOfDateTitle: 'The sample is out of date',
     outOfDate:
         'The data source, endpoint or a parameter changed. Fetch or paste a new sample, or confirm the one you have, before you map the data.',
-    // Fetch is built in Story 3.9; it is shown, with its reasons, and does nothing until then.
+    // Fetch from API (Story 3.9): the button, and the two reasons a request cannot be made until the default range is chosen.
     fetch: 'Fetch sample',
-    fetchSoon: 'Fetching a sample is built in a later update.',
+    rangeNeeded:
+        'Choose a default date range under Refresh and date range before you fetch: the endpoint needs dates.',
+    periodNeeded:
+        'This endpoint uses the block period, which needs "Own selector" under Period behavior in step 1, before you fetch.',
     loading: 'Loading data sources…',
     loadFailed: "We couldn't load the data sources.",
     retry: 'Try again',
@@ -1809,6 +1812,37 @@ export const blockSampleLabels = {
     inUse: 'Sample in use',
     pastedAt: (time: string) => `Pasted ${time}`,
     summary: (time: string, bytes: number) => `Pasted ${time} · ${bytes} bytes`,
+    // Fetch from API (Story 3.9). `fetch-ok`, `host-not-allowlisted`, `blocked-address`, `response-too-large`, `not-json`, `fetch-failed` and
+    // `offline-editing` are catalogue messages; the rest is control vocabulary.
+    fetchOkNoRecords: (status: number, ms: number) =>
+        `✓ ${status} · ${ms} ms · no list of records found`,
+    fetching: 'Fetching the sample…',
+    fetchedAt: (time: string) => `Fetched ${time}`,
+    fetchedSummary: (time: string, bytes: number) =>
+        `Fetched ${time} · ${bytes} bytes`,
+    fetchFailedTitle: 'Fetch failed',
+    pasteInstead: 'Paste sample JSON instead',
+    fetchExpired:
+        'The fetch took too long or expired. Nothing was stored. Try again.',
+    fetchStale:
+        'This result is not current: someone else took over editing this draft while the fetch ran. Nothing was stored.',
+    fetchRetry: 'Retry',
+    waitFor: (seconds: number) =>
+        `Too many fetches. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`,
+    waitButton: (seconds: number) => `Wait ${seconds} s`,
+    earlierParameters:
+        'This sample belongs to earlier parameters. Fetch again to get one for the current ones.',
+    fetchAckHint:
+        'The response is stored encrypted, for this draft only, and deleted automatically.',
+    settingNotConfigured: (setting: string | null) =>
+        setting
+            ? `${setting} is not set, so a sample cannot be fetched. Ask an operator to set it.`
+            : 'A setting that fetching needs is not set. Ask an operator to set it.',
+    endpointGone:
+        'The data source or endpoint no longer exists. Choose another one.',
+    fetchRefused: "The sample can't be fetched with these values.",
+    fetchStartFailed: "We couldn't start the fetch. Try again.",
+    fetchPollFailed: "We couldn't read the result of the fetch. Try again.",
     restoreFailed: "We couldn't load the sample saved with this draft.",
     retry: 'Try again',
     invalidBlocked:

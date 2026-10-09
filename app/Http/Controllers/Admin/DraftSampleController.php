@@ -13,12 +13,15 @@ use App\Modules\Blocks\Contracts\DraftLockLost;
 use App\Modules\Blocks\Contracts\DraftNotFound;
 use App\Modules\Blocks\Contracts\DraftPublished;
 use App\Modules\Blocks\Contracts\Drafts;
+use App\Modules\Blocks\Contracts\DraftSampleFetches;
 use App\Modules\Blocks\Contracts\DraftSamples;
 use App\Modules\Blocks\Contracts\ErrorCode;
 use App\Modules\Blocks\Contracts\SampleCheck;
 use App\Modules\Blocks\Contracts\SampleRejected;
 use App\Modules\Blocks\Contracts\SampleUnavailable;
 use App\Modules\Blocks\Contracts\StoredSample;
+use App\Modules\Connector\Contracts\InvalidDataSource;
+use App\Modules\Connector\Contracts\SampleFetchThrottled;
 use App\Platform\Contracts\ErrorCode as PlatformErrorCode;
 use App\Platform\EditLock\EditLock;
 use App\Platform\Tenancy\WorkspaceTransaction;
@@ -26,7 +29,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 /**
- * The pasted sample of a Draft (Story 3.8). Every route sits behind the `admin` middleware (`blocks.edit`); the Workspace is the session's. A
+ * The sample of a Draft (Story 3.8, the paste; Story 3.9, the fetch). Every route sits behind the `admin` middleware (`blocks.edit`); the Workspace is the session's. A
  * Draft of another Workspace, or a discarded one, is a 404. Checking a text stores nothing; reading is allowed to a read-only viewer; storing
  * needs the edit-lock claim of a Draft save (a stale epoch or a token that does not hold the lock is a 423, nothing written). The text, and
  * anything in it, is never written to a log, the audit trail or an error body: an error carries the line and column of a fault and what is
@@ -38,6 +41,7 @@ final class DraftSampleController extends Controller
 
     public function __construct(
         private readonly DraftSamples $samples,
+        private readonly DraftSampleFetches $fetches,
         private readonly Drafts $drafts,
         private readonly MembershipLookup $memberships,
         private readonly EditLock $lock,
@@ -85,6 +89,45 @@ final class DraftSampleController extends Controller
         return response()->json(['data' => self::body($stored)], 200, ['Cache-Control' => self::NO_STORE]);
     }
 
+    /**
+     * Fetch from API (Story 3.9): starts the `draft_sample_fetch` Operation (`202` with its id, to poll at `GET /api/v1/operations/{id}`) and calls
+     * nothing from this tier. The Draft needs the edit-lock claim of a save (423) and the personal-data acknowledgement; a setting that is unset is a
+     * 422 `blocks.sample_invalid` naming it; a value that does not fit the Endpoint is a 422 `values.{name}`; over the rate limit is a 429 with
+     * `retry_after`. The sample is read back with {@see self::show()} once the Operation has succeeded.
+     */
+    public function fetch(DraftSampleRequest $request, string $draft): JsonResponse
+    {
+        try {
+            $actor = $this->actor($request);
+            $operation = $this->fetches->start(
+                $actor, $draft, $request->dataSourceId(), $request->endpointId(), $request->bindings(), $request->range(), $request->period(),
+                $request->requestKey(), $request->containsPersonalData(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft),
+            );
+        } catch (DraftNotFound) {
+            abort(404);
+        } catch (DraftLockLost $e) {
+            return AdminApiError::json($request, PlatformErrorCode::EditLockLost->value, 423, 'You no longer hold the edit lock on this draft.', extra: ['current' => ['data' => (new DraftResource($e->current, withConfig: true))->resolve($request)]]);
+        } catch (DraftPublished) {
+            return AdminApiError::json($request, ErrorCode::DraftPublished->value, 409, 'This draft was published.');
+        } catch (SampleRejected $e) {
+            return AdminApiError::json(
+                $request, ErrorCode::SampleInvalid->value, 422, 'The sample was not fetched.',
+                extra: ['reason' => $e->reason] + ($e->setting === null ? [] : ['setting' => $e->setting]) + ($e->check === null ? [] : ['check' => self::checkBody($e->check, false)]),
+            );
+        } catch (InvalidDataSource $e) {
+            return AdminApiError::json($request, PlatformErrorCode::ValidationFailed->value, 422, errors: $e->errors, extra: $e->reasons === [] ? [] : ['reasons' => $e->reasons]);
+        } catch (SampleFetchThrottled $e) {
+            return AdminApiError::json($request, PlatformErrorCode::TooManyRequests->value, 429, 'Too many fetches.', extra: ['reason' => 'sample-fetch-throttled'], errorExtra: ['retry_after' => $e->retryAfter])
+                ->header('Retry-After', (string) $e->retryAfter);
+        }
+
+        return response()->json(
+            ['data' => ['operation_id' => $operation->id, 'status' => $operation->status->value, 'expires_at' => $operation->expiresAt, 'draft_revision' => $operation->subjectRevision]],
+            202,
+            ['Cache-Control' => self::NO_STORE],
+        );
+    }
+
     /** @return array<string, mixed> */
     private static function body(StoredSample $sample): array
     {
@@ -95,6 +138,10 @@ final class DraftSampleController extends Controller
             'pasted_at' => $sample->pastedAt,
             'expires_at' => $sample->expiresAt,
             'contains_personal_data' => $sample->containsPersonalData,
+            'sample_revision' => $sample->sampleRevision,
+            'request_key' => $sample->requestKey,
+            'fetch_status' => $sample->fetchStatus,
+            'fetch_latency_ms' => $sample->fetchLatencyMs,
         ] + self::checkBody($sample->check, true);
     }
 

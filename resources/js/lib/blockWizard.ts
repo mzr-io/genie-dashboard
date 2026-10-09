@@ -236,7 +236,7 @@ export class WizardError extends Error {
         readonly code: string | null = null,
         readonly fields: Record<string, string[]> = {},
         readonly current: WizardDraft | null = null,
-        // The error body's own members (`reason`, `check`), for a caller that reads them (the sample store, Story 3.8).
+        // The error body's own members (`reason`, `check`, `setting`, `retry_after`), for a caller that reads them (the sample store, Story 3.8; the fetch, Story 3.9).
         readonly body: Record<string, unknown> = {},
     ) {
         super(`block wizard request failed: ${status}`);
@@ -245,11 +245,12 @@ export class WizardError extends Error {
 
 type Body = {
     data?: unknown;
-    error?: { code?: string };
+    error?: { code?: string; retry_after?: number };
     errors?: Record<string, string[]>;
     current?: { data?: WizardDraft };
     reason?: string;
     check?: unknown;
+    setting?: string;
 };
 
 async function call(
@@ -302,7 +303,12 @@ async function call(
             json?.error?.code ?? null,
             json?.errors ?? {},
             json?.current?.data ?? null,
-            { reason: json?.reason, check: json?.check },
+            {
+                reason: json?.reason,
+                check: json?.check,
+                setting: json?.setting,
+                retry_after: json?.error?.retry_after,
+            },
         );
     }
 

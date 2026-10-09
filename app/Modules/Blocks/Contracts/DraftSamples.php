@@ -12,6 +12,9 @@ interface DraftSamples
     /** The origin of a pasted sample. */
     public const ORIGIN = 'pasted';
 
+    /** The origin of a sample fetched from the API (Story 3.9); stored as source `fetch`. */
+    public const ORIGIN_FETCHED = 'fetched';
+
     /** Reads the text and says whether it is acceptable (limits and grammar) and what it holds. Stores nothing and needs no Draft. */
     public function check(string $text): SampleCheck;
 
@@ -27,6 +30,19 @@ interface DraftSamples
      * @throws SampleUnavailable the sample could not be sealed
      */
     public function store(DraftActor $actor, string $draftId, string $text, bool $containsPersonalData, int $lockEpoch, ?\Closure $holdsLock = null): StoredSample;
+
+    /**
+     * Stores a sample fetched from the API (Story 3.9), replacing the one the Draft has and raising its `sample_revision`. Called by the Operation
+     * that fetched it, in the Workspace's transaction: the Draft must still be at the lock epoch the fetch started under, the same limits and
+     * sealing as a paste apply, and nothing is stored on any refusal.
+     *
+     * @throws DraftNotFound the Draft does not exist or was discarded
+     * @throws DraftPublished the version is no longer a Draft
+     * @throws DraftLockLost the epoch moved since the fetch started
+     * @throws SampleRejected a limit or the TTL is unset, or over a limit
+     * @throws SampleUnavailable the sample could not be sealed
+     */
+    public function storeFetched(DraftActor $actor, string $draftId, string $text, int $lockEpoch, int $status, int $latencyMs, string $requestKey): StoredSample;
 
     /**
      * The Draft's sample, or null when it has none or it has ended.

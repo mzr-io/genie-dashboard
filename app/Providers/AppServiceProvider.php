@@ -32,11 +32,14 @@ use App\Modules\Access\Infrastructure\SodiumAttributeVault;
 use App\Modules\Access\Infrastructure\SqlGroupDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberNames;
+use App\Modules\Blocks\Application\FetchDraftSample;
 use App\Modules\Blocks\Application\ManageBlockCategories;
 use App\Modules\Blocks\Application\ManageDrafts;
 use App\Modules\Blocks\Application\ManageDraftSamples;
+use App\Modules\Blocks\Application\StartDraftSampleFetch;
 use App\Modules\Blocks\Contracts\BlockCategories;
 use App\Modules\Blocks\Contracts\Drafts;
+use App\Modules\Blocks\Contracts\DraftSampleFetches;
 use App\Modules\Blocks\Contracts\DraftSamples;
 use App\Modules\Blocks\Contracts\SampleVault;
 use App\Modules\Blocks\Infrastructure\BlocksAuditSerializer;
@@ -56,6 +59,7 @@ use App\Modules\Connector\Application\ReadSample;
 use App\Modules\Connector\Application\RecordEgressBlock;
 use App\Modules\Connector\Application\RecordSyncRun;
 use App\Modules\Connector\Application\RunConnectionTest;
+use App\Modules\Connector\Application\RunDraftSampleFetch;
 use App\Modules\Connector\Application\RunFetchAsUser;
 use App\Modules\Connector\Application\RunSampleFetch;
 use App\Modules\Connector\Application\StartConnectionTest;
@@ -76,6 +80,7 @@ use App\Modules\Connector\Contracts\HostAllowlistDependents;
 use App\Modules\Connector\Contracts\HostResolver;
 use App\Modules\Connector\Contracts\Jitter;
 use App\Modules\Connector\Contracts\SampleFetches;
+use App\Modules\Connector\Contracts\SampleRuns;
 use App\Modules\Connector\Contracts\Samples;
 use App\Modules\Connector\Contracts\SecretVault;
 use App\Modules\Connector\Contracts\SourceGovernor;
@@ -197,6 +202,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(DataSources::class, ManageDataSources::class);
         $this->app->bind(Drafts::class, ManageDrafts::class);
         $this->app->bind(DraftSamples::class, ManageDraftSamples::class);
+        $this->app->bind(DraftSampleFetches::class, StartDraftSampleFetch::class);
         $this->app->bind(SampleVault::class, SodiumSampleVault::class);
         $this->app->bind(BlockCategories::class, ManageBlockCategories::class);
         $this->app->bind(Endpoints::class, ManageEndpoints::class);
@@ -215,6 +221,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ConnectionTests::class, StartConnectionTest::class);
         $this->app->bind(SampleFetches::class, StartSampleFetch::class);
         $this->app->bind(Samples::class, ReadSample::class);
+        // Blocks' Fetch from API (Story 3.9) runs the Endpoint fetch through this contract only.
+        $this->app->bind(SampleRuns::class, RunDraftSampleFetch::class);
         $this->app->bind(FetchesAsUser::class, StartFetchAsUser::class);
         // Ingestion's scheduled fetch (Story 2.14) reaches the Connector through these two contracts only.
         $this->app->bind(EndpointFetcher::class, FetchEndpoint::class);
@@ -292,6 +300,9 @@ class AppServiceProvider extends ServiceProvider
         $this->app->make(OperationKinds::class)->register(new OperationKind(SampleFetches::KIND, SampleFetches::QUEUE, 600, RunSampleFetch::class));
         // The `fetch_as_user` kind (Story 2.13): the same queue and lifetime as `sample_fetch`, and the same sealed blob (its TTL is this lifetime).
         $this->app->make(OperationKinds::class)->register(new OperationKind(FetchesAsUser::KIND, FetchesAsUser::QUEUE, 600, RunFetchAsUser::class));
+
+        // The `draft_sample_fetch` kind (Story 3.9): registered by Blocks, on the queue only `worker-connector` consumes. Its lifetime is set per Operation from the platform timeout ceiling ({@see Operations::enqueue()}), and the sealed blob's TTL is that Operation's remaining lifetime; 600 is only the default when none is given.
+        $this->app->make(OperationKinds::class)->register(new OperationKind(DraftSampleFetches::KIND, DraftSampleFetches::QUEUE, 600, FetchDraftSample::class));
 
         QueueContext::register($this->app->make(RequestContext::class), $this->app->make('events'));
         JobSignatureGuard::register($this->app, $this->app->make('events'));

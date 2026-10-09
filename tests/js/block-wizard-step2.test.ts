@@ -392,7 +392,8 @@ describe('Step 2: POST and read-only', () => {
         await choose('[data-test=endpoint]', EP_GET);
 
         expect($('[data-test=post-readonly]')).toBeNull();
-        expect(fetchReason()).toContain('built in a later update');
+        // This Endpoint has a period parameter: Fetch names what it needs. Continue is open.
+        expect(fetchReason()).toContain('Own selector');
         expect(blocked('[data-test=continue]')).toBe(false);
     });
 
@@ -421,7 +422,8 @@ describe('Step 2: POST and read-only', () => {
 
         await click($('[data-test=post-readonly]'));
 
-        expect(fetchReason()).toContain('built in a later update');
+        // The form no longer blocks Fetch: the personal-data acknowledgement (Story 3.9) is what is left to give.
+        expect(fetchReason()).toContain('personal data box');
         expect(blocked('[data-test=continue]')).toBe(false);
     });
 });
@@ -530,10 +532,10 @@ describe('Step 2: the parameters table', () => {
 
         await typeInto('[data-test=param-value]', '42');
 
-        expect(fetchReason()).toContain('built in a later update');
+        expect(fetchReason()).toContain('personal data box');
     });
 
-    it('Fetch is rendered and does nothing yet', async () => {
+    it('Fetch does nothing while it is aria-disabled', async () => {
         await pick(EP_GET);
 
         const before = calls.length;
@@ -865,13 +867,13 @@ describe('Step 2: saving, pins and out-of-date', () => {
 });
 
 describe('Step 2: Fetch, Live and server errors', () => {
-    it('keeps Fetch aria-disabled with the later-update reason even when nothing else blocks it', async () => {
+    it('keeps Fetch aria-disabled with a reason while the Endpoint needs the block period or dates', async () => {
         await mountPage();
         await choose('[data-test=data-source]', SOURCE_A);
         await choose('[data-test=endpoint]', EP_GET);
 
         expect(blocked('[data-test=fetch]')).toBe(true);
-        expect(fetchReason()).toContain('built in a later update');
+        expect(fetchReason()).toContain('Own selector');
     });
 
     it('resets a Live choice to unset when another, non-Live source is chosen, so the save sends null', async () => {

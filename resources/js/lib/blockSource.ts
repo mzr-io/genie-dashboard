@@ -394,6 +394,35 @@ export function requestKey(form: SourceForm): string {
 
 export type Gate = { fetch: string | undefined; continue: string | undefined };
 
+// The body of a fetch (Story 3.9): what the request is, from the form. The Fixed parameters' own values are the block's overrides (the Endpoint's value
+// otherwise); the dates are what the default range stands for; the period is the same two dates when the Block has its own selector.
+export function fetchBodyOf(
+    form: SourceForm,
+    period: string,
+    today: Date = new Date(),
+): {
+    data_source_id: string;
+    endpoint_id: string;
+    bindings: Record<string, string>;
+    range: { from: string; to: string } | null;
+    period: { start: string; end: string } | null;
+    request_key: string;
+} {
+    const range = resolveRange(form, today);
+
+    return {
+        data_source_id: form.dataSourceId ?? '',
+        endpoint_id: form.endpointId ?? '',
+        bindings: { ...form.bindings },
+        range,
+        period:
+            range !== null && period === 'own_selector'
+                ? { start: range.from, end: range.to }
+                : null,
+        request_key: requestKey(form),
+    };
+}
+
 // Why Fetch and Continue cannot run: the first reason wins, and each is said inline beside the button. `none` is a Workspace with no Data Source.
 export function stepGate(
     sources: SourceOption[] | null,
@@ -409,6 +438,15 @@ export function stepGate(
     const post = endpoint?.method === 'POST' && !form.readOnlyAck;
     const needsPost = post ? labels.postRequired : undefined;
     const empty = emptyPathParams(rows);
+    const dated = rows.filter(
+        (row) => row.resolved !== null || row.unavailable,
+    );
+    // A date-bound parameter needs the dates of the default range (Story 3.9), and a period one needs the Block's own period.
+    const needsDates = dated.some((row) => row.unavailable)
+        ? labels.periodNeeded
+        : dated.length > 0 && resolveRange(form) === null
+          ? labels.rangeNeeded
+          : undefined;
 
     return {
         fetch:
@@ -417,7 +455,7 @@ export function stepGate(
                 : endpoint === null
                   ? labels.chooseEndpoint
                   : (needsPost ??
-                    (empty.length > 0 ? labels.pathEmpty(empty) : undefined)),
+                    (empty.length > 0 ? labels.pathEmpty(empty) : needsDates)),
         continue: needsPost,
     };
 }
