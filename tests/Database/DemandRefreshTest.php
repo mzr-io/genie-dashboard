@@ -70,6 +70,8 @@ function drMetrics(): object
         {
             $this->seen[] = [$name, $labels, $by];
         }
+
+        public function record(string $name, float|int $value, array $labels = []): void {}
     };
     app()->instance(MetricEmitter::class, $spy);
 

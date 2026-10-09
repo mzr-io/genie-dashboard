@@ -96,7 +96,7 @@ development_status:
   3-7-choose-the-data-source-endpoint-parameters-and-refresh-step: review
   3-8-paste-sample-json-and-inspect-it-with-exact-numbers: review
   3-9-fetch-a-sample-from-the-api: review
-  3-10-render-the-sample-through-the-query-plan-engine-live-preview: backlog
+  3-10-render-the-sample-through-the-query-plan-engine-live-preview: review
   3-11-review-field-roles-and-choose-the-record-path: backlog
   3-12-auto-map-the-kpi-slots-and-review-the-checklist: backlog
   3-13-override-a-slot-pick-a-field-and-fix-mismatches: backlog

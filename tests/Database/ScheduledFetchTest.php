@@ -1238,6 +1238,8 @@ it('counts each outcome on its own metric: payload_changed for a change only', f
         {
             $this->seen[] = $name;
         }
+
+        public function record(string $name, float|int $value, array $labels = []): void {}
     });
     $this->curl->queue = [sdOk(SD_BODY, '"v1"'), sdNotModified(), sdOk(' '.SD_BODY), sdOk('{"x":1}')];
 
@@ -1330,6 +1332,8 @@ function rbMetrics(array &$seen): void
             expect(array_keys($labels))->toBe(['workspace_id']);
             $this->seen[] = $name;
         }
+
+        public function record(string $name, float|int $value, array $labels = []): void {}
     });
 }
 

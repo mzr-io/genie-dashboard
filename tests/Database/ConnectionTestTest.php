@@ -396,6 +396,8 @@ it('answers a host that is not on the allowlist with host-not-allowlisted, audit
         {
             $this->fired[] = [$name, $labels['reason'] ?? null];
         }
+
+        public function record(string $name, float|int $value, array $labels = []): void {}
     };
     app()->instance(MetricEmitter::class, $spy);
 

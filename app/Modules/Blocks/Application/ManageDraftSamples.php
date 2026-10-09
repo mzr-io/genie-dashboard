@@ -196,6 +196,26 @@ final class ManageDraftSamples implements DraftSamples
         });
     }
 
+    public function revision(string $workspaceId, string $draftId): ?int
+    {
+        return $this->transactions->run($workspaceId, function () use ($workspaceId, $draftId): ?int {
+            $draft = Str::isUuid($draftId)
+                ? DB::selectOne("select id from block_versions where workspace_id = ? and id = ? and state = 'draft'", [$workspaceId, strtolower($draftId)])
+                : null;
+
+            if ($draft === null) {
+                throw new DraftNotFound;
+            }
+
+            $row = DB::selectOne(
+                'select sample_revision from draft_samples where workspace_id = ? and block_version_id = ? and expires_at > ? and body <> \'\'',
+                [$workspaceId, strtolower((string) $draft->id), self::stamp(Carbon::now('UTC'))],
+            );
+
+            return $row === null ? null : (int) $row->sample_revision;
+        });
+    }
+
     /** The Draft's sample is gone from the app's view at once; the `maintenance` purge deletes the row (the `app` role holds no DELETE). */
     public static function erase(string $workspaceId, string $versionId): void
     {

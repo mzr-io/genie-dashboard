@@ -338,3 +338,13 @@
 - source_spec: `spec-3-9-fetch-a-sample-from-the-api.md`
   summary: Draft fetch writes no audit event, and `bindings.*` validation skips dotted parameter names.
   evidence: Reviewer findings; not exercised by the current acceptance criteria.
+
+- source_spec: `spec-3-10-render-the-sample-through-the-query-plan-engine-live-preview.md`
+  summary: Bound the Query Plan guards inside `SamplePath::select`, so one huge `[*]` select cannot pass the extracted-values and wall-time guards.
+  evidence: InProcessExecutor checks them only between evaluations and after select() has finished.
+- source_spec: `spec-3-10-render-the-sample-through-the-query-plan-engine-live-preview.md`
+  summary: Purge or expire the per-process decoded-sample cache on discard or sample expiry, and add `created_at` to its key.
+  evidence: Plaintext trees (up to 8) can outlive the sample TTL in long-lived workers; sample_revision restarts after a purge.
+- source_spec: `spec-3-10-render-the-sample-through-the-query-plan-engine-live-preview.md`
+  summary: Allow a Draft save to clear `config.query_plan` and test the 409 published-Draft preview once Story 3.19 adds the state.
+  evidence: `isset()` treats null as absent; `block_versions.state` allows only draft and discarded for now.

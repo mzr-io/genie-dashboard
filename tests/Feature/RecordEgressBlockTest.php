@@ -23,6 +23,8 @@ function blockLog(Audit $audit, Repository $cache, ?MetricEmitter $metrics = nul
     return new RecordEgressBlock($audit, new EgressSettings($config), $cache, $metrics ?? new class implements MetricEmitter
     {
         public function increment(string $name, array $labels = [], int $by = 1): void {}
+
+        public function record(string $name, float|int $value, array $labels = []): void {}
     });
 }
 
@@ -46,6 +48,8 @@ it('still audits an unresolvable name but does not count it towards the alert', 
         {
             $this->fired++;
         }
+
+        public function record(string $name, float|int $value, array $labels = []): void {}
     };
     $log = blockLog($audit, new ArrayCache(new ArrayStore), $spy);
 

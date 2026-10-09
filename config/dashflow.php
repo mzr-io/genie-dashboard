@@ -222,6 +222,18 @@ return [
         'window' => $tunable('DASHFLOW_SAMPLE_FETCH_WINDOW_SECONDS'),
     ],
 
+    // Live preview of a Draft through the Query Plan engine (Story 3.10). Every one is `pending_input` with no default, outside the
+    // AR-57 tunable list: a preview is refused (422 naming the variable) while any of the first five is unset. `p95_target_ms` is only
+    // recorded (the C6 spike): nothing enforces it.
+    'preview' => [
+        'membership_limit' => $tunable('DASHFLOW_PREVIEW_MEMBERSHIP_LIMIT'),
+        'window_seconds' => $tunable('DASHFLOW_PREVIEW_WINDOW_SECONDS'),
+        'max_extracted_values' => $tunable('DASHFLOW_PREVIEW_MAX_EXTRACTED_VALUES'),
+        'max_evaluations' => $tunable('DASHFLOW_PREVIEW_MAX_EVALUATIONS'),
+        'max_wall_ms' => $tunable('DASHFLOW_PREVIEW_MAX_WALL_MS'),
+        'p95_target_ms' => $tunable('DASHFLOW_PREVIEW_P95_TARGET_MS'),
+    ],
+
     // Load-test harness targets (Story 1.25), read by `npm run load` (load/config.mjs) from the environment.
     // Each is `pending_input` with no default: the harness exits non-zero naming every variable that is unset.
     // Kept outside `tunables`, which is the closed AR-57 list. tests/Feature/LoadSettingsTest.php keeps this list

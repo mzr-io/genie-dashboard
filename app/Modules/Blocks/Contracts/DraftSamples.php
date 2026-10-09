@@ -51,4 +51,12 @@ interface DraftSamples
      * @throws SampleUnavailable the stored sample cannot be opened
      */
     public function find(string $workspaceId, string $draftId): ?StoredSample;
+
+    /**
+     * The `sample_revision` of the Draft's live sample, or null when it has none or it has ended. It opens nothing and parses nothing, so a
+     * caller that holds the decoded sample of this revision can skip {@see self::find()} (Story 3.10).
+     *
+     * @throws DraftNotFound the Draft does not exist or was discarded
+     */
+    public function revision(string $workspaceId, string $draftId): ?int;
 }

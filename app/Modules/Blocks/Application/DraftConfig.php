@@ -4,6 +4,7 @@ namespace App\Modules\Blocks\Application;
 
 use App\Modules\Blocks\Contracts\InvalidDraft;
 use App\Modules\BlockTypes\Contracts\BlockType;
+use App\Modules\Mapping\Contracts\QueryPlan;
 use App\Platform\Json\DecimalLiteral;
 use App\Platform\Json\JsonObject;
 use App\Platform\Json\LosslessJson;
@@ -11,7 +12,7 @@ use App\Platform\Json\LosslessJson;
 /**
  * The lenient `config` document of a Draft (Story 3.4, `schema_version` 1): the Configure Block step's fields. Nothing is required (a
  * Draft saves as it is); what is present must have the right type, and sizes must lie inside the Block Type's registry limits, which
- * are named in the error. Unknown keys are dropped. The "Footer action" slot is derived: it is present, optional and empty exactly when
+ * are named in the error. The Query Plan (`query_plan`, Story 3.10) is judged by Mapping's {@see QueryPlan}. Unknown keys are dropped. The "Footer action" slot is derived: it is present, optional and empty exactly when
  * "Show footer action" is on. Stored and read through the platform's JSON codec, never `json_decode`.
  */
 final class DraftConfig
@@ -73,11 +74,37 @@ final class DraftConfig
             }
         }
 
+        // The Query Plan (Story 3.10): version 1 only, its aliases, slot keys and stored paths judged here, so a plan the engine would refuse is never saved.
+        if (isset($input['query_plan'])) {
+            $faults = QueryPlan::validate($input['query_plan'], $type);
+
+            if ($faults === []) {
+                $out['query_plan'] = self::queryPlan($input['query_plan']);
+            } else {
+                $errors += $faults;
+            }
+        }
+
         if ($errors !== []) {
             throw new InvalidDraft($errors, 'blocks.invalid_config');
         }
 
         return $out;
+    }
+
+    /**
+     * A plan {@see QueryPlan::validate()} accepted, in its stored order and with nothing else.
+     *
+     * @param  array<mixed>  $plan
+     * @return array<string, mixed>
+     */
+    private static function queryPlan(array $plan): array
+    {
+        return [
+            'v' => QueryPlan::VERSION,
+            'extract' => ['fields' => array_map('strval', $plan['extract']['fields'])],
+            'shape' => array_map('strval', $plan['shape']),
+        ];
     }
 
     /**
@@ -170,7 +197,7 @@ final class DraftConfig
     public static function merge(array $stored, array $step): array
     {
         // `source` is Step 2's key (Story 3.7): it is replaced only when the save carries one (see ManageDrafts).
-        $kept = array_diff_key($stored, array_flip(['schema_version', 'description', 'icon', 'display', 'slots', ...(array_key_exists('source', $step) ? ['source'] : [])]));
+        $kept = array_diff_key($stored, array_flip(['schema_version', 'description', 'icon', 'display', 'slots', ...(array_key_exists('source', $step) ? ['source'] : []), ...(array_key_exists('query_plan', $step) ? ['query_plan'] : [])]));
         $slots = is_array($stored['slots'] ?? null) ? $stored['slots'] : [];
         unset($slots['footer_action']);
         $slots += $step['slots'] ?? [];
