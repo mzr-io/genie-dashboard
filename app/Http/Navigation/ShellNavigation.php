@@ -109,6 +109,7 @@ final class ShellNavigation
         'api.admin.blocks.drafts.sample.store' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.sample.fetch' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.preview' => Permission::BlocksEdit,
+        'api.admin.blocks.drafts.sample.roles' => Permission::BlocksEdit,
         'api.admin.blocks.data-sources.index' => Permission::BlocksEdit,
         'api.admin.blocks.data-sources.endpoints.index' => Permission::BlocksEdit,
         'api.admin.blocks.refresh-intervals' => Permission::BlocksEdit,

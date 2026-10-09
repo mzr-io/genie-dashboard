@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\DataSourceLockController;
 use App\Http\Controllers\Admin\DraftController;
 use App\Http\Controllers\Admin\DraftLockController;
 use App\Http\Controllers\Admin\DraftPreviewController;
+use App\Http\Controllers\Admin\DraftRolesController;
 use App\Http\Controllers\Admin\DraftSampleController;
 use App\Http\Controllers\Admin\EndpointController;
 use App\Http\Controllers\Admin\GroupController;
@@ -99,6 +100,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // Live preview (Story 3.10): runs the Draft's Query Plan over its sample (`blocks.edit` only, no edit-lock claim: a read-only viewer may ask; it writes nothing).
     // The limit is the per-membership `DASHFLOW_PREVIEW_*` setting, counted by the application (429 with `retry_after`), not a fixed throttle.
     Route::post('blocks/drafts/{draft}/preview', [DraftPreviewController::class, 'store'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.preview');
+
+    // Field roles and record-path candidates of the sample (Story 3.11a): read-only, `blocks.edit`, no edit-lock claim.
+    Route::get('blocks/drafts/{draft}/sample/roles', [DraftRolesController::class, 'show'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.sample.roles');
 
     // What wizard Step 2 reads (Story 3.7): `blocks.edit`, so an Admin who may build blocks but not manage Data Sources can still choose one.
     Route::get('blocks/data-sources', [BlockSourceController::class, 'dataSources'])->middleware('admin')->name('api.admin.blocks.data-sources.index');

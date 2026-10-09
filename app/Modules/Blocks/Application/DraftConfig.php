@@ -4,15 +4,17 @@ namespace App\Modules\Blocks\Application;
 
 use App\Modules\Blocks\Contracts\InvalidDraft;
 use App\Modules\BlockTypes\Contracts\BlockType;
+use App\Modules\Mapping\Contracts\FieldRole;
 use App\Modules\Mapping\Contracts\QueryPlan;
 use App\Platform\Json\DecimalLiteral;
 use App\Platform\Json\JsonObject;
 use App\Platform\Json\LosslessJson;
+use App\Platform\Json\SamplePath;
 
 /**
  * The lenient `config` document of a Draft (Story 3.4, `schema_version` 1): the Configure Block step's fields. Nothing is required (a
  * Draft saves as it is); what is present must have the right type, and sizes must lie inside the Block Type's registry limits, which
- * are named in the error. The Query Plan (`query_plan`, Story 3.10) is judged by Mapping's {@see QueryPlan}. Unknown keys are dropped. The "Footer action" slot is derived: it is present, optional and empty exactly when
+ * are named in the error. The Query Plan (`query_plan`, Story 3.10) is judged by Mapping's {@see QueryPlan}. The mapping choices `record_path` (a stored path ending in `[*]`, or null to clear) and `field_roles` (stored path => role) are judged here too. Unknown keys are dropped. The "Footer action" slot is derived: it is present, optional and empty exactly when
  * "Show footer action" is on. Stored and read through the platform's JSON codec, never `json_decode`.
  */
 final class DraftConfig
@@ -85,11 +87,68 @@ final class DraftConfig
             }
         }
 
+        // The Admin's choices for mapping (Story 3.11a): the record path and the role overrides, in the stored path subset.
+        if (array_key_exists('record_path', $input)) {
+            if ($input['record_path'] === null) {
+                $out['record_path'] = null;
+            } elseif (is_string($input['record_path']) && self::isRecordPath($input['record_path'])) {
+                $out['record_path'] = $input['record_path'];
+            } else {
+                $errors['config.record_path'] = ['Choose an array of records, such as $.data[*].'];
+            }
+        }
+
+        if (array_key_exists('field_roles', $input) && $input['field_roles'] === null) {
+            $out['field_roles'] = [];
+        } elseif (isset($input['field_roles'])) {
+            if (! is_array($input['field_roles'])) {
+                $errors['config.field_roles'] = ['Field roles must be an object.'];
+            } else {
+                $roles = [];
+
+                foreach ($input['field_roles'] as $path => $role) {
+                    $path = (string) $path;
+
+                    if (! self::isCanonicalPath($path)) {
+                        $errors["config.field_roles.{$path}"] = ['Use a stored path such as $.data[*].revenue.'];
+                    } elseif (! is_string($role) || FieldRole::tryFrom($role) === null) {
+                        $errors["config.field_roles.{$path}"] = ['Choose one of: '.implode(', ', array_column(FieldRole::cases(), 'value')).'.'];
+                    } else {
+                        $roles[$path] = $role;
+                    }
+                }
+
+                $out['field_roles'] = $roles;
+            }
+        }
+
         if ($errors !== []) {
             throw new InvalidDraft($errors, 'blocks.invalid_config');
         }
 
         return $out;
+    }
+
+    /** A stored path in its canonical spelling, naming at least one segment. */
+    private static function isCanonicalPath(string $path): bool
+    {
+        try {
+            $segments = SamplePath::parse($path);
+
+            return $segments !== [] && SamplePath::stored($segments) === $path;
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
+    }
+
+    /** A record path names an array's elements: a stored path that ends in `[*]`. */
+    private static function isRecordPath(string $path): bool
+    {
+        try {
+            return str_ends_with($path, '[*]') && SamplePath::parse($path) !== [] && SamplePath::stored(SamplePath::parse($path)) === $path;
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
     }
 
     /**
@@ -197,10 +256,15 @@ final class DraftConfig
     public static function merge(array $stored, array $step): array
     {
         // `source` is Step 2's key (Story 3.7): it is replaced only when the save carries one (see ManageDrafts).
-        $kept = array_diff_key($stored, array_flip(['schema_version', 'description', 'icon', 'display', 'slots', ...(array_key_exists('source', $step) ? ['source'] : []), ...(array_key_exists('query_plan', $step) ? ['query_plan'] : [])]));
+        $kept = array_diff_key($stored, array_flip(['schema_version', 'description', 'icon', 'display', 'slots', ...(array_key_exists('source', $step) ? ['source'] : []), ...(array_key_exists('query_plan', $step) ? ['query_plan'] : []), ...(array_key_exists('record_path', $step) ? ['record_path'] : []), ...(array_key_exists('field_roles', $step) ? ['field_roles'] : [])]));
         $slots = is_array($stored['slots'] ?? null) ? $stored['slots'] : [];
         unset($slots['footer_action']);
         $slots += $step['slots'] ?? [];
+
+        // `record_path: null` clears the choice (the suggested path is used again).
+        if (array_key_exists('record_path', $step) && $step['record_path'] === null) {
+            unset($step['record_path']);
+        }
 
         return $kept + ($slots === [] ? [] : ['slots' => $slots]) + $step;
     }

@@ -348,3 +348,14 @@
 - source_spec: `spec-3-10-render-the-sample-through-the-query-plan-engine-live-preview.md`
   summary: Allow a Draft save to clear `config.query_plan` and test the 409 published-Draft preview once Story 3.19 adds the state.
   evidence: `isset()` treats null as absent; `block_versions.state` allows only draft and discarded for now.
+
+- source_spec: `spec-3-11a-infer-field-roles-and-record-path-candidates.md`
+  summary: Story 3.11b: the Map Data step UI (layout, scalar cards, role chips and menus, suggestion row, record-path radiogroup, field tree, roles summary, small-screen message).
+  evidence: Split from Story 3.11 on the scope rule; it consumes the 3.11a endpoint and config keys.
+- source_spec: `spec-3-11a-infer-field-roles-and-record-path-candidates.md`
+  summary: Story 3.11c: upsert the Dataset (workspace, endpoint, record_path) with typed fields as a suggestion for new Drafts.
+  evidence: Split from Story 3.11; needs a Datasets table that does not exist yet.
+
+- source_spec: `spec-3-11a-infer-field-roles-and-record-path-candidates.md`
+  summary: Report stale overrides and a stale `record_path` after the sample is replaced; treat an empty array of objects as a candidate; match pagination words as whole words only; give an invalid sample its own 422 message.
+  evidence: Edge-case review: dead overrides can revive on a reused path, and `$.pages[*]` or `$.next_steps[*]` are flagged pagination-like.
