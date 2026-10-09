@@ -1,0 +1,12 @@
+<?php
+
+namespace BlockTypes\GoodCard\V1;
+
+final class Shaper
+{
+    // json_decode and time() in a comment or a string are not calls.
+    public function shape(array $slots): array
+    {
+        return ['note' => 'json_decode(time())'] + $slots;
+    }
+}

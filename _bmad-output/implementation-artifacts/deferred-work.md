@@ -278,3 +278,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-20-fetch-comparison-data-together-as-a-sync-group.md`
   summary: Decide how compute tells a failing group (both sides failed, no generation) from a never-fetched one, add `find(generationId)`, and tie raw retention and pruning to generations.
   evidence: `comparisonUnavailable` only reads the newest generation; generations name payload ids retention may purge and have no pruning path.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-register-the-block-type-contract-v1-and-the-kpi-card-package.md`
+  summary: Verify each package's Shaper class autoloads under its `BlockTypes\<Key>\V<N>` namespace and exposes `shape()`.
+  evidence: The registry only checks that Shaper.php exists; a namespace mismatch passes boot and fails at shaping time. Shaper is a stub until Story 3.2.

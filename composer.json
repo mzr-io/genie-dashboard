@@ -44,6 +44,7 @@
     "autoload": {
         "psr-4": {
             "App\\": "app/",
+            "BlockTypes\\KpiCard\\V1\\": "block-types/kpi-card/v1/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         }
@@ -80,6 +81,9 @@
             "npm run types:check",
             "npm test",
             "npm run lint:colors",
+            "npm run lint:renderers",
+            "npm run check:block-type-pins",
+            "@block-types:check",
             "@audit:php",
             "npm run audit:deps",
             "npm run audit:licenses"
@@ -95,6 +99,9 @@
             "@lint:check",
             "@types:check",
             "@php artisan test"
+        ],
+        "block-types:check": [
+            "@php artisan dashflow:block-types --check"
         ],
         "error-codes": [
             "@php artisan dashflow:error-codes"

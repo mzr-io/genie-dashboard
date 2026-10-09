@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\AttributeKeyController;
+use App\Http\Controllers\Admin\BlockTypeController;
 use App\Http\Controllers\Admin\DataSourceController;
 use App\Http\Controllers\Admin\DataSourceHealthController;
 use App\Http\Controllers\Admin\DataSourceLockController;
@@ -102,6 +103,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::get('data-sources/{dataSource}/lock/takeover', [DataSourceLockController::class, 'takeoverStatus'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.takeover.status');
     Route::post('data-sources/{dataSource}/lock/flush', [DataSourceLockController::class, 'flush'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.flush');
 });
+
+// Block Types (Story 3.1): the registry's list, for Admins with `blocks.edit`.
+Route::middleware(['auth:sanctum', 'admin'])->get('block-types', BlockTypeController::class)->name('api.admin.block-types.index');
 
 // Operations (Story 2.5): the summary of an asynchronous Operation, for the membership that started it and nobody else.
 Route::middleware(['auth:sanctum', 'throttle:120,1,operation-status'])->get('operations/{operation}', [OperationController::class, 'show'])->name('api.operations.show');

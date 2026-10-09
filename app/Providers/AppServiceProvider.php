@@ -32,6 +32,8 @@ use App\Modules\Access\Infrastructure\SodiumAttributeVault;
 use App\Modules\Access\Infrastructure\SqlGroupDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberNames;
+use App\Modules\BlockTypes\Application\LoadBlockTypes;
+use App\Modules\BlockTypes\Contracts\BlockTypeRegistry;
 use App\Modules\Connector\Application\FetchEndpoint;
 use App\Modules\Connector\Application\GuardEgressUrl;
 use App\Modules\Connector\Application\ManageDataSources;
@@ -156,6 +158,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(AuditSerializers::class);
         $this->app->singleton(OutboxConsumers::class);
         $this->app->singleton(EditLockResources::class);
+        // One registry per process, reading `block-types/` once.
+        $this->app->singleton(BlockTypeRegistry::class, fn ($app) => new LoadBlockTypes($app->basePath('block-types')));
         $this->app->bind(MembershipLookup::class, SecurityDefinerMembershipLookup::class);
         $this->app->bind(MembershipPermissions::class, EloquentMembershipPermissions::class);
         $this->app->bind(MemberDirectory::class, SqlMemberDirectory::class);
@@ -233,6 +237,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->configureDefaults();
+
+        // Validates every Block Type package at boot: one invalid package fails here, readably, and registers none.
+        // The generator command skips it, so it can still regenerate (and report) around a broken package; it validates lazily itself.
+        if (! in_array('dashflow:block-types', $_SERVER['argv'] ?? [], true)) {
+            $this->app->make(BlockTypeRegistry::class)->all();
+        }
 
         // The Data source soft lock (Story 2.8) has its own bucket, per person: several tabs polling and heartbeating once a
         // second must not exhaust it, and exhausting it must not throttle anything else.
