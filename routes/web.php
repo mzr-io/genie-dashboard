@@ -60,7 +60,8 @@ Route::middleware(['auth'])->group(function () {
         Route::inertia('/', 'admin/Overview')->name('admin.overview');
         Route::inertia('blocks', 'Placeholder', ['page' => 'block-management'])->name('admin.blocks.index');
         Route::inertia('blocks/create', 'Placeholder', ['page' => 'create-block'])->name('admin.blocks.create');
-        Route::inertia('blocks/drafts', 'Placeholder', ['page' => 'draft-blocks'])->name('admin.blocks.drafts');
+        // Draft blocks (Story 3.3): the list of Drafts. Each row opens the wizard (Story 3.4) at the step the Draft was left on.
+        Route::inertia('blocks/drafts', 'admin/DraftBlocks')->name('admin.blocks.drafts');
         Route::inertia('blocks/published', 'Placeholder', ['page' => 'published-blocks'])->name('admin.blocks.published');
         Route::inertia('categories', 'Placeholder', ['page' => 'block-categories'])->name('admin.categories.index');
         Route::inertia('templates', 'Placeholder', ['page' => 'dashboard-templates'])->name('admin.templates.index');

@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Http\Responses\AdminApiError;
+use App\Modules\Blocks\Contracts\ErrorCode as BlocksErrorCode;
 use App\Modules\Connector\Contracts\ErrorCode;
 use App\Support\Observability\Scrubber;
 use Closure;
@@ -15,16 +16,23 @@ use Symfony\Component\HttpFoundation\Response;
  * log line or a store that was not built for it. A field is secret-valued when it is named like one (the Scrubber's credential names, at any depth) or is flagged `secret` with a value.
  * Only the field names are inspected and reported: the value is never read into a message.
  *
- * Use it as route middleware: `->middleware(RejectsSecretValues::class)`.
+ * Use it as route middleware: `->middleware(RejectsSecretValues::class)`. The error code is the owning module's: Connector's by default
+ * (`secret_values_refused`), Blocks' with the parameter `blocks` (`->middleware(RejectsSecretValues::class.':blocks')`, Story 3.3).
  */
 final class RejectsSecretValues
 {
     private const MAX_DEPTH = 8;
 
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, string $module = 'connector'): Response
     {
+        if (! in_array($module, ['connector', 'blocks'], true)) {
+            throw new \InvalidArgumentException('RejectsSecretValues takes the module connector or blocks.');
+        }
+
         if (self::containsSecretValue($request->all())) {
-            return AdminApiError::json($request, ErrorCode::SecretValuesRefused->value, 422, 'This request cannot carry a secret value.', extra: ['reason' => 'secret-values-refused']);
+            $code = $module === 'blocks' ? BlocksErrorCode::SecretValuesRefused : ErrorCode::SecretValuesRefused;
+
+            return AdminApiError::json($request, $code->value, 422, 'This request cannot carry a secret value.', extra: ['reason' => 'secret-values-refused']);
         }
 
         return $next($request);

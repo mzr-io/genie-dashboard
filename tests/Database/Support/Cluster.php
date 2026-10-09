@@ -264,6 +264,10 @@ final class Cluster
             'data_source_health' => self::seedSourceHealth($workspaceId),
             'raw_bodies' => self::seedRawBody($workspaceId),
             'raw_observations' => self::seedRawObservation($workspaceId),
+            'blocks' => self::seedBlock($workspaceId),
+            'block_versions' => self::seedBlockVersion($workspaceId),
+            'draft_samples' => self::seedDraftSample($workspaceId),
+            'draft_ui_state' => self::seedDraftUiState($workspaceId),
             default => null,
         };
     }
@@ -347,6 +351,59 @@ final class Cluster
         $url = $scheme.'://'.$host.($port === ($scheme === 'https' ? 443 : 80) ? '' : ':'.$port);
         self::superuser()->prepare('INSERT INTO data_sources (id, workspace_id, name, base_url, scheme, host, port, created_by_membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, now(), now())')
             ->execute([$id, $workspaceId, $name ?? 'Source '.$id, $url, $scheme, $host, $port, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /** A Block (Story 3.3) of the Workspace, owned by a made-up membership. */
+    public static function seedBlock(string $workspaceId, string $type = 'kpi-card'): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO blocks (id, workspace_id, type_key, owner_membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $type, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /**
+     * A version of a new Block (Story 3.3): a Draft unless another state is given.
+     *
+     * @param  array<string, mixed>  $columns  overrides, by column name (`block_id` reuses a Block)
+     */
+    public static function seedBlockVersion(string $workspaceId, array $columns = []): string
+    {
+        $id = (string) Str::uuid7();
+        $row = $columns + [
+            'id' => $id, 'workspace_id' => $workspaceId, 'block_id' => self::seedBlock($workspaceId), 'state' => 'draft', 'name' => 'Block '.$id,
+            'created_by_membership_id' => (string) Str::uuid7(),
+        ];
+
+        if (($row['state'] ?? '') === 'discarded') {
+            $row += ['discarded_at' => '2026-10-09 10:00:00+00'];
+        }
+
+        self::superuser()->prepare('INSERT INTO block_versions ('.implode(', ', array_keys($row)).') VALUES ('.implode(', ', array_fill(0, count($row), '?')).')')
+            ->execute(array_values($row));
+
+        return (string) $row['id'];
+    }
+
+    public static function seedDraftSample(string $workspaceId, ?string $versionId = null): string
+    {
+        $id = (string) Str::uuid7();
+        $versionId ??= self::seedBlockVersion($workspaceId);
+        self::superuser()->prepare("INSERT INTO draft_samples (id, workspace_id, block_version_id, source, body, size_bytes) VALUES (?, ?, ?, 'paste', '{}', 2)")
+            ->execute([$id, $workspaceId, $versionId]);
+
+        return $id;
+    }
+
+    public static function seedDraftUiState(string $workspaceId, ?string $versionId = null): string
+    {
+        $id = (string) Str::uuid7();
+        $versionId ??= self::seedBlockVersion($workspaceId);
+        self::superuser()->prepare('INSERT INTO draft_ui_state (id, workspace_id, block_version_id) VALUES (?, ?, ?)')
+            ->execute([$id, $workspaceId, $versionId]);
 
         return $id;
     }

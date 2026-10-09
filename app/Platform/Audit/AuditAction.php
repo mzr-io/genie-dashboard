@@ -75,6 +75,10 @@ enum AuditAction: string
     // Ingestion: a Data Source's health status changed (Story 2.18). Outbox event and audit event: the Data Source id and the two statuses, nothing else.
     case IngestionSourceHealthChanged = 'ingestion.source_health.changed';
 
+    // Blocks: a Draft was started or discarded (Story 3.3). Never one per autosave. IDs, the Block Type key, a keyed hash of the name and the revision only.
+    case BlocksDraftCreated = 'blocks.draft.created';
+    case BlocksDraftDiscarded = 'blocks.draft.discarded';
+
     // Platform: operator actions mirrored into the Workspace audit log.
     case PlatformWorkspaceCreated = 'platform.workspace.created';
 

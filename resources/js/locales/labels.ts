@@ -809,6 +809,52 @@ export const hostAllowlistLabels = {
     removeVerb: 'Remove',
 } as const;
 
+// Draft blocks (Story 3.3; UX-DR-261, 263, 271, 282): the list of Drafts under Admin > Draft blocks. Messages for the standard
+// states (`list-empty`, `list-no-match`, `msg:perm-denied`, the failure row) come from the catalogue and `shellLabels`.
+export const draftBlockLabels = {
+    pageTitle: 'Draft blocks',
+    pageSubtitle:
+        'Blocks you have started and not published. Open one to carry on where you stopped.',
+    items: 'draft blocks',
+    // The phrase of `list-empty` ("No draft blocks yet. Create a block to start.").
+    action: 'Create a block',
+    create: '+ Create block',
+    caption:
+        'Draft blocks of this workspace, with category, type, version, owner and last update',
+    tableRegion: 'Draft blocks table',
+    toolbar: 'Draft block tools',
+    search: 'Search draft blocks',
+    searchPlaceholder: 'Search by name, type or category',
+    clearSearch: 'Clear search',
+    count: (matched: number, total: number) =>
+        `${matched} of ${total} ${total === 1 ? 'draft block' : 'draft blocks'}`,
+    columns: {
+        name: 'Name',
+        category: 'Category',
+        type: 'Type',
+        version: 'Version',
+        owner: 'Owner',
+        updated: 'Last updated',
+        status: 'Status',
+        actions: 'Actions',
+    },
+    // The status badge of every row on this list.
+    draft: 'Draft',
+    noCategory: '—',
+    noOwner: '—',
+    open: (name: string) => `Open ${name}`,
+    // The Block Type keys the registry lists, by their display name; an unknown key shows as it is.
+    types: { 'kpi-card': 'KPI card' } as Record<string, string>,
+    // Discard.
+    discard: 'Discard',
+    discardAria: (name: string) => `Discard ${name}`,
+    discardTitle: (name: string) => `Discard ${name}?`,
+    discardImpact:
+        'The draft and its sample data will be deleted. This cannot be undone. Published blocks are not affected.',
+    discarded: (name: string) => `${name} discarded.`,
+    gone: 'This draft no longer exists.',
+};
+
 // Labels of the Data sources list and form (Story 2.3; UX-DR-207, 115, 261, 263, 23, 26, 22, 37, 39, 274, 282). The
 // messages for the standard states (`list-empty`, `list-no-match`, `msg:saved`, `msg:perm-denied`, the allowlist miss
 // `host-not-allowlisted`, the save failure) come from the catalogue and `shellLabels`.

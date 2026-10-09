@@ -18,7 +18,7 @@ return [
         'Dashboards' => ['Results', 'Templates', 'Blocks', 'Access'],
         'Templates' => ['Blocks', 'Access'],
         'Results' => ['Blocks', 'Ingestion', 'RawStore', 'Mapping', 'BlockTypes', 'Access'],
-        'Blocks' => ['Mapping', 'Datasets', 'Ingestion', 'Access'],
+        'Blocks' => ['Mapping', 'Datasets', 'Ingestion', 'Access', 'BlockTypes'],
         'Datasets' => ['Connector'],
         'Ingestion' => ['Connector', 'RawStore'],
         'Mapping' => ['BlockTypes'],
@@ -57,7 +57,7 @@ return [
         'Datasets' => ['datasets', 'dataset_fields'],
         'Results' => ['block_results', 'block_viewers', 'mapping_health_incidents'],
         'Blocks' => [
-            'blocks', 'block_versions', 'draft_samples', 'validation_reports',
+            'blocks', 'block_versions', 'draft_samples', 'draft_ui_state', 'validation_reports',
             'block_categories', 'block_usage',
         ],
         'Templates' => ['templates', 'template_versions'],

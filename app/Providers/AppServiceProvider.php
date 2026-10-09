@@ -32,6 +32,10 @@ use App\Modules\Access\Infrastructure\SodiumAttributeVault;
 use App\Modules\Access\Infrastructure\SqlGroupDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberNames;
+use App\Modules\Blocks\Application\ManageDrafts;
+use App\Modules\Blocks\Contracts\Drafts;
+use App\Modules\Blocks\Infrastructure\BlocksAuditSerializer;
+use App\Modules\Blocks\Infrastructure\DraftLockEpochs;
 use App\Modules\BlockTypes\Application\LoadBlockTypes;
 use App\Modules\BlockTypes\Contracts\BlockTypeRegistry;
 use App\Modules\Connector\Application\FetchEndpoint;
@@ -183,6 +187,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(HostAllowlist::class, ManageHostAllowlist::class);
         $this->app->bind(HostAllowlistDependents::class, SqlHostAllowlistDependents::class);
         $this->app->bind(DataSources::class, ManageDataSources::class);
+        $this->app->bind(Drafts::class, ManageDrafts::class);
         $this->app->bind(Endpoints::class, ManageEndpoints::class);
         $this->app->bind(SecretVault::class, LocalSecretVault::class);
         $this->app->bind(HostResolver::class, DnsHostResolver::class);
@@ -251,6 +256,7 @@ class AppServiceProvider extends ServiceProvider
         // Each module registers its audit allowlist with the kernel (the kernel calls no module).
         $serializers = $this->app->make(AuditSerializers::class);
         $serializers->register(new AccessAuditSerializer);
+        $serializers->register(new BlocksAuditSerializer);
         $serializers->register(new ConnectorAuditSerializer);
         $serializers->register(new IdentityAuditSerializer);
         $serializers->register(new IngestionAuditSerializer);
@@ -263,6 +269,8 @@ class AppServiceProvider extends ServiceProvider
 
         // Each module registers the lockable resources it owns with the kernel's edit lock (the kernel calls no module).
         $this->app->make(EditLockResources::class)->register(DataSourceLockEpochs::TYPE, new DataSourceLockEpochs);
+        // A Draft block's epoch (Story 3.3); the lock endpoints themselves come with Story 3.6.
+        $this->app->make(EditLockResources::class)->register(DraftLockEpochs::TYPE, new DraftLockEpochs);
 
         // Each module registers its Operation kinds with the kernel (the kernel calls no module). A connection test runs on
         // `fetch-interactive`, which only `worker-connector` consumes.

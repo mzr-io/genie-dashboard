@@ -286,3 +286,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-2-see-the-kpi-card-in-every-state-rendered-safely-and-exactly.md`
   summary: Add a shared Shaper-output fixture asserted in Pest and mounted in Vitest, and generate payload/descriptor types from schema.json instead of hand-writing payload.ts.
   evidence: PHP Shaper keys and payload.ts can drift with both suites green; enums are duplicated in Shaper, payload.ts and display.ts. Also the `icon` slot renders as literal text until icons are mapped.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-3-start-save-and-discard-a-draft-block.md`
+  summary: Guard Discard with the edit lock/revision (and decide owner rules) once Draft lock endpoints exist, and audit block type changes made through save.
+  evidence: DELETE draft takes no expected_revision/lock_epoch, so an Admin can discard a Draft another is editing; type_key changes through save are unaudited. Locking is Story 3.6, wizard Story 3.4.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-3-start-save-and-discard-a-draft-block.md`
+  summary: Add a deterministic test for the unique-index race in ManageDrafts::create.
+  evidence: The savepoint/23505 to DraftExists path is only reachable with concurrent writers and is untested.
