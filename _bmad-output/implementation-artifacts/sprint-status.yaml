@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-06-2026 11:46
-last_updated: 10-09-2026 12:30
+last_updated: 10-09-2026 13:30
 project: rmg-dashboard-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -83,7 +83,7 @@ development_status:
   2-17-retry-rate-limit-and-break-the-circuit-on-failing-sources: review
   2-18-see-data-source-health: review
   2-19-refresh-only-what-is-being-watched-within-budgets: review
-  2-20-fetch-comparison-data-together-as-a-sync-group: backlog
+  2-20-fetch-comparison-data-together-as-a-sync-group: review
   epic-2-retrospective: optional
 
   epic-3: backlog

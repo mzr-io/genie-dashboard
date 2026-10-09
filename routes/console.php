@@ -2,6 +2,7 @@
 
 use App\Modules\Ingestion\Application\DispatchDueProbesJob;
 use App\Modules\Ingestion\Application\DispatchDueSyncsJob;
+use App\Modules\Ingestion\Application\ReemitPayloadEventsJob;
 use App\Modules\Ingestion\Application\SweepRawHistoryJob;
 use App\Modules\Ingestion\Infrastructure\SyncSettings;
 use App\Platform\Outbox\RelayOutboxJob;
@@ -42,6 +43,9 @@ Schedule::job(new DispatchDueProbesJob, 'maintenance')->everyMinute()->onOneServ
 
 // The retention sweep (Story 2.16) runs on queue `maintenance`, so it runs on worker-compute, the only service holding the `maintenance` database credentials.
 Schedule::job(new SweepRawHistoryJob, 'maintenance')->everyFiveMinutes()->onOneServer();
+
+// The payload re-emit sweep (Story 2.20): a target whose payload sequence is ahead of what consumers applied gets its event again, once per tick.
+Schedule::job(new ReemitPayloadEventsJob, 'maintenance')->everyMinute()->onOneServer();
 
 // Schedule mutexes are locks: with Valkey they live on the noeviction `queue` store, not the LRU cache.
 Schedule::useCache(config('cache.schedule_store'));

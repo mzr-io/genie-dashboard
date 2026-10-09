@@ -260,6 +260,7 @@ final class Cluster
             'sync_runs' => self::seedSyncRun($workspaceId),
             'sync_targets' => self::seedSyncTarget($workspaceId),
             'sync_subscriptions' => self::seedSubscription($workspaceId),
+            'sync_generations' => self::seedGeneration($workspaceId),
             'data_source_health' => self::seedSourceHealth($workspaceId),
             'raw_bodies' => self::seedRawBody($workspaceId),
             'raw_observations' => self::seedRawObservation($workspaceId),
@@ -453,6 +454,20 @@ final class Cluster
             ->execute(array_values($row));
 
         return (string) $row['id'];
+    }
+
+    /** A complete generation (Story 2.20) of a new group of two targets of the Workspace. */
+    public static function seedGeneration(string $workspaceId): string
+    {
+        $primary = self::seedSyncTarget($workspaceId);
+        $comparison = self::seedSyncTarget($workspaceId, ['sync_group_id' => $primary, 'group_primary_target_id' => $primary]);
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare(
+            'INSERT INTO sync_generations (id, workspace_id, sync_group_id, primary_target_id, comparison_target_id, dispatch_seq, primary_ok, comparison_ok, complete, primary_payload_id, comparison_payload_id, primary_payload_seq, comparison_payload_seq) '
+            .'VALUES (?, ?, ?, ?, ?, 1, true, true, true, ?, ?, 1, 1)',
+        )->execute([$id, $workspaceId, $primary, $primary, $comparison, (string) Str::uuid7(), (string) Str::uuid7()]);
+
+        return $id;
     }
 
     /**

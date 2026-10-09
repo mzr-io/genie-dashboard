@@ -14,6 +14,12 @@ final readonly class SubscribeResult
     /** The member already caused the most new per-user targets an hour allows (`budgets.max_new_cold_keys_per_membership_per_hour`). */
     public const BUDGET_LIMITED = 'budget.new_cold_keys';
 
+    /** Story 2.20: the primary a comparison names is not a live sync target of the Workspace, is itself a comparison, or is the comparison itself. */
+    public const PRIMARY_UNKNOWN = 'primary_unknown';
+
+    /** Story 2.20: the comparison target already belongs to another group, or the primary already has another comparison. */
+    public const GROUP_CONFLICT = 'group_conflict';
+
     private function __construct(
         public ?string $syncTargetId,
         /** ISO 8601, UTC; null while `sync.hot_window` is unset. */

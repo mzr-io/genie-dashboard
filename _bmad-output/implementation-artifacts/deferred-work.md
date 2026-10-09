@@ -264,3 +264,17 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-19-refresh-only-what-is-being-watched-within-budgets.md`
   summary: Purge shared per-period targets that subscriptions created once they go cold.
   evidence: The cold purge covers only `user_scoped` targets, so each period or compute context leaves a permanent shared target.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-20-fetch-comparison-data-together-as-a-sync-group.md`
+  summary: Story 2.20 Data Source detail view showing a group run as one run with both sides' outcomes.
+  evidence: Split at the planning checkpoint; no sync-runs read path or UI exists and `sync_runs` is Connector-owned.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-20-fetch-comparison-data-together-as-a-sync-group.md`
+  summary: Test the group fetch under governor denial, retry and requeue, a moved revision and a late comparison, and give the re-emit exclusion test a real caught-up consumer.
+  evidence: Verification-gap review: `SyncGroupTest` sets no retry or governor tunables, and its caught-up assertion is vacuous.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-20-fetch-comparison-data-together-as-a-sync-group.md`
+  summary: Make the payload re-emit sweep compare against the payload carried by the last consumed event, skip subjects with no consumer, and bound its run across Workspaces.
+  evidence: It compares `payload_seq` with the outbox `subject_seq` (different counters), re-emits every stored target every ~5 minutes while no consumer exists, and a 55 s job can end before late Workspaces.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-20-fetch-comparison-data-together-as-a-sync-group.md`
+  summary: Decide how compute tells a failing group (both sides failed, no generation) from a never-fetched one, add `find(generationId)`, and tie raw retention and pruning to generations.
+  evidence: `comparisonUnavailable` only reads the newest generation; generations name payload ids retention may purge and have no pruning path.

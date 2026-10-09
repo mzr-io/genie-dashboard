@@ -9,6 +9,9 @@ namespace App\Modules\Ingestion\Contracts;
  * `bound` maps each user-binding reference of the Endpoint (the parameter name, `header:{name}` for a header) to the value resolved for the member.
  * A reference that is absent, null or empty makes the subscription fail with `access.context_missing`. `membershipId` is required when the Endpoint
  * is scoped by the caller and counts against the new-cold-key budget.
+ *
+ * Story 2.20: a `comparison` subscription may name its primary's sync target in `primaryTargetId` (the `syncTargetId` the primary's own subscription
+ * returned). The comparison target is then fetched together with the primary as one sync group.
  */
 final readonly class SubscribeInput
 {
@@ -27,6 +30,7 @@ final readonly class SubscribeInput
         public ?string $periodEnd = null,
         public array $bound = [],
         public ?string $membershipId = null,
+        public ?string $primaryTargetId = null,
     ) {}
 
     /** @return array<string, mixed> */

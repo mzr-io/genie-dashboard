@@ -69,7 +69,7 @@ enum AuditAction: string
     case ConnectorEgressGrantCreated = 'connector.egress_grant.created';
     case ConnectorEgressGrantRevoked = 'connector.egress_grant.revoked';
 
-    // Ingestion: a sync target kept a new good response (Story 2.14). An outbox event only: IDs and sequence numbers, never the body.
+    // Ingestion: a sync target kept a new good response (Story 2.14). An outbox event only: IDs and sequence numbers, never the body. A sync group's run (Story 2.20) adds `sync_group_id`, `generation_id`, `generation_complete` and `failed_side`.
     case IngestionPayloadChanged = 'ingestion.payload.changed';
 
     // Ingestion: a Data Source's health status changed (Story 2.18). Outbox event and audit event: the Data Source id and the two statuses, nothing else.

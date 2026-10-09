@@ -835,7 +835,7 @@ it('adds the health table and the health path in one migration that rolls back a
     expect($columns('data_sources', 'health_path'))->toBe(1)->and($columns('data_source_health', 'status'))->toBe(1);
 
     try {
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 2, '--force' => true]))->toBe(0)
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 3, '--force' => true]))->toBe(0)
             ->and($columns('data_sources', 'health_path'))->toBe(0)->and($columns('data_source_health', 'status'))->toBe(0);
     } finally {
         Artisan::call('migrate', ['--database' => 'migrator', '--force' => true]);

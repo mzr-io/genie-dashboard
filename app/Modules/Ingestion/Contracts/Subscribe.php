@@ -12,6 +12,10 @@ namespace App\Modules\Ingestion\Contracts;
  * `hot_until = last_access_at + sync.hot_window` (null while that setting is unset). A missing or empty bound value creates no target and returns
  * {@see FetchKeyResult::CONTEXT_MISSING}; a new per-user target over the member's hourly budget is not created and is returned as budget-limited.
  *
+ * Story 2.20: a comparison subscription that names its primary links the two targets as one sync group (the comparison takes the primary's
+ * `sync_group_id`, and the dispatcher schedules the group through the primary). An unknown primary is refused with
+ * {@see SubscribeResult::PRIMARY_UNKNOWN} and nothing is created or touched.
+ *
  * Runs in the caller's Workspace transaction. Nothing here calls a source: only the dispatcher schedules fetches.
  */
 interface Subscribe

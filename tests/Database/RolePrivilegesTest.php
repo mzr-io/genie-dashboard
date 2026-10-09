@@ -45,7 +45,7 @@ it('gives app SELECT, INSERT and UPDATE on tenant tables and nothing else', func
         }
 
         // Append-only and relay-owned tables: app never updates them. `egress_grants` is the operator's: app only reads it. `endpoint_revisions` is immutable (Story 2.9): app inserts and reads. The raw tier is insert-only (Story 2.14).
-        $updatable = ! in_array($table, ['audit_events', 'outbox_events', 'outbox_consumptions', 'egress_grants', 'endpoint_revisions', 'raw_bodies', 'raw_observations'], true);
+        $updatable = ! in_array($table, ['audit_events', 'outbox_events', 'outbox_consumptions', 'egress_grants', 'endpoint_revisions', 'raw_bodies', 'raw_observations', 'sync_generations'], true);
         $insertable = $table !== 'egress_grants';
 
         expect($privileges)->toBe([

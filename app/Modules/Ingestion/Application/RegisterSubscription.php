@@ -40,6 +40,14 @@ final class RegisterSubscription implements Subscribe
         $this->check($input);
 
         $workspaceId = strtolower($input->workspaceId);
+
+        // Story 2.20: an unknown primary is refused before anything is created or touched.
+        $primary = $input->primaryTargetId === null ? null : $this->primary($workspaceId, strtolower($input->primaryTargetId));
+
+        if ($input->primaryTargetId !== null && $primary === null) {
+            return SubscribeResult::refused(SubscribeResult::PRIMARY_UNKNOWN);
+        }
+
         $source = app(DataSources::class)->find($workspaceId, strtolower($input->dataSourceId));
         $endpoint = app(Endpoints::class)->find($workspaceId, $source->id, strtolower($input->endpointId));
 
@@ -83,7 +91,68 @@ final class RegisterSubscription implements Subscribe
             throw new \RuntimeException('The sync target could not be kept for the subscription.');
         }
 
+        if ($primary !== null) {
+            $linked = $this->link($workspaceId, $targetId, $primary);
+
+            if ($linked !== null) {
+                return SubscribeResult::refused($linked);
+            }
+        }
+
         return SubscribeResult::subscribed($targetId, $this->upsert($workspaceId, $targetId, $input));
+    }
+
+    /** The primary a comparison names: a live target of the Workspace that is not itself a comparison (locked, so it cannot be retired meanwhile). */
+    private function primary(string $workspaceId, string $primaryId): ?string
+    {
+        $row = DB::selectOne(
+            'select id from sync_targets where workspace_id = ? and id = ? and retired_at is null and group_primary_target_id is null for update',
+            [$workspaceId, $primaryId],
+        );
+
+        return $row === null ? null : strtolower((string) $row->id);
+    }
+
+    /**
+     * Links the comparison target to its primary: it takes the primary's group (the primary's own `sync_group_id`) and stores the primary, and its
+     * `applied_seq` restarts at 0 because from now on the primary's dispatch number fences it. Linking again is a no-op.
+     *
+     * @return string|null the refusal reason, or null when linked
+     */
+    private function link(string $workspaceId, string $comparisonId, string $primaryId): ?string
+    {
+        if ($comparisonId === $primaryId) {
+            return SubscribeResult::PRIMARY_UNKNOWN;
+        }
+
+        $comparison = DB::selectOne('select group_primary_target_id from sync_targets where workspace_id = ? and id = ? for update', [$workspaceId, $comparisonId]);
+
+        if ($comparison === null) {
+            return SubscribeResult::PRIMARY_UNKNOWN;
+        }
+
+        if ($comparison->group_primary_target_id !== null) {
+            return strtolower((string) $comparison->group_primary_target_id) === $primaryId ? null : SubscribeResult::GROUP_CONFLICT;
+        }
+
+        $taken = DB::selectOne(
+            'select 1 as taken from sync_targets where workspace_id = ? and retired_at is null and (group_primary_target_id = ? or group_primary_target_id = ?) limit 1',
+            [$workspaceId, $primaryId, $comparisonId],
+        );
+
+        if ($taken !== null) {
+            // The primary has another comparison, or the comparison is itself a primary.
+            return SubscribeResult::GROUP_CONFLICT;
+        }
+
+        $group = DB::selectOne('select sync_group_id from sync_targets where workspace_id = ? and id = ?', [$workspaceId, $primaryId]);
+
+        DB::update(
+            'update sync_targets set group_primary_target_id = ?, sync_group_id = ?, applied_seq = 0, updated_at = now() where workspace_id = ? and id = ?',
+            [$primaryId, (string) $group->sync_group_id, $workspaceId, $comparisonId],
+        );
+
+        return null;
     }
 
     private function check(SubscribeInput $input): void
@@ -96,6 +165,10 @@ final class RegisterSubscription implements Subscribe
 
         if (! in_array($input->role, SubscribeInput::ROLES, true) || $input->refreshIntervalSeconds < 1 || mb_strlen($input->computeContext) > 255) {
             throw new InvalidArgumentException('A subscription needs a role of primary or comparison, an interval of at least one second and a compute context of at most 255 characters.');
+        }
+
+        if ($input->primaryTargetId !== null && (! Str::isUuid($input->primaryTargetId) || $input->role !== 'comparison')) {
+            throw new InvalidArgumentException('Only a comparison subscription names a primary, by its sync target ID.');
         }
 
         if ($input->membershipId !== null && ! Str::isUuid($input->membershipId)) {

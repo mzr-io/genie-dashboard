@@ -25,6 +25,10 @@ use Throwable;
  * interval; each further one is widened to the next larger entry of `sync.refresh_intervals` (none larger: it keeps its interval) and marked
  * budget-limited, with a `dashflow.ingestion.budget_limited` metric. Nothing is queued without bound: the batch and the fair share still apply.
  * With `hot_window` unset or malformed the rule is off and every target is scheduled as before.
+ *
+ * Story 2.20: a sync group is one dispatch. Only the primary's `dispatch_seq` rises and the one {@see FetchJob} carries the primary's number as the
+ * group's fence; a comparison target linked to a primary (`group_primary_target_id`) is never picked on its own. A group is hot when any member has
+ * a hot subscription, at the smallest hot interval among the members' subscriptions.
  */
 final class DispatchDueSyncs
 {
@@ -56,7 +60,7 @@ final class DispatchDueSyncs
             }
 
             $share = $this->settings->workspaceFairShare();
-            $due = 'retired_at is null and next_due_at is not null and next_due_at <= now()';
+            $due = 'retired_at is null and group_primary_target_id is null and next_due_at is not null and next_due_at <= now()';
 
             if ($share === null) {
                 $rows = $system->select(
@@ -125,8 +129,11 @@ final class DispatchDueSyncs
         $picked = $system->select(
             'with hot as ('
             .'select t.id, t.workspace_id, t.next_due_at, min(s.refresh_interval_seconds) as interval_seconds, max(s.last_access_at) as seen '
-            .'from sync_targets t join sync_subscriptions s on s.sync_target_id = t.id and s.workspace_id = t.workspace_id '
-            .'where t.retired_at is null and t.next_due_at is not null and s.hot_until > now() group by t.id, t.workspace_id, t.next_due_at'
+            .'from sync_targets t '
+            // Story 2.20: a group is hot when any member is; the primary stands for it, and a linked comparison never dispatches on its own.
+            .'join sync_targets m on m.workspace_id = t.workspace_id and (m.id = t.id or m.group_primary_target_id = t.id) and m.retired_at is null '
+            .'join sync_subscriptions s on s.sync_target_id = m.id and s.workspace_id = m.workspace_id '
+            .'where t.retired_at is null and t.group_primary_target_id is null and t.next_due_at is not null and s.hot_until > now() group by t.id, t.workspace_id, t.next_due_at'
             .'), ranked as ('
             .'select hot.*, row_number() over (partition by workspace_id order by seen desc, id) as hot_rank from hot'
             .'), due as ('
@@ -149,7 +156,7 @@ final class DispatchDueSyncs
         $ids = array_keys($byId);
         $locked = $system->select(
             'select id, workspace_id, sync_group_id from sync_targets where id in ('.implode(', ', array_fill(0, count($ids), '?')).') '
-            .'and retired_at is null and next_due_at is not null and next_due_at <= now() order by next_due_at, id for update skip locked',
+            .'and retired_at is null and group_primary_target_id is null and next_due_at is not null and next_due_at <= now() order by next_due_at, id for update skip locked',
             $ids,
         );
 

@@ -126,6 +126,13 @@ final class RegisterSyncTargets implements OutboxConsumer
             .'and (endpoint_revision_id <> ? or data_source_revision <> ?::integer)',
             [$workspaceId, $endpoint->id, $key, $key, $endpoint->revisionId, $source->revision],
         );
+
+        // A comparison whose primary was just retired is no longer fetched with it: it becomes a target of its own again (Story 2.20).
+        DB::update(
+            'update sync_targets set group_primary_target_id = null, sync_group_id = id, applied_seq = least(applied_seq, dispatch_seq), updated_at = now() '
+            .'where workspace_id = ? and retired_at is null and group_primary_target_id in (select id from sync_targets where workspace_id = ? and retired_at is not null)',
+            [$workspaceId, $workspaceId],
+        );
     }
 
     /**
