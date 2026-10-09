@@ -235,6 +235,15 @@ beforeEach(() => {
                     return ok({ data: { enabled: false } });
                 }
 
+                // The Draft's saved sample (Story 3.8) has its own tests: here there is none.
+                if (url.endsWith('/sample')) {
+                    return {
+                        ok: true,
+                        status: 200,
+                        json: async () => ({ data: null }),
+                    };
+                }
+
                 const method = init?.method ?? 'GET';
 
                 calls.push({

@@ -1761,3 +1761,75 @@ export const blockSourceLabels = {
     // The out-of-date flag and the pins in words, for a screen reader.
     sourceHealthLabel: 'Health',
 } as const;
+
+// The Sample Response of wizard Step 2 (Story 3.8, paste). `json-valid`, `json-invalid` and `sample-wizard` are catalogue messages; the rest is
+// control vocabulary. Nothing here ever quotes the sample.
+export const blockSampleLabels = {
+    title: 'Sample response',
+    caption:
+        'A sample shows the structure of the response, so you can map it. It is used for mapping and preview only.',
+    modeLabel: 'Where the sample comes from',
+    fetchOption: 'Fetch from API',
+    pasteOption: 'Paste sample JSON',
+    textLabel: 'Sample JSON',
+    textHint:
+        'Paste a response from your API. The server reads it exactly, so every digit of a number is kept.',
+    checking: 'Checking the JSON…',
+    validNoRecords: (time: string, bytes: number, shape: string) =>
+        `✓ Valid JSON · no list of records found · Pasted ${time} · ${bytes} bytes · ${shape}`,
+    goToLine: (line: number) => `Go to line ${line}`,
+    tooLarge: (size: number, limit: number) =>
+        `This sample is ${size} bytes and the limit is ${limit} bytes, so it was rejected. Nothing was stored.`,
+    tooDeep: (limit: number) =>
+        `This sample is nested more than ${limit} levels deep, which is the limit, so it was rejected. Nothing was stored.`,
+    notConfigured: (setting: string | null) =>
+        setting === 'depth_limit'
+            ? 'The nesting limit is not set in System settings, so a sample cannot be accepted. Ask an operator to set it.'
+            : 'The size limit is not set in System settings, so a sample cannot be accepted. Ask an operator to set it.',
+    checkFailed: "We couldn't check the JSON. Try again.",
+    recheck: 'Check again',
+    ackLabel: 'This sample may contain personal data',
+    ackHint:
+        'It is stored encrypted, for this draft only, and deleted automatically. It is never used as a live source.',
+    ackRequired: 'Confirm that the sample may contain personal data.',
+    use: 'Use this sample',
+    useReplace: 'Replace the sample',
+    saving: 'Saving the sample…',
+    needValid: 'Paste valid JSON first.',
+    needAck: 'Confirm the personal data box first.',
+    needLock: 'You are not editing this draft, so the sample cannot be saved.',
+    ttlNotConfigured:
+        'The sample lifetime is not set in System settings, so a sample cannot be stored. Ask an operator to set it.',
+    storeFailed: "We couldn't save the sample. Try again.",
+    storeLocked:
+        'You no longer hold the edit lock on this draft, so the sample was not saved.',
+    unavailable:
+        'The sample cannot be saved or opened right now. Ask an operator to check the encryption key.',
+    accepted: 'Sample saved.',
+    inUse: 'Sample in use',
+    pastedAt: (time: string) => `Pasted ${time}`,
+    summary: (time: string, bytes: number) => `Pasted ${time} · ${bytes} bytes`,
+    restoreFailed: "We couldn't load the sample saved with this draft.",
+    retry: 'Try again',
+    invalidBlocked:
+        'Fix the JSON in the sample, or switch back to fetching, before you continue.',
+    uncheckedBlocked:
+        'Wait for the sample JSON to be checked, or clear it or switch back to fetching, before you continue.',
+    // The structure view.
+    structure: 'Structure of the sample',
+    view: 'View',
+    viewTree: 'Tree',
+    viewTable: 'Table',
+    viewJson: 'View JSON',
+    hideJson: 'Hide JSON',
+    columns: { path: 'Path', type: 'Type', example: 'Example' },
+    expand: (path: string) => `Expand ${path}`,
+    collapse: (path: string) => `Collapse ${path}`,
+    records: (count: number) => (count === 1 ? '1 item' : `${count} items`),
+    tableOf: 'Records to show as a table',
+    tableCaption: (path: string) => `Records at ${path}`,
+    tableTruncated: (shown: number, total: number) =>
+        `Showing the first ${shown} of ${total} records.`,
+    noTables: 'This sample has no list of records to show as a table.',
+    nodes: 'Fields in the sample',
+} as const;

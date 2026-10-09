@@ -76,7 +76,18 @@ import type {
 } from '@/lib/blockWizard';
 import { DataSourceError } from '@/lib/dataSources';
 import { SIGN_IN_URL } from '@/lib/session';
-import { blockWizardLabels as labels, draftLockLabels } from '@/locales/labels';
+import {
+    clockText,
+    emptySample,
+    restoreSample,
+    sampleBlock,
+} from '@/lib/blockSample';
+import type { SampleClaim } from '@/lib/blockSample';
+import {
+    blockSampleLabels,
+    blockWizardLabels as labels,
+    draftLockLabels,
+} from '@/locales/labels';
 import { useToasts } from '@/stores/toasts';
 
 // The Create block wizard (Story 3.4): five steps with a progress `nav`, Step 1 (Configure Block) and a sticky live preview in steps 1 to 3.
@@ -138,6 +149,8 @@ const form = reactive<StepForm>({
 });
 // What Step 2 has loaded (Story 3.7): the Data Sources, the chosen one's Endpoints and the System-settings refresh intervals.
 const catalog = reactive(emptyCatalog());
+// The Sample Response (Story 3.8): the pasted text, what the server found, and the accepted sample it restores when the Draft reopens.
+const sample = reactive(emptySample());
 
 const blockType = computed(() => blockTypeFor(form.type) ?? type);
 const categoryName = computed(
@@ -153,11 +166,21 @@ const sourceSummary = computed<string | null>(() => {
     );
     const endpoint = endpointOf(catalog, form.source);
 
-    return chosen
+    const named = chosen
         ? endpoint
             ? `${chosen.name} · ${endpointText(endpoint)}`
             : chosen.name
         : null;
+
+    // "Pasted 09:14" once a sample is accepted (Story 3.8).
+    return sample.stored
+        ? [
+              named,
+              blockSampleLabels.pastedAt(clockText(sample.stored.pasted_at)),
+          ]
+              .filter((part) => part !== null)
+              .join(' · ')
+        : named;
 });
 const steps = computed(() =>
     labels.steps.map((step, index) => ({
@@ -255,6 +278,8 @@ async function load(): Promise<void> {
             const loaded = await fetchWizardDraft(id);
 
             applyDraft(loaded);
+            // The Draft's saved sample comes back from the server (never from the browser).
+            void restoreSample(sample, loaded.draft_id);
             reached.value = clampStep(loaded.step);
             current.value = Number.isNaN(requestedStep)
                 ? reached.value
@@ -398,7 +423,14 @@ const gate = computed(() => {
 });
 // Why Continue cannot leave Step 2 yet: a POST not marked read-only, or no Data Source to read.
 const stepBlocked = computed<string | undefined>(() =>
-    current.value === 2 ? gate.value.continue : undefined,
+    current.value === 2
+        ? (gate.value.continue ??
+          (sampleBlock(sample) === 'invalid'
+              ? blockSampleLabels.invalidBlocked
+              : sampleBlock(sample) === 'unchecked'
+                ? blockSampleLabels.uncheckedBlocked
+                : undefined))
+        : undefined,
 );
 
 // ---- Validation ------------------------------------------------------------------------------------------------
@@ -566,6 +598,7 @@ async function reloadDraft(): Promise<boolean> {
         const loaded = await fetchWizardDraft(id);
 
         applyDraft(loaded);
+        void restoreSample(sample, loaded.draft_id);
         draft.value = loaded;
         reached.value = clampStep(Math.max(loaded.step, reached.value));
         dirty.value = false;
@@ -622,6 +655,15 @@ function tokenOf(): { lock_token?: string } {
     const held = claim();
 
     return held ? { lock_token: held.token } : {};
+}
+
+// What a sample write carries (Story 3.8): the same claim as a Draft save. Null when this tab may not write.
+function sampleClaim(): SampleClaim | null {
+    const target = draft.value;
+
+    return target === null || readOnly.value
+        ? null
+        : { lock_epoch: target.lock_epoch, ...tokenOf() };
 }
 
 // ---- Autosave --------------------------------------------------------------------------------------------------
@@ -1436,8 +1478,13 @@ onBeforeUnmount(() => {
                                 :also-blocked="
                                     offline ? offlineReason : undefined
                                 "
+                                :sample="sample"
+                                :draft-id="draft?.draft_id ?? null"
+                                :claim="sampleClaim"
+                                :read-only="readOnly"
                                 @change="onChange"
                                 @retry="loadCatalog"
+                                @auth-error="sessionEnded"
                             />
                         </fieldset>
                         <div class="flex flex-col items-end gap-1">

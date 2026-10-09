@@ -18,4 +18,8 @@ enum ErrorCode: string
     case InvalidConfig = 'blocks.invalid_config';
     /** The version being saved is no longer a Draft, it was published (Story 3.5): HTTP 409. A discarded Draft stays a 404. */
     case DraftPublished = 'blocks.draft_published';
+    /** A pasted sample was not stored (Story 3.8): HTTP 422 with `reason` (not JSON, over a limit, a limit or the TTL unset, no acknowledgement). */
+    case SampleInvalid = 'blocks.sample_invalid';
+    /** A pasted sample could not be sealed or opened because the `data` key is unusable (Story 3.8): HTTP 503, nothing stored. */
+    case SampleUnavailable = 'blocks.sample_unavailable';
 }

@@ -2,8 +2,6 @@
 import { Database, ListTree, RefreshCw } from '@lucide/vue';
 import { computed, useId, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import Banner from '@/components/Banner.vue';
-import BlockedReason from '@/components/BlockedReason.vue';
 import DataSourceHealth from '@/components/DataSourceHealth.vue';
 import FormField from '@/components/FormField.vue';
 import NativeSelect from '@/components/NativeSelect.vue';
@@ -12,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import SampleSection from '@/components/wizard/SampleSection.vue';
 import SectionCard from '@/components/wizard/SectionCard.vue';
 import { useShell } from '@/composables/useShell';
 import {
@@ -25,6 +24,7 @@ import {
     requestKey,
 } from '@/lib/blockSource';
 import type { DatePreset, Gate, SourceCatalog } from '@/lib/blockSource';
+import type { SampleClaim, SampleState } from '@/lib/blockSample';
 import type { StepForm } from '@/lib/blockWizard';
 import { dataSourceLabels, endpointLabels } from '@/locales/labels';
 import { blockSourceLabels as labels } from '@/locales/labels';
@@ -33,8 +33,8 @@ import { create, edit } from '@/routes/admin/data-sources';
 // Step 2, Data Source (Story 3.7): the Data Source select (a health word on each option and the dot beside the chosen one), the Endpoint list
 // (`GET /path`), the POST read-only checkbox, the parameters table, the "shared data" badge, the Refresh Interval and the Default date range.
 // The form state and the loaded catalogue belong to the page; this component edits the form in place and reports each edit. A change that
-// affects the request (the Data Source, the Endpoint, a parameter value or the default range) marks the sample out of date. Fetch is shown
-// with its reasons and does nothing until Story 3.9. Nothing here ever holds a secret: a Data Source's credentials are not part of any read.
+// affects the request (the Data Source, the Endpoint, a parameter value or the default range) marks the sample out of date. The Sample Response (fetch and
+// paste) is its own section (Story 3.8). Nothing here ever holds a secret: a Data Source's credentials are not part of any read.
 const props = defineProps<{
     form: StepForm;
     // The server's field errors, keyed as saved: "source.endpoint_id", "source.bindings.region".
@@ -43,11 +43,17 @@ const props = defineProps<{
     gate: Gate;
     // Why nothing can be fetched right now apart from the form's own reasons (offline); the form's reason wins.
     alsoBlocked?: string;
+    // The Sample Response (Story 3.8): the page's state, the Draft it belongs to and the edit-lock claim a write carries.
+    sample: SampleState;
+    draftId: string | null;
+    claim: () => SampleClaim | null;
+    readOnly: boolean;
 }>();
 
 const emit = defineEmits<{
     (e: 'change'): void;
     (e: 'retry'): void;
+    (e: 'auth-error', error: unknown): void;
 }>();
 
 const { t } = useI18n();
@@ -56,7 +62,6 @@ const sourceId = useId();
 const endpointId = useId();
 const rangeId = useId();
 const refreshId = useId();
-const fetchReasonId = useId();
 const refreshHelpId = useId();
 
 const source = computed(() => props.form.source);
@@ -99,6 +104,12 @@ watch(
     },
     { immediate: true },
 );
+
+// A sample was accepted: it is the current one, so the out-of-date mark goes (Story 3.8).
+function sampleAccepted(): void {
+    source.value.outOfDate = false;
+    emit('change');
+}
 
 // Applies an edit and, when it changed what the request is, marks the sample out of date.
 function edited(apply: () => void): void {
@@ -430,26 +441,6 @@ const sourceLabel = (s: { name: string; health: string }) =>
                     {{ labels.pinned(source.dataSourceRevision) }}
                 </p>
             </template>
-
-            <Banner v-if="source.outOfDate" variant="warning">
-                <span data-test="out-of-date">{{ labels.outOfDate }}</span>
-            </Banner>
-
-            <div class="flex flex-col items-start gap-1">
-                <Button
-                    type="button"
-                    variant="secondary"
-                    :blocked="true"
-                    :blocked-reason="fetchReason"
-                    :aria-describedby="fetchReasonId"
-                    data-test="fetch"
-                >
-                    {{ labels.fetch }}
-                </Button>
-                <BlockedReason :id="fetchReasonId">{{
-                    fetchReason
-                }}</BlockedReason>
-            </div>
         </SectionCard>
 
         <SectionCard
@@ -733,5 +724,17 @@ const sourceLabel = (s: { name: string; health: string }) =>
                 </FormField>
             </div>
         </SectionCard>
+
+        <SampleSection
+            :sample="sample"
+            :draft-id="draftId"
+            :claim="claim"
+            :read-only="readOnly"
+            :also-blocked="alsoBlocked"
+            :fetch-reason="fetchReason"
+            :out-of-date="source.outOfDate"
+            @accepted="sampleAccepted"
+            @auth-error="(error) => emit('auth-error', error)"
+        />
     </div>
 </template>

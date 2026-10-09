@@ -9,8 +9,8 @@
  * 'tables': the tables each module (or the kernel) owns. A module touches only its own tables.
  * 'global_tables': tables without workspace_id. Any other table must carry workspace_id.
  * 'json_decode_banned': modules that must use the lossless JSON parser (NFR exact numbers).
- * 'json_decode_banned_paths': kernel paths (under app/) where `json_decode` is banned too: the lossless decoder itself, so it
- *          cannot quietly delegate to PHP's decoder (Story 2.6).
+ * 'json_decode_banned_paths': paths (under app/, a directory or one file) where `json_decode` is banned too: the lossless decoder itself, so it
+ *          cannot quietly delegate to PHP's decoder (Story 2.6), and the files that read or seal a pasted sample (Story 3.8).
  */
 
 return [
@@ -78,5 +78,5 @@ return [
 
     'json_decode_banned' => ['Ingestion', 'RawStore', 'Mapping', 'Results'],
 
-    'json_decode_banned_paths' => ['Platform/Json'],
+    'json_decode_banned_paths' => ['Platform/Json', 'Modules/Blocks/Application/ManageDraftSamples.php', 'Modules/Blocks/Infrastructure/SodiumSampleVault.php'],
 ];

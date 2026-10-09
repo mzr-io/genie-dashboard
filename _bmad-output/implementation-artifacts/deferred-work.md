@@ -321,3 +321,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-7-choose-the-data-source-endpoint-parameters-and-refresh-step.md`
   summary: Fixed parameters named like credentials are refused by RejectsSecretValues; default-range dates use browser clock and Monday week start; read routes lack a throttle; unused blockSourceLabels keys
   evidence: Review hunters; verified in diff, low impact today.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-8-paste-sample-json-and-inspect-it-with-exact-numbers.md`
+  summary: Cap shape node count, show sample expiry to the Admin, treat a sample sealed under a rotated data key as ended instead of 503, and decode before taking the Draft row lock on store
+  evidence: Review hunters; verified in diff. Unverified severity medium for key rotation (stuck until TTL).
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-8-paste-sample-json-and-inspect-it-with-exact-numbers.md`
+  summary: Audit event (metadata only) for storing/erasing a personal-data sample; map 409/404 on store to dedicated client messages; ignore stale restore responses; replace Go-to-line string splitting with a structured message
+  evidence: Review hunters; spec allowed no audit, other items low impact.

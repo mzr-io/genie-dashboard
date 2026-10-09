@@ -278,6 +278,9 @@ final class ManageDrafts implements Drafts
                 [now(), now(), $actor->workspaceId, $draft->id],
             );
 
+            // The Draft's sample (Story 3.8) is unreadable from this moment; the purge deletes the row with the Draft.
+            ManageDraftSamples::erase($actor->workspaceId, $draft->id);
+
             $this->audit->record(
                 AuditAction::BlocksDraftDiscarded,
                 subject: 'block_draft:'.$draft->id,

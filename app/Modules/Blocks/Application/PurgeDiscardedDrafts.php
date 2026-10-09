@@ -12,7 +12,7 @@ use Throwable;
 /**
  * Physically deletes discarded Drafts (Story 3.3), run by {@see PurgeDiscardedDraftsJob} on the `maintenance` connection, Workspace by
  * Workspace, each in its own transaction with the Workspace context set so row-level security still applies. For every Draft whose state is
- * `discarded` it deletes its `draft_samples` and `draft_ui_state` rows and then the version row, then any Block of the Workspace left with no version. Nothing else is deleted and nothing
+ * `discarded` it deletes its `draft_samples` and `draft_ui_state` rows and then the version row, then any Block of the Workspace left with no version; it also deletes every `draft_samples` row whose `expires_at` has passed. Nothing else is deleted and nothing
  * is audited (the discard was). It is idempotent: a second run finds nothing.
  */
 final class PurgeDiscardedDrafts
@@ -56,6 +56,9 @@ final class PurgeDiscardedDrafts
 
     private function purge(Connection $db, string $workspaceId): int
     {
+        // A sample past its hard end (Story 3.8) is deleted whether or not its Draft was discarded; it was already unreadable.
+        $db->delete('delete from draft_samples where workspace_id = ? and expires_at is not null and expires_at <= now()', [$workspaceId]);
+
         $ids = array_map(
             fn (object $row): string => (string) ($row->id ?? ''),
             $db->select("select id from block_versions where workspace_id = ? and state = 'discarded' order by discarded_at, id limit ".self::BATCH, [$workspaceId]),

@@ -8,6 +8,7 @@ use App\Http\Controllers\Admin\DataSourceHealthController;
 use App\Http\Controllers\Admin\DataSourceLockController;
 use App\Http\Controllers\Admin\DraftController;
 use App\Http\Controllers\Admin\DraftLockController;
+use App\Http\Controllers\Admin\DraftSampleController;
 use App\Http\Controllers\Admin\EndpointController;
 use App\Http\Controllers\Admin\GroupController;
 use App\Http\Controllers\Admin\HostAllowlistController;
@@ -84,6 +85,12 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('blocks/drafts', [DraftController::class, 'store'])->middleware(['admin', RejectsSecretValues::class.':blocks', 'throttle:30,1,block-drafts'])->name('api.admin.blocks.drafts.store');
     Route::put('blocks/drafts/{draft}', [DraftController::class, 'update'])->whereUuid('draft')->middleware(['admin', RejectsSecretValues::class.':blocks', 'throttle:120,1,block-drafts-save'])->name('api.admin.blocks.drafts.update');
     Route::delete('blocks/drafts/{draft}', [DraftController::class, 'destroy'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-drafts'])->name('api.admin.blocks.drafts.destroy');
+
+    // The pasted sample of a Draft (Story 3.8): `blocks.edit`. These routes are not behind `RejectsSecretValues`: the sample's text is data a
+    // source returned, judged as JSON by the application, never as a field of the request; the text is never logged, audited or echoed.
+    Route::post('blocks/drafts/{draft}/sample/check', [DraftSampleController::class, 'check'])->whereUuid('draft')->middleware(['admin', 'throttle:60,1,block-sample-check'])->name('api.admin.blocks.drafts.sample.check');
+    Route::get('blocks/drafts/{draft}/sample', [DraftSampleController::class, 'show'])->whereUuid('draft')->middleware(['admin', 'throttle:60,1,block-sample-read'])->name('api.admin.blocks.drafts.sample.show');
+    Route::put('blocks/drafts/{draft}/sample', [DraftSampleController::class, 'store'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-sample-store'])->name('api.admin.blocks.drafts.sample.store');
 
     // What wizard Step 2 reads (Story 3.7): `blocks.edit`, so an Admin who may build blocks but not manage Data Sources can still choose one.
     Route::get('blocks/data-sources', [BlockSourceController::class, 'dataSources'])->middleware('admin')->name('api.admin.blocks.data-sources.index');
