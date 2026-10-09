@@ -83,7 +83,7 @@ it('creates a Block and its Draft in one transaction: revision 1, epoch 1, versi
     $blockId = $response->json('data.block_id');
 
     expect($response->json('data'))->toMatchArray([
-        'name' => 'Revenue today', 'type' => 'kpi-card', 'category' => null, 'version' => '1.0', 'state' => 'draft',
+        'name' => 'Revenue today', 'type' => 'kpi-card', 'category' => 'General', 'version' => '1.0', 'state' => 'draft',
         'revision' => 1, 'lock_epoch' => 1, 'step' => 1, 'owner_membership_id' => $owner,
     ])
         ->and(substr($id, 14, 1))->toBe('7')
@@ -384,6 +384,15 @@ it('lists only Drafts, newest edit first, with the owner, search and counts, and
     $wild = $this->getJson(BD_URL.'?q=%25', BD_HEADERS)->assertOk();
     expect($wild->json('meta.matched'))->toBe(0);
     expect($this->getJson(BD_URL.'?q=kpi', BD_HEADERS)->json('meta.matched'))->toBe(2);
+
+    // Every Draft starts in General; a Draft in another category matches by that name only.
+    $general = $this->getJson(BD_URL.'?q=general', BD_HEADERS)->assertOk();
+    expect($general->json('meta.matched'))->toBe($general->json('meta.total'))->and($general->json('data.0.category'))->toBe('General');
+    $finance = Cluster::seedBlockCategory($workspace, 'Finance');
+    $first = $general->json('data.0.draft_id');
+    bdSave($first, $general->json('data.0.revision'), 1, ['category_id' => $finance])->assertOk();
+    expect($this->getJson(BD_URL.'?q=finance', BD_HEADERS)->json('data.0.draft_id'))->toBe($first)
+        ->and($this->getJson(BD_URL.'?q=general', BD_HEADERS)->json('meta.matched'))->toBe($general->json('meta.total') - 1);
 });
 
 it('answers 403 and audits the denial without blocks.edit, on the API and on the page, and writes nothing', function () {

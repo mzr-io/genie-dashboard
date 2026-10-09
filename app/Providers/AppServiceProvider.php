@@ -32,7 +32,9 @@ use App\Modules\Access\Infrastructure\SodiumAttributeVault;
 use App\Modules\Access\Infrastructure\SqlGroupDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberNames;
+use App\Modules\Blocks\Application\ManageBlockCategories;
 use App\Modules\Blocks\Application\ManageDrafts;
+use App\Modules\Blocks\Contracts\BlockCategories;
 use App\Modules\Blocks\Contracts\Drafts;
 use App\Modules\Blocks\Infrastructure\BlocksAuditSerializer;
 use App\Modules\Blocks\Infrastructure\DraftLockEpochs;
@@ -188,6 +190,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(HostAllowlistDependents::class, SqlHostAllowlistDependents::class);
         $this->app->bind(DataSources::class, ManageDataSources::class);
         $this->app->bind(Drafts::class, ManageDrafts::class);
+        $this->app->bind(BlockCategories::class, ManageBlockCategories::class);
         $this->app->bind(Endpoints::class, ManageEndpoints::class);
         $this->app->bind(SecretVault::class, LocalSecretVault::class);
         $this->app->bind(HostResolver::class, DnsHostResolver::class);

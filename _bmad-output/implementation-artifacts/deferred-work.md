@@ -293,3 +293,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-3-start-save-and-discard-a-draft-block.md`
   summary: Add a deterministic test for the unique-index race in ManageDrafts::create.
   evidence: The savepoint/23505 to DraftExists path is only reachable with concurrent writers and is untested.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-configure-block-step-1-with-a-live-preview.md`
+  summary: Recover the wizard from 409/423 on save (reload revision/epoch or show both versions) and read block types/heights from the registry instead of the generated constant.
+  evidence: After a 409/423 the wizard keeps the stale revision so every retry fails until reload; client hardcodes kpi-card. Recovery is Story 3.5/3.6; second block type arrives in Epic 5.

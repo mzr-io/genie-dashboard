@@ -11,6 +11,7 @@ export enum ErrorCode {
     AccessSelfChangeForbidden = 'access.self_change_forbidden',
     AccessWorkspaceForbidden = 'access.workspace_forbidden',
     BlocksDraftExists = 'blocks.draft_exists',
+    BlocksInvalidConfig = 'blocks.invalid_config',
     BlocksRevisionConflict = 'blocks.revision_conflict',
     BlocksSecretValuesRefused = 'blocks.secret_values_refused',
     ConnectorAuthFailed = 'connector.auth_failed',

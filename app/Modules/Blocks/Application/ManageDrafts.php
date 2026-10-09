@@ -28,7 +28,8 @@ use Throwable;
  * A Block has at most one Draft: creating one locks the Block's row, looks for a Draft and inserts (the partial unique index is the
  * backstop). A save locks the Draft's row and compares the caller's edit-lock epoch first (a stale one is 423, as on the Data Source form),
  * then its revision (a stale one is 409), and writes nothing in either case; success raises the revision and writes no audit event, since a
- * Draft is autosaved. Only a name and a Block Type are accepted (the lenient Draft schema); strict validation belongs to a later story.
+ * Draft is autosaved. The lenient Draft schema accepts a name, a Block Type, a category, the wizard step and a `config` whose present fields are
+ * checked against the registry's limits ({@see DraftConfig}, Story 3.4); strict validation belongs to a later story.
  * Discarding sets `state = 'discarded'` and audits it in the same transaction: from then on the Draft is invisible and cannot be saved. The
  * `app` role holds no DELETE, so the rows are deleted afterwards by {@see PurgeDiscardedDraftsJob} on the `maintenance` worker, which this
  * enqueues after the commit (a lost enqueue is repaired by the scheduled run).
@@ -37,10 +38,12 @@ final class ManageDrafts implements Drafts
 {
     private const STAMP = "'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"'";
 
-    private const COLUMNS = 'v.id, v.block_id, v.name, b.type_key, b.category, v.version, v.revision, v.lock_epoch, coalesce(u.step, 1) AS step, b.owner_membership_id, '
+    private const COLUMNS = 'v.id, v.block_id, v.name, b.type_key, coalesce(c.name, b.category) AS category, b.category_id, v.version, v.revision, v.lock_epoch, coalesce(u.step, 1) AS step, b.owner_membership_id, '
         .'to_char(v.created_at, '.self::STAMP.') AS created, to_char(v.updated_at, '.self::STAMP.') AS updated';
 
-    private const FROM = 'FROM block_versions v JOIN blocks b ON b.id = v.block_id LEFT JOIN draft_ui_state u ON u.block_version_id = v.id';
+    private const WITH_CONFIG = ', v.config::text AS config';
+
+    private const FROM = 'FROM block_versions v JOIN blocks b ON b.id = v.block_id LEFT JOIN draft_ui_state u ON u.block_version_id = v.id LEFT JOIN block_categories c ON c.id = b.category_id';
 
     public function __construct(
         private readonly WorkspaceTransaction $transactions,
@@ -52,12 +55,12 @@ final class ManageDrafts implements Drafts
     {
         return $this->transactions->run($workspaceId, function () use ($workspaceId, $search): DraftPage {
             $pattern = $this->pattern($search);
-            $match = $pattern === null ? 'true' : "(lower(v.name) LIKE lower(?) ESCAPE '!' OR lower(b.type_key) LIKE lower(?) ESCAPE '!' OR lower(coalesce(b.category, '')) LIKE lower(?) ESCAPE '!')";
+            $match = $pattern === null ? 'true' : "(lower(v.name) LIKE lower(?) ESCAPE '!' OR lower(b.type_key) LIKE lower(?) ESCAPE '!' OR lower(coalesce(c.name, b.category, '')) LIKE lower(?) ESCAPE '!')";
             $bindings = $pattern === null ? [] : [$pattern, $pattern, $pattern];
 
             /** @var object{total: int|string, matched: int|string} $counts */
             $counts = DB::selectOne(
-                "SELECT count(*) AS total, count(*) FILTER (WHERE {$match}) AS matched FROM block_versions v JOIN blocks b ON b.id = v.block_id WHERE v.workspace_id = ? AND v.state = 'draft'",
+                "SELECT count(*) AS total, count(*) FILTER (WHERE {$match}) AS matched FROM block_versions v JOIN blocks b ON b.id = v.block_id LEFT JOIN block_categories c ON c.id = b.category_id WHERE v.workspace_id = ? AND v.state = 'draft'",
                 [...$bindings, $workspaceId],
             );
 
@@ -79,11 +82,12 @@ final class ManageDrafts implements Drafts
             if ($blockId === null) {
                 $blockId = (string) Str::uuid7();
                 DB::insert(
-                    'insert into blocks (id, workspace_id, type_key, contract_version, owner_membership_id, created_at, updated_at) values (?, ?, ?, 1, ?, ?, ?)',
-                    [$blockId, $actor->workspaceId, $type, $actor->membershipId, now(), now()],
+                    'insert into blocks (id, workspace_id, type_key, contract_version, category_id, owner_membership_id, created_at, updated_at) values (?, ?, ?, 1, ?, ?, ?, ?)',
+                    [$blockId, $actor->workspaceId, $type, GeneralCategory::ensure($actor->workspaceId), $actor->membershipId, now(), now()],
                 );
             } else {
                 $this->claimBlock($actor->workspaceId, $blockId, $type);
+                GeneralCategory::ensure($actor->workspaceId);
             }
 
             $id = (string) Str::uuid7();
@@ -118,10 +122,20 @@ final class ManageDrafts implements Drafts
         });
     }
 
-    public function save(DraftActor $actor, string $draftId, string $name, ?string $type, int $revision, int $lockEpoch): Draft
+    public function find(string $workspaceId, string $draftId): Draft
     {
-        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $name, $type, $revision, $lockEpoch): Draft {
-            $before = $this->fetch($actor->workspaceId, $draftId, true) ?? throw new DraftNotFound;
+        return $this->transactions->run($workspaceId, function () use ($workspaceId, $draftId): Draft {
+            GeneralCategory::ensure($workspaceId);
+
+            return $this->fetch($workspaceId, $draftId, false, true) ?? throw new DraftNotFound;
+        });
+    }
+
+    public function save(DraftActor $actor, string $draftId, string $name, ?string $type, int $revision, int $lockEpoch, ?array $config = null, ?int $step = null, ?string $categoryId = null): Draft
+    {
+        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $name, $type, $revision, $lockEpoch, $config, $step, $categoryId): Draft {
+            // With the stored config, so a 409 or 423 body shows the real document.
+            $before = $this->fetch($actor->workspaceId, $draftId, true, true) ?? throw new DraftNotFound;
 
             // The edit lock first, as on the Data Source form: a take-over saves the holder's work and so raises the revision as well.
             if ($before->lockEpoch !== $lockEpoch) {
@@ -138,17 +152,61 @@ final class ManageDrafts implements Drafts
                 $this->checkType($type);
             }
 
-            DB::update(
-                'update block_versions set name = ?, revision = revision + 1, updated_at = ? where workspace_id = ? and id = ?',
-                [$name, now(), $actor->workspaceId, $before->id],
-            );
+            // The config is judged against the type the Draft will have after this save.
+            $normalised = $config === null ? null : DraftConfig::merge($before->config, DraftConfig::normalise($config, $this->checkType($type ?? $before->type)));
 
-            if ($type !== null && $type !== $before->type) {
-                DB::update('update blocks set type_key = ?, updated_at = ? where workspace_id = ? and id = ?', [$type, now(), $actor->workspaceId, $before->blockId]);
+            // The Block's current category may have been archived since: keeping it is not a change.
+            if ($categoryId !== null && strtolower($categoryId) !== $before->categoryId) {
+                $this->checkCategory($actor->workspaceId, $categoryId);
             }
 
-            return $this->fetch($actor->workspaceId, $before->id, false) ?? throw new DraftNotFound;
+            if ($step !== null && ($step < 1 || $step > 5)) {
+                throw new InvalidDraft(['step' => ['Choose a step from 1 to 5.']]);
+            }
+
+            DB::update(
+                'update block_versions set name = ?, config = coalesce(?::jsonb, config), revision = revision + 1, updated_at = ? where workspace_id = ? and id = ?',
+                [$name, $normalised === null ? null : DraftConfig::encode($normalised), now(), $actor->workspaceId, $before->id],
+            );
+
+            if (($type !== null && $type !== $before->type) || $categoryId !== null) {
+                DB::update(
+                    'update blocks set type_key = ?, category_id = coalesce(?::uuid, category_id), updated_at = ? where workspace_id = ? and id = ?',
+                    [$type ?? $before->type, $categoryId === null ? null : strtolower($categoryId), now(), $actor->workspaceId, $before->blockId],
+                );
+            }
+
+            if ($step !== null) {
+                $this->saveStep($actor->workspaceId, $before->id, $step);
+            }
+
+            return $this->fetch($actor->workspaceId, $before->id, false, true) ?? throw new DraftNotFound;
         });
+    }
+
+    /** Where the wizard reopens the Draft: the row exists from the start, but a Draft seeded without one gets it here. */
+    private function saveStep(string $workspaceId, string $versionId, int $step): void
+    {
+        $changed = DB::update('update draft_ui_state set step = ?, updated_at = ? where workspace_id = ? and block_version_id = ?', [$step, now(), $workspaceId, $versionId]);
+
+        if ($changed === 0) {
+            DB::insert(
+                'insert into draft_ui_state (id, workspace_id, block_version_id, step, state, updated_at) values (?, ?, ?, ?, ?::jsonb, ?)',
+                [(string) Str::uuid7(), $workspaceId, $versionId, $step, '{}', now()],
+            );
+        }
+    }
+
+    /** A category of this Workspace that is not archived (row-level security hides every other Workspace's). */
+    private function checkCategory(string $workspaceId, string $categoryId): void
+    {
+        $found = Str::isUuid($categoryId)
+            ? DB::selectOne('select id from block_categories where workspace_id = ? and id = ? and not archived', [$workspaceId, strtolower($categoryId)])
+            : null;
+
+        if ($found === null) {
+            throw new InvalidDraft(['category_id' => ['Choose a category that exists.']]);
+        }
     }
 
     public function discard(DraftActor $actor, string $draftId): void
@@ -217,14 +275,14 @@ final class ManageDrafts implements Drafts
         }
     }
 
-    private function fetch(string $workspaceId, string $id, bool $lock): ?Draft
+    private function fetch(string $workspaceId, string $id, bool $lock, bool $withConfig = false): ?Draft
     {
         if (! Str::isUuid($id)) {
             return null;
         }
 
         $row = DB::selectOne(
-            'SELECT '.self::COLUMNS.' '.self::FROM." WHERE v.workspace_id = ? AND v.id = ? AND v.state = 'draft'".($lock ? ' FOR UPDATE OF v' : ''),
+            'SELECT '.self::COLUMNS.($withConfig ? self::WITH_CONFIG : '').' '.self::FROM." WHERE v.workspace_id = ? AND v.id = ? AND v.state = 'draft'".($lock ? ' FOR UPDATE OF v' : ''),
             [$workspaceId, strtolower($id)],
         );
 
@@ -246,6 +304,8 @@ final class ManageDrafts implements Drafts
             ownerMembershipId: strtolower((string) $row->owner_membership_id),
             createdAt: (string) $row->created,
             updatedAt: (string) $row->updated,
+            categoryId: $row->category_id === null ? null : strtolower((string) $row->category_id),
+            config: isset($row->config) ? DraftConfig::decode((string) $row->config) : [],
         );
     }
 
@@ -276,13 +336,15 @@ final class ManageDrafts implements Drafts
         return $name;
     }
 
-    private function checkType(string $type): void
+    private function checkType(string $type): BlockType
     {
-        $keys = array_map(fn (BlockType $known): string => $known->key, $this->types->all());
-
-        if (! in_array($type, $keys, true)) {
-            throw new InvalidDraft(['type' => ['Choose a block type that exists.']]);
+        foreach ($this->types->all() as $known) {
+            if ($known->key === $type) {
+                return $known;
+            }
         }
+
+        throw new InvalidDraft(['type' => ['Choose a block type that exists.']]);
     }
 
     /** A `LIKE` pattern for the search term with its wildcards escaped; null when there is nothing to search. */

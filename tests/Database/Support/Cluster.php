@@ -264,6 +264,7 @@ final class Cluster
             'data_source_health' => self::seedSourceHealth($workspaceId),
             'raw_bodies' => self::seedRawBody($workspaceId),
             'raw_observations' => self::seedRawObservation($workspaceId),
+            'block_categories' => self::seedBlockCategory($workspaceId),
             'blocks' => self::seedBlock($workspaceId),
             'block_versions' => self::seedBlockVersion($workspaceId),
             'draft_samples' => self::seedDraftSample($workspaceId),
@@ -351,6 +352,16 @@ final class Cluster
         $url = $scheme.'://'.$host.($port === ($scheme === 'https' ? 443 : 80) ? '' : ':'.$port);
         self::superuser()->prepare('INSERT INTO data_sources (id, workspace_id, name, base_url, scheme, host, port, created_by_membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, now(), now())')
             ->execute([$id, $workspaceId, $name ?? 'Source '.$id, $url, $scheme, $host, $port, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /** A block category (Story 3.4) of the Workspace. */
+    public static function seedBlockCategory(string $workspaceId, ?string $name = null): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO block_categories (id, workspace_id, name, created_at, updated_at) VALUES (?, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $name ?? 'Category '.$id]);
 
         return $id;
     }

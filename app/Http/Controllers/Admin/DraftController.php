@@ -9,6 +9,8 @@ use App\Http\Responses\AdminApiError;
 use App\Models\User;
 use App\Modules\Access\Contracts\MemberNames;
 use App\Modules\Access\Contracts\MembershipLookup;
+use App\Modules\Blocks\Contracts\BlockCategories;
+use App\Modules\Blocks\Contracts\Category;
 use App\Modules\Blocks\Contracts\Draft;
 use App\Modules\Blocks\Contracts\DraftActor;
 use App\Modules\Blocks\Contracts\DraftExists;
@@ -36,6 +38,7 @@ final class DraftController extends Controller
 
     public function __construct(
         private readonly Drafts $drafts,
+        private readonly BlockCategories $categories,
         private readonly MembershipLookup $memberships,
         private readonly MemberNames $names,
     ) {}
@@ -51,6 +54,26 @@ final class DraftController extends Controller
             'data' => array_map(fn (Draft $row): array => (new DraftResource($row, $owners[$row->ownerMembershipId] ?? null))->resolve($request), $page->rows),
             'meta' => ['total' => $page->total, 'matched' => $page->matched],
         ], 200, ['Cache-Control' => self::NO_STORE]);
+    }
+
+    /** One Draft with its config, for the wizard (Story 3.4). A discarded, unknown or other Workspace's Draft is a 404. */
+    public function show(Request $request, string $draft): JsonResponse
+    {
+        try {
+            $found = $this->drafts->find($this->workspaceId($request), $draft);
+        } catch (DraftNotFound) {
+            abort(404);
+        }
+
+        return $this->one($request, $found, 200);
+    }
+
+    /** The Workspace's block categories; "General" is created on the first read (Story 3.4). */
+    public function categories(Request $request): JsonResponse
+    {
+        $all = $this->categories->all($this->workspaceId($request));
+
+        return response()->json(['data' => array_map(fn (Category $category): array => $category->toArray(), $all)], 200, ['Cache-Control' => self::NO_STORE]);
     }
 
     public function store(DraftRequest $request): JsonResponse
@@ -69,7 +92,7 @@ final class DraftController extends Controller
     public function update(DraftRequest $request, string $draft): JsonResponse
     {
         try {
-            $saved = $this->drafts->save($this->actor($request), $draft, $request->name(), $request->type(), $request->expectedRevision(), $request->lockEpoch());
+            $saved = $this->drafts->save($this->actor($request), $draft, $request->name(), $request->type(), $request->expectedRevision(), $request->lockEpoch(), $request->config(), $request->step(), $request->categoryId());
         } catch (DraftNotFound) {
             abort(404);
         } catch (DraftLockLost $e) {
@@ -98,13 +121,13 @@ final class DraftController extends Controller
 
     private function invalid(Request $request, InvalidDraft $e): JsonResponse
     {
-        return AdminApiError::json($request, PlatformErrorCode::ValidationFailed->value, 422, errors: $e->errors);
+        return AdminApiError::json($request, $e->errorCode ?? PlatformErrorCode::ValidationFailed->value, 422, errors: $e->errors);
     }
 
     /** @return array<string, mixed> */
     private function resource(Request $request, Draft $draft): array
     {
-        return (new DraftResource($draft))->resolve($request);
+        return (new DraftResource($draft, withConfig: true))->resolve($request);
     }
 
     private function one(Request $request, Draft $draft, int $status): JsonResponse

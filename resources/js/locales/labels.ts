@@ -855,6 +855,132 @@ export const draftBlockLabels = {
     gone: 'This draft no longer exists.',
 };
 
+// The Create block wizard (Story 3.4; UX-DR-86, 22, 23, 26, 274): the five-step shell, Step 1 (Configure Block) and the live preview. The
+// messages `perm-publish` and `version-safe` come from the catalogue; everything else is here.
+export const blockWizardLabels = {
+    breadcrumb: 'Block management / Create block',
+    pageTitle: 'Create block',
+    untitled: 'Untitled block',
+    draftBadge: '• Draft',
+    saveDraft: 'Save draft',
+    saving: 'Saving…',
+    saved: 'Draft saved.',
+    preview: 'Preview',
+    publish: 'Publish block',
+    continue: 'Continue',
+    back: 'Back',
+    loading: 'Loading the draft…',
+    notFound: 'This draft no longer exists. It may have been discarded.',
+    backToDrafts: 'Back to Draft blocks',
+    loadFailed: "We couldn't load this draft.",
+    retry: 'Retry',
+    conflict:
+        'This draft was changed somewhere else. Reload the page to see the latest version.',
+    lockLost: 'Someone else is now editing this draft. Reload the page.',
+    notReady: 'Finish the earlier steps first.',
+    // Progress.
+    progress: 'Create block progress',
+    notStarted: '(not started)',
+    edit: 'Edit',
+    steps: [
+        { key: 'configure', label: 'Configure Block' },
+        { key: 'data-source', label: 'Data Source' },
+        { key: 'map-data', label: 'Map Data' },
+        { key: 'preview', label: 'Preview' },
+        { key: 'publish', label: 'Save/Publish' },
+    ],
+    stepButton: (n: number, label: string, completed: boolean) =>
+        `${n}. ${label}, ${completed ? 'completed' : 'not completed'}`,
+    stepStatus: (n: number, total: number, label: string) =>
+        `Step ${n} of ${total}: ${label}`,
+    laterStep: 'This step is built in a later update.',
+    // Step 1.
+    sections: {
+        basics: {
+            title: 'Basic information',
+            caption: 'Name the block and say what it is for.',
+        },
+        display: {
+            title: 'Display & behavior',
+            caption: 'How the block looks and what a user can do with it.',
+        },
+        period: {
+            title: 'Period behavior',
+            caption: 'Whether the block follows the dashboard date range.',
+        },
+    },
+    name: 'Block name',
+    namePlaceholder: 'Revenue today',
+    nameRequired: 'Enter a name.',
+    nameTooLong: (max: number) => `Use up to ${max} characters.`,
+    description: 'Description',
+    descriptionHelper: 'Shown to people browsing the Block Library.',
+    descriptionRequired: 'Enter a description.',
+    descriptionTooLong: (max: number) => `Use up to ${max} characters.`,
+    category: 'Category',
+    type: 'Block type',
+    typeNames: { 'kpi-card': 'KPI card' } as Record<string, string>,
+    icon: 'Icon',
+    iconChange: 'Change',
+    iconUseCategory: 'Use category icon',
+    iconFromCategory: (name: string) => `From the ${name} category`,
+    iconChosen: 'Chosen for this block',
+    iconPopover: 'Choose an icon',
+    iconSearch: 'Search icons',
+    iconNone: 'No icon matches.',
+    iconTile: (name: string) => name,
+    width: 'Default width (columns)',
+    widthHelper: (min: number, max: number) =>
+        `Allowed: ${min} to ${max} columns.`,
+    height: 'Default height',
+    heights: {
+        small: 'Small',
+        medium: 'Medium (360 px)',
+        large: 'Large',
+    } as Record<string, string>,
+    heightHelper: (min: string, max: string) => `Allowed: ${min} to ${max}.`,
+    minWidth: 'Minimum width (columns)',
+    maxWidth: 'Maximum width (columns)',
+    minHeight: 'Minimum height',
+    maxHeight: 'Maximum height',
+    widthRange: (min: number, max: number) => `Use ${min} to ${max} columns.`,
+    heightRange: (min: string, max: string) =>
+        `Use a height from ${min} to ${max}.`,
+    minAboveMax: 'The minimum cannot be more than the maximum.',
+    outsideLimits: 'The default must be between the minimum and maximum.',
+    showHeader: 'Show block header',
+    showSubtitle: 'Show subtitle',
+    allowResize: 'Allow resize',
+    allowMinimize: 'Allow minimize',
+    allowRefresh: 'Allow refresh',
+    showFooterAction: 'Show footer action',
+    showFooterActionHelper:
+        'Adds an optional, empty Footer action slot to map later.',
+    period: 'Period',
+    periods: {
+        follow_dashboard: 'Follow dashboard default',
+        own_selector: 'Own selector',
+        not_date_filtered: 'Not date-filtered',
+    } as Record<string, string>,
+    periodHelper:
+        'Own selector is stored only for now: the block period selector arrives with dashboards.',
+    errorSummary: 'Fix these fields',
+    // Preview pane.
+    previewTitle: 'Live preview',
+    previewCaption: 'Changes appear here automatically.',
+    devices: 'Preview device',
+    deviceOptions: [
+        { value: 'desktop', label: 'Desktop' },
+        { value: 'tablet', label: 'Tablet' },
+        { value: 'mobile', label: 'Mobile' },
+    ],
+    canvas: (device: string) => `${device} preview canvas`,
+    sizePill: (columns: number, height: string) =>
+        `${columns} ${columns === 1 ? 'column' : 'columns'} × ${height}`,
+    summary: (columns: number, height: string, category: string) =>
+        `${category} · ${columns} × ${height}`,
+};
+
 // Labels of the Data sources list and form (Story 2.3; UX-DR-207, 115, 261, 263, 23, 26, 22, 37, 39, 274, 282). The
 // messages for the standard states (`list-empty`, `list-no-match`, `msg:saved`, `msg:perm-denied`, the allowlist miss
 // `host-not-allowlisted`, the save failure) come from the catalogue and `shellLabels`.

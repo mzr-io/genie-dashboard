@@ -99,6 +99,8 @@ final class ShellNavigation
         // The Block Type registry list (Story 3.1).
         'api.admin.block-types.index' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.index' => Permission::BlocksEdit,
+        'api.admin.blocks.drafts.show' => Permission::BlocksEdit,
+        'api.admin.blocks.categories.index' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.store' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.update' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.destroy' => Permission::BlocksEdit,

@@ -76,6 +76,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // Draft blocks (Story 3.3): `blocks.edit`, mapped in ShellNavigation::ADMIN_API_ROUTES. Create and save refuse secret-valued fields (Blocks' error code).
     // The destroy route discards: the Draft is hidden at once and the `maintenance` worker deletes its rows later.
     Route::get('blocks/drafts', [DraftController::class, 'index'])->middleware('admin')->name('api.admin.blocks.drafts.index');
+    // Story 3.4: one Draft with its config (the wizard) and the Workspace's categories (seeds "General" on the first read).
+    Route::get('blocks/drafts/{draft}', [DraftController::class, 'show'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.show');
+    Route::get('blocks/categories', [DraftController::class, 'categories'])->middleware('admin')->name('api.admin.blocks.categories.index');
     Route::post('blocks/drafts', [DraftController::class, 'store'])->middleware(['admin', RejectsSecretValues::class.':blocks', 'throttle:30,1,block-drafts'])->name('api.admin.blocks.drafts.store');
     Route::put('blocks/drafts/{draft}', [DraftController::class, 'update'])->whereUuid('draft')->middleware(['admin', RejectsSecretValues::class.':blocks', 'throttle:120,1,block-drafts-save'])->name('api.admin.blocks.drafts.update');
     Route::delete('blocks/drafts/{draft}', [DraftController::class, 'destroy'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-drafts'])->name('api.admin.blocks.drafts.destroy');

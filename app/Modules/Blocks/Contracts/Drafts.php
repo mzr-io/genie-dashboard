@@ -26,14 +26,25 @@ interface Drafts
     public function create(DraftActor $actor, string $name, string $type, ?string $blockId = null): Draft;
 
     /**
-     * Saves the Draft's name and, when given, its Block Type: a compare-and-set on the epoch first, then on the revision. Writes no audit event.
+     * One Draft with its `config` (Story 3.4), for the wizard. Creates the Workspace's "General" category first when it is missing.
+     *
+     * @throws DraftNotFound the Draft does not exist or was discarded
+     */
+    public function find(string $workspaceId, string $draftId): Draft;
+
+    /**
+     * Saves the Draft's name and, when given, its Block Type, category, `config` and wizard step: a compare-and-set on the epoch first,
+     * then on the revision. Writes no audit event. A `config` replaces the stored one and is validated against the Block Type's registry
+     * limits (Story 3.4); a field left null is left as it is.
+     *
+     * @param  array<mixed>|null  $config
      *
      * @throws DraftNotFound the Draft does not exist or was discarded
      * @throws DraftLockLost the epoch is stale
      * @throws DraftRevisionConflict the revision is stale
-     * @throws InvalidDraft an unknown Block Type
+     * @throws InvalidDraft an unknown Block Type or category, or a config outside the limits
      */
-    public function save(DraftActor $actor, string $draftId, string $name, ?string $type, int $revision, int $lockEpoch): Draft;
+    public function save(DraftActor $actor, string $draftId, string $name, ?string $type, int $revision, int $lockEpoch, ?array $config = null, ?int $step = null, ?string $categoryId = null): Draft;
 
     /**
      * Marks the Draft discarded and audits it; the rows are deleted later by the `maintenance` worker.

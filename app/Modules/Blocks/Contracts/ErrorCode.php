@@ -14,4 +14,6 @@ enum ErrorCode: string
     case RevisionConflict = 'blocks.revision_conflict';
     /** A Draft payload carried a secret-valued field (Story 3.3): HTTP 422, nothing stored. */
     case SecretValuesRefused = 'blocks.secret_values_refused';
+    /** A Draft's `config` has a value outside the Block Type's limits or of the wrong type (Story 3.4): HTTP 422 with field errors. */
+    case InvalidConfig = 'blocks.invalid_config';
 }
