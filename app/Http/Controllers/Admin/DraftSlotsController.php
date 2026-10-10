@@ -13,9 +13,11 @@ use App\Modules\Blocks\Contracts\DraftChecklist;
 use App\Modules\Blocks\Contracts\DraftLockLost;
 use App\Modules\Blocks\Contracts\DraftNotFound;
 use App\Modules\Blocks\Contracts\DraftPublished;
+use App\Modules\Blocks\Contracts\DraftRevisionConflict;
 use App\Modules\Blocks\Contracts\Drafts;
 use App\Modules\Blocks\Contracts\DraftSlots;
 use App\Modules\Blocks\Contracts\ErrorCode as BlocksErrorCode;
+use App\Modules\Blocks\Contracts\InvalidDraft;
 use App\Modules\Blocks\Contracts\PreviewRefused;
 use App\Modules\Blocks\Contracts\SampleUnavailable;
 use App\Modules\Blocks\Contracts\SlotNotFound;
@@ -31,7 +33,7 @@ use Illuminate\Http\Request;
 
 /**
  * Auto-map and the slot checklist of a Draft (Story 3.12a). Behind the `admin` middleware (`blocks.edit`). The read takes no lock, so a read-only
- * viewer may ask. Re-run, confirm and override need the edit-lock claim of a Draft save (a stale epoch, or a token that does not hold the lock,
+ * viewer may ask. Re-run, confirm, override and undo need the edit-lock claim of a Draft save (a stale epoch, or a token that does not hold the lock,
  * is a 423 with nothing written). No refusal carries anything of the sample.
  */
 final class DraftSlotsController extends Controller
@@ -47,6 +49,25 @@ final class DraftSlotsController extends Controller
     public function show(Request $request, string $draft): JsonResponse
     {
         return $this->respond($request, fn (): DraftChecklist => $this->slots->checklist($this->actor($request), $draft));
+    }
+
+    /** The field picker of a slot (Story 3.13a): read-only, like the checklist. */
+    public function fields(Request $request, string $draft, string $slot): JsonResponse
+    {
+        return $this->respond(
+            $request,
+            fn (): array => $this->slots->fields($this->actor($request), $draft, $slot),
+            fn (array $fields): array => ['slot' => $slot, 'fields' => $fields],
+        );
+    }
+
+    public function undo(DraftSlotRequest $request, string $draft): JsonResponse
+    {
+        return $this->respond($request, function () use ($request, $draft): DraftChecklist {
+            $actor = $this->actor($request);
+
+            return $this->slots->undo($actor, $draft, $request->undoPayload(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
+        });
     }
 
     public function rerun(DraftSlotRequest $request, string $draft): JsonResponse
@@ -76,17 +97,22 @@ final class DraftSlotsController extends Controller
         });
     }
 
-    /** @param  Closure(): DraftChecklist  $call */
-    private function respond(Request $request, Closure $call): JsonResponse
+    /**
+     * @param  Closure(): mixed  $call
+     * @param  (Closure(mixed): array<string, mixed>)|null  $render  the response data; the checklist's by default
+     */
+    private function respond(Request $request, Closure $call, ?Closure $render = null): JsonResponse
     {
         try {
-            $checklist = $call();
+            $result = $call();
         } catch (DraftNotFound|SlotNotFound) {
             abort(404);
         } catch (DraftLockLost $e) {
             return AdminApiError::json($request, PlatformErrorCode::EditLockLost->value, 423, 'You no longer hold the edit lock on this draft.', extra: ['current' => ['data' => (new DraftResource($e->current, withConfig: true))->resolve($request)]]);
         } catch (DraftPublished) {
             return AdminApiError::json($request, BlocksErrorCode::DraftPublished->value, 409, 'This draft was published.');
+        } catch (DraftRevisionConflict $e) {
+            return AdminApiError::json($request, BlocksErrorCode::RevisionConflict->value, 409, 'This slot was changed after that override.', extra: ['current' => ['data' => (new DraftResource($e->current, withConfig: true))->resolve($request)]]);
         } catch (PreviewRefused $e) {
             return AdminApiError::json($request, $e->reason, 422, 'This draft has no sample yet.');
         } catch (SampleUnavailable) {
@@ -94,11 +120,20 @@ final class DraftSlotsController extends Controller
         } catch (UnknownBlockType) {
             return AdminApiError::json($request, MappingErrorCode::BlockTypeUnavailable->value, 422, 'This block type cannot be mapped.');
         } catch (SlotRefused $e) {
-            return AdminApiError::json($request, PlatformErrorCode::ValidationFailed->value, 422, $e->problem, errors: ["slot.{$e->slot}" => [$e->problem]], extra: ['slot' => $e->slot]);
+            return AdminApiError::json($request, PlatformErrorCode::ValidationFailed->value, 422, $e->problem, errors: ["slot.{$e->slot}" => [$e->problem]], extra: ['slot' => $e->slot] + ($e->compatible === [] ? [] : ['compatible' => $e->compatible]));
+        } catch (InvalidDraft $e) {
+            return AdminApiError::json($request, $e->errorCode ?? PlatformErrorCode::ValidationFailed->value, 422, 'The undo is not valid.', errors: $e->errors);
         }
 
+        if ($render !== null) {
+            return response()->json(['data' => $render($result)], 200, ['Cache-Control' => self::NO_STORE]);
+        }
+
+        /** @var DraftChecklist $checklist */
+        $checklist = $result;
+
         return response()->json(
-            ['data' => $checklist->result->toArray() + ['draft_revision' => $checklist->revision] + ($checklist->queryPlan === null ? [] : ['query_plan' => $checklist->queryPlan])],
+            ['data' => $checklist->result->toArray() + ['draft_revision' => $checklist->revision] + ($checklist->queryPlan === null ? [] : ['query_plan' => $checklist->queryPlan]) + ($checklist->roleChange === null ? [] : ['role_change' => $checklist->roleChange]) + ($checklist->undo === null ? [] : ['undo' => $checklist->undo])],
             200,
             ['Cache-Control' => self::NO_STORE],
         );

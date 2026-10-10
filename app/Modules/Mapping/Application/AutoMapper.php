@@ -7,6 +7,7 @@ use App\Modules\BlockTypes\Contracts\BlockTypeSlot;
 use App\Modules\BlockTypes\Contracts\KpiCardSlots;
 use App\Modules\Mapping\Contracts\AutoMapping;
 use App\Modules\Mapping\Contracts\AutoMapResult;
+use App\Modules\Mapping\Contracts\ExecutionResult;
 use App\Modules\Mapping\Contracts\FieldRole;
 use App\Modules\Mapping\Contracts\FieldRoleReport;
 use App\Modules\Mapping\Contracts\QueryPlan;
@@ -57,21 +58,21 @@ final class AutoMapper implements AutoMapping
         KpiCardSlots::SLOT_SECONDARY_NOTE => ['note'],
     ];
 
+    /** The types an Admin can have a field treated as (`config.field_types`). */
+    private const TYPES = ['text', 'number', 'boolean', 'date'];
+
     private const BASELINE_WORDS = ['previous', 'prior', 'prev', 'last', 'baseline'];
 
-    public function map(FieldRoleReport $report, BlockType $type, array $slotMap): AutoMapResult
+    public function map(FieldRoleReport $report, BlockType $type, array $slotMap, array $fieldTypes = []): AutoMapResult
     {
-        $fields = [];
-
-        foreach ($report->fields as $field) {
-            $fields[] = $field + ['key' => $this->key((string) $field['path']), 'single' => $this->isSingle($field)];
-        }
+        $fields = $this->enrich($report, $fieldTypes);
 
         $byPath = array_column($fields, null, 'path');
         $rows = [];
         $decidedPath = null;
         // A field fills one slot: the Admin's decisions own theirs, and an auto match is not offered to a later slot.
         $used = [];
+        $apiChanged = [];
 
         foreach ($type->slots as $slot) {
             $decision = in_array($slot->key, self::CONFIG_ONLY, true) ? null : $this->decision($slotMap[$slot->key] ?? null);
@@ -91,7 +92,7 @@ final class AutoMapper implements AutoMapping
             }
 
             $decision = $this->decision($slotMap[$slot->key] ?? null);
-            $row = $decision !== null ? $this->decided($slot, $decision, $byPath) : $this->auto($slot, $fields, $used);
+            $row = $decision !== null ? $this->decided($slot, $decision, $byPath, $fields, $apiChanged) : $this->auto($slot, $fields, $used);
             $rows[] = $row;
 
             if ($decision === null && $row['path'] !== null) {
@@ -114,7 +115,78 @@ final class AutoMapper implements AutoMapping
             $groups[] = ['group' => $name, 'slots' => $slots];
         }
 
-        return new AutoMapResult($groups, $this->counts($rows), $this->blockers($rows), $baseline, $this->plan($rows));
+        return new AutoMapResult($groups, $this->counts($rows), $this->blockers($rows, $apiChanged), $baseline, $this->plan($rows), $apiChanged);
+    }
+
+    public function fieldsFor(FieldRoleReport $report, BlockType $type, string $slot, array $fieldTypes = []): ?array
+    {
+        $definition = null;
+
+        foreach ($type->slots as $candidate) {
+            if ($candidate->key === $slot && ! in_array($slot, self::CONFIG_ONLY, true)) {
+                $definition = $candidate;
+            }
+        }
+
+        if ($definition === null) {
+            return null;
+        }
+
+        $entries = [];
+
+        foreach ($this->enrich($report, $fieldTypes) as $field) {
+            $compatible = $field['single'] === true && $this->fits($definition->valueType, $field);
+            $entry = [
+                'kind' => 'field',
+                'path' => (string) $field['path'],
+                'display' => (string) $field['display'],
+                'type' => (string) $field['type'],
+                'effective_type' => (string) $field['effective'],
+                'role' => (string) $field['role'],
+                'example' => $field['example'],
+                'compatible' => $compatible,
+            ];
+
+            if (! $compatible) {
+                $entry['reason'] = $this->mismatch($definition, $field, false);
+            }
+
+            $entries[] = $entry;
+        }
+
+        // Compatible first, then the response's document order (the sort is stable).
+        usort($entries, fn (array $a, array $b): int => $b['compatible'] <=> $a['compatible']);
+
+        if ($definition->valueType === 'text') {
+            $firstIncompatible = count(array_filter($entries, fn (array $e): bool => $e['compatible']));
+            array_splice($entries, $firstIncompatible, 0, [['kind' => 'static_text', 'path' => null, 'display' => 'Static text', 'compatible' => true]]);
+        }
+
+        return $entries;
+    }
+
+    /**
+     * @param  array<string, mixed>  $fieldTypes
+     * @return list<array<string, mixed>>
+     */
+    private function enrich(FieldRoleReport $report, array $fieldTypes): array
+    {
+        $fields = [];
+
+        foreach ($report->fields as $field) {
+            $forced = $fieldTypes[$field['path']] ?? null;
+            $forced = is_string($forced) && in_array($forced, self::TYPES, true) ? $forced : null;
+            $inferred = $this->inferredType($field);
+            $fields[] = $field + [
+                'key' => $this->key((string) $field['path']),
+                'single' => $this->isSingle($field),
+                'forced' => $forced !== null,
+                'inferred' => $inferred,
+                'effective' => $forced ?? $inferred,
+            ];
+        }
+
+        return $fields;
     }
 
     public function carryOver(array $slotMap, array $newSlots, array $oldSlots): array
@@ -282,9 +354,11 @@ final class AutoMapper implements AutoMapping
     /**
      * @param  array{path: string|null, state: string}  $decision
      * @param  array<string, array<string, mixed>>  $byPath
+     * @param  list<array<string, mixed>>  $fields
+     * @param  list<array<string, mixed>>  $apiChanged  gains an entry when the decided path is no longer in the sample
      * @return array<string, mixed>
      */
-    private function decided(BlockTypeSlot $slot, array $decision, array $byPath): array
+    private function decided(BlockTypeSlot $slot, array $decision, array $byPath, array $fields, array &$apiChanged): array
     {
         $path = $decision['path'];
 
@@ -295,15 +369,81 @@ final class AutoMapper implements AutoMapping
         $field = $byPath[$path] ?? null;
         $state = SlotState::from($decision['state']);
 
+        // The API changed under the mapping: the slot is empty (never silently remapped); a match is only reported.
         if ($field === null) {
-            return $this->row($slot, SlotState::TypeMismatch, null, 'The mapped field is no longer in the sample.', ['path' => $path, 'display' => $this->display($path)]);
+            $match = $this->match($path, $slot, $fields);
+            $row = $this->row($slot, $slot->required ? SlotState::RequiredMissing : SlotState::OptionalEmpty, null, 'The mapped field is no longer in the sample.', ['path' => $path, 'display' => $this->display($path)], $match);
+            $apiChanged[] = ['slot' => $slot->key, 'path' => $path, 'display' => $this->display($path), 'state' => $row['state'], 'match' => $match];
+
+            return $row;
         }
 
         if ($field['single'] !== true || ! $this->fits($slot->valueType, $field)) {
-            return $this->row($slot, SlotState::TypeMismatch, null, 'The mapped field no longer fits this slot.', $field);
+            $compatible = array_values(array_filter($byPath, fn (array $f): bool => $f['single'] === true && $this->fits($slot->valueType, $f)));
+
+            return $this->row($slot, SlotState::TypeMismatch, null, $this->mismatch($slot, $field, true), $field, $compatible === [] ? null : ['path' => (string) $compatible[0]['path'], 'display' => (string) $compatible[0]['display']]);
         }
 
         return $this->row($slot, $state, 'high', $state === SlotState::Confirmed ? 'Confirmed by an admin.' : 'Chosen by an admin.', $field);
+    }
+
+    /**
+     * A field elsewhere that may be the one the mapping lost: the same last key and a type that fits, else the same last key, else a key that
+     * contains the lost key's words (or the reverse, `total` and `grand_total`) with a type that fits. Only reported, never applied.
+     *
+     * @param  list<array<string, mixed>>  $fields
+     * @return array{path: string, display: string}|null
+     */
+    private function match(string $path, BlockTypeSlot $slot, array $fields): ?array
+    {
+        $key = strtolower($this->key($path));
+        $words = $this->split($this->key($path));
+        $single = array_values(array_filter($fields, fn (array $f): bool => $f['single'] === true));
+        $same = array_values(array_filter($single, fn (array $f): bool => $key !== '' && strtolower((string) $f['key']) === $key));
+        $fit = fn (array $f): bool => $this->fits($slot->valueType, $f);
+        $found = array_values(array_filter($same, $fit))[0] ?? $same[0] ?? null;
+
+        if ($found === null && $words !== []) {
+            foreach (array_filter($single, $fit) as $f) {
+                $other = $this->split((string) $f['key']);
+
+                if ($other !== [] && (array_diff($words, $other) === [] || array_diff($other, $words) === [])) {
+                    $found = $f;
+
+                    break;
+                }
+            }
+        }
+
+        return $found === null ? null : ['path' => (string) $found['path'], 'display' => (string) $found['display']];
+    }
+
+    /**
+     * Why a field cannot fill a slot. `$quote` adds the example to the sentence (the checklist only). The picker returns a bounded `example` per field by design; the refusals (and the picker's reasons) carry no sample text.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    private function mismatch(BlockTypeSlot $slot, array $field, bool $quote): string
+    {
+        if ($field['single'] !== true) {
+            return 'Needs aggregation (a later release).';
+        }
+
+        $effective = (string) $field['effective'];
+
+        if (! $quote && $slot->key === KpiCardSlots::SLOT_HEADLINE_VALUE && $slot->valueType === 'number' && $effective === 'text' && $field['forced'] !== true) {
+            return "Text field can't be a numeric headline. Use it as the currency format below.";
+        }
+
+        $example = $field['example'] ?? null;
+        $subject = $quote && $effective === 'text' && is_string($example) ? "{$field['display']} is text (\"{$example}\")" : "{$field['display']} is {$effective}";
+        $needs = match ($slot->valueType) {
+            'number' => 'a number',
+            'boolean' => 'a true or false value',
+            default => 'text',
+        };
+
+        return "{$subject}. {$slot->label} needs {$needs}.";
     }
 
     /**
@@ -372,9 +512,10 @@ final class AutoMapper implements AutoMapping
 
     /**
      * @param  list<array<string, mixed>>  $rows
+     * @param  list<array<string, mixed>>  $apiChanged
      * @return list<array{slot: string, reason: string}>
      */
-    private function blockers(array $rows): array
+    private function blockers(array $rows, array $apiChanged): array
     {
         $out = [];
 
@@ -388,6 +529,13 @@ final class AutoMapper implements AutoMapping
 
             if ($reason !== null) {
                 $out[] = ['slot' => (string) $row['slot'], 'reason' => $reason];
+            }
+        }
+
+        // An optional slot whose field went away is empty, not missing, but the Admin still has to look at it.
+        foreach ($apiChanged as $change) {
+            if ($change['state'] === SlotState::OptionalEmpty->value) {
+                $out[] = ['slot' => (string) $change['slot'], 'reason' => 'api_changed'];
             }
         }
 
@@ -415,18 +563,56 @@ final class AutoMapper implements AutoMapping
         return ['v' => QueryPlan::VERSION, 'extract' => ['fields' => $fields], 'shape' => $shape];
     }
 
-    /** @param  array<string, mixed>  $field */
+    /**
+     * Whether the field's effective type (the Admin's "Treat as", else the inferred one) fits the slot. A decimal-shaped string treated as a number
+     * fits a number slot; any other forced mismatch does not.
+     *
+     * @param  array<string, mixed>  $field
+     */
     private function fits(string $valueType, array $field): bool
     {
-        $present = array_values(array_diff(array_map('trim', explode('|', (string) $field['type'])), ['null']));
-        $numeric = $present !== [] && array_diff($present, ['integer', 'decimal']) === [];
-        $boolean = $present === ['boolean'];
+        $effective = (string) ($field['effective'] ?? $this->inferredType($field));
 
         return match ($valueType) {
-            'number' => $numeric,
-            'boolean' => $boolean,
-            default => ! $numeric && ! $boolean,
+            'number' => $effective === 'number' && ($this->present($field) !== [] && array_diff($this->present($field), ['integer', 'decimal']) === [] || $this->decimalShaped($field)),
+            'boolean' => $effective === 'boolean' && $this->present($field) === ['boolean'],
+            default => $effective === 'text' || $effective === 'date',
         };
+    }
+
+    /**
+     * @param  array<string, mixed>  $field
+     * @return list<string>
+     */
+    private function present(array $field): array
+    {
+        return array_values(array_diff(array_map('trim', explode('|', (string) $field['type'])), ['null']));
+    }
+
+    /** @param  array<string, mixed>  $field */
+    private function inferredType(array $field): string
+    {
+        $present = $this->present($field);
+
+        if ($present !== [] && array_diff($present, ['integer', 'decimal']) === []) {
+            return 'number';
+        }
+
+        if ($present === ['boolean']) {
+            return 'boolean';
+        }
+
+        $example = $field['example'] ?? null;
+
+        return is_string($example) && preg_match(FieldRoleInference::ISO, $example) === 1 ? 'date' : 'text';
+    }
+
+    /** @param  array<string, mixed>  $field */
+    private function decimalShaped(array $field): bool
+    {
+        $example = $field['example'] ?? null;
+
+        return $this->present($field) === ['string'] && is_string($example) && preg_match(ExecutionResult::DECIMAL, trim($example)) === 1;
     }
 
     /** @param  array<string, mixed>  $field */

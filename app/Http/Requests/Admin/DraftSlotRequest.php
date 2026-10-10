@@ -9,7 +9,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
 
 /**
- * A write of the slot checklist (Story 3.12a): re-run, confirm or override. It carries the edit-lock claim a Draft save carries (`lock_epoch`,
+ * A write of the slot checklist (Story 3.12a): re-run, confirm, override or undo (the `undo` payload an override returned). It carries the edit-lock claim a Draft save carries (`lock_epoch`,
  * `lock_token`); an override also carries the `path` of the field, or null to clear the slot. The `admin` middleware has authorised the request.
  */
 final class DraftSlotRequest extends FormRequest
@@ -31,7 +31,35 @@ final class DraftSlotRequest extends FormRequest
             $rules['path'] = ['present', 'nullable', 'string', 'max:1024'];
         }
 
+        if ($this->routeIs('api.admin.blocks.drafts.mapping.undo')) {
+            $rules += [
+                'undo' => ['required', 'array'],
+                'undo.slot' => ['required', 'string', 'regex:/\A[a-z][a-z0-9_]{0,63}\z/'],
+                'undo.slot_entry' => ['present', 'nullable', 'array'],
+                'undo.slot_entry.path' => ['nullable', 'string', 'max:1024'],
+                'undo.slot_entry.state' => ['required_with:undo.slot_entry', 'string', 'in:confirmed,overridden'],
+                'undo.applied' => ['required', 'array'],
+                'undo.applied.path' => ['nullable', 'string', 'max:1024'],
+                'undo.applied.state' => ['required', 'string', 'in:overridden'],
+                'undo.role' => ['present', 'nullable', 'array'],
+                'undo.role.path' => ['required_with:undo.role', 'string', 'max:1024'],
+                'undo.role.previous' => ['nullable', 'string', 'max:32'],
+            ];
+        }
+
         return $rules;
+    }
+
+    /**
+     * The undo payload an override returned (Story 3.13a), as the service takes it.
+     *
+     * @return array<string, mixed>
+     */
+    public function undoPayload(): array
+    {
+        $undo = $this->input('undo');
+
+        return is_array($undo) ? $undo : [];
     }
 
     public function slotPath(): ?string
@@ -59,6 +87,17 @@ final class DraftSlotRequest extends FormRequest
         $validator->after(function (Validator $v): void {
             if ($this->isMethod('PUT') && $this->input('path') === '') {
                 $v->errors()->add('path', 'Choose a field, or send null to clear the slot.');
+            }
+
+            // A cleared slot is `{path: null, state}`: the path key must be there, null or not; an empty object is no entry.
+            if ($this->routeIs('api.admin.blocks.drafts.mapping.undo') && is_array($this->input('undo'))) {
+                foreach (['slot_entry', 'applied', 'role'] as $key) {
+                    $value = $this->input("undo.{$key}");
+
+                    if ($value === [] || (is_array($value) && in_array($key, ['slot_entry', 'applied'], true) && ! array_key_exists('path', $value))) {
+                        $v->errors()->add("undo.{$key}", 'This part of the undo is incomplete.');
+                    }
+                }
             }
         });
     }

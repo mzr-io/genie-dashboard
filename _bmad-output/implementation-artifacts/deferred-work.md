@@ -367,3 +367,11 @@
 - source_spec: `spec-3-12a-auto-map-slots-with-confidence.md`
   summary: Wire `carryOver` to the Block Type change in Step 1; validate `slot_map` fit on the generic Draft save; widen baseline-name and text-slot matching; decide how the epic's numeric-`revenue` example should grade.
   evidence: Review findings; none is exercised by the current acceptance criteria.
+
+- source_spec: `spec-3-13a-override-pick-field-and-fix-mismatches.md`
+  summary: Story 3.13b: the field picker popover, role-change note with Undo, Type mismatch pill, "Treat as" menu, `msg:api-changed` and `msg:api-match-found`, read-only view.
+  evidence: Split from Story 3.13 on the scope rule; it consumes the 3.13a endpoints.
+
+- source_spec: `spec-3-13a-override-pick-field-and-fix-mismatches.md`
+  summary: Tighten api-changed matching (short keys, fields already used), keep a role override while another slot still maps the field on undo, bound and prune `field_types`, and teach publish readiness the `api_changed` blocker.
+  evidence: Review findings; no UI or publish consumer exists yet.

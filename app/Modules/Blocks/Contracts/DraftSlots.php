@@ -16,6 +16,19 @@ interface DraftSlots
     public function checklist(DraftActor $actor, string $draftId): DraftChecklist;
 
     /**
+     * The field picker of one slot (Story 3.13a): every field of the sample with `compatible` and a `reason` when it is not, plus `static_text` for a text
+     * slot. Read-only, like the checklist.
+     *
+     * @return list<array<string, mixed>>
+     *
+     * @throws SlotNotFound
+     * @throws DraftNotFound
+     * @throws PreviewRefused
+     * @throws SampleUnavailable
+     */
+    public function fields(DraftActor $actor, string $draftId, string $slot): array;
+
+    /**
      * Auto-maps again: recomputes every slot but the Admin's decisions and writes `config.query_plan` from every mapped slot.
      *
      * @param  (\Closure(): bool)|null  $holdsLock
@@ -57,4 +70,23 @@ interface DraftSlots
      * @throws SampleUnavailable
      */
     public function override(DraftActor $actor, string $draftId, string $slot, ?string $path, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist;
+
+    /**
+     * Puts back what an override changed (Story 3.13a): the slot's entry and the one role override the override wrote, exactly as `undo` (the payload an
+     * override returned) holds them, then fills the unconfirmed slots from the restored roles (an auto-map re-run, which writes `config.query_plan`).
+     * Confirmed and overridden slots are never changed by the re-fill.
+     *
+     * @param  array<string, mixed>  $undo  `{slot, slot_entry: {path, state}|null, role: {path, previous}|null, applied: {path, state}}`; `applied` is what the override wrote
+     * @param  (\Closure(): bool)|null  $holdsLock
+     *
+     * @throws SlotRefused an unknown or config-only slot, or a path to restore that the slot no longer accepts
+     * @throws DraftRevisionConflict the slot's entry is no longer the one the override wrote (nothing is written)
+     * @throws InvalidDraft a malformed entry or role (`blocks.invalid_config`)
+     * @throws DraftNotFound
+     * @throws DraftPublished
+     * @throws DraftLockLost
+     * @throws PreviewRefused
+     * @throws SampleUnavailable
+     */
+    public function undo(DraftActor $actor, string $draftId, array $undo, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist;
 }

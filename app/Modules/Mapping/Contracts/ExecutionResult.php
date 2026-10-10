@@ -14,6 +14,9 @@ final readonly class ExecutionResult
 
     public const WRONG_TYPE = 'wrong_type';
 
+    /** A string a number slot accepts (after trimming): the executor and the auto-mapper's "treat as number" check share it. */
+    public const DECIMAL = '/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\z/';
+
     /**
      * @param  array<string, string|bool|null>  $slots
      * @param  array<string, string>  $unavailable

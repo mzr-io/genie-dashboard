@@ -5,16 +5,17 @@ use App\Modules\BlockTypes\Contracts\BlockTypeSlot;
 use App\Modules\Mapping\Application\AutoMapper;
 use App\Modules\Mapping\Application\FieldRoleInference;
 use App\Modules\Mapping\Contracts\AutoMapResult;
+use App\Modules\Mapping\Contracts\ExecutionResult;
 use App\Platform\Json\LosslessJson;
 use App\Platform\Json\SampleShape;
 
 // Story 3.12a: auto-map of the kpi-card slots over a sample's field report, with confidence, decisions and the plan.
-function amMap(string $json, array $slotMap = [], ?string $recordPath = null, array $roles = []): AutoMapResult
+function amMap(string $json, array $slotMap = [], ?string $recordPath = null, array $roles = [], array $types = []): AutoMapResult
 {
     $type = (new LoadBlockTypes(dirname(__DIR__, 2).'/block-types'))->resolve('kpi-card', 1);
     $report = (new FieldRoleInference)->infer(SampleShape::of(LosslessJson::decode($json)), $recordPath, $roles);
 
-    return (new AutoMapper)->map($report, $type, $slotMap);
+    return (new AutoMapper)->map($report, $type, $slotMap, $types);
 }
 
 function amSlot($result, string $key): array
@@ -116,12 +117,12 @@ it('keeps confirmed and overridden slots as they are and recomputes the rest', f
         ->and(amMap($json, $map)->toArray())->toBe($r->toArray());
 });
 
-it('reads a cleared slot as empty, and a stale confirmed or overridden slot as type_mismatch, not dropped', function () {
+it('reads a cleared slot as empty, and a stale confirmed or overridden slot as empty with api_changed, not dropped', function () {
     $cleared = amMap('{"total":10}', ['headline_value' => ['path' => null, 'state' => 'overridden']]);
     expect(amSlot($cleared, 'headline_value'))->toMatchArray(['state' => 'required_missing', 'path' => null]);
 
     $stale = amMap('{"total":10}', ['headline_value' => ['path' => '$.gone', 'state' => 'confirmed']]);
-    expect(amSlot($stale, 'headline_value'))->toMatchArray(['state' => 'type_mismatch', 'path' => '$.gone'])
+    expect(amSlot($stale, 'headline_value'))->toMatchArray(['state' => 'required_missing', 'path' => '$.gone'])
         ->and($stale->plan['extract']['fields'])->not->toHaveKey('headline_value');
 
     $wrongType = amMap('{"total":10,"region":"EU"}', ['headline_value' => ['path' => '$.region', 'state' => 'overridden']]);
@@ -187,4 +188,102 @@ it('reports baseline candidates whatever the headline decision, leaving out the 
     expect(amMap($json, ['headline_value' => ['path' => '$.total', 'state' => 'confirmed']])->baseline)->toBe([['path' => '$.previous_total', 'display' => 'previous_total']])
         ->and(amMap($json, ['headline_value' => ['path' => '$.previous_total', 'state' => 'overridden']])->baseline)->toBe([])
         ->and(amMap($json, ['headline_value' => ['path' => null, 'state' => 'overridden']])->baseline)->toBe([['path' => '$.previous_total', 'display' => 'previous_total']]);
+});
+
+function amFields(string $json, string $slot, array $types = [], array $roles = [], ?string $recordPath = null): ?array
+{
+    $type = (new LoadBlockTypes(dirname(__DIR__, 2).'/block-types'))->resolve('kpi-card', 1);
+    $report = (new FieldRoleInference)->infer(SampleShape::of(LosslessJson::decode($json)), $recordPath, $roles);
+
+    return (new AutoMapper)->fieldsFor($report, $type, $slot, $types);
+}
+
+// Story 3.13a.
+it('lists the headline picker: compatible numeric single scalars first, text with the reason, records with the aggregation reason', function () {
+    $fields = amFields('{"currency":"USD","total":10,"data":[{"v":1},{"v":2}],"count":3}', 'headline_value');
+
+    expect(array_column($fields, 'path'))->toBe(['$.total', '$.count', '$.currency', '$.data[*].v'])
+        ->and(array_column($fields, 'compatible'))->toBe([true, true, false, false])
+        ->and($fields[2]['reason'])->toBe("Text field can't be a numeric headline. Use it as the currency format below.")
+        ->and($fields[3]['reason'])->toBe('Needs aggregation (a later release).')
+        ->and($fields[0])->toMatchArray(['kind' => 'field', 'display' => 'total', 'type' => 'integer', 'effective_type' => 'number', 'role' => 'value', 'example' => '10'])
+        ->and($fields[0])->not->toHaveKey('reason');
+});
+
+it('offers static_text for a text slot only, and nothing for an unknown or config-only slot', function () {
+    $text = amFields('{"total":1,"region":"EU"}', 'subtitle');
+    $kinds = array_column($text, 'kind');
+
+    expect($kinds)->toBe(['field', 'static_text', 'field'])
+        ->and($text[1])->toMatchArray(['path' => null, 'compatible' => true])
+        ->and(array_column(amFields('{"total":1}', 'headline_value'), 'kind'))->not->toContain('static_text')
+        ->and(amFields('{"total":1}', 'icon'))->toBeNull()
+        ->and(amFields('{"total":1}', 'footer_action'))->toBeNull()
+        ->and(amFields('{"total":1}', 'bogus'))->toBeNull();
+});
+
+it('treats a decimal-shaped string as a number, and keeps any other forced mismatch with its reason', function () {
+    $json = '{"revenue":"284680","currency":"USD"}';
+    $fields = amFields($json, 'headline_value', ['$.revenue' => 'number', '$.currency' => 'number']);
+    $by = array_column($fields, null, 'path');
+
+    expect($by['$.revenue'])->toMatchArray(['compatible' => true, 'effective_type' => 'number', 'type' => 'string'])
+        ->and($by['$.currency']['compatible'])->toBeFalse()
+        ->and($by['$.currency']['reason'])->toBe('currency is number. Headline value needs a number.');
+
+    // Without the override neither fits; the field is never discarded from a decided slot.
+    expect(array_column(amFields($json, 'headline_value'), 'compatible', 'path'))->toBe(['$.revenue' => false, '$.currency' => false]);
+
+    $ok = amMap($json, ['headline_value' => ['path' => '$.revenue', 'state' => 'overridden']], types: ['$.revenue' => 'number']);
+    expect(amSlot($ok, 'headline_value'))->toMatchArray(['state' => 'overridden', 'path' => '$.revenue']);
+
+    $bad = amMap($json, ['headline_value' => ['path' => '$.currency', 'state' => 'overridden']], types: ['$.currency' => 'number']);
+    expect(amSlot($bad, 'headline_value'))->toMatchArray(['state' => 'type_mismatch', 'path' => '$.currency', 'reason' => 'currency is number. Headline value needs a number.'])
+        ->and($bad->blockers)->toContain(['slot' => 'headline_value', 'reason' => 'type_mismatch']);
+
+    $text = amMap($json, ['headline_value' => ['path' => '$.currency', 'state' => 'overridden']]);
+    expect(amSlot($text, 'headline_value')['reason'])->toBe('currency is text ("USD"). Headline value needs a number.');
+});
+
+it('lets a number be treated as text, and uses the effective type for dates', function () {
+    $by = array_column(array_filter(amFields('{"code":12,"day":"2026-01-02"}', 'subtitle', ['$.code' => 'text']), fn ($e) => $e['kind'] === 'field'), null, 'path');
+
+    expect($by['$.code'])->toMatchArray(['compatible' => true, 'effective_type' => 'text'])
+        ->and($by['$.day'])->toMatchArray(['compatible' => true, 'effective_type' => 'date']);
+});
+
+it('reports api_changed with a match when a decided path left the sample: required_missing, never applied', function () {
+    $map = ['headline_value' => ['path' => '$.total', 'state' => 'confirmed']];
+    $r = amMap('{"grand_total":10,"region":"EU"}', $map);
+
+    expect(amSlot($r, 'headline_value'))->toMatchArray(['state' => 'required_missing', 'path' => '$.total'])
+        ->and($r->apiChanged)->toBe([['slot' => 'headline_value', 'path' => '$.total', 'display' => 'total', 'state' => 'required_missing', 'match' => ['path' => '$.grand_total', 'display' => 'grand_total']]])
+        ->and($r->toArray()['api_changed'])->toBe($r->apiChanged)
+        ->and($r->blockers)->toContain(['slot' => 'headline_value', 'reason' => 'required_missing'])
+        ->and($r->plan['extract']['fields'])->not->toHaveKey('headline_value');
+
+    // The same last key elsewhere is a match; no match is null.
+    expect(amMap('{"summary":{"total":1}}', $map)->apiChanged[0]['match'])->toBe(['path' => '$.summary.total', 'display' => 'summary.total'])
+        ->and(amMap('{"region":"EU"}', $map)->apiChanged[0]['match'])->toBeNull();
+});
+
+it('reads an optional slot whose path left the sample as optional_empty and lists it as a blocker', function () {
+    $r = amMap('{"total":1}', ['status_badge' => ['path' => '$.status', 'state' => 'overridden'], 'headline_value' => ['path' => null, 'state' => 'overridden']]);
+
+    expect(amSlot($r, 'status_badge')['state'])->toBe('optional_empty')
+        ->and($r->apiChanged[0])->toMatchArray(['slot' => 'status_badge', 'state' => 'optional_empty', 'match' => null])
+        ->and($r->blockers)->toContain(['slot' => 'status_badge', 'reason' => 'api_changed'])
+        ->and(count($r->apiChanged))->toBe(1);
+});
+
+it('fits a string treated as a number exactly when the executor accepts it', function () {
+    foreach (['1e5', '+5', '5.', '.5', ' 7 '] as $text) {
+        $fields = amFields(json_encode(['v' => $text]), 'headline_value', ['$.v' => 'number']);
+        expect($fields[0]['compatible'])->toBeTrue($text)
+            ->and(preg_match(ExecutionResult::DECIMAL, trim($text)))->toBe(1);
+    }
+
+    foreach (['1e', 'abc', '5 5', '--5', ''] as $text) {
+        expect(amFields(json_encode(['v' => $text]), 'headline_value', ['$.v' => 'number'])[0]['compatible'])->toBeFalse($text);
+    }
 });

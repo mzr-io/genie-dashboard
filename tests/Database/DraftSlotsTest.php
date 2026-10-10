@@ -2,6 +2,12 @@
 
 use App\Models\User;
 use App\Modules\Blocks\Application\PreviewDraft;
+use App\Modules\Blocks\Contracts\DraftActor;
+use App\Modules\Blocks\Contracts\DraftSamples;
+use App\Modules\Blocks\Contracts\DraftSlots;
+use App\Modules\Blocks\Contracts\SampleCheck;
+use App\Modules\Blocks\Contracts\SampleUnavailable;
+use App\Modules\Blocks\Contracts\StoredSample;
 use App\Platform\Contracts\ErrorCode as PlatformErrorCode;
 use Tests\Database\Support\Cluster;
 
@@ -180,7 +186,7 @@ it('is type_mismatch when the numbers are only in the rows', function () {
         ->and(array_column($data['blockers'], 'reason', 'slot')['headline_value'])->toBe('type_mismatch');
 });
 
-it('leaves a confirmed and an overridden slot untouched on re-run, and a stale confirmed slot reads type_mismatch after a new sample', function () {
+it('leaves a confirmed and an overridden slot untouched on re-run, and a stale confirmed slot reads required_missing (api changed) after a new sample', function () {
     $id = dslDraft();
     dslConfirm($id, 'headline_value')->assertOk();
     dslOverride($id, 'kpi_label', '$.region')->assertOk();
@@ -194,7 +200,7 @@ it('leaves a confirmed and an overridden slot untouched on re-run, and a stale c
 
     dslPaste($id, '{"revenue":5,"region":"EU"}');
     $stale = dslGet($id)->assertOk()->json('data');
-    expect(dslRow($stale, 'headline_value'))->toMatchArray(['state' => 'type_mismatch', 'path' => '$.total'])
+    expect(dslRow($stale, 'headline_value'))->toMatchArray(['state' => 'required_missing', 'path' => '$.total'])
         ->and(dslRow($stale, 'kpi_label')['state'])->toBe('overridden')
         ->and(dslConfig()['slot_map'])->toBe($map);
 });
@@ -347,4 +353,302 @@ it('clears the unconfirmed_low blocker when the auto_low slot is confirmed', fun
     $after = dslConfirm($id, 'headline_value')->assertOk()->json('data');
     expect(dslRow($after, 'headline_value')['state'])->toBe('confirmed')
         ->and(array_column($after['blockers'], 'slot'))->not->toContain('headline_value');
+});
+
+// Story 3.13a: the picker, the role change and undo, "Treat as", and api_changed.
+function dslFields(string $id, string $slot)
+{
+    return test()->getJson(BD_URL."/{$id}/mapping/slots/{$slot}/fields", BD_HEADERS);
+}
+
+function dslUndo(string $id, array|string $undo, array $extra = [])
+{
+    return test()->postJson(BD_URL."/{$id}/mapping/undo", $extra + ['undo' => $undo, 'lock_epoch' => 1], BD_HEADERS);
+}
+
+function dslSaveConfig(string $id, array $config)
+{
+    return bdSave($id, (int) bdRows()[0]['revision'], 1, ['config' => $config])->assertOk();
+}
+
+it('lists the field picker of a slot, read-only, compatible first with reasons, and 404s an unknown or config-only slot', function () {
+    $id = dslDraft('{"total":10,"currency":"USD","data":[{"v":1},{"v":2}]}');
+    $before = bdRows();
+
+    $res = dslFields($id, 'headline_value')->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+    $fields = $res->json('data.fields');
+
+    expect(array_column($fields, 'path'))->toBe(['$.total', '$.currency', '$.data[*].v'])
+        ->and(array_column($fields, 'compatible'))->toBe([true, false, false])
+        ->and($fields[1]['reason'])->toBe("Text field can't be a numeric headline. Use it as the currency format below.")
+        ->and($fields[2]['reason'])->toBe('Needs aggregation (a later release).')
+        ->and(array_column(dslFields($id, 'subtitle')->json('data.fields'), 'kind'))->toContain('static_text')
+        ->and(bdRows())->toBe($before);
+
+    dslFields($id, 'icon')->assertNotFound();
+    dslFields($id, 'footer_action')->assertNotFound();
+    dslFields($id, 'bogus')->assertNotFound();
+    dslFields('018f0000-0000-7000-8000-000000000000', 'headline_value')->assertNotFound();
+    dslFields(bdCreate(['name' => 'Empty'])->assertCreated()->json('data.draft_id'), 'headline_value')->assertStatus(422)->assertJsonPath('error.code', 'mapping.no_sample');
+});
+
+it('lets a member who does not hold the lock read the picker', function () {
+    $id = dslDraft();
+    config(['dashflow.tunables.timeouts.edit_lock_ttl.value' => '60']);
+    test()->postJson(BD_URL."/{$id}/lock", [], BD_HEADERS)->assertOk();
+    $workspace = bdRows('workspace_memberships')[0]['workspace_id'];
+    [$bob] = bdMember($workspace, 'bob2@example.test');
+    test()->flushSession();
+    test()->actingAs(User::query()->findOrFail($bob))->withSession(['workspace_id' => $workspace, 'area' => 'admin']);
+
+    dslFields($id, 'headline_value')->assertOk();
+    dslUndo($id, ['slot' => 'headline_value', 'slot_entry' => null, 'role' => null, 'applied' => ['path' => '$.total', 'state' => 'overridden']])->assertStatus(423);
+});
+
+it('overrides a dimension to the headline: the role becomes measure, role_change and undo come back, and undo restores the config', function () {
+    $id = dslDraft('{"total":10,"revenue":5}');
+    dslSaveConfig($id, ['field_roles' => ['$.revenue' => 'dimension']]);
+    dslConfirm($id, 'headline_value')->assertOk();
+    $before = dslConfig();
+    $revision = bdRows()[0]['revision'];
+
+    $data = dslOverride($id, 'headline_value', '$.revenue')->assertOk()->json('data');
+
+    expect($data['role_change'])->toBe(['path' => '$.revenue', 'from' => 'dimension', 'to' => 'measure'])
+        ->and($data['undo'])->toBe(['slot' => 'headline_value', 'slot_entry' => ['path' => '$.total', 'state' => 'confirmed'], 'role' => ['path' => '$.revenue', 'previous' => 'dimension'], 'applied' => ['path' => '$.revenue', 'state' => 'overridden']])
+        ->and(dslRow($data, 'headline_value'))->toMatchArray(['state' => 'overridden', 'path' => '$.revenue'])
+        ->and(dslConfig()['field_roles'])->toBe(['$.revenue' => 'measure'])
+        ->and(dslConfig()['slot_map']['headline_value'])->toBe(['path' => '$.revenue', 'state' => 'overridden']);
+
+    $undone = dslUndo($id, $data['undo'])->assertOk()->json('data');
+    $after = dslConfig();
+    unset($after['query_plan'], $before['query_plan']);
+
+    expect($after['slot_map'])->toBe($before['slot_map'])
+        ->and($after['field_roles'])->toBe($before['field_roles'])
+        ->and(dslRow($undone, 'headline_value'))->toMatchArray(['state' => 'confirmed', 'path' => '$.total'])
+        ->and(bdRows()[0]['revision'])->toBeGreaterThan($revision);
+});
+
+it('does not change a role that already fits, and undoes an override that had no previous entry', function () {
+    $id = dslDraft('{"total":10,"revenue":"x"}');
+    $before = dslConfig();
+
+    $data = dslOverride($id, 'headline_value', '$.total')->assertOk()->json('data');
+    expect($data)->not->toHaveKey('role_change')
+        ->and($data['undo'])->toBe(['slot' => 'headline_value', 'slot_entry' => null, 'role' => null, 'applied' => ['path' => '$.total', 'state' => 'overridden']])
+        ->and(dslConfig())->not->toHaveKey('field_roles');
+
+    // A text slot never changes roles.
+    $text = dslOverride($id, 'kpi_label', '$.revenue')->assertOk()->json('data');
+    expect($text)->not->toHaveKey('role_change')->and(dslConfig())->not->toHaveKey('field_roles');
+
+    dslUndo($id, $data['undo'])->assertOk();
+    expect(dslConfig()['slot_map'])->not->toHaveKey('headline_value')->and(dslConfig()['slot_map'])->toHaveKey('kpi_label');
+    expect(array_diff_key(dslConfig(), ['slot_map' => 1, 'query_plan' => 1]))->toBe(array_diff_key($before, ['slot_map' => 1, 'query_plan' => 1]));
+});
+
+it('re-fills unconfirmed slots on undo and leaves decided slots as they are', function () {
+    $id = dslDraft('{"total":10,"region":"EU","month":"Jan"}');
+    dslOverride($id, 'kpi_label', '$.region')->assertOk();
+    $over = dslOverride($id, 'headline_value', '$.total')->assertOk()->json('data');
+
+    $data = dslUndo($id, $over['undo'])->assertOk()->json('data');
+
+    expect(dslRow($data, 'headline_value')['state'])->toBe('auto_high')
+        ->and(dslRow($data, 'kpi_label'))->toMatchArray(['state' => 'overridden', 'path' => '$.region'])
+        ->and($data['query_plan']['extract']['fields'])->toMatchArray(['headline_value' => '$.total', 'kpi_label' => '$.region'])
+        ->and(dslConfig()['query_plan'])->toEqual($data['query_plan']);
+});
+
+it('refuses a malformed or unknown undo with a 422 and writes nothing', function () {
+    $id = dslDraft();
+    dslOverride($id, 'headline_value', '$.total')->assertOk();
+    $applied = ['path' => '$.total', 'state' => 'overridden'];
+    $before = bdRows();
+
+    dslUndo($id, ['slot' => 'bogus', 'slot_entry' => null, 'role' => null, 'applied' => $applied])->assertStatus(422);
+    expect(array_keys(dslUndo($id, ['slot' => 'bogus', 'slot_entry' => null, 'role' => null, 'applied' => $applied])->json('errors')))->toBe(['slot.bogus']);
+    dslUndo($id, ['slot' => 'icon', 'slot_entry' => null, 'role' => null, 'applied' => $applied])->assertStatus(422);
+    dslUndo($id, ['slot' => 'Head-line', 'slot_entry' => null, 'role' => null, 'applied' => $applied])->assertStatus(422);
+    dslUndo($id, ['slot' => 'headline_value'])->assertStatus(422);
+    dslUndo($id, ['slot' => 'headline_value', 'slot_entry' => [], 'role' => null, 'applied' => $applied])->assertStatus(422);
+    dslUndo($id, ['slot' => 'headline_value', 'slot_entry' => null, 'role' => [], 'applied' => $applied])->assertStatus(422);
+    dslUndo($id, ['slot' => 'headline_value', 'slot_entry' => ['path' => '$.total', 'state' => 'auto_high'], 'role' => null, 'applied' => $applied])->assertStatus(422);
+    dslUndo($id, ['slot' => 'headline_value', 'slot_entry' => null, 'role' => ['path' => '$.total', 'previous' => 'bogus'], 'applied' => $applied])->assertStatus(422);
+    dslUndo($id, 'nope')->assertStatus(422);
+    expect(bdRows())->toBe($before);
+});
+
+it('refuses a stale undo with a 409 and a forged role path or restored path with a 422, writing nothing', function () {
+    $id = dslDraft('{"total":10,"revenue":5,"region":"EU"}');
+    dslSaveConfig($id, ['field_roles' => ['$.revenue' => 'dimension']]);
+    $over = dslOverride($id, 'headline_value', '$.revenue')->assertOk()->json('data.undo');
+    $before = bdRows();
+
+    // Forged role path: a path that is neither the restored one nor the applied one.
+    dslUndo($id, ['role' => ['path' => '$.total', 'previous' => 'filter']] + $over)->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config');
+    // Forged restored path: not a field the slot accepts (text for a number slot, and a path not in the sample).
+    dslUndo($id, ['slot_entry' => ['path' => '$.region', 'state' => 'confirmed']] + $over)->assertStatus(422);
+    expect(array_keys(dslUndo($id, ['slot_entry' => ['path' => '$.nope', 'state' => 'confirmed']] + $over)->json('errors')))->toBe(['slot.headline_value']);
+    expect(bdRows())->toBe($before);
+
+    // A later decision on the slot makes the undo stale.
+    dslOverride($id, 'headline_value', '$.total')->assertOk();
+    $later = bdRows();
+    dslUndo($id, $over)->assertStatus(409)->assertJsonPath('error.code', 'blocks.revision_conflict');
+    expect(bdRows())->toBe($later);
+
+    // So does an undo that was already used.
+    $fresh = dslOverride($id, 'kpi_label', '$.region')->assertOk()->json('data.undo');
+    dslUndo($id, $fresh)->assertOk();
+    dslUndo($id, $fresh)->assertStatus(409);
+});
+
+it('undoes the override of a cleared slot: the cleared entry comes back exactly', function () {
+    $id = dslDraft();
+    dslOverride($id, 'kpi_label', null)->assertOk();
+    $undo = dslOverride($id, 'kpi_label', '$.region')->assertOk()->json('data.undo');
+
+    expect($undo['slot_entry'])->toBe(['path' => null, 'state' => 'overridden']);
+    dslUndo($id, $undo)->assertOk();
+    expect(dslConfig()['slot_map']['kpi_label'])->toBe(['path' => null, 'state' => 'overridden']);
+
+    // Clearing a slot is an override too: its undo restores what was there.
+    $clear = dslOverride($id, 'kpi_label', null)->assertOk()->json('data.undo');
+    expect($clear['applied'])->toBe(['path' => null, 'state' => 'overridden']);
+    dslUndo($id, $clear)->assertOk();
+});
+
+it('removes the first field_roles entry on undo, leaving no field_roles key', function () {
+    $id = dslDraft('{"total":10,"revenue":"5"}');
+    dslSaveConfig($id, ['field_types' => ['$.revenue' => 'number']]);
+    expect(dslConfig())->not->toHaveKey('field_roles');
+
+    $data = dslOverride($id, 'headline_value', '$.revenue')->assertOk()->json('data');
+    expect($data['role_change']['to'])->toBe('measure')->and(dslConfig()['field_roles'])->toBe(['$.revenue' => 'measure']);
+
+    dslUndo($id, $data['undo'])->assertOk();
+    expect(dslConfig())->not->toHaveKey('field_roles');
+});
+
+it('answers 503 on the picker, as the other reads do, when the sample cannot be opened', function () {
+    $id = dslDraft();
+    $real = app(DraftSamples::class);
+    app()->instance(DraftSamples::class, new class($real) implements DraftSamples
+    {
+        public function __construct(private DraftSamples $inner) {}
+
+        public function check(string $text): SampleCheck
+        {
+            return $this->inner->check($text);
+        }
+
+        public function store(DraftActor $actor, string $draftId, string $text, bool $containsPersonalData, int $lockEpoch, ?Closure $holdsLock = null): StoredSample
+        {
+            return $this->inner->store($actor, $draftId, $text, $containsPersonalData, $lockEpoch, $holdsLock);
+        }
+
+        public function storeFetched(DraftActor $actor, string $draftId, string $text, int $lockEpoch, int $status, int $latencyMs, string $requestKey): StoredSample
+        {
+            return $this->inner->storeFetched($actor, $draftId, $text, $lockEpoch, $status, $latencyMs, $requestKey);
+        }
+
+        public function find(string $workspaceId, string $draftId): ?StoredSample
+        {
+            throw new SampleUnavailable;
+        }
+
+        public function revision(string $workspaceId, string $draftId): ?int
+        {
+            return $this->inner->revision($workspaceId, $draftId);
+        }
+    });
+    app()->forgetInstance(DraftSlots::class);
+
+    $response = dslFields($id, 'headline_value')->assertStatus(503)->assertJsonPath('error.code', 'blocks.sample_unavailable');
+    expect($response->getContent())->not->toContain(DSL_CANARY);
+});
+
+it('refuses a text field for the headline with the reason and the compatible fields, and no sample text', function () {
+    $id = dslDraft('{"total":10,"data":{"currency":"CANARY-slots-5d2a"}}');
+    $before = bdRows();
+
+    $res = dslOverride($id, 'headline_value', '$.data.currency')->assertStatus(422);
+
+    expect(array_keys($res->json('errors')))->toBe(['slot.headline_value'])
+        ->and($res->json('errors')['slot.headline_value'][0])->toBe("Text field can't be a numeric headline. Use it as the currency format below.")
+        ->and($res->json('compatible'))->toBe([['path' => '$.total', 'display' => 'total']])
+        ->and($res->getContent())->not->toContain(DSL_CANARY)
+        ->and(bdRows())->toBe($before);
+});
+
+it('treats a decimal string as a number: it fits the headline and the preview shows the exact string; a bad treat-as is refused', function () {
+    $id = dslDraft('{"total":"284680","currency":"USD"}');
+
+    dslOverride($id, 'headline_value', '$.total')->assertStatus(422);
+
+    dslSaveConfig($id, ['field_types' => ['$.total' => 'number', '$.currency' => 'number']]);
+    expect(dslConfig()['field_types'])->toBe(['$.total' => 'number', '$.currency' => 'number']);
+
+    $data = dslOverride($id, 'headline_value', '$.total')->assertOk()->json('data');
+    // The role of a string is a label; picking it for a number slot makes it a measure.
+    expect($data['role_change'])->toBe(['path' => '$.total', 'from' => 'label', 'to' => 'measure']);
+
+    dslRerun($id)->assertOk();
+    $preview = test()->postJson(BD_URL."/{$id}/preview", [], BD_HEADERS)->assertOk()->json('data');
+    expect($preview['payload']['headline']['value'])->toBe('284680');
+
+    // Any other forced mismatch stays a mismatch with its reason; the field is never discarded from the slot.
+    $res = dslOverride($id, 'headline_value', '$.currency')->assertStatus(422);
+    expect($res->json('errors')['slot.headline_value'][0])->toBe('currency is number. Headline value needs a number.');
+
+    dslSaveConfig($id, ['slot_map' => ['headline_value' => ['path' => '$.currency', 'state' => 'overridden']]]);
+    $row = dslRow(dslGet($id)->json('data'), 'headline_value');
+    expect($row)->toMatchArray(['state' => 'type_mismatch', 'path' => '$.currency', 'reason' => 'currency is number. Headline value needs a number.']);
+});
+
+it('refuses a bad field_types save, keeps it over a save that omits it, and clears it with null', function () {
+    $id = dslDraft();
+    dslSaveConfig($id, ['field_types' => ['$.total' => 'text']]);
+
+    $bad = bdSave($id, (int) bdRows()[0]['revision'], 1, ['config' => ['field_types' => ['$.total' => 'money', 'a..b' => 'number', '$.region' => null]]])
+        ->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config');
+    expect(array_keys($bad->json('errors')))->toBe(['config.field_types.$.total', 'config.field_types.a..b', 'config.field_types.$.region']);
+
+    dslSaveConfig($id, ['description' => 'later']);
+    expect(dslConfig()['field_types'])->toBe(['$.total' => 'text']);
+
+    dslSaveConfig($id, ['field_types' => null]);
+    expect(dslConfig()['field_types'])->toBe([]);
+});
+
+it('reports api_changed with a match: the slot reads required_missing, the blocker is listed and nothing is applied', function () {
+    $id = dslDraft('{"total":10,"region":"EU"}');
+    dslConfirm($id, 'headline_value')->assertOk();
+    dslPaste($id, '{"grand_total":10,"region":"EU"}');
+    $before = dslConfig();
+
+    $data = dslGet($id)->assertOk()->json('data');
+
+    expect(dslRow($data, 'headline_value'))->toMatchArray(['state' => 'required_missing', 'path' => '$.total'])
+        ->and($data['api_changed'])->toBe([['slot' => 'headline_value', 'path' => '$.total', 'display' => 'total', 'state' => 'required_missing', 'match' => ['path' => '$.grand_total', 'display' => 'grand_total']]])
+        ->and($data['blockers'])->toContain(['slot' => 'headline_value', 'reason' => 'required_missing'])
+        ->and(dslConfig())->toBe($before);
+
+    // A re-run does not apply the match either.
+    dslRerun($id)->assertOk();
+    expect(dslConfig()['slot_map']['headline_value']['path'])->toBe('$.total');
+});
+
+it('reports an optional slot that lost its field as optional_empty and an api_changed blocker', function () {
+    $id = dslDraft();
+    dslOverride($id, 'status_badge', '$.status')->assertOk();
+    dslPaste($id, '{"total":10,"month":"x"}');
+
+    $data = dslGet($id)->assertOk()->json('data');
+
+    expect(dslRow($data, 'status_badge')['state'])->toBe('optional_empty')
+        ->and($data['api_changed'][0])->toMatchArray(['slot' => 'status_badge', 'state' => 'optional_empty', 'match' => null])
+        ->and($data['blockers'])->toContain(['slot' => 'status_badge', 'reason' => 'api_changed']);
 });

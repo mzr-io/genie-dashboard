@@ -114,6 +114,8 @@ final class ShellNavigation
         'api.admin.blocks.drafts.mapping.rerun' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.mapping.confirm' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.mapping.override' => Permission::BlocksEdit,
+        'api.admin.blocks.drafts.mapping.fields' => Permission::BlocksEdit,
+        'api.admin.blocks.drafts.mapping.undo' => Permission::BlocksEdit,
         'api.admin.blocks.data-sources.index' => Permission::BlocksEdit,
         'api.admin.blocks.data-sources.endpoints.index' => Permission::BlocksEdit,
         'api.admin.blocks.refresh-intervals' => Permission::BlocksEdit,

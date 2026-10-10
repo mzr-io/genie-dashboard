@@ -21,8 +21,6 @@ use Closure;
  */
 final class InProcessExecutor implements QueryExecutor
 {
-    private const DECIMAL = '/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?\z/';
-
     /** @var Closure(): float */
     private readonly Closure $clock;
 
@@ -133,7 +131,7 @@ final class InProcessExecutor implements QueryExecutor
         if (is_string($node)) {
             return match ($valueType) {
                 'boolean' => $wrong,
-                'number' => preg_match(self::DECIMAL, trim($node)) === 1 ? [trim($node), null] : $wrong,
+                'number' => preg_match(ExecutionResult::DECIMAL, trim($node)) === 1 ? [trim($node), null] : $wrong,
                 default => [$node, null],
             };
         }

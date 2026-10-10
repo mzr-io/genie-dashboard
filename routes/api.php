@@ -111,6 +111,10 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::post('blocks/drafts/{draft}/mapping/slots/{slot}/confirm', [DraftSlotsController::class, 'confirm'])->whereUuid('draft')->where('slot', '[a-z][a-z0-9_]{0,63}')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.confirm');
     Route::put('blocks/drafts/{draft}/mapping/slots/{slot}', [DraftSlotsController::class, 'override'])->whereUuid('draft')->where('slot', '[a-z][a-z0-9_]{0,63}')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.override');
 
+    // Override a slot, pick a field and fix mismatches (Story 3.13a): the picker is read-only (`blocks.edit`); the undo of an override carries the edit-lock claim.
+    Route::get('blocks/drafts/{draft}/mapping/slots/{slot}/fields', [DraftSlotsController::class, 'fields'])->whereUuid('draft')->where('slot', '[a-z][a-z0-9_]{0,63}')->middleware('admin')->name('api.admin.blocks.drafts.mapping.fields');
+    Route::post('blocks/drafts/{draft}/mapping/undo', [DraftSlotsController::class, 'undo'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.undo');
+
     // What wizard Step 2 reads (Story 3.7): `blocks.edit`, so an Admin who may build blocks but not manage Data Sources can still choose one.
     Route::get('blocks/data-sources', [BlockSourceController::class, 'dataSources'])->middleware('admin')->name('api.admin.blocks.data-sources.index');
     Route::get('blocks/data-sources/{dataSource}/endpoints', [BlockSourceController::class, 'endpoints'])->whereUuid('dataSource')->middleware('admin')->name('api.admin.blocks.data-sources.endpoints.index');

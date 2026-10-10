@@ -7,7 +7,7 @@ namespace App\Modules\Mapping\Contracts;
  * apart as baseline candidates, and the Query Plan v1 built from every mapped Slot.
  *
  * Slot entry: `{slot, label, group, required, value_type, state, confidence, reason, suggestion, path, display}`; `confidence` is `high`, `medium`, `low`
- * or null, `suggestion` is null or `{path, display}`. Blocker: `{slot, reason}` with reason `required_missing`, `unconfirmed_low` or `type_mismatch`.
+ * or null, `suggestion` is null or `{path, display}`. Blocker: `{slot, reason}` with reason `required_missing`, `unconfirmed_low`, `type_mismatch` or `api_changed` (an optional slot whose field left the sample).
  */
 final readonly class AutoMapResult
 {
@@ -17,6 +17,7 @@ final readonly class AutoMapResult
      * @param  list<array{slot: string, reason: string}>  $blockers
      * @param  list<array{path: string, display: string}>  $baseline
      * @param  array<string, mixed>  $plan
+     * @param  list<array<string, mixed>>  $apiChanged  `{slot, path, display, state, match}`: a decided slot whose path left the sample; `state` is `required_missing` or `optional_empty`, `match` null or `{path, display}`, only reported
      */
     public function __construct(
         public array $groups,
@@ -24,6 +25,7 @@ final readonly class AutoMapResult
         public array $blockers,
         public array $baseline,
         public array $plan,
+        public array $apiChanged = [],
     ) {}
 
     /** @return array<string, mixed>|null the checklist entry of a Slot */
@@ -48,6 +50,7 @@ final readonly class AutoMapResult
             'counts' => $this->counts,
             'blockers' => $this->blockers,
             'baseline' => $this->baseline,
+            'api_changed' => $this->apiChanged,
         ];
     }
 }

@@ -34,7 +34,7 @@ use App\Platform\Json\SamplePath;
  */
 final class FieldRoleInference implements FieldRoles
 {
-    private const ISO = '/\A\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?\z/D';
+    public const ISO = '/\A\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?\z/D';
 
     private const TIME_WORDS = ['date', 'datetime', 'time', 'timestamp', 'month', 'year', 'period'];
 
