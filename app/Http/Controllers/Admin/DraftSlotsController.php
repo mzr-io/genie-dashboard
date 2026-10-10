@@ -70,6 +70,7 @@ final class DraftSlotsController extends Controller
                     'sample_revision' => $mapping->sampleRevision,
                     'plan_stale' => $mapping->planStale,
                     'sample' => $mapping->sample,
+                    'dataset_suggestion' => $mapping->datasetSuggestion,
                 ]], 200, $headers);
             },
         );

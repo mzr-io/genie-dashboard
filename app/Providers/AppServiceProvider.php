@@ -109,6 +109,8 @@ use App\Modules\Connector\Infrastructure\RandomJitter;
 use App\Modules\Connector\Infrastructure\SqlHostAllowlistDependents;
 use App\Modules\Connector\Infrastructure\SyncRunTokenLog;
 use App\Modules\Connector\Infrastructure\ValkeySourceGovernor;
+use App\Modules\Datasets\Application\ManageDatasets;
+use App\Modules\Datasets\Contracts\DatasetSuggestions;
 use App\Modules\Identity\Application\IssueInvitation;
 use App\Modules\Identity\Application\QueuedInvitationCourier;
 use App\Modules\Identity\Contracts\InvitationCourier;
@@ -228,6 +230,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(DraftFieldRoles::class, ReadDraftFieldRoles::class);
         $this->app->bind(AutoMapping::class, AutoMapper::class);
         $this->app->bind(DraftSlots::class, ManageDraftSlots::class);
+        $this->app->bind(DatasetSuggestions::class, ManageDatasets::class);
         $this->app->bind(PreviewThrottle::class, PreviewRateLimit::class);
         $this->app->bind(DraftSampleFetches::class, StartDraftSampleFetch::class);
         $this->app->bind(SampleVault::class, SodiumSampleVault::class);

@@ -768,7 +768,7 @@ it('reads the mapping in one pass with an ETag of both revisions and a 304 for a
     $etag = '"d'.dslRev().'-s1"';
 
     expect($res->headers->get('ETag'))->toBe($etag)
-        ->and(array_keys($data))->toEqualCanonicalizing(['checklist', 'roles', 'slot_map', 'query_plan', 'draft_revision', 'sample_revision', 'plan_stale', 'sample'])
+        ->and(array_keys($data))->toEqualCanonicalizing(['checklist', 'roles', 'slot_map', 'query_plan', 'draft_revision', 'sample_revision', 'plan_stale', 'sample', 'dataset_suggestion'])
         ->and($data['sample'])->toBe('ok')->and($data['plan_stale'])->toBeFalse()
         ->and($data['draft_revision'])->toBe(dslRev())->and($data['sample_revision'])->toBe(1)
         ->and($data['query_plan'])->toEqual(dslConfig()['query_plan'])

@@ -499,7 +499,7 @@ it('adds the subscriptions table and the target columns in one migration that ro
     expect($present())->toBe([1, 3]);
 
     try {
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 6, '--force' => true]))->toBe(0)
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 7, '--force' => true]))->toBe(0)
             ->and($present())->toBe([0, 0]);
     } finally {
         Artisan::call('migrate', ['--database' => 'migrator', '--force' => true]);

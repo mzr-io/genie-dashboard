@@ -269,6 +269,8 @@ final class Cluster
             'block_versions' => self::seedBlockVersion($workspaceId),
             'draft_samples' => self::seedDraftSample($workspaceId),
             'draft_ui_state' => self::seedDraftUiState($workspaceId),
+            'datasets' => self::seedDataset($workspaceId),
+            'dataset_fields' => self::seedDatasetField($workspaceId),
             default => null,
         };
     }
@@ -415,6 +417,28 @@ final class Cluster
         $versionId ??= self::seedBlockVersion($workspaceId);
         self::superuser()->prepare('INSERT INTO draft_ui_state (id, workspace_id, block_version_id) VALUES (?, ?, ?)')
             ->execute([$id, $workspaceId, $versionId]);
+
+        return $id;
+    }
+
+    /** A Dataset (Story 3.11c) of the Workspace, for a new Endpoint unless one is given. */
+    public static function seedDataset(string $workspaceId, ?string $endpointId = null, string $recordPath = '$.data[*]'): string
+    {
+        $id = (string) Str::uuid7();
+        $endpointId ??= self::seedEndpoint($workspaceId);
+        self::superuser()->prepare('INSERT INTO datasets (id, workspace_id, endpoint_id, record_path, created_at, updated_at) VALUES (?, ?, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $endpointId, $recordPath]);
+
+        return $id;
+    }
+
+    /** A field of a Dataset of the Workspace (a new Dataset unless one is given). */
+    public static function seedDatasetField(string $workspaceId, ?string $datasetId = null): string
+    {
+        $id = (string) Str::uuid7();
+        $datasetId ??= self::seedDataset($workspaceId);
+        self::superuser()->prepare("INSERT INTO dataset_fields (id, workspace_id, dataset_id, path, type, role, position) VALUES (?, ?, ?, '\$.data[*].revenue', 'number', 'measure', 0)")
+            ->execute([$id, $workspaceId, $datasetId]);
 
         return $id;
     }

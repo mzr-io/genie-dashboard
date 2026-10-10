@@ -32,11 +32,16 @@ final readonly class DraftMapping
         public ?int $sampleRevision,
         public bool $planStale,
         public string $sample,
+        /** @var array{record_path: string, record_path_display: string, fields: list<array{path: string, type: string, role: string|null}>, updated_at: string}|null the Dataset catalog's suggestion for a Draft with no chosen record path (Story 3.11c); never applied */
+        public ?array $datasetSuggestion = null,
     ) {}
 
     /** The validator of a conditional GET: both revisions name the content. */
     public function etag(): string
     {
-        return '"d'.$this->draftRevision.'-s'.($this->sampleRevision ?? 0).'"';
+        // The Dataset catalog's suggestion is part of the content: a pick on another Draft changes it without touching this Draft's revisions.
+        $suggestion = $this->datasetSuggestion === null ? '' : '-g'.hash('crc32b', $this->datasetSuggestion['record_path']."\n".$this->datasetSuggestion['updated_at']);
+
+        return '"d'.$this->draftRevision.'-s'.($this->sampleRevision ?? 0).$suggestion.'"';
     }
 }

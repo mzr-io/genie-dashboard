@@ -21,12 +21,14 @@ use App\Modules\Blocks\Contracts\SlotRefused;
 use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\BlockTypes\Contracts\BlockTypeRegistry;
 use App\Modules\BlockTypes\Contracts\KpiCardSlots;
+use App\Modules\Datasets\Contracts\DatasetSuggestions;
 use App\Modules\Mapping\Contracts\AutoMapping;
 use App\Modules\Mapping\Contracts\AutoMapResult;
 use App\Modules\Mapping\Contracts\FieldRole;
 use App\Modules\Mapping\Contracts\FieldRoleReport;
 use App\Modules\Mapping\Contracts\FieldRoles;
 use App\Modules\Mapping\Contracts\SlotState;
+use App\Platform\Json\SamplePath;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -46,6 +48,7 @@ final class ManageDraftSlots implements DraftSlots
         private readonly BlockTypeRegistry $types,
         private readonly FieldRoles $roles,
         private readonly AutoMapping $mapper,
+        private readonly DatasetSuggestions $datasets,
     ) {}
 
     public function read(DraftActor $actor, string $draftId): DraftMapping
@@ -61,18 +64,48 @@ final class ManageDraftSlots implements DraftSlots
         }
 
         $plan = self::storedPlan($draft->config);
+        $suggestion = $this->suggestion($actor->workspaceId, $draft);
         $sampleRevision = $found === null ? null : $found[1];
         $stale = self::planStale($draft->config, $sampleRevision);
 
         // No usable sample (none, it ended, or it no longer passes the limits): the stored decisions and plan are still the Admin's, and nothing is computed from it.
         if ($found === null) {
-            return new DraftMapping(null, null, self::slotMap($draft->config), $plan, $draft->revision, null, $stale, $state);
+            return new DraftMapping(null, null, self::slotMap($draft->config), $plan, $draft->revision, null, $stale, $state, $suggestion);
         }
 
         $type = $this->types->resolve($draft->type, $this->contractVersion($actor->workspaceId, $draft->blockId));
         $report = $this->report($found[0], $draft->config);
 
-        return new DraftMapping($this->map($type, $report, $draft->config), $report, self::slotMap($draft->config), $plan, $draft->revision, $sampleRevision, $stale, DraftMapping::SAMPLE_OK);
+        return new DraftMapping($this->map($type, $report, $draft->config), $report, self::slotMap($draft->config), $plan, $draft->revision, $sampleRevision, $stale, DraftMapping::SAMPLE_OK, $suggestion);
+    }
+
+    /**
+     * The Dataset catalog's suggestion for a Draft that has not chosen a record path (Story 3.11c); never applied. Null when the Draft has chosen a path or has no Endpoint.
+     *
+     * @return array{record_path: string, record_path_display: string, fields: list<array{path: string, type: string, role: string|null}>, updated_at: string}|null
+     */
+    private function suggestion(string $workspaceId, Draft $draft): ?array
+    {
+        $source = is_array($draft->config['source'] ?? null) ? $draft->config['source'] : [];
+        $endpointId = $source['endpoint_id'] ?? null;
+
+        if (is_string($draft->config['record_path'] ?? null) || ! is_string($endpointId) || $endpointId === '') {
+            return null;
+        }
+
+        $found = $this->datasets->suggestFor($workspaceId, $endpointId);
+
+        if ($found === null) {
+            return null;
+        }
+
+        try {
+            $display = SamplePath::display(SamplePath::parse($found->recordPath));
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
+
+        return ['record_path' => $found->recordPath, 'record_path_display' => $display, 'fields' => $found->fields, 'updated_at' => $found->updatedAt];
     }
 
     public function fields(DraftActor $actor, string $draftId, string $slot): array
@@ -268,7 +301,44 @@ final class ManageDraftSlots implements DraftSlots
             $config['record_path'] = $recordPath;
 
             return $config;
-        });
+        }, true);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return list<mixed>
+     */
+    private static function catalogKeys(array $config): array
+    {
+        return [$config['record_path'] ?? null, $config['field_roles'] ?? null, $config['field_types'] ?? null];
+    }
+
+    /**
+     * Remembers the chosen record path and its typed fields as a suggestion for new Drafts of the Endpoint, in the write's transaction (Story 3.11c). The
+     * Draft's config stays authoritative; a Draft with no Endpoint remembers nothing. Only paths, inferred types and the effective roles are passed on.
+     *
+     * @param  array<string, mixed>  $config  the config as the write leaves it
+     * @param  array<string, mixed>  $shape
+     */
+    private function remember(string $workspaceId, array $config, array $shape): void
+    {
+        $source = is_array($config['source'] ?? null) ? $config['source'] : [];
+        $endpointId = $source['endpoint_id'] ?? null;
+        $path = $config['record_path'] ?? null;
+
+        if (! is_string($endpointId) || $endpointId === '' || ! is_string($path)) {
+            return;
+        }
+
+        $fields = [];
+
+        foreach ($this->report($shape, $config)->fields as $field) {
+            if (($field['in_records'] ?? false) === true) {
+                $fields[] = ['path' => (string) $field['path'], 'type' => (string) $field['type'], 'role' => is_string($field['role'] ?? null) ? $field['role'] : null];
+            }
+        }
+
+        $this->datasets->remember($workspaceId, $endpointId, $path, $fields);
     }
 
     public function setFieldRole(DraftActor $actor, string $draftId, string $path, ?string $role, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
@@ -348,10 +418,11 @@ final class ManageDraftSlots implements DraftSlots
      * sample revision (an empty mapping removes the plan and the stamp), then `config` and the revision.
      *
      * @param  \Closure(array<string, mixed>, AutoMapResult, FieldRoleReport, BlockType, array<string, mixed>): array<string, mixed>  $change  the last argument is the sample's shape
+     * @param  bool  $remember  refresh the catalog even when the mapping keys are unchanged (a record-path pick)
      */
-    private function write(DraftActor $actor, string $draftId, int $revision, int $lockEpoch, ?\Closure $holdsLock, \Closure $change): DraftChecklist
+    private function write(DraftActor $actor, string $draftId, int $revision, int $lockEpoch, ?\Closure $holdsLock, \Closure $change, bool $remember = false): DraftChecklist
     {
-        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $revision, $lockEpoch, $holdsLock, $change): DraftChecklist {
+        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $revision, $lockEpoch, $holdsLock, $change, $remember): DraftChecklist {
             $row = Str::isUuid($draftId)
                 ? DB::selectOne("select id, lock_epoch from block_versions where workspace_id = ? and id = ? and state = 'draft' for update", [$actor->workspaceId, strtolower($draftId)])
                 : null;
@@ -382,6 +453,11 @@ final class ManageDraftSlots implements DraftSlots
                 $config['mapped_sample_revision'] = $sampleRevision;
             } else {
                 unset($config['query_plan'], $config['mapped_sample_revision']);
+            }
+
+            // The catalog follows the chosen path: a record-path pick always, and any write that changed the path, the roles or the types under it.
+            if (is_string($config['record_path'] ?? null) && ($remember || self::catalogKeys($config) !== self::catalogKeys($draft->config))) {
+                $this->remember($actor->workspaceId, $config, $shape);
             }
 
             // A write that changes nothing (a confirm of a decision, a re-run with the same plan) leaves the config and the revision alone.

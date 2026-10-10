@@ -403,3 +403,11 @@
 - source_spec: `spec-3-14-preview-hotspots-and-source-legend.md`
   summary: Check the Map Data step in a real browser (sticky preview, hotspot geometry, tooltip clipping, role-chip colours, focus behaviour), then add the `cannotChange` and `returnTo` tests and keep the payload icon.
   evidence: All Map Data UI tests run in happy-dom, which has no layout; stages 1 to 4 were never seen in a browser.
+
+- source_spec: `spec-3-11c-datasets-suggestion-catalog.md`
+  summary: Story 3.11d: the searchable, collapsible APG field tree (breadcrumb, "Use" per leaf, "Selected:" footer, type chips) and showing the Datasets suggestion in the record-path list.
+  evidence: Remaining Story 3.11 UI; consumes the 3.11c `dataset_suggestion` and the 3.13b picker endpoints.
+
+- source_spec: `spec-3-11c-datasets-suggestion-catalog.md`
+  summary: Bound dataset growth per Endpoint and purge retired `dataset_fields` rows and datasets of removed Endpoints; flag a suggestion whose record path is not among the new sample's candidates; compute rollback steps in tests from a named migration.
+  evidence: `app` cannot DELETE, so rows accumulate; review findings.
