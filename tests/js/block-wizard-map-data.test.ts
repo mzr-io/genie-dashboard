@@ -534,9 +534,7 @@ describe('Map Data: the step opens', () => {
         );
         expect($$('[data-test=status-meter] span')).toHaveLength(3);
         expect(text('[data-slot=section-card]')).toContain(labels.rolesTitle);
-        expect(text('[data-test=slots-placeholder]')).toBe(
-            labels.slotsPlaceholder,
-        );
+        expect($('[data-test=slot-checklist]')).not.toBeNull();
         expect(
             $('[data-test=transforms-placeholder]')?.hasAttribute('open'),
         ).toBe(false);

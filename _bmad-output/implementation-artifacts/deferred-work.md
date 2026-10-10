@@ -391,3 +391,7 @@
 - source_spec: `spec-3-11b-map-data-step-roles-ui.md`
   summary: Stage-1 UI polish: a test that interleaves autosave with a mapping write, role-chip type-ahead, section headings and focus when the step opens, match table columns to fields by path not display, move glyphs and plurals into the catalogue, and check the layout and chip colours in a real browser.
   evidence: Review findings; tests run in happy-dom, so sticky layout and colours were never seen in a browser.
+
+- source_spec: `spec-3-12b-slot-checklist-ui.md`
+  summary: Merge the two confidence meters, review row list semantics and unfilled-segment contrast, explain the Sample data badge, and add the preview client so the live preview refreshes after mapping writes.
+  evidence: Review findings; the preview client is built with the hotspots stage because nothing in the front end calls the preview endpoint yet.

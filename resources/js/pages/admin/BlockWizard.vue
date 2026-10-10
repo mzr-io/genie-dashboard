@@ -1589,6 +1589,7 @@ onBeforeUnmount(() => {
                             @revision="adoptRevision"
                             @error="onMappingError"
                             @to-source="goTo(2)"
+                            @continue="onContinue"
                         />
                         <div class="flex justify-end">
                             <Button

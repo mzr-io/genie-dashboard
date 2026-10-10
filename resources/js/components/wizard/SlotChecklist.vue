@@ -1,0 +1,185 @@
+<script setup lang="ts">
+import { computed, nextTick, ref, useId } from 'vue';
+import SegmentedControl from '@/components/SegmentedControl.vue';
+import { Button } from '@/components/ui/button';
+import SlotRow from '@/components/wizard/SlotRow.vue';
+import { filterCounts, matchesFilter } from '@/lib/blockMapping';
+import type { Checklist, SlotFilter } from '@/lib/blockMapping';
+import { blockMapLabels as labels } from '@/locales/labels';
+
+// "2 · Review block slots" (Story 3.12b): the slots in HEADER, KPI and META groups (the order is the page's: Low first, computed on load and on
+// Re-run only), a filter "All · Needs review · Missing", the Re-run button and the baseline note. Confirming under Needs review keeps the row
+// while focus stays in the list; leaving it, or changing the filter, lets it go.
+const props = defineProps<{
+    groups: Checklist['groups'];
+    baseline: Checklist['baseline'];
+    blocked?: string;
+    reasonId?: string;
+    // A write is in flight: Confirm and Re-run wait.
+    busy?: boolean;
+}>();
+
+const emit = defineEmits<{
+    (e: 'confirm', slot: string): void;
+    (e: 'rerun'): void;
+}>();
+
+const filter = ref<SlotFilter>('all');
+const kept = ref<Set<string>>(new Set());
+const root = ref<HTMLElement | null>(null);
+const titleId = useId();
+
+const all = computed(() => props.groups.flatMap((group) => group.slots));
+const counts = computed(() => filterCounts(all.value));
+const options = computed(() => [
+    { value: 'all', label: labels.filterAll(counts.value.all) },
+    { value: 'review', label: labels.filterReview(counts.value.review) },
+    { value: 'missing', label: labels.filterMissing(counts.value.missing) },
+]);
+const shown = computed(() =>
+    props.groups
+        .map((group) => ({
+            ...group,
+            slots: group.slots.filter(
+                (slot) =>
+                    matchesFilter(slot, filter.value) ||
+                    kept.value.has(slot.slot),
+            ),
+        }))
+        .filter((group) => group.slots.length > 0),
+);
+const baselineText = computed(() =>
+    props.baseline.map((field) => field.display).join(', '),
+);
+
+function setFilter(next: string): void {
+    filter.value = next as SlotFilter;
+    kept.value = new Set();
+}
+
+function showAll(): void {
+    setFilter('all');
+}
+
+function rowOf(slot: string): HTMLElement | null {
+    return (
+        root.value?.querySelector<HTMLElement>(
+            `[data-slot-key="${CSS.escape(slot)}"]`,
+        ) ?? null
+    );
+}
+
+// Focus a row (it shows even when a filter would hide it).
+async function focusSlot(slot: string): Promise<void> {
+    if (rowOf(slot) === null) {
+        showAll();
+        await nextTick();
+    }
+
+    rowOf(slot)?.focus();
+}
+
+// The page calls this once a Confirm has succeeded: under Needs review the row stays while focus is in the list.
+function keep(slot: string): void {
+    if (filter.value === 'review') {
+        kept.value = new Set([...kept.value, slot]);
+    }
+}
+
+// Puts focus back on a row's Confirm button (a refused confirm leaves the Admin where they were).
+function focusConfirm(slot: string): void {
+    rowOf(slot)
+        ?.querySelector<HTMLElement>('[data-test=slot-confirm]')
+        ?.focus();
+}
+
+function clearKept(): void {
+    kept.value = new Set();
+}
+
+// Rows kept under a filter go when focus is no longer in the list. A removed Confirm button also fires focusout, so the check waits a tick for
+// focus to land on the row.
+function onFocusOut(): void {
+    setTimeout(() => {
+        if (!root.value?.contains(document.activeElement)) {
+            kept.value = new Set();
+        }
+    }, 0);
+}
+
+defineExpose({ focusSlot, showAll, keep, clearKept, focusConfirm });
+</script>
+
+<template>
+    <div
+        ref="root"
+        class="flex flex-col gap-4"
+        data-test="slot-checklist"
+        @focusout="onFocusOut"
+    >
+        <div class="flex flex-wrap items-center justify-between gap-3">
+            <SegmentedControl
+                :model-value="filter"
+                :options="options"
+                :label="labels.filterLabel"
+                data-test="slot-filter"
+                @update:model-value="setFilter"
+            />
+            <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                :blocked="blocked !== undefined || busy === true"
+                :blocked-reason="blocked"
+                :aria-busy="busy ? 'true' : undefined"
+                :aria-describedby="blocked ? reasonId : undefined"
+                data-test="rerun"
+                @click="emit('rerun')"
+                >{{ labels.rerun }}</Button
+            >
+        </div>
+
+        <section
+            v-for="group in shown"
+            :key="group.group"
+            :aria-labelledby="`${titleId}-${group.group}`"
+            class="flex flex-col gap-2"
+            data-test="slot-group"
+            :data-group="group.group"
+        >
+            <h3
+                :id="`${titleId}-${group.group}`"
+                class="type-label-caps text-text-muted"
+            >
+                {{ labels.groupNames[group.group] ?? group.group }}
+            </h3>
+            <ul class="m-0 flex list-none flex-col gap-2 p-0">
+                <SlotRow
+                    v-for="slot in group.slots"
+                    :key="slot.slot"
+                    :item="slot"
+                    :blocked="blocked"
+                    :reason-id="reasonId"
+                    :busy="busy"
+                    @confirm="emit('confirm', $event)"
+                />
+            </ul>
+        </section>
+
+        <p
+            v-if="shown.length === 0"
+            class="type-body-sm text-text-secondary"
+            data-test="slot-filter-empty"
+        >
+            {{ labels.filterEmpty }}
+        </p>
+
+        <p
+            v-if="baseline.length > 0"
+            class="type-caption text-text-muted"
+            data-test="baseline-note"
+        >
+            {{ labels.baselineNote(baselineText) }}
+        </p>
+    </div>
+</template>

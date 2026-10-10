@@ -13,13 +13,20 @@ import Banner from '@/components/Banner.vue';
 import BlockedReason from '@/components/BlockedReason.vue';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import RolesSection from '@/components/wizard/RolesSection.vue';
 import SectionCard from '@/components/wizard/SectionCard.vue';
+import SlotChecklist from '@/components/wizard/SlotChecklist.vue';
 import { announce, announceDebounced } from '@/lib/announce';
 import {
     announceKey,
+    applyOrder,
+    blockingSlots,
+    computeOrder,
     fetchMapping,
     flaggedFields,
+    postAutoMap,
+    postConfirm,
     putFieldRole,
     putRecordPath,
 } from '@/lib/blockMapping';
@@ -59,6 +66,8 @@ const emit = defineEmits<{
     // A failure the page handles like any other save (409 chooser, 423 lost lock, 401 sign-in, 404).
     (e: 'error', error: unknown): void;
     (e: 'to-source'): void;
+    // Every required slot is settled: the Admin goes on to Preview (the page saves and moves on).
+    (e: 'continue'): void;
 }>();
 
 const { t } = useI18n();
@@ -77,9 +86,18 @@ const notSaved = ref<string | null>(null);
 const pathChosen = ref(false);
 const root = ref<HTMLElement | null>(null);
 const rolesBox = ref<HTMLElement | null>(null);
+const checklistRef = ref<InstanceType<typeof SlotChecklist> | null>(null);
+const summaryRef = ref<InstanceType<typeof FormErrorSummary> | null>(null);
+// The slots' order: Low first, computed on load and on Re-run only, so a row never jumps when it is confirmed.
+const order = ref<string[]>([]);
+// Continue was activated while blocked: the reason and (with several blockers) the error summary stay up.
+const attempted = ref(false);
+// A confirm or re-run is in flight.
+const pending = ref(false);
 const small = ref(false);
 const bannerDismissed = ref(false);
 const reasonId = 'map-data-blocked';
+const continueReasonId = 'map-data-continue-reason';
 let etag: string | null = null;
 let seq = 0;
 let initialised = false;
@@ -113,6 +131,75 @@ const statusText = computed(() =>
               counts.value.required_missing,
           )
         : '',
+);
+const slotGroups = computed(() =>
+    read.value?.checklist
+        ? applyOrder(read.value.checklist.groups, order.value)
+        : [],
+);
+const blocking = computed(() =>
+    read.value?.checklist
+        ? blockingSlots(read.value.checklist, order.value)
+        : [],
+);
+// "Map Headline value to continue…" from the catalogue for the required slots, one sentence for each other kind of blocker.
+const blockerReason = computed(() => {
+    const missing = blocking.value.filter((entry) =>
+        entry.reasons.includes('required_missing'),
+    );
+    const parts: string[] = [];
+
+    if (missing.length === 1) {
+        parts.push(t('required-slot-missing.one', { slot: missing[0].label }));
+    } else if (missing.length > 1) {
+        parts.push(
+            t('required-slot-missing.many', {
+                count: missing.length,
+                slots: missing.map((entry) => entry.label).join(', '),
+            }),
+        );
+    }
+
+    for (const entry of blocking.value) {
+        for (const reason of entry.reasons) {
+            if (reason === 'unconfirmed_low') {
+                parts.push(labels.blockerUnconfirmed(entry.label));
+            } else if (reason === 'type_mismatch') {
+                parts.push(labels.blockerMismatch(entry.label));
+            } else if (reason === 'api_changed') {
+                parts.push(labels.blockerChanged(entry.label));
+            } else if (reason !== 'required_missing') {
+                parts.push(labels.blockerOther(entry.label));
+            }
+        }
+    }
+
+    return parts.join(' ');
+});
+const summaryItems = computed(() =>
+    blocking.value.map((entry) => ({
+        id: `slot-row-${entry.key}`,
+        label: entry.label,
+        message: entry.reasons
+            .map(
+                (reason) =>
+                    labels.blockerShort[reason] ?? labels.blockerOtherShort,
+            )
+            .join(', '),
+    })),
+);
+// Why Continue cannot run: no checklist yet, then the server's blockers, then what blocks every change.
+const continueBlocked = computed<string | undefined>(() => {
+    const checklist = read.value?.checklist ?? null;
+
+    if (checklist === null) {
+        return labels.checklistMissing;
+    }
+
+    return checklist.blockers.length > 0 ? blockerReason.value : props.blocked;
+});
+const showSummary = computed(
+    () => attempted.value && blocking.value.length > 1,
 );
 // The meter: one segment per slot, decorative (the summary text carries the meaning).
 const SEGMENT: Record<string, string> = {
@@ -173,6 +260,11 @@ async function load(background = false): Promise<void> {
         if (result.data !== null) {
             read.value = result.data;
             etag = result.etag;
+
+            if (!background && result.data.checklist) {
+                order.value = computeOrder(result.data.checklist.groups);
+            }
+
             syncExpansion();
         }
 
@@ -360,9 +452,9 @@ function submit(
 function adopt(
     done: MappingWrite,
     patch?: (roles: NonNullable<MappingRead['roles']>) => void,
-): void {
+): boolean {
     if (read.value === null) {
-        return;
+        return false;
     }
 
     const next: MappingRead = {
@@ -385,6 +477,8 @@ function adopt(
     }
 
     read.value = next;
+
+    return true;
 }
 
 async function changeRole(
@@ -485,6 +579,126 @@ async function changePath(path: string): Promise<void> {
         labels.recordPathChanged(roles.value?.record_path_display ?? path),
         'polite',
     );
+}
+
+// ---- Slot checklist -----------------------------------------------------------------------------------------------------
+
+async function confirmSlot(slot: string): Promise<void> {
+    if (pending.value) {
+        return;
+    }
+
+    pending.value = true;
+
+    try {
+        const done = await submit((id, revision, claim) =>
+            postConfirm(id, slot, revision, claim),
+        );
+
+        if (done === null) {
+            // The page may have moved focus to its own failure message: the Admin stays on the Confirm they pressed.
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            checklistRef.value?.focusConfirm(slot);
+
+            return;
+        }
+
+        const label =
+            slotGroups.value
+                .flatMap((g) => g.slots)
+                .find((s) => s.slot === slot)?.label ?? slot;
+
+        // The row is kept (under Needs review) in the same tick its state changes, so it never drops out for a moment.
+        checklistRef.value?.keep(slot);
+
+        if (!adopt(done)) {
+            return;
+        }
+
+        announce(
+            labels.confirmedAnnounce(label, done.counts.needs_review),
+            'polite',
+        );
+        await nextTick();
+        await checklistRef.value?.focusSlot(slot);
+    } finally {
+        pending.value = false;
+    }
+}
+
+async function rerun(): Promise<void> {
+    if (pending.value) {
+        return;
+    }
+
+    pending.value = true;
+
+    try {
+        const done = await submit((id, revision, claim) =>
+            postAutoMap(id, revision, claim),
+        );
+
+        if (done === null || !adopt(done)) {
+            return;
+        }
+
+        order.value = computeOrder(done.groups);
+        attempted.value = false;
+        checklistRef.value?.clearKept();
+        announce(labels.rerunDone, 'polite');
+    } finally {
+        pending.value = false;
+    }
+}
+
+// Continue: blocked while a slot needs the Admin; activating it then says why and goes to the first blocking row (or, with several, the summary).
+function onContinueBlocked(): HTMLElement | null {
+    attempted.value = true;
+
+    const list = blocking.value;
+    const first = list[0];
+
+    if (first === undefined) {
+        return null;
+    }
+
+    if (list.length > 1) {
+        void nextTick(() => summaryRef.value?.focus());
+    } else if (first.known) {
+        void nextTick(() => checklistRef.value?.focusSlot(first.key));
+    }
+
+    return null;
+}
+
+// A summary link goes through the checklist, which shows the row first when a filter hides it.
+function onSummaryClick(event: MouseEvent): void {
+    const link = (event.target as HTMLElement).closest('a');
+
+    if (link === null) {
+        return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    void checklistRef.value?.focusSlot(
+        (link.getAttribute('href') ?? '').replace(/^#slot-row-/, ''),
+    );
+}
+
+// Once nothing blocks any more, a later block starts from a quiet page.
+watch(
+    () => read.value?.checklist?.blockers.length ?? 0,
+    (count) => {
+        if (count === 0) {
+            attempted.value = false;
+        }
+    },
+);
+
+function onContinue(): void {
+    attempted.value = false;
+    emit('continue');
 }
 
 // ---- Status announcements ----------------------------------------------------------------------------------------------
@@ -661,6 +875,11 @@ onBeforeUnmount(() => {
                 <p class="type-caption text-text-muted">
                     {{ labels.statusSubtitle }}
                 </p>
+                <span
+                    class="type-caption mt-1 inline-block rounded-sm bg-info-soft px-2 text-info-strong"
+                    data-test="sample-badge"
+                    >{{ labels.sampleBadge }}</span
+                >
                 <div
                     class="mt-2 flex gap-0.5"
                     aria-hidden="true"
@@ -732,12 +951,45 @@ onBeforeUnmount(() => {
                 :caption="labels.slotsCaption"
                 :icon="ListChecks"
             >
-                <p
-                    class="type-body-sm text-text-secondary"
-                    data-test="slots-placeholder"
-                >
-                    {{ labels.slotsPlaceholder }}
-                </p>
+                <SlotChecklist
+                    ref="checklistRef"
+                    :groups="slotGroups"
+                    :baseline="read?.checklist?.baseline ?? []"
+                    :blocked="blocked"
+                    :reason-id="reasonId"
+                    :busy="pending"
+                    @confirm="confirmSlot"
+                    @rerun="rerun"
+                />
+
+                <FormErrorSummary
+                    v-if="showSummary"
+                    ref="summaryRef"
+                    :items="summaryItems"
+                    @click.capture="onSummaryClick"
+                    data-test="blockers-summary"
+                />
+
+                <div class="flex flex-col items-end gap-1">
+                    <Button
+                        type="button"
+                        :blocked="continueBlocked !== undefined"
+                        :blocked-reason="continueBlocked"
+                        :first-blocker="onContinueBlocked"
+                        :aria-describedby="
+                            continueBlocked ? continueReasonId : undefined
+                        "
+                        data-test="slots-continue"
+                        @click="onContinue"
+                        >{{ labels.continueToPreview }}</Button
+                    >
+                    <BlockedReason
+                        v-if="continueBlocked"
+                        :id="continueReasonId"
+                        data-test="slots-continue-reason"
+                        >{{ continueBlocked }}</BlockedReason
+                    >
+                </div>
             </SectionCard>
 
             <details

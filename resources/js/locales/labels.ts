@@ -1902,8 +1902,6 @@ export const blockMapLabels = {
     rolesCaption: 'What does each field mean?',
     slotsTitle: '2 · Review block slots',
     slotsCaption: 'Which field fills each part of the block.',
-    slotsPlaceholder:
-        'The slot checklist arrives in a later update. The field roles above are already saved with the draft.',
     transformsTitle: '3 · Transforms',
     transformsCaption: 'Optional steps that reshape the rows.',
     transformsPlaceholder:
@@ -1968,4 +1966,66 @@ export const blockMapLabels = {
     suggested: 'Suggested',
     paginationLike: 'looks like pagination, not data',
     recordPathChanged: (path: string) => `Rows now come from ${path}.`,
+    // The slot checklist (Story 3.12b).
+    checklist: 'Block slots',
+    groupNames: {
+        HEADER: 'Header',
+        KPI: 'KPI',
+        META: 'Meta',
+    } as Record<string, string>,
+    requiredMark: '*',
+    slotRow: (slot: string, required: boolean, state: string, level: string) =>
+        `${slot}, ${required ? 'required' : 'optional'}, ${state}, ${level} confidence`,
+    stateNames: {
+        auto_high: 'Auto-mapped',
+        auto_medium: 'Auto-mapped',
+        auto_low: 'Auto-mapped',
+        confirmed: 'Confirmed',
+        overridden: 'Overridden',
+        optional_empty: 'Optional, empty',
+        required_missing: 'Required, missing',
+        type_mismatch: 'Type mismatch',
+    } as Record<string, string>,
+    confidenceWords: {
+        high: 'High',
+        medium: 'Medium',
+        low: 'Low',
+        none: 'No',
+    } as Record<string, string>,
+    confidenceBadge: (word: string) => `Confidence: ${word}`,
+    confirmedByYou: 'Confirmed by you',
+    confirm: 'Confirm',
+    confirmFor: (slot: string) => `Confirm ${slot}`,
+    noField: 'No field mapped',
+    exampleShort: (example: string) => `e.g. ${example}`,
+    useAs: (field: string, slot: string) => `Use ${field} as ${slot}`,
+    baselineNote: (fields: string) =>
+        `Baseline field, shown but not mapped: ${fields}`,
+    filterLabel: 'Show slots',
+    filterAll: (n: number) => `All (${n})`,
+    filterReview: (n: number) => `Needs review (${n})`,
+    filterMissing: (n: number) => `Missing (${n})`,
+    filterEmpty: 'No slots match this filter.',
+    rerun: '↻ Re-run auto-map',
+    rerunNote: 'Confirmed and changed slots stay as they are.',
+    rerunDone: 'Auto-map ran again. Confirmed and changed slots were kept.',
+    confirmedAnnounce: (slot: string, left: number) =>
+        `${slot} confirmed. ${left} ${left === 1 ? 'slot still needs' : 'slots still need'} review.`,
+    checklistMissing:
+        'The slot checklist is not ready yet. Try again in a moment.',
+    blockerOtherShort: 'needs a look',
+    blockerOther: (slot: string) => `Look at ${slot} before you continue.`,
+    sampleBadge: 'Sample data',
+    continueToPreview: 'Continue to Preview →',
+    blockerUnconfirmed: (slot: string) =>
+        `Confirm ${slot}, its mapping is a low-confidence guess.`,
+    blockerMismatch: (slot: string) => `Fix ${slot}, its field does not fit.`,
+    blockerChanged: (slot: string) =>
+        `Review ${slot}, its field is no longer in the response.`,
+    blockerShort: {
+        required_missing: 'needs a field',
+        unconfirmed_low: 'needs your confirmation',
+        type_mismatch: 'its field does not fit',
+        api_changed: 'its field is no longer in the response',
+    } as Record<string, string>,
 } as const;
