@@ -11,6 +11,7 @@ use App\Http\Controllers\Admin\DraftLockController;
 use App\Http\Controllers\Admin\DraftPreviewController;
 use App\Http\Controllers\Admin\DraftRolesController;
 use App\Http\Controllers\Admin\DraftSampleController;
+use App\Http\Controllers\Admin\DraftSlotsController;
 use App\Http\Controllers\Admin\EndpointController;
 use App\Http\Controllers\Admin\GroupController;
 use App\Http\Controllers\Admin\HostAllowlistController;
@@ -103,6 +104,12 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
 
     // Field roles and record-path candidates of the sample (Story 3.11a): read-only, `blocks.edit`, no edit-lock claim.
     Route::get('blocks/drafts/{draft}/sample/roles', [DraftRolesController::class, 'show'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.sample.roles');
+
+    // Auto-map and the slot checklist (Story 3.12a): the read is `blocks.edit` only (a read-only viewer may ask); re-run, confirm and override carry the Draft's edit-lock claim.
+    Route::get('blocks/drafts/{draft}/mapping', [DraftSlotsController::class, 'show'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.mapping.show');
+    Route::post('blocks/drafts/{draft}/mapping/auto-map', [DraftSlotsController::class, 'rerun'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.rerun');
+    Route::post('blocks/drafts/{draft}/mapping/slots/{slot}/confirm', [DraftSlotsController::class, 'confirm'])->whereUuid('draft')->where('slot', '[a-z][a-z0-9_]{0,63}')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.confirm');
+    Route::put('blocks/drafts/{draft}/mapping/slots/{slot}', [DraftSlotsController::class, 'override'])->whereUuid('draft')->where('slot', '[a-z][a-z0-9_]{0,63}')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.override');
 
     // What wizard Step 2 reads (Story 3.7): `blocks.edit`, so an Admin who may build blocks but not manage Data Sources can still choose one.
     Route::get('blocks/data-sources', [BlockSourceController::class, 'dataSources'])->middleware('admin')->name('api.admin.blocks.data-sources.index');

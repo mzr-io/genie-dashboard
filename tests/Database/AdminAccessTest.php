@@ -78,6 +78,7 @@ function gateRoutes(): array
 function gateCall(string $method, string $uri)
 {
     // A route parameter is a member that does not exist (the allowed case then answers 404, the gate's 403 is what matters).
+    $uri = str_replace('{slot}', 'headline_value', $uri);
     $uri = str_replace(['{membership}', '{invitation}', '{group}', '{entry}', '{dataSource}', '{endpoint}', '{key}', '{draft}'], (string) Str::uuid7(), $uri);
 
     if (str_starts_with($uri, '/api/')) {
@@ -177,7 +178,7 @@ it('covers every Admin route for User area, Admin without the permission, Admin 
             // A Data source is validated before it is looked up (the revision first), and the blur check validates its URL.
             in_array($name, ['api.admin.data-sources.store', 'api.admin.data-sources.update', 'api.admin.data-sources.check-url', 'api.admin.data-sources.test-connection', 'api.admin.data-sources.endpoints.store', 'api.admin.data-sources.endpoints.update', 'api.admin.data-sources.endpoints.fetch-as-user'], true) => 422,
             // A Draft is validated (its name, type, revision and lock epoch) before it is looked up.
-            in_array($name, ['api.admin.blocks.drafts.store', 'api.admin.blocks.drafts.update', 'api.admin.blocks.drafts.sample.store', 'api.admin.blocks.drafts.sample.fetch'], true) => 422,
+            in_array($name, ['api.admin.blocks.drafts.store', 'api.admin.blocks.drafts.update', 'api.admin.blocks.drafts.sample.store', 'api.admin.blocks.drafts.sample.fetch', 'api.admin.blocks.drafts.mapping.rerun', 'api.admin.blocks.drafts.mapping.confirm', 'api.admin.blocks.drafts.mapping.override'], true) => 422,
             // The edit and Endpoints pages render whatever Data source they name; the form loads it through the API.
             in_array($name, ['admin.data-sources.edit', 'admin.data-sources.endpoints'], true) => 200,
             str_contains($uri, '{') => 404,

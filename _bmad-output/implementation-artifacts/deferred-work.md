@@ -359,3 +359,11 @@
 - source_spec: `spec-3-11a-infer-field-roles-and-record-path-candidates.md`
   summary: Report stale overrides and a stale `record_path` after the sample is replaced; treat an empty array of objects as a candidate; match pagination words as whole words only; give an invalid sample its own 422 message.
   evidence: Edge-case review: dead overrides can revive on a reused path, and `$.pages[*]` or `$.next_steps[*]` are flagged pagination-like.
+
+- source_spec: `spec-3-12a-auto-map-slots-with-confidence.md`
+  summary: Story 3.12b: the slot checklist UI (groups, state matrix, confidence meters, filters, status bar, Continue gating, error summary, announcements).
+  evidence: Split from Story 3.12 on the scope rule; it consumes the 3.12a endpoints.
+
+- source_spec: `spec-3-12a-auto-map-slots-with-confidence.md`
+  summary: Wire `carryOver` to the Block Type change in Step 1; validate `slot_map` fit on the generic Draft save; widen baseline-name and text-slot matching; decide how the epic's numeric-`revenue` example should grade.
+  evidence: Review findings; none is exercised by the current acceptance criteria.

@@ -98,7 +98,7 @@ development_status:
   3-9-fetch-a-sample-from-the-api: review
   3-10-render-the-sample-through-the-query-plan-engine-live-preview: review
   3-11-review-field-roles-and-choose-the-record-path: in-progress
-  3-12-auto-map-the-kpi-slots-and-review-the-checklist: backlog
+  3-12-auto-map-the-kpi-slots-and-review-the-checklist: in-progress
   3-13-override-a-slot-pick-a-field-and-fix-mismatches: backlog
   3-14-change-a-slot-from-the-preview-with-hotspots: backlog
   3-15-set-presentation-rules-for-the-kpi-card-slots: backlog

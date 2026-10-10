@@ -14,7 +14,7 @@ use App\Platform\Json\SamplePath;
 /**
  * The lenient `config` document of a Draft (Story 3.4, `schema_version` 1): the Configure Block step's fields. Nothing is required (a
  * Draft saves as it is); what is present must have the right type, and sizes must lie inside the Block Type's registry limits, which
- * are named in the error. The Query Plan (`query_plan`, Story 3.10) is judged by Mapping's {@see QueryPlan}. The mapping choices `record_path` (a stored path ending in `[*]`, or null to clear) and `field_roles` (stored path => role) are judged here too. Unknown keys are dropped. The "Footer action" slot is derived: it is present, optional and empty exactly when
+ * are named in the error. The Query Plan (`query_plan`, Story 3.10) is judged by Mapping's {@see QueryPlan}. The mapping choices `record_path` (a stored path ending in `[*]`, or null to clear) and `field_roles` (stored path => role) are judged here too, as is `slot_map` (Story 3.12a: slot key => `{path, state}`, written by the mapping endpoints and kept over a save that omits it). Unknown keys are dropped. The "Footer action" slot is derived: it is present, optional and empty exactly when
  * "Show footer action" is on. Stored and read through the platform's JSON codec, never `json_decode`.
  */
 final class DraftConfig
@@ -119,6 +119,33 @@ final class DraftConfig
                 }
 
                 $out['field_roles'] = $roles;
+            }
+        }
+
+        // The Admin's slot decisions (Story 3.12a): slot key => {path, state}, `confirmed` or `overridden`; a null path is a cleared slot. Null clears the map.
+        if (array_key_exists('slot_map', $input) && $input['slot_map'] === null) {
+            $out['slot_map'] = [];
+        } elseif (isset($input['slot_map'])) {
+            if (! is_array($input['slot_map'])) {
+                $errors['config.slot_map'] = ['The slot map must be an object.'];
+            } else {
+                $known = array_map(fn ($slot): string => $slot->key, $type->slots);
+                $map = [];
+
+                foreach ($input['slot_map'] as $slot => $entry) {
+                    $slot = (string) $slot;
+
+                    if (! in_array($slot, $known, true)) {
+                        $errors["config.slot_map.{$slot}"] = ['This slot is not part of the '.$type->title.'.'];
+                    } elseif (! is_array($entry) || ! array_key_exists('path', $entry) || ! in_array($entry['state'] ?? null, ['confirmed', 'overridden'], true)
+                        || ($entry['path'] !== null && (! is_string($entry['path']) || ! self::isCanonicalPath($entry['path'])))) {
+                        $errors["config.slot_map.{$slot}"] = ['Use a stored path (or null) and a state of confirmed or overridden.'];
+                    } else {
+                        $map[$slot] = ['path' => $entry['path'], 'state' => $entry['state']];
+                    }
+                }
+
+                $out['slot_map'] = $map;
             }
         }
 
@@ -256,7 +283,7 @@ final class DraftConfig
     public static function merge(array $stored, array $step): array
     {
         // `source` is Step 2's key (Story 3.7): it is replaced only when the save carries one (see ManageDrafts).
-        $kept = array_diff_key($stored, array_flip(['schema_version', 'description', 'icon', 'display', 'slots', ...(array_key_exists('source', $step) ? ['source'] : []), ...(array_key_exists('query_plan', $step) ? ['query_plan'] : []), ...(array_key_exists('record_path', $step) ? ['record_path'] : []), ...(array_key_exists('field_roles', $step) ? ['field_roles'] : [])]));
+        $kept = array_diff_key($stored, array_flip(['schema_version', 'description', 'icon', 'display', 'slots', ...(array_key_exists('source', $step) ? ['source'] : []), ...(array_key_exists('query_plan', $step) ? ['query_plan'] : []), ...(array_key_exists('record_path', $step) ? ['record_path'] : []), ...(array_key_exists('field_roles', $step) ? ['field_roles'] : []), ...(array_key_exists('slot_map', $step) ? ['slot_map'] : [])]));
         $slots = is_array($stored['slots'] ?? null) ? $stored['slots'] : [];
         unset($slots['footer_action']);
         $slots += $step['slots'] ?? [];

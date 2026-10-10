@@ -12,6 +12,7 @@ use App\Support\Observability\RequestContextMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 
@@ -30,6 +31,9 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->prepend(RequestContextMiddleware::class);
 
         $middleware->statefulApi();
+
+        // An override's `path: ""` must reach validation as an empty string (a 422); only an explicit null clears the slot (Story 3.12a).
+        ConvertEmptyStringsToNull::skipWhen(fn ($request): bool => $request->isMethod('PUT') && $request->is('api/v1/admin/blocks/drafts/*/mapping/slots/*'));
 
         // `admin` / `admin:{permission}`: the Admin area and permission gate (Story 1.19).
         $middleware->alias(['admin' => RequireAdminAccess::class]);
