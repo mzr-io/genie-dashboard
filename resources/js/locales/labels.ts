@@ -1867,3 +1867,105 @@ export const blockSampleLabels = {
     noTables: 'This sample has no list of records to show as a table.',
     nodes: 'Fields in the sample',
 } as const;
+
+// Map Data (Story 3.11b, stage 1: the shell and the Roles section; UX-DR-65, 66, 123, 125 to 129, 180 to 182). `map-small-screen` is a catalogue message;
+// the rest is control vocabulary. Nothing here ever quotes the sample.
+export const blockMapLabels = {
+    region: 'Map Data',
+    loading: 'Reading the field roles…',
+    loadFailed: "We couldn't read the mapping for this draft.",
+    retry: 'Try again',
+    notSaved: 'The change was not saved. Try again.',
+    refreshFailed:
+        "We couldn't refresh the mapping. What you see may be out of date.",
+    summaryLabel: (n: number, label: string) => `Step ${n} · ${label}`,
+    // The recovery message when the sample has ended or cannot be read.
+    sampleGoneTitle: 'This draft has no usable sample',
+    sampleExpired:
+        'The sample for this draft has expired, so there is nothing to map. Go back to Data Source to fetch or paste it again.',
+    sampleInvalid:
+        'The sample for this draft cannot be read. Go back to Data Source to fetch or paste it again.',
+    toDataSource: 'Back to Data Source',
+    noFields: 'This sample has no fields to map.',
+    // The status bar.
+    statusBar: 'Mapping status',
+    statusSummary: (
+        autoMapped: number,
+        total: number,
+        confirmed: number,
+        requiredMissing: number,
+    ) =>
+        `Auto-mapped ${autoMapped} of ${total} · ${confirmed} confirmed · ${requiredMissing} required missing`,
+    statusSubtitle: 'Fields → slots of your KPI block',
+    // The three sections.
+    rolesTitle: '1 · Roles',
+    rolesCaption: 'What does each field mean?',
+    slotsTitle: '2 · Review block slots',
+    slotsCaption: 'Which field fills each part of the block.',
+    slotsPlaceholder:
+        'The slot checklist arrives in a later update. The field roles above are already saved with the draft.',
+    transformsTitle: '3 · Transforms',
+    transformsCaption: 'Optional steps that reshape the rows.',
+    transformsPlaceholder:
+        'Transforms arrive in a later update. There is nothing to set here yet.',
+    // Roles.
+    roleNames: {
+        label: 'Label',
+        value: 'Value',
+        dimension: 'Dimension',
+        measure: 'Measure',
+        time: 'Time',
+        filter: 'Filter/Category',
+    } as Record<string, string>,
+    roleDescriptions: {
+        label: 'Names or describes something.',
+        value: 'One headline number.',
+        dimension: 'Groups or splits the rows.',
+        measure: 'A number to plot or add up.',
+        time: 'When something happened.',
+        filter: 'Lets people narrow the data.',
+    } as Record<string, string>,
+    roleQualifiers: {
+        main: 'main',
+        baseline: 'baseline',
+        unit: 'unit',
+        asOf: 'as-of',
+    },
+    chipName: (field: string, role: string, flagged: boolean) =>
+        `Role for ${field}: ${role}${flagged ? ', possible wrong role' : ''}`,
+    chipMenu: (field: string) => `Roles for ${field}`,
+    roleChanged: (field: string, role: string) =>
+        `Role for ${field} is now ${role}.`,
+    undoNote: (field: string, role: string) => `${field} is now ${role}.`,
+    undo: 'Undo',
+    undone: (field: string, role: string) =>
+        `Undone. Role for ${field} is ${role} again.`,
+    scalarsTitle: 'Single values',
+    noScalars: 'No single values outside the list of records.',
+    scalarList: 'Single values in the response',
+    exampleNone: '(no example)',
+    typeOf: (type: string) => `Type: ${type}`,
+    exampleOf: (example: string) => `Example: ${example}`,
+    tableRegion: 'Sample rows, scrolls sideways',
+    tableCaption: (path: string) => `Sample rows of ${path}`,
+    tableHeading: 'Sample rows',
+    suggestion: (field: string, role: string) =>
+        `✦ ${field} looks like a ${role} — use as series?`,
+    setAs: (role: string) => `Set as ${role}`,
+    keepAs: (role: string) => `Keep as ${role}`,
+    looksRight: 'Looks right',
+    editRoles: 'Edit roles',
+    rolesAccepted: 'Roles accepted. Roles table collapsed.',
+    summaryTitle: 'Roles accepted',
+    summaryNone: 'No fields have a role yet.',
+    saving: 'Saving the role…',
+    // The record path.
+    recordPath: 'Rows from (record path)',
+    recordPathHint:
+        'This response has more than one list. Choose the one that holds the rows.',
+    rowsColumns: (rows: number, columns: number) =>
+        `${rows} ${rows === 1 ? 'row' : 'rows'} · ${columns} ${columns === 1 ? 'column' : 'columns'}`,
+    suggested: 'Suggested',
+    paginationLike: 'looks like pagination, not data',
+    recordPathChanged: (path: string) => `Rows now come from ${path}.`,
+} as const;

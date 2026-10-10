@@ -22,6 +22,7 @@ import ConflictChooser from '@/components/wizard/ConflictChooser.vue';
 import ConfigureBlockStep from '@/components/wizard/ConfigureBlockStep.vue';
 import DataSourceStep from '@/components/wizard/DataSourceStep.vue';
 import LivePreview from '@/components/wizard/LivePreview.vue';
+import MapDataStep from '@/components/wizard/MapDataStep.vue';
 import WizardStepper from '@/components/wizard/WizardStepper.vue';
 import { useEditLock } from '@/composables/useEditLock';
 import { useOfflineAction } from '@/composables/useOfflineAction';
@@ -749,6 +750,40 @@ function persist(
 
     return run;
 }
+
+// Map Data's writes (Story 3.11b) join the same chain, so a role or record-path change never races an autosave.
+function runInChain<T>(task: () => Promise<T>): Promise<T> {
+    const run = chain.then(task);
+
+    chain = run.catch(() => undefined);
+
+    return run;
+}
+
+// A mapping write stored a new Draft revision: the next save is decided against it.
+function adoptRevision(revision: number): void {
+    if (draft.value !== null) {
+        draft.value = { ...draft.value, revision };
+    }
+}
+
+// A refused mapping write is handled like a refused save: the revision chooser, the lost lock, the session, a missing Draft.
+async function onMappingError(error: unknown): Promise<void> {
+    await failed(error, 'manual');
+}
+
+// Why Map Data cannot be changed right now.
+const mapBlocked = computed<string | undefined>(() =>
+    stopped.value
+        ? labels.publishedBody
+        : readOnly.value
+          ? draftLockLabels.readOnly
+          : conflict.value !== null
+            ? labels.conflictTitle
+            : offline.value
+              ? offlineReason.value
+              : undefined,
+);
 
 // The server pins the revisions when it stores a selection: the form shows what it pinned, and never sends it back.
 function syncPins(saved: WizardDraft): void {
@@ -1537,6 +1572,35 @@ onBeforeUnmount(() => {
                             >
                         </div>
                     </form>
+
+                    <div
+                        v-else-if="current === 3"
+                        class="flex flex-col gap-4"
+                        data-test="step-3"
+                    >
+                        <MapDataStep
+                            :draft-id="draft?.draft_id ?? null"
+                            :sample="sample"
+                            :revision="() => draft?.revision ?? null"
+                            :claim="sampleClaim"
+                            :run="runInChain"
+                            :blocked="mapBlocked"
+                            :summaries="steps.slice(0, 2)"
+                            @revision="adoptRevision"
+                            @error="onMappingError"
+                            @to-source="goTo(2)"
+                        />
+                        <div class="flex justify-end">
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                data-test="back"
+                                @click="goTo(2)"
+                            >
+                                {{ labels.back }}
+                            </Button>
+                        </div>
+                    </div>
 
                     <section
                         v-else

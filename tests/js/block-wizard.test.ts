@@ -211,7 +211,8 @@ describe('Create block wizard: opening', () => {
 
         expect(calls[1].url).toBe('/api/v1/admin/blocks/drafts/d-1');
         expect($('[aria-current=step]')?.getAttribute('data-step')).toBe('3');
-        expect($('[data-test=later-step]')).not.toBeNull();
+        // Step 3 is Map Data (Story 3.11b); it has its own tests (block-wizard-map-data.test.ts).
+        expect($('[data-test=map-data-step]')).not.toBeNull();
         expect($('[data-test=size-pill]')?.textContent?.trim()).toBe(
             '4 columns × Medium',
         );

@@ -383,3 +383,11 @@
 - source_spec: `spec-3-13c-harden-the-mapping-api-for-the-map-data-ui.md`
   summary: Derive the ETag before computing the checklist and include the contract version; read draft, sample and contract in one snapshot; re-check limits on a shape-cache hit; prune orphaned overrides after a record-path change.
   evidence: Review findings; none blocks the UI.
+
+- source_spec: `spec-3-11b-map-data-step-roles-ui.md`
+  summary: UI stages 2-4: slot checklist and Continue gating (3.12b), field picker, undo, Treat as, api-changed messages (3.13b), preview hotspots and source legend (3.14), APG field tree (3.11b remainder).
+  evidence: Stage 1 builds the step shell and Roles section only.
+
+- source_spec: `spec-3-11b-map-data-step-roles-ui.md`
+  summary: Stage-1 UI polish: a test that interleaves autosave with a mapping write, role-chip type-ahead, section headings and focus when the step opens, match table columns to fields by path not display, move glyphs and plurals into the catalogue, and check the layout and chip colours in a real browser.
+  evidence: Review findings; tests run in happy-dom, so sticky layout and colours were never seen in a browser.
