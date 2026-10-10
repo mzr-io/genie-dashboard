@@ -123,7 +123,18 @@ function pick(field: PickerField): void {
     emit('pick', props.item.slot, field.path);
 }
 
-defineExpose({ focusPicker: () => picker.value?.focus() });
+// Opens the picker with focus in its search; Escape returns focus to `from` (the preview hotspot that asked), else to the opener.
+function openPicker(from: HTMLElement | null = null): boolean {
+    if (!editable.value || picker.value === null) {
+        return false;
+    }
+
+    void picker.value.show('', from);
+
+    return true;
+}
+
+defineExpose({ focusPicker: () => picker.value?.focus(), openPicker });
 </script>
 
 <template>

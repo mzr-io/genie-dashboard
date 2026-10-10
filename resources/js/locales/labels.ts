@@ -2024,6 +2024,7 @@ export const blockMapLabels = {
         `Review ${slot}, its field is no longer in the response.`,
     // The field picker, override with Undo, Treat as and API-change messages (Story 3.13b).
     changeField: 'Change field',
+    cannotChange: 'This slot cannot be changed right now.',
     changeFieldFor: (slot: string) => `Change field for ${slot}`,
     pickerLabel: (slot: string) => `Fields for ${slot}`,
     pickerSearch: 'Search fields',
@@ -2072,4 +2073,48 @@ export const blockMapLabels = {
         type_mismatch: 'its field does not fit',
         api_changed: 'its field is no longer in the response',
     } as Record<string, string>,
+} as const;
+
+// The live preview on the Map Data step (Story 3.14, UI stage 4): the preview region, its hotspots, the source legend and the notices.
+export const blockPreviewLabels = {
+    region: 'Live preview, sample data',
+    skipToChecklist: 'Skip to slot checklist',
+    sampleLabel: 'Sample data',
+    // A hotspot over a mapped region of the card.
+    hotspotName: (slot: string, field: string, value: string) =>
+        `${slot}: ${field}, ${value}. Change field`,
+    hotspotTip: (slot: string, field: string) =>
+        `Click to change field · ${slot} ← ${field}`,
+    // The hatched placeholder for a required slot with nothing mapped.
+    missingName: (slot: string) =>
+        `${slot}, required, not mapped. Choose field`,
+    missingText: (slot: string, role: string) =>
+        `${slot} required · No ${role} mapped · click to choose`,
+    // The source legend.
+    legendTitle: 'Where each part comes from',
+    legendEmpty: 'Nothing is mapped yet.',
+    noEndpoint: 'the endpoint',
+    unavailable: 'Unavailable',
+    unavailableReasons: {
+        missing: 'the field is not in the sample',
+        not_single_value: 'the field has more than one value',
+        wrong_type: 'the field is not a single value',
+    } as Record<string, string>,
+    unavailableWhy: (reason: string) => `Unavailable (${reason})`,
+    // Notices: quiet, polite, and never in the way.
+    stale: 'The mapping was made for an earlier sample. Re-run auto-map to bring it up to date.',
+    throttled: (seconds: number | null) =>
+        seconds === null
+            ? 'The preview is paused for a moment. Showing the last one.'
+            : `The preview is paused for a moment. Showing the last one; try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`,
+    guard: 'The preview stopped because the sample went over a safety limit. Showing the last one.',
+    setting: (setting: string | null) =>
+        setting === null
+            ? 'The preview is not set up on this server: a required setting has no value. Ask your operator to configure it.'
+            : `The preview is not set up on this server: the setting ${setting} has no value. Ask your operator to configure it.`,
+    noSample: 'There is no sample to preview. Go back to Data Source.',
+    failed: "We couldn't refresh the preview. Showing the last one.",
+    failedEmpty: "We couldn't build the preview.",
+    // A read-only view still shows what is mapped.
+    readOnlyRegions: 'Read-only: fields cannot be changed here.',
 } as const;

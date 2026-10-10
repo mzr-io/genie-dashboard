@@ -399,3 +399,7 @@
 - source_spec: `spec-3-13b-field-picker-ui.md`
   summary: Add a "None" entry to clear an optional slot, support static text once the backend stores it, reopen the picker after a refused pick, list all fitting fields, and fetch fitting fields lazily instead of one GET per mismatch row.
   evidence: Review findings; the backend cannot store static text yet.
+
+- source_spec: `spec-3-14-preview-hotspots-and-source-legend.md`
+  summary: Check the Map Data step in a real browser (sticky preview, hotspot geometry, tooltip clipping, role-chip colours, focus behaviour), then add the `cannotChange` and `returnTo` tests and keep the payload icon.
+  evidence: All Map Data UI tests run in happy-dom, which has no layout; stages 1 to 4 were never seen in a browser.

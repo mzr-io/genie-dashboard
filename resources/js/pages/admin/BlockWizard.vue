@@ -84,6 +84,7 @@ import {
     sampleBlock,
 } from '@/lib/blockSample';
 import type { SampleClaim } from '@/lib/blockSample';
+import type { MappingRead } from '@/lib/blockMapping';
 import {
     blockSampleLabels,
     blockWizardLabels as labels,
@@ -160,6 +161,24 @@ const categoryName = computed(
 const heading = computed(() => form.name.trim() || labels.untitled);
 const version = computed(() => draft.value?.version ?? '1.0');
 const showPreview = computed(() => current.value <= 3);
+// Map Data's live preview (Story 3.14): the mapping the step read (slots and roles for the hotspots and the legend), a counter the step bumps
+// after every mapping write, and the endpoint the sample note names.
+type MapView = {
+    checklist: NonNullable<MappingRead['checklist']>;
+    roles: MappingRead['roles'];
+    sampleRevision: number | null;
+};
+const mapView = ref<MapView | null>(null);
+const mapRef = ref<InstanceType<typeof MapDataStep> | null>(null);
+const previewKey = ref(0);
+const previewSlots = computed(
+    () => mapView.value?.checklist.groups.flatMap((g) => g.slots) ?? [],
+);
+const previewEndpoint = computed(() => {
+    const endpoint = endpointOf(catalog, form.source);
+
+    return endpoint ? endpointText(endpoint) : null;
+});
 // The completed Data Source step's summary: the chosen Data Source and Endpoint, once the lists are loaded.
 const sourceSummary = computed<string | null>(() => {
     const chosen = catalog.sources?.find(
@@ -758,6 +777,15 @@ function runInChain<T>(task: () => Promise<T>): Promise<T> {
     chain = run.catch(() => undefined);
 
     return run;
+}
+
+// The preview's skip link: the checklist takes focus (by id when the step is not there to ask).
+function skipToChecklist(): void {
+    if (mapRef.value) {
+        mapRef.value.focusChecklist();
+    } else {
+        document.getElementById('slot-checklist')?.focus();
+    }
 }
 
 // A mapping write stored a new Draft revision: the next save is decided against it.
@@ -1579,6 +1607,7 @@ onBeforeUnmount(() => {
                         data-test="step-3"
                     >
                         <MapDataStep
+                            ref="mapRef"
                             :draft-id="draft?.draft_id ?? null"
                             :sample="sample"
                             :revision="() => draft?.revision ?? null"
@@ -1587,6 +1616,8 @@ onBeforeUnmount(() => {
                             :blocked="mapBlocked"
                             :summaries="steps.slice(0, 2)"
                             @revision="adoptRevision"
+                            @mapped="previewKey += 1"
+                            @view="(view) => (mapView = view)"
                             @error="onMappingError"
                             @to-source="goTo(2)"
                             @continue="onContinue"
@@ -1641,6 +1672,19 @@ onBeforeUnmount(() => {
                         :description="form.description"
                         :display="form.display"
                         :version="version"
+                        :live="current === 3"
+                        :draft-id="draft?.draft_id ?? null"
+                        :refresh-key="previewKey"
+                        :sample-revision="mapView?.sampleRevision ?? null"
+                        :endpoint="previewEndpoint"
+                        :slots="previewSlots"
+                        :roles="mapView?.roles?.fields ?? []"
+                        :blocked="mapBlocked"
+                        @change="
+                            (slot, opener) => mapRef?.openSlot(slot, opener)
+                        "
+                        @skip="skipToChecklist"
+                        @auth-error="sessionEnded"
                     />
                 </div>
             </div>

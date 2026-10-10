@@ -585,7 +585,11 @@ describe('Slot checklist: Confirm', () => {
             .dispatchEvent(enter());
         await settle();
 
-        expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+        expect(
+            calls.filter(
+                (c) => c.method === 'POST' && !c.url.endsWith('/preview'),
+            ),
+        ).toHaveLength(0);
     });
 
     it('keeps the pinned order of an auto_low row after it is confirmed', async () => {
@@ -979,7 +983,11 @@ describe('Slot checklist: read-only and refusals', () => {
         await click($('[data-test=rerun]'));
         await click($('[data-test=slots-continue]'));
 
-        expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0);
+        expect(
+            calls.filter(
+                (c) => c.method === 'POST' && !c.url.endsWith('/preview'),
+            ),
+        ).toHaveLength(0);
         expect($('[data-test=step-3]')).not.toBeNull();
     });
 

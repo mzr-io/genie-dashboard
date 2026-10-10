@@ -3,6 +3,7 @@ import { computed, nextTick, ref, useId } from 'vue';
 import SegmentedControl from '@/components/SegmentedControl.vue';
 import { Button } from '@/components/ui/button';
 import SlotRow from '@/components/wizard/SlotRow.vue';
+import { announce } from '@/lib/announce';
 import { filterCounts, matchesFilter } from '@/lib/blockMapping';
 import type {
     Checklist,
@@ -128,11 +129,65 @@ function onFocusOut(): void {
     }, 0);
 }
 
-defineExpose({ focusSlot, showAll, keep, clearKept, focusConfirm });
+// A hotspot on the preview asks for this slot: the row shows (a filter would hide it), scrolls into view and opens its picker.
+const rows = new Map<string, InstanceType<typeof SlotRow>>();
+
+function setRow(slot: string, row: unknown): void {
+    if (row) {
+        rows.set(slot, row as InstanceType<typeof SlotRow>);
+    } else {
+        rows.delete(slot);
+    }
+}
+
+async function openSlot(
+    slot: string,
+    from: HTMLElement | null = null,
+): Promise<void> {
+    if (rowOf(slot) === null) {
+        showAll();
+        await nextTick();
+    }
+
+    const calm =
+        typeof window.matchMedia === 'function' &&
+        window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    rowOf(slot)?.scrollIntoView?.({
+        block: 'center',
+        behavior: calm ? 'auto' : 'smooth',
+    });
+
+    if (!rows.get(slot)?.openPicker(from)) {
+        rowOf(slot)?.focus();
+        announce(labels.cannotChange, 'polite');
+    }
+}
+
+// The skip link's target: the first row (or the filter when no row shows).
+function focusFirst(): void {
+    const first = root.value?.querySelector<HTMLElement>('[data-slot-key]');
+
+    (
+        first ?? root.value?.querySelector<HTMLElement>('button, [tabindex]')
+    )?.focus();
+}
+
+defineExpose({
+    focusSlot,
+    showAll,
+    keep,
+    clearKept,
+    focusConfirm,
+    openSlot,
+    focusFirst,
+});
 </script>
 
 <template>
     <div
+        id="slot-checklist"
+        tabindex="-1"
         ref="root"
         class="flex flex-col gap-4"
         data-test="slot-checklist"
@@ -178,6 +233,7 @@ defineExpose({ focusSlot, showAll, keep, clearKept, focusConfirm });
                 <SlotRow
                     v-for="slot in group.slots"
                     :key="slot.slot"
+                    :ref="(row) => setRow(slot.slot, row)"
                     :item="slot"
                     :blocked="blocked"
                     :reason-id="reasonId"

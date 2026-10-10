@@ -75,6 +75,17 @@ const emit = defineEmits<{
     (e: 'to-source'): void;
     // Every required slot is settled: the Admin goes on to Preview (the page saves and moves on).
     (e: 'continue'): void;
+    // A mapping write landed (confirm, re-run, override, undo, treat as, role or record path): the live preview refreshes (Story 3.14).
+    (e: 'mapped'): void;
+    // What the live preview needs of the mapping: the slots (with their fields) and the roles; null while there is none.
+    (
+        e: 'view',
+        view: {
+            checklist: NonNullable<MappingRead['checklist']>;
+            roles: MappingRead['roles'];
+            sampleRevision: number | null;
+        } | null,
+    ): void;
 }>();
 
 const { t } = useI18n();
@@ -479,6 +490,7 @@ function submit(
             const done = await call(props.draftId, revision, claim);
 
             emit('revision', done.draft_revision);
+            emit('mapped');
 
             return done;
         } catch (error) {
@@ -1051,6 +1063,35 @@ function measure(): void {
 
 const showSmallBanner = computed(() => small.value && !bannerDismissed.value);
 
+// The preview reads the checklist and roles from here (Story 3.14): sent on every change, and cleared when the step goes.
+watch(
+    read,
+    (next) =>
+        emit(
+            'view',
+            next?.checklist
+                ? {
+                      checklist: next.checklist,
+                      roles: next.roles,
+                      sampleRevision: next.sample_revision,
+                  }
+                : null,
+        ),
+    { immediate: true },
+);
+
+// A hotspot on the preview was activated (Story 3.14): scroll to the slot's row and open its picker; Escape returns focus to `from`.
+function openSlot(slot: string, from: HTMLElement | null = null): void {
+    void checklistRef.value?.openSlot(slot, from);
+}
+
+// The preview's skip link: focus moves to the slot checklist.
+function focusChecklist(): void {
+    checklistRef.value?.focusFirst();
+}
+
+defineExpose({ openSlot, focusChecklist });
+
 onMounted(() => {
     bannerDismissed.value = readDismissed();
     measure();
@@ -1060,6 +1101,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
     seq += 1;
+    emit('view', null);
     window.removeEventListener('resize', measure);
 });
 </script>

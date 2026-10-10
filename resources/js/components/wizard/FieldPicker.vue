@@ -45,6 +45,8 @@ const popoverId = useId();
 const listId = useId();
 const optionPrefix = useId();
 let ticket = 0;
+// Where Escape returns focus: the opener, or the hotspot that opened the picker.
+let returnTo: HTMLElement | null = null;
 
 const shown = computed(() => filterFields(fields.value, query.value));
 const activeId = computed(() =>
@@ -89,7 +91,14 @@ function placeActive(): void {
     active.value = at === -1 ? 0 : at;
 }
 
-async function show(prefill = ''): Promise<void> {
+async function show(
+    prefill = '',
+    from: HTMLElement | null = null,
+): Promise<void> {
+    if (!open.value) {
+        returnTo = from;
+    }
+
     open.value = true;
     query.value = prefill;
     void read();
@@ -102,8 +111,10 @@ function close(returnFocus: boolean): void {
     open.value = false;
 
     if (returnFocus) {
-        openerEl()?.focus();
+        (returnTo?.isConnected ? returnTo : openerEl())?.focus();
     }
+
+    returnTo = null;
 }
 
 function toggle(): void {
