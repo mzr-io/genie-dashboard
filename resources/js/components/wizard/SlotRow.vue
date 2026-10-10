@@ -27,6 +27,8 @@ const props = defineProps<{
     reasonId?: string;
     // A write is in flight: Confirm waits.
     busy?: boolean;
+    // The field tree can be opened for this slot.
+    treeAvailable?: boolean;
     // Lists the fields the slot could take (the picker and a Type-mismatch row's compatible fields).
     loadFields?: (slot: string) => Promise<PickerField[]>;
     // What the last override did to this slot, while it can still be undone.
@@ -42,6 +44,8 @@ const emit = defineEmits<{
     (e: 'pick', slot: string, path: string | null): void;
     (e: 'undo', slot: string): void;
     (e: 'treat', slot: string, path: string, type: FieldType | null): void;
+    // "Choose from the field tree" on a required slot with nothing mapped (Story 3.11d).
+    (e: 'tree', slot: string): void;
 }>();
 
 const picker = ref<InstanceType<typeof FieldPicker> | null>(null);
@@ -297,6 +301,16 @@ defineExpose({ focusPicker: () => picker.value?.focus(), openPicker });
                 :busy="busy"
                 @pick="pick"
             />
+            <Button
+                v-if="item.state === 'required_missing' && treeAvailable"
+                type="button"
+                variant="secondary"
+                size="sm"
+                :aria-label="labels.treeChooseFor(item.label)"
+                data-test="choose-from-tree"
+                @click="emit('tree', item.slot)"
+                >{{ labels.treeChoose }}</Button
+            >
             <TreatAsMenu
                 v-if="mismatch && item.path && item.display"
                 :field="item.display"

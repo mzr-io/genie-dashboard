@@ -2073,6 +2073,43 @@ export const blockMapLabels = {
         type_mismatch: 'its field does not fit',
         api_changed: 'its field is no longer in the response',
     } as Record<string, string>,
+    // The searchable field tree (Story 3.11d).
+    treeBrowse: 'Browse all fields',
+    treeLabel: 'Fields in the sample',
+    treeSearch: 'Search fields',
+    treeSearchHint: 'Search by name, type or example',
+    treeExpandAll: 'Expand all',
+    treeCollapseAll: 'Collapse all',
+    treeEmpty: 'No fields match your search.',
+    treeBreadcrumb: 'Field path',
+    treeUseFor: 'Use for',
+    treeUse: 'Use',
+    treeUseAria: (field: string, slot: string) => `Use ${field} for ${slot}`,
+    treeItemName: (field: string, type: string) => `${field}, ${type}`,
+    treeSelected: (
+        path: string,
+        example: string | null,
+        formatted: string | null,
+    ) =>
+        `Selected: ${path}${example === null ? '' : ` · ${example}`}${formatted === null ? '' : ` → ${formatted}`}`,
+    treeFocused: (
+        path: string,
+        example: string | null,
+        formatted: string | null,
+    ) =>
+        `Focused: ${path}${example === null ? '' : ` · ${example}`}${formatted === null ? '' : ` → ${formatted}`}`,
+    treeNothingSelected: 'Selected: none yet',
+    treeStillLoading: 'Still checking which fields fit. Try again in a moment.',
+    treeBusyNow: 'A change is being saved. Try again in a moment.',
+    treeNotAField: "This can't feed a slot on its own.",
+    treeLoading: 'Checking which fields fit…',
+    treeFailed: "We couldn't check which fields fit this slot.",
+    treeChoose: 'Choose from the field tree',
+    treeChooseFor: (slot: string) => `Choose ${slot} from the field tree`,
+    // The Datasets suggestion in the record-path list.
+    datasetUsedEarlier: 'Used in an earlier block',
+    datasetNotCandidate: (path: string) =>
+        `${path} was used in an earlier block but is not in this response.`,
 } as const;
 
 // The live preview on the Map Data step (Story 3.14, UI stage 4): the preview region, its hotspots, the source legend and the notices.

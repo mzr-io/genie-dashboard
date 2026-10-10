@@ -468,6 +468,9 @@ beforeEach(() => {
                             mappingGate = null;
                             await gate;
                         }
+                    } else if (/\/mapping\/slots\/[a-z_]+\/fields$/.test(url)) {
+                        // The field tree's listing (Story 3.11d) is a read, not a write.
+                        reply = { status: 200, json: { data: { fields: [] } } };
                     } else if (url.startsWith(`${BASE}/mapping/`)) {
                         reply = putReply(calls[calls.length - 1]);
                     } else if (url === `${BASE}/sample`) {

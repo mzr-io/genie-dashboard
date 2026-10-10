@@ -24,6 +24,8 @@ const props = defineProps<{
     reasonId?: string;
     // A write is in flight: Confirm and Re-run wait.
     busy?: boolean;
+    // The field tree can be opened ("Choose from the field tree").
+    treeAvailable?: boolean;
     loadFields?: (slot: string) => Promise<PickerField[]>;
     // The last override of each slot, while it can be undone.
     notes?: Record<string, OverrideNote>;
@@ -44,6 +46,7 @@ const emit = defineEmits<{
     (e: 'pick', slot: string, path: string | null): void;
     (e: 'undo', slot: string): void;
     (e: 'treat', slot: string, path: string, type: FieldType | null): void;
+    (e: 'tree', slot: string): void;
 }>();
 
 const filter = ref<SlotFilter>('all');
@@ -238,6 +241,7 @@ defineExpose({
                     :blocked="blocked"
                     :reason-id="reasonId"
                     :busy="busy"
+                    :tree-available="treeAvailable"
                     :load-fields="loadFields"
                     :note="notes?.[slot.slot] ?? null"
                     :change-text="changes?.[slot.slot]?.text ?? null"
@@ -247,6 +251,7 @@ defineExpose({
                     @pick="(key, path) => emit('pick', key, path)"
                     @undo="emit('undo', $event)"
                     @treat="(key, path, type) => emit('treat', key, path, type)"
+                    @tree="emit('tree', $event)"
                 />
             </ul>
         </section>

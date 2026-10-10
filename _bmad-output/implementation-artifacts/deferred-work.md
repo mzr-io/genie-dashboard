@@ -411,3 +411,7 @@
 - source_spec: `spec-3-11c-datasets-suggestion-catalog.md`
   summary: Bound dataset growth per Endpoint and purge retired `dataset_fields` rows and datasets of removed Endpoints; flag a suggestion whose record path is not among the new sample's candidates; compute rollback steps in tests from a named migration.
   evidence: `app` cannot DELETE, so rows accumulate; review findings.
+
+- source_spec: `spec-3-11d-field-tree-ui.md`
+  summary: Take the footer formatter from the slot's Block Type instead of the kpi-card, show the Datasets suggestion's typed fields and age, show the hint when the record-path list is not rendered, add `*` expand-siblings, and verify the listing path form against live server data.
+  evidence: Review findings; only kpi-card exists today.

@@ -1,5 +1,11 @@
 <script setup lang="ts">
-import { ListChecks, SlidersHorizontal, Tags } from '@lucide/vue';
+import {
+    ChevronDown,
+    ChevronRight,
+    ListChecks,
+    SlidersHorizontal,
+    Tags,
+} from '@lucide/vue';
 import {
     computed,
     nextTick,
@@ -14,6 +20,7 @@ import BlockedReason from '@/components/BlockedReason.vue';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
+import FieldTree from '@/components/wizard/FieldTree.vue';
 import RolesSection from '@/components/wizard/RolesSection.vue';
 import SectionCard from '@/components/wizard/SectionCard.vue';
 import SlotChecklist from '@/components/wizard/SlotChecklist.vue';
@@ -118,6 +125,12 @@ const attempted = ref(false);
 // A confirm or re-run is in flight.
 const pending = ref(false);
 const small = ref(false);
+// "Browse all fields" (Story 3.11d): closed unless a required slot is missing; "Choose from the field tree" opens it for that slot.
+const treeOpen = ref(false);
+const treeSlot = ref<string | null>(null);
+const treeRequest = ref(0);
+const treeRef = ref<InstanceType<typeof FieldTree> | null>(null);
+let treeInitialised = false;
 const bannerDismissed = ref(false);
 const reasonId = 'map-data-blocked';
 const continueReasonId = 'map-data-continue-reason';
@@ -155,6 +168,14 @@ const statusText = computed(() =>
           )
         : '',
 );
+const treeNodes = computed(() =>
+    read.value?.sample === 'ok' ? (stored.value?.shape?.nodes ?? []) : [],
+);
+const treeAvailable = computed(() => treeNodes.value.length > 0);
+const treeSlots = computed(() =>
+    (read.value?.checklist?.groups ?? []).flatMap((group) => group.slots),
+);
+const requiredMissing = computed(() => counts.value?.required_missing ?? 0);
 const slotGroups = computed(() =>
     read.value?.checklist
         ? applyOrder(read.value.checklist.groups, order.value)
@@ -1013,6 +1034,33 @@ function onContinue(): void {
     emit('continue');
 }
 
+// ---- Field tree (Story 3.11d) ------------------------------------------------------------------------------------------
+
+// Open on the first look when a required slot is missing, and again whenever one becomes missing.
+watch(
+    requiredMissing,
+    (now, before) => {
+        if (now > 0 && (!treeInitialised || before === 0)) {
+            treeOpen.value = true;
+        }
+
+        treeInitialised = true;
+    },
+    { immediate: true },
+);
+
+async function chooseFromTree(slot: string): Promise<void> {
+    if (!treeAvailable.value) {
+        return;
+    }
+
+    treeSlot.value = slot;
+    treeRequest.value += 1;
+    treeOpen.value = true;
+    await nextTick();
+    treeRef.value?.focus();
+}
+
 // ---- Status announcements ----------------------------------------------------------------------------------------------
 
 // The status bar speaks only when the needs-review or required-missing figure changes, not on every role edit.
@@ -1277,6 +1325,8 @@ onBeforeUnmount(() => {
                         :dismissed="dismissed"
                         :blocked="blocked"
                         :undo="undo"
+                        :suggestion="read?.dataset_suggestion ?? null"
+                        :path-chosen="pathChosen"
                         @role="(field, role) => changeRole(field, role)"
                         @suggest="suggest"
                         @keep="keepAs"
@@ -1285,6 +1335,50 @@ onBeforeUnmount(() => {
                         @path="changePath"
                         @undo="undoRole"
                     />
+                </div>
+
+                <div
+                    v-if="treeNodes.length > 0"
+                    class="mt-3 grid gap-2"
+                    data-test="tree-section"
+                >
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        size="sm"
+                        class="w-fit"
+                        :aria-expanded="treeOpen ? 'true' : 'false'"
+                        aria-controls="map-field-tree"
+                        data-test="tree-toggle"
+                        @click="treeOpen = !treeOpen"
+                    >
+                        <ChevronDown
+                            v-if="treeOpen"
+                            class="size-4"
+                            aria-hidden="true"
+                        />
+                        <ChevronRight
+                            v-else
+                            class="size-4"
+                            aria-hidden="true"
+                        />
+                        {{ labels.treeBrowse }}
+                    </Button>
+                    <div v-if="treeOpen" id="map-field-tree">
+                        <FieldTree
+                            ref="treeRef"
+                            :nodes="treeNodes"
+                            :slots="treeSlots"
+                            :preferred="treeSlot"
+                            :request-key="treeRequest"
+                            :record-path="roles.record_path"
+                            :load-fields="loadFields"
+                            :refresh-key="read?.draft_revision ?? 0"
+                            :blocked="blocked"
+                            :busy="pending"
+                            @use="pickField"
+                        />
+                    </div>
                 </div>
             </SectionCard>
 
@@ -1300,6 +1394,7 @@ onBeforeUnmount(() => {
                     :blocked="blocked"
                     :reason-id="reasonId"
                     :busy="pending"
+                    :tree-available="treeAvailable"
                     :load-fields="loadFields"
                     :notes="notes"
                     :changes="changes"
@@ -1308,6 +1403,7 @@ onBeforeUnmount(() => {
                     @pick="pickField"
                     @undo="undoSlot"
                     @treat="treatAs"
+                    @tree="chooseFromTree"
                 />
 
                 <FormErrorSummary

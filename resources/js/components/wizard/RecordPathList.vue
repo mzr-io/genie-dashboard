@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import { useId } from 'vue';
+import { computed, useId } from 'vue';
 import Tag from '@/components/Tag.vue';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-import type { RecordCandidate } from '@/lib/blockMapping';
+import type { DatasetSuggestion, RecordCandidate } from '@/lib/blockMapping';
 import { blockMapLabels as labels } from '@/locales/labels';
 
 // "Rows from (record path)" (`record-path-list`, UX-DR-123): shown when the response has more than one array, or nesting deeper than 2 levels. A
@@ -13,12 +13,29 @@ const props = defineProps<{
     value: string | null;
     disabled: boolean;
     reasonId?: string;
+    // The Datasets catalog's suggestion (Story 3.11d): marked, never selected.
+    suggestion?: Pick<
+        DatasetSuggestion,
+        'record_path' | 'record_path_display'
+    > | null;
 }>();
 
 const emit = defineEmits<{ (e: 'change', path: string): void }>();
 
 const groupId = useId();
 const hintId = useId();
+
+// A record path with or without its trailing `[*]` names the same array.
+const bare = (path: string): string => path.replace(/\[\*\]$/, '');
+// The server returns a suggestion only while the Draft has no chosen record path, so its presence is the signal.
+const offered = computed(() => props.suggestion ?? null);
+const remembered = (path: string): boolean =>
+    offered.value !== null && bare(offered.value.record_path) === bare(path);
+const noteNeeded = computed(
+    () =>
+        offered.value !== null &&
+        !props.candidates.some((candidate) => remembered(candidate.path)),
+);
 
 function onChange(next: unknown): void {
     if (typeof next === 'string' && next !== props.value) {
@@ -34,6 +51,13 @@ function onChange(next: unknown): void {
         </legend>
         <p :id="hintId" class="type-caption text-text-secondary">
             {{ labels.recordPathHint }}
+        </p>
+        <p
+            v-if="noteNeeded && offered"
+            class="type-caption text-text-secondary"
+            data-test="record-path-earlier-note"
+        >
+            {{ labels.datasetNotCandidate(offered.record_path_display) }}
         </p>
         <RadioGroup
             :model-value="value ?? undefined"
@@ -69,6 +93,12 @@ function onChange(next: unknown): void {
                     class="type-caption rounded-sm bg-success-soft px-2 text-success-text"
                     data-test="record-path-suggested"
                     >{{ labels.suggested }}</span
+                >
+                <Tag
+                    v-if="remembered(candidate.path)"
+                    tone="info"
+                    data-test="record-path-earlier"
+                    >{{ labels.datasetUsedEarlier }}</Tag
                 >
                 <Tag
                     v-if="candidate.pagination_like"

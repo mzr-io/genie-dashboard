@@ -137,6 +137,14 @@ export type ApiChange = {
 
 export type SampleStatus = 'ok' | 'expired' | 'invalid';
 
+// The Datasets catalog's suggestion for a Draft with no chosen record path (Story 3.11c backend, shown by 3.11d UI): only ever offered, never applied.
+export type DatasetSuggestion = {
+    record_path: string;
+    record_path_display: string;
+    fields: { path: string; type: string; role: string | null }[];
+    updated_at: string;
+};
+
 export type MappingRead = {
     checklist: Checklist | null;
     roles: RolesReport | null;
@@ -146,6 +154,7 @@ export type MappingRead = {
     sample_revision: number | null;
     plan_stale: boolean;
     sample: SampleStatus;
+    dataset_suggestion?: DatasetSuggestion | null;
 };
 
 // What a mapping write answers: the checklist, the revisions it stored and the plan; a role write also says what it changed.

@@ -12,6 +12,7 @@ import {
     rolesTable,
 } from '@/lib/blockMapping';
 import type {
+    DatasetSuggestion,
     MappingRole,
     RoleField,
     RoleUndo,
@@ -33,6 +34,10 @@ const props = defineProps<{
     blocked?: string;
     // The role change the Admin may still undo.
     undo: RoleUndo | null;
+    // The Datasets suggestion for the record path (Story 3.11d); only offered.
+    suggestion?: DatasetSuggestion | null;
+    // The Admin has chosen a record path: the suggestion is no longer offered.
+    pathChosen?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -91,6 +96,7 @@ function qualifier(field: RoleField): string | null {
             :value="roles.record_path"
             :disabled="disabled"
             :reason-id="reasonId"
+            :suggestion="pathChosen ? null : (suggestion ?? null)"
             @change="(path) => emit('path', path)"
         />
 
