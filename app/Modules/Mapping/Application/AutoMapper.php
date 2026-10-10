@@ -465,6 +465,7 @@ final class AutoMapper implements AutoMapping
             'suggestion' => $suggestion,
             'path' => $field === null ? null : (string) $field['path'],
             'display' => $field === null ? null : (string) ($field['display'] ?? $this->display((string) $field['path'])),
+            'example' => is_string($field['example'] ?? null) ? $field['example'] : null,
         ];
     }
 

@@ -6,14 +6,16 @@ use App\Modules\Blocks\Contracts\Draft;
 use App\Modules\Blocks\Contracts\DraftActor;
 use App\Modules\Blocks\Contracts\DraftChecklist;
 use App\Modules\Blocks\Contracts\DraftLockLost;
+use App\Modules\Blocks\Contracts\DraftMapping;
 use App\Modules\Blocks\Contracts\DraftNotFound;
 use App\Modules\Blocks\Contracts\DraftPublished;
 use App\Modules\Blocks\Contracts\DraftRevisionConflict;
 use App\Modules\Blocks\Contracts\Drafts;
-use App\Modules\Blocks\Contracts\DraftSamples;
 use App\Modules\Blocks\Contracts\DraftSlots;
 use App\Modules\Blocks\Contracts\InvalidDraft;
+use App\Modules\Blocks\Contracts\InvalidSampleShape;
 use App\Modules\Blocks\Contracts\PreviewRefused;
+use App\Modules\Blocks\Contracts\SlotChanged;
 use App\Modules\Blocks\Contracts\SlotNotFound;
 use App\Modules\Blocks\Contracts\SlotRefused;
 use App\Modules\BlockTypes\Contracts\BlockType;
@@ -30,27 +32,47 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /**
- * Auto-map and the slot checklist (Story 3.12a). The checklist is computed from the Draft's stored sample structure, `config.record_path`,
- * `config.field_roles` and `config.slot_map`; nothing but the Admin's decisions (`slot_map`) and the plan a re-run writes is stored. The writes
- * take the Draft's row lock and the edit-lock claim as a sample write does, and change only `config`. Nothing of the sample is in a refusal.
+ * Auto-map and the slot checklist (Story 3.12a), and the one writer of the mapping keys (Story 3.13c). The checklist is computed from the Draft's
+ * stored sample structure, `config.record_path`, `config.field_roles`, `config.field_types` and `config.slot_map`; nothing but the Admin's decisions and
+ * the plan every write recomputes (`query_plan`, stamped with `mapped_sample_revision`) is stored. The writes take the Draft's row lock, the edit-lock
+ * claim as a sample write does and the Draft's revision, and change only `config`. Nothing of the sample is in a refusal.
  */
 final class ManageDraftSlots implements DraftSlots
 {
     public function __construct(
         private readonly WorkspaceTransaction $transactions,
         private readonly Drafts $drafts,
-        private readonly DraftSamples $samples,
+        private readonly SampleShapes $shapes,
         private readonly BlockTypeRegistry $types,
         private readonly FieldRoles $roles,
         private readonly AutoMapping $mapper,
     ) {}
 
-    public function checklist(DraftActor $actor, string $draftId): DraftChecklist
+    public function read(DraftActor $actor, string $draftId): DraftMapping
     {
         $draft = $this->drafts->find($actor->workspaceId, $draftId);
-        [$type, $shape] = $this->inputs($actor->workspaceId, $draft);
+        $state = DraftMapping::SAMPLE_EXPIRED;
 
-        return new DraftChecklist($this->map($type, $this->report($shape, $draft->config), $draft->config), $draft->revision);
+        try {
+            $found = $this->shapes->of($actor->workspaceId, $draft->id);
+        } catch (InvalidSampleShape) {
+            $found = null;
+            $state = DraftMapping::SAMPLE_INVALID;
+        }
+
+        $plan = self::storedPlan($draft->config);
+        $sampleRevision = $found === null ? null : $found[1];
+        $stale = self::planStale($draft->config, $sampleRevision);
+
+        // No usable sample (none, it ended, or it no longer passes the limits): the stored decisions and plan are still the Admin's, and nothing is computed from it.
+        if ($found === null) {
+            return new DraftMapping(null, null, self::slotMap($draft->config), $plan, $draft->revision, null, $stale, $state);
+        }
+
+        $type = $this->types->resolve($draft->type, $this->contractVersion($actor->workspaceId, $draft->blockId));
+        $report = $this->report($found[0], $draft->config);
+
+        return new DraftMapping($this->map($type, $report, $draft->config), $report, self::slotMap($draft->config), $plan, $draft->revision, $sampleRevision, $stale, DraftMapping::SAMPLE_OK);
     }
 
     public function fields(DraftActor $actor, string $draftId, string $slot): array
@@ -61,21 +83,15 @@ final class ManageDraftSlots implements DraftSlots
         return $this->mapper->fieldsFor($this->report($shape, $draft->config), $type, $slot, self::fieldTypes($draft->config)) ?? throw new SlotNotFound($slot);
     }
 
-    public function rerun(DraftActor $actor, string $draftId, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
+    public function rerun(DraftActor $actor, string $draftId, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
     {
-        return $this->write($actor, $draftId, $lockEpoch, $holdsLock, function (array $config, AutoMapResult $now): array {
-            // With nothing mapped there is no plan to write, and a plan already stored is not replaced by an empty one.
-            if ($now->plan['shape'] !== []) {
-                $config['query_plan'] = $now->plan;
-            }
-
-            return $config;
-        }, true);
+        // Every write recomputes the plan; a re-run is the write that changes nothing else.
+        return $this->write($actor, $draftId, $revision, $lockEpoch, $holdsLock, fn (array $config): array => $config);
     }
 
-    public function confirm(DraftActor $actor, string $draftId, string $slot, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
+    public function confirm(DraftActor $actor, string $draftId, string $slot, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
     {
-        return $this->write($actor, $draftId, $lockEpoch, $holdsLock, function (array $config, AutoMapResult $now) use ($slot): array {
+        return $this->write($actor, $draftId, $revision, $lockEpoch, $holdsLock, function (array $config, AutoMapResult $now) use ($slot): array {
             $row = $now->slot($slot) ?? throw new SlotNotFound($slot);
             $state = SlotState::from($row['state']);
 
@@ -92,12 +108,12 @@ final class ManageDraftSlots implements DraftSlots
         });
     }
 
-    public function override(DraftActor $actor, string $draftId, string $slot, ?string $path, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
+    public function override(DraftActor $actor, string $draftId, string $slot, ?string $path, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
     {
         $roleChange = null;
         $undo = null;
 
-        $checklist = $this->write($actor, $draftId, $lockEpoch, $holdsLock, function (array $config, AutoMapResult $now, FieldRoleReport $report, BlockType $type) use ($slot, $path, &$roleChange, &$undo): array {
+        $checklist = $this->write($actor, $draftId, $revision, $lockEpoch, $holdsLock, function (array $config, AutoMapResult $now, FieldRoleReport $report, BlockType $type) use ($slot, $path, &$roleChange, &$undo): array {
             $definition = null;
 
             foreach ($type->slots as $candidate) {
@@ -150,12 +166,12 @@ final class ManageDraftSlots implements DraftSlots
             return $config;
         });
 
-        return new DraftChecklist($checklist->result, $checklist->revision, null, $roleChange, $undo);
+        return new DraftChecklist($checklist->result, $checklist->revision, $checklist->queryPlan, $roleChange, $undo, $checklist->sampleRevision);
     }
 
-    public function undo(DraftActor $actor, string $draftId, array $undo, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
+    public function undo(DraftActor $actor, string $draftId, array $undo, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
     {
-        return $this->write($actor, $draftId, $lockEpoch, $holdsLock, function (array $config, AutoMapResult $now, FieldRoleReport $report, BlockType $type, array $shape) use ($undo, $actor, $draftId): array {
+        return $this->write($actor, $draftId, $revision, $lockEpoch, $holdsLock, function (array $config, AutoMapResult $now, FieldRoleReport $report, BlockType $type) use ($undo, $actor, $draftId): array {
             $slot = is_string($undo['slot'] ?? null) ? $undo['slot'] : '';
             $mappable = array_filter($type->slots, fn ($candidate): bool => $candidate->key === $slot && ! in_array($slot, [KpiCardSlots::SLOT_ICON, KpiCardSlots::SLOT_FOOTER_ACTION], true));
 
@@ -172,7 +188,7 @@ final class ManageDraftSlots implements DraftSlots
             $current = $map[$slot] ?? null;
 
             if ($applied === null || ! is_array($current) || ($current['path'] ?? null) !== ($applied['path'] ?? null) || ($current['state'] ?? null) !== ($applied['state'] ?? null)) {
-                throw new DraftRevisionConflict($this->drafts->find($actor->workspaceId, $draftId));
+                throw new SlotChanged($this->drafts->find($actor->workspaceId, $draftId));
             }
 
             // A restored path must still be one the slot accepts, as for an override.
@@ -210,9 +226,9 @@ final class ManageDraftSlots implements DraftSlots
                 }
             }
 
-            // The restored pieces are judged like any save of them: stored paths, known roles, known states.
+            // The restored pieces are judged like any write of them: stored paths, known roles, known states.
             try {
-                $checked = DraftConfig::normalise(['slot_map' => $map, 'field_roles' => $roles], $type);
+                $checked = DraftConfig::normaliseMapping(['slot_map' => $map, 'field_roles' => $roles], $type);
             } catch (InvalidDraft $e) {
                 throw new InvalidDraft(array_combine(array_map(fn (string $key): string => (string) preg_replace('/\A(config\.)/', 'undo.', $key), array_keys($e->errors)), array_values($e->errors)), $e->errorCode);
             }
@@ -227,26 +243,115 @@ final class ManageDraftSlots implements DraftSlots
                 }
             }
 
-            // Fill what is not decided from the restored roles, and write the plan from it.
-            $after = $this->map($type, $this->report($shape, $config), $config);
+            // The unconfirmed slots are filled from the restored roles, and the plan is written from them, by the write itself.
+            return $config;
+        });
+    }
 
-            if ($after->plan['shape'] !== []) {
-                $config['query_plan'] = $after->plan;
+    public function setRecordPath(DraftActor $actor, string $draftId, ?string $recordPath, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
+    {
+        return $this->write($actor, $draftId, $revision, $lockEpoch, $holdsLock, function (array $config, AutoMapResult $now, FieldRoleReport $report) use ($recordPath): array {
+            if ($recordPath === null) {
+                unset($config['record_path']);
+
+                return $config;
             }
 
+            if (! DraftConfig::isRecordPath($recordPath)) {
+                throw new InvalidDraft(['record_path' => ['Choose an array of records, such as $.data[*].']], 'blocks.invalid_config');
+            }
+
+            if (! in_array($recordPath, array_column($report->candidates, 'path'), true)) {
+                throw new InvalidDraft(['record_path' => ['That array of records is not in the sample.']], 'blocks.invalid_config');
+            }
+
+            $config['record_path'] = $recordPath;
+
             return $config;
-        }, true);
+        });
+    }
+
+    public function setFieldRole(DraftActor $actor, string $draftId, string $path, ?string $role, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
+    {
+        return $this->write($actor, $draftId, $revision, $lockEpoch, $holdsLock, function (array $config, AutoMapResult $now, FieldRoleReport $report) use ($path, $role): array {
+            $roles = is_array($config['field_roles'] ?? null) ? $config['field_roles'] : [];
+
+            if ($role === null) {
+                // Clearing is always allowed, a stale override included.
+                unset($roles[$path]);
+            } else {
+                $this->checkField($path, $report);
+
+                if (FieldRole::tryFrom($role) === null) {
+                    throw new InvalidDraft(['role' => ['Choose one of: '.implode(', ', array_column(FieldRole::cases(), 'value')).'.']], 'blocks.invalid_config');
+                }
+
+                $roles[$path] = $role;
+            }
+
+            return self::withKey($config, 'field_roles', $roles);
+        });
+    }
+
+    public function setFieldType(DraftActor $actor, string $draftId, string $path, ?string $type, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
+    {
+        return $this->write($actor, $draftId, $revision, $lockEpoch, $holdsLock, function (array $config, AutoMapResult $now, FieldRoleReport $report) use ($path, $type): array {
+            $types = self::fieldTypes($config);
+
+            if ($type === null) {
+                unset($types[$path]);
+            } else {
+                $this->checkField($path, $report);
+
+                if (! in_array($type, DraftConfig::FIELD_TYPES, true)) {
+                    throw new InvalidDraft(['type' => ['Choose one of: '.implode(', ', DraftConfig::FIELD_TYPES).'.']], 'blocks.invalid_config');
+                }
+
+                $types[$path] = $type;
+            }
+
+            return self::withKey($config, 'field_types', $types);
+        });
+    }
+
+    /** A path to set a role or a type for: a stored path of a field of the sample. */
+    private function checkField(string $path, FieldRoleReport $report): void
+    {
+        if (! DraftConfig::isCanonicalPath($path)) {
+            throw new InvalidDraft(['path' => ['Use a stored path such as $.data[*].revenue.']], 'blocks.invalid_config');
+        }
+
+        if (! in_array($path, array_column($report->fields, 'path'), true)) {
+            throw new InvalidDraft(['path' => ['That field is not in the sample.']], 'blocks.invalid_config');
+        }
     }
 
     /**
-     * One writer: the Draft's row lock, the edit-lock claim (423 and nothing written when lost), the sample and Block Type inputs, `$change` (which
-     * may refuse), then `config` and the revision.
+     * @param  array<string, mixed>  $config
+     * @param  array<string, mixed>  $value
+     * @return array<string, mixed> the config with the map set, or without the key when the map is empty
+     */
+    private static function withKey(array $config, string $key, array $value): array
+    {
+        if ($value === []) {
+            unset($config[$key]);
+        } else {
+            $config[$key] = $value;
+        }
+
+        return $config;
+    }
+
+    /**
+     * One writer: the Draft's row lock, the edit-lock claim (423 and nothing written when lost), the Draft's revision (409 and nothing written when
+     * stale), the sample and Block Type inputs, `$change` (which may refuse), then the plan recomputed from the resulting mapping and stamped with the
+     * sample revision (an empty mapping removes the plan and the stamp), then `config` and the revision.
      *
      * @param  \Closure(array<string, mixed>, AutoMapResult, FieldRoleReport, BlockType, array<string, mixed>): array<string, mixed>  $change  the last argument is the sample's shape
      */
-    private function write(DraftActor $actor, string $draftId, int $lockEpoch, ?\Closure $holdsLock, \Closure $change, bool $returnPlan = false): DraftChecklist
+    private function write(DraftActor $actor, string $draftId, int $revision, int $lockEpoch, ?\Closure $holdsLock, \Closure $change): DraftChecklist
     {
-        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $lockEpoch, $holdsLock, $change, $returnPlan): DraftChecklist {
+        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $revision, $lockEpoch, $holdsLock, $change): DraftChecklist {
             $row = Str::isUuid($draftId)
                 ? DB::selectOne("select id, lock_epoch from block_versions where workspace_id = ? and id = ? and state = 'draft' for update", [$actor->workspaceId, strtolower($draftId)])
                 : null;
@@ -261,13 +366,27 @@ final class ManageDraftSlots implements DraftSlots
                 throw new DraftLockLost($draft);
             }
 
-            [$type, $shape] = $this->inputs($actor->workspaceId, $draft);
+            if ($draft->revision !== $revision) {
+                throw new DraftRevisionConflict($draft);
+            }
+
+            [$type, $shape, $sampleRevision] = $this->inputs($actor->workspaceId, $draft);
             $report = $this->report($shape, $draft->config);
             $config = $change($draft->config, $this->map($type, $report, $draft->config), $report, $type, $shape);
 
+            // The plan follows the mapping the write leaves, whatever the write was.
+            $after = $this->map($type, $this->report($shape, $config), $config);
+
+            if ($after->plan['shape'] !== []) {
+                $config['query_plan'] = $after->plan;
+                $config['mapped_sample_revision'] = $sampleRevision;
+            } else {
+                unset($config['query_plan'], $config['mapped_sample_revision']);
+            }
+
             // A write that changes nothing (a confirm of a decision, a re-run with the same plan) leaves the config and the revision alone.
-            if ($config == $draft->config) {
-                return new DraftChecklist($this->map($type, $report, $config), $draft->revision, $returnPlan && is_array($config['query_plan'] ?? null) ? $config['query_plan'] : null);
+            if (self::canonical($config) === self::canonical($draft->config)) {
+                return new DraftChecklist($after, $draft->revision, self::storedPlan($config), null, null, $sampleRevision);
             }
 
             DB::update(
@@ -276,26 +395,66 @@ final class ManageDraftSlots implements DraftSlots
             );
 
             // The checklist as it now reads: a decision just stored shows as one.
-            $after = $this->map($type, $this->report($shape, $config), $config);
-
-            return new DraftChecklist($after, $draft->revision + 1, $returnPlan && $after->plan['shape'] !== [] ? $after->plan : null);
+            return new DraftChecklist($after, $draft->revision + 1, self::storedPlan($config), null, null, $sampleRevision);
         });
     }
 
     /**
-     * @return array{0: BlockType, 1: array<string, mixed>} the Block Type and the sample's structure
+     * @return array{0: BlockType, 1: array<string, mixed>, 2: int} the Block Type, the sample's structure and its revision
      *
      * @throws PreviewRefused
      */
     private function inputs(string $workspaceId, Draft $draft): array
     {
-        $sample = $this->samples->find($workspaceId, $draft->id);
+        $found = $this->shapes->of($workspaceId, $draft->id);
 
-        if ($sample === null || ! $sample->check->valid || $sample->check->shape === null) {
+        if ($found === null) {
             throw new PreviewRefused(PreviewRefused::NO_SAMPLE);
         }
 
-        return [$this->types->resolve($draft->type, $this->contractVersion($workspaceId, $draft->blockId)), $sample->check->shape];
+        return [$this->types->resolve($draft->type, $this->contractVersion($workspaceId, $draft->blockId)), $found[0], $found[1]];
+    }
+
+    /**
+     * The config as one canonical string for a strict comparison: keys sorted at every level (the stored order is not the written one), types kept, so
+     * `1` and `true`, or `"1"` and `1`, differ.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    private static function canonical(array $config): string
+    {
+        $sort = function (mixed $value) use (&$sort): mixed {
+            if (! is_array($value)) {
+                return $value;
+            }
+
+            ksort($value);
+
+            return array_map($sort, $value);
+        };
+
+        return DraftConfig::encode($sort($config));
+    }
+
+    /**
+     * A stored plan is stale unless it was stamped with the sample revision that is live now: an unstamped (hand-saved) plan and an absent sample count as stale.
+     *
+     * @param  array<string, mixed>  $config
+     */
+    public static function planStale(array $config, ?int $sampleRevision): bool
+    {
+        $stamp = is_int($config['mapped_sample_revision'] ?? null) ? $config['mapped_sample_revision'] : null;
+
+        return self::storedPlan($config) !== null && ($stamp === null || $sampleRevision === null || $stamp !== $sampleRevision);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array<string, mixed>|null the stored plan, or null when there is none
+     */
+    private static function storedPlan(array $config): ?array
+    {
+        return is_array($config['query_plan'] ?? null) && $config['query_plan'] !== [] ? $config['query_plan'] : null;
     }
 
     /**

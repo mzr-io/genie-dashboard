@@ -32,7 +32,7 @@ final class DraftRolesController extends Controller
     public function show(Request $request, string $draft): JsonResponse
     {
         try {
-            $report = $this->roles->roles($this->actor($request), $draft);
+            $roles = $this->roles->roles($this->actor($request), $draft);
         } catch (DraftNotFound) {
             abort(404);
         } catch (PreviewRefused $e) {
@@ -41,7 +41,7 @@ final class DraftRolesController extends Controller
             return AdminApiError::json($request, BlocksErrorCode::SampleUnavailable->value, 503, 'The sample cannot be opened right now.');
         }
 
-        return response()->json(['data' => $report->toArray()], 200, ['Cache-Control' => self::NO_STORE]);
+        return response()->json(['data' => $roles->report->toArray() + ['draft_revision' => $roles->draftRevision, 'sample_revision' => $roles->sampleRevision]], 200, ['Cache-Control' => self::NO_STORE]);
     }
 
     private function actor(Request $request): DraftActor

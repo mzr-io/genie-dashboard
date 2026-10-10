@@ -2,8 +2,6 @@
 
 namespace App\Modules\Blocks\Contracts;
 
-use App\Modules\Mapping\Contracts\FieldRoleReport;
-
 /** The field roles and record-path candidates of a Draft's sample (Story 3.11a). Read-only: it writes nothing and takes no lock. */
 interface DraftFieldRoles
 {
@@ -12,5 +10,5 @@ interface DraftFieldRoles
      * @throws PreviewRefused the Draft has no usable sample (`mapping.no_sample`)
      * @throws SampleUnavailable the stored sample cannot be opened
      */
-    public function roles(DraftActor $actor, string $draftId): FieldRoleReport;
+    public function roles(DraftActor $actor, string $draftId): DraftRoles;
 }

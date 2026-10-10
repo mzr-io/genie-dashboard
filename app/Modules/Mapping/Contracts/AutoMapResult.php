@@ -6,7 +6,7 @@ namespace App\Modules\Mapping\Contracts;
  * What {@see AutoMapping::map()} found: one entry per mappable Slot (grouped for the checklist), the counts, the blockers, the numeric fields kept
  * apart as baseline candidates, and the Query Plan v1 built from every mapped Slot.
  *
- * Slot entry: `{slot, label, group, required, value_type, state, confidence, reason, suggestion, path, display}`; `confidence` is `high`, `medium`, `low`
+ * Slot entry: `{slot, label, group, required, value_type, state, confidence, reason, suggestion, path, display, example}`; `example` is the field's bounded example (Story 3.13c), null when there is none; `confidence` is `high`, `medium`, `low`
  * or null, `suggestion` is null or `{path, display}`. Blocker: `{slot, reason}` with reason `required_missing`, `unconfirmed_low`, `type_mismatch` or `api_changed` (an optional slot whose field left the sample).
  */
 final readonly class AutoMapResult

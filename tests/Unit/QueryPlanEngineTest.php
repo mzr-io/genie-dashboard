@@ -89,6 +89,19 @@ it('fills slots from single scalars and keeps numbers as the digits received', f
         ->and($result->payload['comparison']['value'])->toBe('-2.50');
 });
 
+it('returns what each slot read before shaping: decimal strings, text, booleans and null', function () {
+    $result = qpRun(qpPlan(
+        ['rev' => '$.data.revenue', 'name' => '$.data.label', 'flag' => '$.data.flag', 'gone' => '$.data.absent'],
+        ['headline_value' => 'rev', 'kpi_label' => 'name', 'status_badge' => 'flag', 'comparison' => 'gone'],
+    ));
+
+    expect($result->slots['headline_value'])->toBe('12345678901234567890.10')
+        ->and($result->slots['kpi_label'])->toBe('Net revenue')
+        ->and($result->slots['status_badge'])->toBeNull()
+        ->and($result->slots['comparison'])->toBeNull()
+        ->and($result->slots)->toHaveKey('title');
+});
+
 it('makes a slot unavailable with its reason, passes null (never 0) and still renders the others', function () {
     $result = qpRun(qpPlan(
         ['gone' => '$.data.absent', 'many' => '$.data.rows[*].v', 'obj' => '$.data.nested', 'list' => '$.data.rows', 'null' => '$.data.nothing', 'flag' => '$.data.flag', 'word' => '$.data.word', 'name' => '$.data.label'],

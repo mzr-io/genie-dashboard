@@ -32,8 +32,8 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->statefulApi();
 
-        // An override's `path: ""` must reach validation as an empty string (a 422); only an explicit null clears the slot (Story 3.12a).
-        ConvertEmptyStringsToNull::skipWhen(fn ($request): bool => $request->isMethod('PUT') && $request->is('api/v1/admin/blocks/drafts/*/mapping/slots/*'));
+        // A mapping write's empty string (an override's `path`, a record path, a role, a type) must reach validation as one (a 422); only an explicit null clears (Story 3.12a, 3.13c).
+        ConvertEmptyStringsToNull::skipWhen(fn ($request): bool => $request->isMethod('PUT') && $request->is('api/v1/admin/blocks/drafts/*/mapping/*'));
 
         // `admin` / `admin:{permission}`: the Admin area and permission gate (Story 1.19).
         $middleware->alias(['admin' => RequireAdminAccess::class]);

@@ -4,10 +4,9 @@ namespace App\Modules\Blocks\Application;
 
 use App\Modules\Blocks\Contracts\DraftActor;
 use App\Modules\Blocks\Contracts\DraftFieldRoles;
+use App\Modules\Blocks\Contracts\DraftRoles;
 use App\Modules\Blocks\Contracts\Drafts;
-use App\Modules\Blocks\Contracts\DraftSamples;
 use App\Modules\Blocks\Contracts\PreviewRefused;
-use App\Modules\Mapping\Contracts\FieldRoleReport;
 use App\Modules\Mapping\Contracts\FieldRoles;
 
 /**
@@ -18,22 +17,24 @@ final class ReadDraftFieldRoles implements DraftFieldRoles
 {
     public function __construct(
         private readonly Drafts $drafts,
-        private readonly DraftSamples $samples,
+        private readonly SampleShapes $shapes,
         private readonly FieldRoles $roles,
     ) {}
 
-    public function roles(DraftActor $actor, string $draftId): FieldRoleReport
+    public function roles(DraftActor $actor, string $draftId): DraftRoles
     {
         $draft = $this->drafts->find($actor->workspaceId, $draftId);
-        $sample = $this->samples->find($actor->workspaceId, $draft->id);
+        $found = $this->shapes->of($actor->workspaceId, $draft->id);
 
-        if ($sample === null || ! $sample->check->valid || $sample->check->shape === null) {
+        if ($found === null) {
             throw new PreviewRefused(PreviewRefused::NO_SAMPLE);
         }
+
+        [$shape, $sampleRevision] = $found;
 
         $path = $draft->config['record_path'] ?? null;
         $overrides = is_array($draft->config['field_roles'] ?? null) ? array_filter($draft->config['field_roles'], is_string(...)) : [];
 
-        return $this->roles->infer($sample->check->shape, is_string($path) ? $path : null, $overrides);
+        return new DraftRoles($this->roles->infer($shape, is_string($path) ? $path : null, $overrides), $draft->revision, $sampleRevision);
     }
 }

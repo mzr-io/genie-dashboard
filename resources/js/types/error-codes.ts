@@ -17,6 +17,7 @@ export enum ErrorCode {
     BlocksSampleInvalid = 'blocks.sample_invalid',
     BlocksSampleUnavailable = 'blocks.sample_unavailable',
     BlocksSecretValuesRefused = 'blocks.secret_values_refused',
+    BlocksSlotChanged = 'blocks.slot_changed',
     ConnectorAuthFailed = 'connector.auth_failed',
     ConnectorLimitExceeded = 'connector.limit_exceeded',
     ConnectorNotJson = 'connector.not_json',

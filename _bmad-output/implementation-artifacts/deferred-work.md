@@ -375,3 +375,11 @@
 - source_spec: `spec-3-13a-override-pick-field-and-fix-mismatches.md`
   summary: Tighten api-changed matching (short keys, fields already used), keep a role override while another slot still maps the field on undo, bound and prune `field_types`, and teach publish readiness the `api_changed` blocker.
   evidence: Review findings; no UI or publish consumer exists yet.
+
+- source_spec: `spec-3-13c-harden-the-mapping-api-for-the-map-data-ui.md`
+  summary: Cross-story LATER items: one `SlotFit` shared by AutoMapper, the executor and 3.18 validation; machine `reason_code` beside every prose reason; a `ResolvesDraftActor` trait and shared error responses; throttles on the read routes; consistent empty-map encoding; shared `SamplePath::isStored` helpers.
+  evidence: Cross-story review of 3.9-3.13a; none blocks the UI.
+
+- source_spec: `spec-3-13c-harden-the-mapping-api-for-the-map-data-ui.md`
+  summary: Derive the ETag before computing the checklist and include the contract version; read draft, sample and contract in one snapshot; re-check limits on a shape-cache hit; prune orphaned overrides after a record-path change.
+  evidence: Review findings; none blocks the UI.

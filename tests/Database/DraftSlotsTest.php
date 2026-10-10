@@ -59,24 +59,52 @@ function dslPaste(string $id, string $text)
     return test()->putJson(BD_URL."/{$id}/sample", ['text' => $text, 'contains_personal_data' => true, 'lock_epoch' => 1], BD_HEADERS)->assertOk();
 }
 
-function dslGet(string $id)
+function dslGet(string $id, array $headers = [])
 {
-    return test()->getJson(BD_URL."/{$id}/mapping", BD_HEADERS);
+    return test()->getJson(BD_URL."/{$id}/mapping", $headers + BD_HEADERS);
+}
+
+/** The Draft's stored revision: every mapping write carries it (Story 3.13c). */
+function dslRev(): int
+{
+    return (int) bdRows()[0]['revision'];
 }
 
 function dslRerun(string $id, array $extra = [])
 {
-    return test()->postJson(BD_URL."/{$id}/mapping/auto-map", $extra + ['lock_epoch' => 1], BD_HEADERS);
+    return test()->postJson(BD_URL."/{$id}/mapping/auto-map", $extra + ['draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS);
 }
 
 function dslConfirm(string $id, string $slot, array $extra = [])
 {
-    return test()->postJson(BD_URL."/{$id}/mapping/slots/{$slot}/confirm", $extra + ['lock_epoch' => 1], BD_HEADERS);
+    return test()->postJson(BD_URL."/{$id}/mapping/slots/{$slot}/confirm", $extra + ['draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS);
 }
 
 function dslOverride(string $id, string $slot, ?string $path, array $extra = [])
 {
-    return test()->putJson(BD_URL."/{$id}/mapping/slots/{$slot}", $extra + ['path' => $path, 'lock_epoch' => 1], BD_HEADERS);
+    return test()->putJson(BD_URL."/{$id}/mapping/slots/{$slot}", $extra + ['path' => $path, 'draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS);
+}
+
+/** The mapping-scoped writes: `record-path`, `field-roles` and `field-types`. */
+function dslWrite(string $id, string $what, array $body, array $extra = [])
+{
+    return test()->putJson(BD_URL."/{$id}/mapping/{$what}", $body + $extra + ['draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS);
+}
+
+function dslRole(string $id, string $path, ?string $role)
+{
+    return dslWrite($id, 'field-roles', ['path' => $path, 'role' => $role])->assertOk();
+}
+
+function dslType(string $id, string $path, ?string $type)
+{
+    return dslWrite($id, 'field-types', ['path' => $path, 'type' => $type])->assertOk();
+}
+
+/** The checklist of the one read. */
+function dslList(string $id): array
+{
+    return dslGet($id)->assertOk()->json('data.checklist');
 }
 
 /** The checklist row of a slot. */
@@ -102,8 +130,8 @@ it('reads the checklist, read-only and repeatable, with groups, counts, blockers
     $id = dslDraft();
     $before = bdRows();
 
-    $first = dslGet($id)->assertOk()->assertHeader('Cache-Control', 'no-store, private')->json('data');
-    $second = dslGet($id)->assertOk()->json('data');
+    $first = dslGet($id)->assertOk()->assertHeader('Cache-Control', 'no-store, private')->json('data.checklist');
+    $second = dslList($id);
 
     expect($second)->toBe($first)
         ->and(array_column($first['groups'], 'group'))->toBe(['HEADER', 'KPI', 'META'])
@@ -175,13 +203,13 @@ it('refuses an override of a field inside the rows', function () {
     $id = dslDraft('{"total":1,"data":[{"v":1},{"v":2}]}');
 
     dslOverride($id, 'headline_value', '$.data[*].v')->assertStatus(422)->assertJsonStructure(['errors' => ['slot.headline_value']]);
-    expect(dslRow(dslGet($id)->json('data'), 'headline_value')['state'])->toBe('auto_high');
+    expect(dslRow(dslGet($id)->json('data.checklist'), 'headline_value')['state'])->toBe('auto_high');
 });
 
 it('is type_mismatch when the numbers are only in the rows', function () {
     $id = dslDraft('{"data":[{"revenue":1},{"revenue":2}]}');
 
-    $data = dslGet($id)->assertOk()->json('data');
+    $data = dslList($id);
     expect(dslRow($data, 'headline_value')['state'])->toBe('type_mismatch')
         ->and(array_column($data['blockers'], 'reason', 'slot')['headline_value'])->toBe('type_mismatch');
 });
@@ -199,32 +227,31 @@ it('leaves a confirmed and an overridden slot untouched on re-run, and a stale c
         ->and(dslRow($data, 'kpi_label')['state'])->toBe('overridden');
 
     dslPaste($id, '{"revenue":5,"region":"EU"}');
-    $stale = dslGet($id)->assertOk()->json('data');
+    $stale = dslList($id);
     expect(dslRow($stale, 'headline_value'))->toMatchArray(['state' => 'required_missing', 'path' => '$.total'])
         ->and(dslRow($stale, 'kpi_label')['state'])->toBe('overridden')
         ->and(dslConfig()['slot_map'])->toBe($map);
 });
 
-it('keeps slot_map over a save that omits it, clears it with null, and refuses a bad entry with the config key', function () {
+it('keeps slot_map over a save that omits it, and refuses a save that carries it, naming the mapping endpoints', function () {
     $id = dslDraft();
     dslConfirm($id, 'headline_value')->assertOk();
     $map = dslConfig()['slot_map'];
 
-    bdSave($id, 2, 1, ['config' => ['description' => 'later']])->assertOk();
+    bdSave($id, dslRev(), 1, ['config' => ['description' => 'later']])->assertOk();
     expect(dslConfig()['slot_map'])->toBe($map);
 
-    $bad = bdSave($id, 3, 1, ['config' => ['slot_map' => ['headline_value' => ['path' => 'a..b', 'state' => 'confirmed'], 'bogus' => ['path' => null, 'state' => 'overridden'], 'kpi_label' => ['path' => '$.x', 'state' => 'auto_high']]]])
-        ->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config');
-    expect(array_keys($bad->json('errors')))->toBe(['config.slot_map.headline_value', 'config.slot_map.bogus', 'config.slot_map.kpi_label']);
-
-    bdSave($id, 3, 1, ['config' => ['slot_map' => null]])->assertOk();
-    expect(dslConfig()['slot_map'])->toBe([]);
+    $before = bdRows();
+    $bad = bdSave($id, dslRev(), 1, ['config' => ['slot_map' => ['headline_value' => ['path' => 'a..b', 'state' => 'confirmed']]]])->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config');
+    expect(array_keys($bad->json('errors')))->toBe(['config.slot_map'])->and($bad->json('errors')['config.slot_map'][0])->toContain('mapping endpoints');
+    bdSave($id, dslRev(), 1, ['config' => ['slot_map' => null]])->assertStatus(422);
+    expect(bdRows())->toBe($before);
 });
 
-it('is 422 mapping.no_sample without a sample and 404 for a missing draft', function () {
+it('reads a draft without a sample as 200 expired, writes are 422 mapping.no_sample, and a missing draft is 404', function () {
     $id = dslDraft(null);
 
-    dslGet($id)->assertStatus(422)->assertJsonPath('error.code', 'mapping.no_sample');
+    dslGet($id)->assertOk()->assertJsonPath('data.sample', 'expired')->assertJsonPath('data.checklist', null);
     dslRerun($id)->assertStatus(422)->assertJsonPath('error.code', 'mapping.no_sample');
     dslGet('018f0000-0000-7000-8000-000000000000')->assertNotFound();
     dslRerun('018f0000-0000-7000-8000-000000000000')->assertNotFound();
@@ -315,18 +342,21 @@ it('refuses an empty path on override with a 422; only an explicit null clears t
     expect(dslConfig()['slot_map']['kpi_label'])->toBe(['path' => null, 'state' => 'overridden']);
 });
 
-it('writes no query plan when nothing is mapped, and keeps one already stored', function () {
+it('removes the stored plan and its stamp when nothing is mapped; a re-run with the same mapping changes nothing', function () {
     $id = dslDraft('{"region":"EU"}');
     $revision = bdRows()[0]['revision'];
 
     $data = dslRerun($id)->assertOk()->json('data');
-    expect($data)->not->toHaveKey('query_plan')
-        ->and(dslConfig())->not->toHaveKey('query_plan')
+    expect($data['query_plan'])->toBeNull()
+        ->and(dslConfig())->not->toHaveKey('query_plan')->and(dslConfig())->not->toHaveKey('mapped_sample_revision')
         ->and(bdRows()[0]['revision'])->toBe($revision);
 
-    bdSave($id, $revision, 1, ['config' => ['query_plan' => ['v' => 1, 'extract' => ['fields' => ['r' => '$.region']], 'shape' => ['kpi_label' => 'r']]]])->assertOk();
-    dslRerun($id)->assertOk();
+    // A plan saved by hand (a generic save still accepts one) is replaced by the mapping's on the next write: here, removed.
+    bdSave($id, dslRev(), 1, ['config' => ['query_plan' => ['v' => 1, 'extract' => ['fields' => ['r' => '$.region']], 'shape' => ['kpi_label' => 'r']]]])->assertOk();
     expect(dslConfig()['query_plan']['shape'])->toEqual(['kpi_label' => 'r']);
+
+    $after = dslRerun($id)->assertOk()->json('data');
+    expect($after['query_plan'])->toBeNull()->and(dslConfig())->not->toHaveKey('query_plan');
 });
 
 it('leaves an already decided slot, and a re-run that changes nothing, without a write or a revision bump', function () {
@@ -346,7 +376,7 @@ it('leaves an already decided slot, and a re-run that changes nothing, without a
 it('clears the unconfirmed_low blocker when the auto_low slot is confirmed', function () {
     $id = dslDraft('{"total":10,"revenue":12,"label":"x"}');
 
-    $first = dslGet($id)->assertOk()->json('data');
+    $first = dslList($id);
     expect(dslRow($first, 'headline_value')['state'])->toBe('auto_low')
         ->and($first['blockers'])->toContain(['slot' => 'headline_value', 'reason' => 'unconfirmed_low']);
 
@@ -363,12 +393,7 @@ function dslFields(string $id, string $slot)
 
 function dslUndo(string $id, array|string $undo, array $extra = [])
 {
-    return test()->postJson(BD_URL."/{$id}/mapping/undo", $extra + ['undo' => $undo, 'lock_epoch' => 1], BD_HEADERS);
-}
-
-function dslSaveConfig(string $id, array $config)
-{
-    return bdSave($id, (int) bdRows()[0]['revision'], 1, ['config' => $config])->assertOk();
+    return test()->postJson(BD_URL."/{$id}/mapping/undo", $extra + ['undo' => $undo, 'draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS);
 }
 
 it('lists the field picker of a slot, read-only, compatible first with reasons, and 404s an unknown or config-only slot', function () {
@@ -407,7 +432,7 @@ it('lets a member who does not hold the lock read the picker', function () {
 
 it('overrides a dimension to the headline: the role becomes measure, role_change and undo come back, and undo restores the config', function () {
     $id = dslDraft('{"total":10,"revenue":5}');
-    dslSaveConfig($id, ['field_roles' => ['$.revenue' => 'dimension']]);
+    dslRole($id, '$.revenue', 'dimension');
     dslConfirm($id, 'headline_value')->assertOk();
     $before = dslConfig();
     $revision = bdRows()[0]['revision'];
@@ -445,7 +470,7 @@ it('does not change a role that already fits, and undoes an override that had no
 
     dslUndo($id, $data['undo'])->assertOk();
     expect(dslConfig()['slot_map'])->not->toHaveKey('headline_value')->and(dslConfig()['slot_map'])->toHaveKey('kpi_label');
-    expect(array_diff_key(dslConfig(), ['slot_map' => 1, 'query_plan' => 1]))->toBe(array_diff_key($before, ['slot_map' => 1, 'query_plan' => 1]));
+    expect(array_diff_key(dslConfig(), ['slot_map' => 1, 'query_plan' => 1, 'mapped_sample_revision' => 1]))->toBe(array_diff_key($before, ['slot_map' => 1, 'query_plan' => 1, 'mapped_sample_revision' => 1]));
 });
 
 it('re-fills unconfirmed slots on undo and leaves decided slots as they are', function () {
@@ -482,7 +507,7 @@ it('refuses a malformed or unknown undo with a 422 and writes nothing', function
 
 it('refuses a stale undo with a 409 and a forged role path or restored path with a 422, writing nothing', function () {
     $id = dslDraft('{"total":10,"revenue":5,"region":"EU"}');
-    dslSaveConfig($id, ['field_roles' => ['$.revenue' => 'dimension']]);
+    dslRole($id, '$.revenue', 'dimension');
     $over = dslOverride($id, 'headline_value', '$.revenue')->assertOk()->json('data.undo');
     $before = bdRows();
 
@@ -496,7 +521,7 @@ it('refuses a stale undo with a 409 and a forged role path or restored path with
     // A later decision on the slot makes the undo stale.
     dslOverride($id, 'headline_value', '$.total')->assertOk();
     $later = bdRows();
-    dslUndo($id, $over)->assertStatus(409)->assertJsonPath('error.code', 'blocks.revision_conflict');
+    dslUndo($id, $over)->assertStatus(409)->assertJsonPath('error.code', 'blocks.slot_changed')->assertJsonStructure(['current' => ['data' => ['revision']]]);
     expect(bdRows())->toBe($later);
 
     // So does an undo that was already used.
@@ -522,7 +547,7 @@ it('undoes the override of a cleared slot: the cleared entry comes back exactly'
 
 it('removes the first field_roles entry on undo, leaving no field_roles key', function () {
     $id = dslDraft('{"total":10,"revenue":"5"}');
-    dslSaveConfig($id, ['field_types' => ['$.revenue' => 'number']]);
+    dslType($id, '$.revenue', 'number');
     expect(dslConfig())->not->toHaveKey('field_roles');
 
     $data = dslOverride($id, 'headline_value', '$.revenue')->assertOk()->json('data');
@@ -588,7 +613,8 @@ it('treats a decimal string as a number: it fits the headline and the preview sh
 
     dslOverride($id, 'headline_value', '$.total')->assertStatus(422);
 
-    dslSaveConfig($id, ['field_types' => ['$.total' => 'number', '$.currency' => 'number']]);
+    dslType($id, '$.total', 'number');
+    dslType($id, '$.currency', 'number');
     expect(dslConfig()['field_types'])->toBe(['$.total' => 'number', '$.currency' => 'number']);
 
     $data = dslOverride($id, 'headline_value', '$.total')->assertOk()->json('data');
@@ -603,24 +629,28 @@ it('treats a decimal string as a number: it fits the headline and the preview sh
     $res = dslOverride($id, 'headline_value', '$.currency')->assertStatus(422);
     expect($res->json('errors')['slot.headline_value'][0])->toBe('currency is number. Headline value needs a number.');
 
-    dslSaveConfig($id, ['slot_map' => ['headline_value' => ['path' => '$.currency', 'state' => 'overridden']]]);
-    $row = dslRow(dslGet($id)->json('data'), 'headline_value');
-    expect($row)->toMatchArray(['state' => 'type_mismatch', 'path' => '$.currency', 'reason' => 'currency is number. Headline value needs a number.']);
+    // A type changed after the decision turns the decided slot into a mismatch: it keeps its field.
+    dslType($id, '$.total', 'boolean');
+    $row = dslRow(dslList($id), 'headline_value');
+    expect($row)->toMatchArray(['state' => 'type_mismatch', 'path' => '$.total', 'reason' => 'total is boolean. Headline value needs a number.']);
 });
 
-it('refuses a bad field_types save, keeps it over a save that omits it, and clears it with null', function () {
+it('writes field types through the endpoint: refuses a bad one, keeps them over a save that omits them, refuses a generic save, and clears with null', function () {
     $id = dslDraft();
-    dslSaveConfig($id, ['field_types' => ['$.total' => 'text']]);
+    dslType($id, '$.total', 'text');
+    $before = bdRows();
 
-    $bad = bdSave($id, (int) bdRows()[0]['revision'], 1, ['config' => ['field_types' => ['$.total' => 'money', 'a..b' => 'number', '$.region' => null]]])
-        ->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config');
-    expect(array_keys($bad->json('errors')))->toBe(['config.field_types.$.total', 'config.field_types.a..b', 'config.field_types.$.region']);
+    dslWrite($id, 'field-types', ['path' => '$.total', 'type' => 'money'])->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config')->assertJsonStructure(['errors' => ['type']]);
+    dslWrite($id, 'field-types', ['path' => 'a..b', 'type' => 'number'])->assertStatus(422)->assertJsonStructure(['errors' => ['path']]);
+    dslWrite($id, 'field-types', ['path' => '$.nope', 'type' => 'number'])->assertStatus(422)->assertJsonStructure(['errors' => ['path']]);
+    bdSave($id, dslRev(), 1, ['config' => ['field_types' => ['$.total' => 'number']]])->assertStatus(422)->assertJsonStructure(['errors' => ['config.field_types']]);
+    expect(bdRows())->toBe($before);
 
-    dslSaveConfig($id, ['description' => 'later']);
+    bdSave($id, dslRev(), 1, ['config' => ['description' => 'later']])->assertOk();
     expect(dslConfig()['field_types'])->toBe(['$.total' => 'text']);
 
-    dslSaveConfig($id, ['field_types' => null]);
-    expect(dslConfig()['field_types'])->toBe([]);
+    dslType($id, '$.total', null);
+    expect(dslConfig())->not->toHaveKey('field_types');
 });
 
 it('reports api_changed with a match: the slot reads required_missing, the blocker is listed and nothing is applied', function () {
@@ -629,7 +659,7 @@ it('reports api_changed with a match: the slot reads required_missing, the block
     dslPaste($id, '{"grand_total":10,"region":"EU"}');
     $before = dslConfig();
 
-    $data = dslGet($id)->assertOk()->json('data');
+    $data = dslList($id);
 
     expect(dslRow($data, 'headline_value'))->toMatchArray(['state' => 'required_missing', 'path' => '$.total'])
         ->and($data['api_changed'])->toBe([['slot' => 'headline_value', 'path' => '$.total', 'display' => 'total', 'state' => 'required_missing', 'match' => ['path' => '$.grand_total', 'display' => 'grand_total']]])
@@ -646,9 +676,280 @@ it('reports an optional slot that lost its field as optional_empty and an api_ch
     dslOverride($id, 'status_badge', '$.status')->assertOk();
     dslPaste($id, '{"total":10,"month":"x"}');
 
-    $data = dslGet($id)->assertOk()->json('data');
+    $data = dslList($id);
 
     expect(dslRow($data, 'status_badge')['state'])->toBe('optional_empty')
         ->and($data['api_changed'][0])->toMatchArray(['slot' => 'status_badge', 'state' => 'optional_empty', 'match' => null])
         ->and($data['blockers'])->toContain(['slot' => 'status_badge', 'reason' => 'api_changed']);
+});
+
+// Story 3.13c: the plan follows every write, one consistent read, revisions on every write, per-slot preview values.
+function dslPreview(string $id)
+{
+    return test()->postJson(BD_URL."/{$id}/preview", [], BD_HEADERS);
+}
+
+it('recomputes the plan on every write, so a following preview reflects it without a re-run, and the revisions in the response equal the stored ones', function () {
+    $id = dslDraft();
+    $stamp = fn () => dslConfig()['mapped_sample_revision'] ?? null;
+
+    // A write that is not a re-run: a confirm of the auto slot writes the plan too.
+    $confirmed = dslConfirm($id, 'headline_value')->assertOk()->json('data');
+    expect($confirmed['query_plan']['extract']['fields']['headline_value'])->toBe('$.total')
+        ->and($confirmed['draft_revision'])->toBe(dslRev())->and($confirmed['sample_revision'])->toBe(1)
+        ->and(dslConfig()['query_plan'])->toEqual($confirmed['query_plan'])->and($stamp())->toBe(1);
+    expect(dslPreview($id)->assertOk()->json('data.payload.headline.value'))->toBe('284680.50');
+
+    // Override, then preview: the new plan is used.
+    $over = dslOverride($id, 'headline_value', '$.previous_total')->assertOk()->json('data');
+    expect($over['query_plan']['extract']['fields']['headline_value'])->toBe('$.previous_total')
+        ->and($over['draft_revision'])->toBe(dslRev());
+    expect(dslPreview($id)->assertOk()->json('data.payload.headline.value'))->toBe('250000');
+
+    // Undo, and the three new writes, carry the same fields.
+    $undone = dslUndo($id, $over['undo'])->assertOk()->json('data');
+    expect($undone['draft_revision'])->toBe(dslRev())->and($undone['sample_revision'])->toBe(1)->and($undone['query_plan'])->toEqual(dslConfig()['query_plan']);
+
+    foreach ([['field-roles', ['path' => '$.region', 'role' => 'filter']], ['field-types', ['path' => '$.region', 'type' => 'text']]] as [$what, $body]) {
+        $res = dslWrite($id, $what, $body)->assertOk()->json('data');
+        expect($res['draft_revision'])->toBe(dslRev())->and($res['query_plan'])->toEqual(dslConfig()['query_plan'])->and($res['sample_revision'])->toBe(1);
+    }
+});
+
+it('removes the plan and its stamp when the last mapped slot is cleared, and the preview is 422 mapping.no_plan', function () {
+    $id = dslDraft('{"total":10}');
+    dslRerun($id)->assertOk();
+    expect(dslConfig())->toHaveKey('query_plan');
+
+    $data = dslOverride($id, 'headline_value', null)->assertOk()->json('data');
+
+    expect($data['query_plan'])->toBeNull()
+        ->and(dslConfig())->not->toHaveKey('query_plan')->and(dslConfig())->not->toHaveKey('mapped_sample_revision')
+        ->and(dslConfig()['slot_map']['headline_value'])->toBe(['path' => null, 'state' => 'overridden']);
+    dslPreview($id)->assertStatus(422)->assertJsonPath('error.code', 'mapping.no_plan');
+});
+
+it('requires draft_revision on every mapping write: a stale one is a 409 blocks.revision_conflict with current and writes nothing', function () {
+    $id = dslDraft();
+    dslRerun($id)->assertOk();
+    $over = dslOverride($id, 'kpi_label', '$.region')->assertOk()->json('data.undo');
+    $before = bdRows();
+    $stale = ['draft_revision' => 1];
+
+    $calls = [
+        fn () => dslRerun($id, $stale),
+        fn () => dslConfirm($id, 'headline_value', $stale),
+        fn () => dslOverride($id, 'kpi_label', '$.month', $stale),
+        fn () => dslUndo($id, $over, $stale),
+        fn () => dslWrite($id, 'record-path', ['record_path' => null], $stale),
+        fn () => dslWrite($id, 'field-roles', ['path' => '$.region', 'role' => 'filter'], $stale),
+        fn () => dslWrite($id, 'field-types', ['path' => '$.region', 'type' => 'text'], $stale),
+    ];
+
+    foreach ($calls as $call) {
+        $res = $call()->assertStatus(409)->assertJsonPath('error.code', 'blocks.revision_conflict');
+        expect($res->json('current.data.revision'))->toBe((int) $before[0]['revision']);
+    }
+
+    expect(bdRows())->toBe($before);
+
+    // Missing is a validation error, not a silent pass.
+    test()->postJson(BD_URL."/{$id}/mapping/auto-map", ['lock_epoch' => 1], BD_HEADERS)->assertStatus(422)->assertJsonStructure(['errors' => ['draft_revision']]);
+    expect(bdRows())->toBe($before);
+});
+
+it('reads the mapping in one pass with an ETag of both revisions and a 304 for a matching If-None-Match', function () {
+    $id = dslDraft();
+    dslRerun($id)->assertOk();
+    dslOverride($id, 'kpi_label', '$.region')->assertOk();
+
+    $res = dslGet($id)->assertOk()->assertHeader('Cache-Control', 'no-store, private');
+    $data = $res->json('data');
+    $etag = '"d'.dslRev().'-s1"';
+
+    expect($res->headers->get('ETag'))->toBe($etag)
+        ->and(array_keys($data))->toEqualCanonicalizing(['checklist', 'roles', 'slot_map', 'query_plan', 'draft_revision', 'sample_revision', 'plan_stale', 'sample'])
+        ->and($data['sample'])->toBe('ok')->and($data['plan_stale'])->toBeFalse()
+        ->and($data['draft_revision'])->toBe(dslRev())->and($data['sample_revision'])->toBe(1)
+        ->and($data['query_plan'])->toEqual(dslConfig()['query_plan'])
+        ->and($data['roles']['record_path'])->toBeNull()
+        ->and(array_column($data['roles']['fields'], 'path'))->toContain('$.total')
+        ->and($data['slot_map']['kpi_label'])->toBe(['path' => '$.region', 'state' => 'overridden']);
+
+    $same = dslGet($id, ['If-None-Match' => $etag])->assertStatus(304);
+    expect($same->getContent())->toBe('')->and($same->headers->get('ETag'))->toBe($etag);
+    dslGet($id, ['If-None-Match' => 'W/'.$etag])->assertStatus(304);
+    dslGet($id, ['If-None-Match' => '*'])->assertStatus(304);
+    dslGet($id, ['If-None-Match' => '"x", '.$etag])->assertStatus(304);
+    dslGet($id, ['If-None-Match' => '"d1-s1"'])->assertOk();
+
+    // A write or a new sample changes the validator.
+    dslConfirm($id, 'headline_value')->assertOk();
+    dslGet($id, ['If-None-Match' => $etag])->assertOk();
+});
+
+it('marks the plan stale when the sample was replaced, and a re-run builds it again for the new sample', function () {
+    $id = dslDraft();
+    dslRerun($id)->assertOk();
+    expect(dslGet($id)->json('data.plan_stale'))->toBeFalse();
+
+    dslPaste($id, '{"total":12,"region":"EU"}');
+    $data = dslGet($id)->assertOk()->json('data');
+    expect($data['plan_stale'])->toBeTrue()->and($data['sample_revision'])->toBe(2)->and($data['query_plan'])->not->toBeNull();
+
+    dslRerun($id)->assertOk();
+    $after = dslGet($id)->json('data');
+    expect($after['plan_stale'])->toBeFalse()->and(dslConfig()['mapped_sample_revision'])->toBe(2);
+});
+
+it('reads an expired sample as 200 with sample expired, the stored decisions and plan, and no computed checklist; writes are 422 mapping.no_sample', function () {
+    $id = dslDraft();
+    dslConfirm($id, 'headline_value')->assertOk();
+    dslOverride($id, 'kpi_label', '$.region')->assertOk();
+    $stored = dslConfig();
+    Cluster::superuser()->exec("UPDATE draft_samples SET expires_at = now() - interval '1 minute'");
+
+    $res = dslGet($id)->assertOk();
+    $data = $res->json('data');
+
+    expect($data['sample'])->toBe('expired')->and($data['checklist'])->toBeNull()->and($data['roles'])->toBeNull()->and($data['sample_revision'])->toBeNull()
+        ->and($data['slot_map'])->toBe($stored['slot_map'])->and($data['query_plan'])->toEqual($stored['query_plan'])
+        ->and($data['draft_revision'])->toBe(dslRev())->and($data['plan_stale'])->toBeTrue()
+        ->and($res->headers->get('ETag'))->toBe('"d'.dslRev().'-s0"');
+
+    dslRerun($id)->assertStatus(422)->assertJsonPath('error.code', 'mapping.no_sample');
+    dslWrite($id, 'field-roles', ['path' => '$.region', 'role' => 'filter'])->assertStatus(422)->assertJsonPath('error.code', 'mapping.no_sample');
+    expect(dslConfig())->toBe($stored);
+});
+
+it('gives the preview a value per mapped slot, the draft revision, and the checklist an example per row', function () {
+    $id = dslDraft();
+    dslRerun($id)->assertOk();
+
+    $preview = dslPreview($id)->assertOk()->json('data');
+
+    expect($preview['draft_revision'])->toBe(dslRev())->and($preview['sample_revision'])->toBe(1)->and($preview['plan_stale'])->toBeFalse()
+        ->and($preview['slots']['headline_value'])->toBe(['value' => '284680.50', 'path' => '$.total'])
+        ->and($preview['slots']['status_badge'])->toBe(['value' => DSL_CANARY, 'path' => '$.status'])
+        ->and($preview['slots'])->not->toHaveKey('subtitle');
+
+    $rows = dslList($id);
+    expect(dslRow($rows, 'headline_value')['example'])->toBe('284680.50')
+        ->and(dslRow($rows, 'status_badge')['example'])->toBe(DSL_CANARY)
+        ->and(dslRow($rows, 'subtitle')['example'])->toBeNull();
+
+    // A slot the sample cannot fill says why, with a null value.
+    dslOverride($id, 'kpi_label', '$.region')->assertOk();
+    dslPaste($id, '{"total":1}');
+    $goneData = dslPreview($id)->assertOk()->json('data');
+    $gone = $goneData['slots'];
+    expect($goneData['plan_stale'])->toBeTrue()->and($gone['kpi_label'])->toBe(['value' => null, 'path' => '$.region', 'unavailable' => 'missing']);
+});
+
+it('sets and clears the record path through its endpoint, re-maps, and keeps a decided slot whose path vanished as api_changed', function () {
+    $id = dslDraft('{"total":10,"data":[{"v":1},{"v":2}],"meta":{"links":[{"h":"x"}]}}');
+    dslOverride($id, 'headline_value', '$.total')->assertOk();
+    $before = bdRows();
+
+    foreach (['$.nowhere[*]', '$.data', 'a..b'] as $bad) {
+        dslWrite($id, 'record-path', ['record_path' => $bad])->assertStatus(422);
+    }
+    expect(bdRows())->toBe($before);
+
+    $data = dslWrite($id, 'record-path', ['record_path' => '$.meta.links[*]'])->assertOk()->json('data');
+    expect(dslConfig()['record_path'])->toBe('$.meta.links[*]')->and($data['draft_revision'])->toBe(dslRev())
+        ->and(dslGet($id)->json('data.roles.record_path'))->toBe('$.meta.links[*]');
+
+    // The same value again is a no-op: no write, no revision.
+    $revision = dslRev();
+    dslWrite($id, 'record-path', ['record_path' => '$.meta.links[*]'])->assertOk();
+    expect(dslRev())->toBe($revision);
+
+    $cleared = dslWrite($id, 'record-path', ['record_path' => null])->assertOk()->json('data');
+    expect(dslConfig())->not->toHaveKey('record_path')->and($cleared['query_plan']['extract']['fields']['headline_value'])->toBe('$.total');
+
+    // A decided slot whose path left the sample stays stored and reads api_changed (here: a role/record change cannot remove a field, a new sample does).
+    dslPaste($id, '{"grand_total":10}');
+    dslWrite($id, 'record-path', ['record_path' => null])->assertOk();
+    $list = dslList($id);
+    expect(dslConfig()['slot_map']['headline_value']['path'])->toBe('$.total')->and($list['api_changed'][0]['slot'])->toBe('headline_value');
+});
+
+it('sets and clears a field role through its endpoint and re-maps: a role change moves the auto headline', function () {
+    $id = dslDraft('{"total":10,"revenue":5}');
+    expect(dslRow(dslList($id), 'headline_value')['state'])->toBe('auto_low');
+
+    $data = dslWrite($id, 'field-roles', ['path' => '$.revenue', 'role' => 'dimension'])->assertOk()->json('data');
+    expect(dslRow($data, 'headline_value'))->toMatchArray(['state' => 'auto_high', 'path' => '$.total'])
+        ->and(dslConfig()['field_roles'])->toBe(['$.revenue' => 'dimension'])
+        ->and($data['query_plan']['extract']['fields']['headline_value'])->toBe('$.total');
+
+    dslWrite($id, 'field-roles', ['path' => '$.revenue', 'role' => null])->assertOk();
+    expect(dslConfig())->not->toHaveKey('field_roles')->and(dslRow(dslList($id), 'headline_value')['state'])->toBe('auto_low');
+    dslWrite($id, 'field-roles', ['path' => '$.revenue', 'role' => 'bogus'])->assertStatus(422);
+    dslWrite($id, 'field-roles', ['path' => '$.revenue'])->assertStatus(422)->assertJsonStructure(['errors' => ['role']]);
+});
+
+it('writes the mapping keys only with the edit-lock claim: the new endpoints are a 423 without it', function () {
+    $id = dslDraft();
+    config(['dashflow.tunables.timeouts.edit_lock_ttl.value' => '60']);
+    test()->postJson(BD_URL."/{$id}/lock", [], BD_HEADERS)->assertOk();
+    $before = bdRows();
+
+    dslWrite($id, 'record-path', ['record_path' => null])->assertStatus(423);
+    dslWrite($id, 'field-roles', ['path' => '$.region', 'role' => 'filter'])->assertStatus(423);
+    dslWrite($id, 'field-types', ['path' => '$.region', 'type' => 'text'])->assertStatus(423);
+    expect(bdRows())->toBe($before);
+});
+
+it('counts an unstamped (hand-saved) plan as stale, and a generic save that carries a plan drops the stamp', function () {
+    $id = dslDraft();
+    dslRerun($id)->assertOk();
+    expect(dslConfig())->toHaveKey('mapped_sample_revision');
+
+    bdSave($id, dslRev(), 1, ['config' => ['query_plan' => ['v' => 1, 'extract' => ['fields' => ['r' => '$.region']], 'shape' => ['kpi_label' => 'r']]]])->assertOk();
+    expect(dslConfig())->not->toHaveKey('mapped_sample_revision')->and(dslGet($id)->json('data.plan_stale'))->toBeTrue()
+        ->and(dslPreview($id)->assertOk()->json('data.plan_stale'))->toBeTrue();
+
+    // A save that omits the plan leaves both as they are.
+    dslRerun($id)->assertOk();
+    bdSave($id, dslRev(), 1, ['config' => ['description' => 'x']])->assertOk();
+    expect(dslConfig())->toHaveKey('mapped_sample_revision')->and(dslGet($id)->json('data.plan_stale'))->toBeFalse();
+});
+
+it('reads a stored sample that no longer passes the limits as sample invalid, not expired', function () {
+    $id = dslDraft();
+    dslConfirm($id, 'headline_value')->assertOk();
+    config(['dashflow.tunables.guards.max_bytes.value' => '10']);
+    // The decoded shape of a revision is kept in this process; a new worker reads the limits afresh.
+    PreviewDraft::forget();
+
+    $data = dslGet($id)->assertOk()->json('data');
+
+    expect($data['sample'])->toBe('invalid')->and($data['checklist'])->toBeNull()->and($data['slot_map'])->toHaveKey('headline_value')->and($data['plan_stale'])->toBeTrue();
+    dslRerun($id)->assertStatus(422)->assertJsonPath('error.code', 'mapping.no_sample');
+});
+
+it('rejects an empty string for record_path, role and type with a 422; only an explicit null clears', function () {
+    $id = dslDraft();
+    dslRole($id, '$.region', 'filter');
+    $before = bdRows();
+
+    dslWrite($id, 'record-path', ['record_path' => ''])->assertStatus(422)->assertJsonStructure(['errors' => ['record_path']]);
+    dslWrite($id, 'field-roles', ['path' => '$.region', 'role' => ''])->assertStatus(422)->assertJsonStructure(['errors' => ['role']]);
+    dslWrite($id, 'field-types', ['path' => '$.region', 'type' => ''])->assertStatus(422)->assertJsonStructure(['errors' => ['type']]);
+    expect(bdRows())->toBe($before);
+
+    dslRole($id, '$.region', null);
+    expect(dslConfig())->not->toHaveKey('field_roles');
+});
+
+it('bounds a long text slot value in the preview to 120 characters and an ellipsis', function () {
+    $long = str_repeat('x', 300);
+    $id = dslDraft('{"total":1,"label":"'.$long.'"}');
+    dslOverride($id, 'kpi_label', '$.label')->assertOk();
+
+    $value = dslPreview($id)->assertOk()->json('data.slots.kpi_label.value');
+
+    expect($value)->toBe(str_repeat('x', 120).'…');
 });

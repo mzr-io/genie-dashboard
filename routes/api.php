@@ -114,6 +114,10 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // Override a slot, pick a field and fix mismatches (Story 3.13a): the picker is read-only (`blocks.edit`); the undo of an override carries the edit-lock claim.
     Route::get('blocks/drafts/{draft}/mapping/slots/{slot}/fields', [DraftSlotsController::class, 'fields'])->whereUuid('draft')->where('slot', '[a-z][a-z0-9_]{0,63}')->middleware('admin')->name('api.admin.blocks.drafts.mapping.fields');
     Route::post('blocks/drafts/{draft}/mapping/undo', [DraftSlotsController::class, 'undo'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.undo');
+    // Mapping-scoped writes of the server-owned mapping keys (Story 3.13c): `record_path`, `field_roles` and `field_types` are no longer saved through the Draft's generic save.
+    Route::put('blocks/drafts/{draft}/mapping/record-path', [DraftSlotsController::class, 'recordPath'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.record_path');
+    Route::put('blocks/drafts/{draft}/mapping/field-roles', [DraftSlotsController::class, 'fieldRole'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.field_roles');
+    Route::put('blocks/drafts/{draft}/mapping/field-types', [DraftSlotsController::class, 'fieldType'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.field_types');
 
     // What wizard Step 2 reads (Story 3.7): `blocks.edit`, so an Admin who may build blocks but not manage Data Sources can still choose one.
     Route::get('blocks/data-sources', [BlockSourceController::class, 'dataSources'])->middleware('admin')->name('api.admin.blocks.data-sources.index');

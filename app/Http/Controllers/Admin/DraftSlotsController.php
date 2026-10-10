@@ -11,6 +11,7 @@ use App\Modules\Access\Contracts\MembershipLookup;
 use App\Modules\Blocks\Contracts\DraftActor;
 use App\Modules\Blocks\Contracts\DraftChecklist;
 use App\Modules\Blocks\Contracts\DraftLockLost;
+use App\Modules\Blocks\Contracts\DraftMapping;
 use App\Modules\Blocks\Contracts\DraftNotFound;
 use App\Modules\Blocks\Contracts\DraftPublished;
 use App\Modules\Blocks\Contracts\DraftRevisionConflict;
@@ -20,6 +21,7 @@ use App\Modules\Blocks\Contracts\ErrorCode as BlocksErrorCode;
 use App\Modules\Blocks\Contracts\InvalidDraft;
 use App\Modules\Blocks\Contracts\PreviewRefused;
 use App\Modules\Blocks\Contracts\SampleUnavailable;
+use App\Modules\Blocks\Contracts\SlotChanged;
 use App\Modules\Blocks\Contracts\SlotNotFound;
 use App\Modules\Blocks\Contracts\SlotRefused;
 use App\Modules\BlockTypes\Contracts\UnknownBlockType;
@@ -28,13 +30,13 @@ use App\Platform\Contracts\ErrorCode as PlatformErrorCode;
 use App\Platform\EditLock\EditLock;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Closure;
-use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Symfony\Component\HttpFoundation\Response;
 
 /**
- * Auto-map and the slot checklist of a Draft (Story 3.12a). Behind the `admin` middleware (`blocks.edit`). The read takes no lock, so a read-only
- * viewer may ask. Re-run, confirm, override and undo need the edit-lock claim of a Draft save (a stale epoch, or a token that does not hold the lock,
- * is a 423 with nothing written). No refusal carries anything of the sample.
+ * Auto-map and the slot checklist of a Draft (Story 3.12a) and the mapping writes (Story 3.13c). Behind the `admin` middleware (`blocks.edit`). The read takes no
+ * lock, so a read-only viewer may ask. Every write carries the Draft's `draft_revision` (a stale one is a 409, nothing written) and needs the edit-lock claim of a Draft save (a stale epoch, or a token that does not hold the lock,
+ * is a 423 with nothing written). No refusal carries anything of the sample; the read (field examples) and the preview (slot values) return bounded sample examples by design, to `blocks.edit` holders.
  */
 final class DraftSlotsController extends Controller
 {
@@ -46,13 +48,80 @@ final class DraftSlotsController extends Controller
         private readonly EditLock $lock,
     ) {}
 
-    public function show(Request $request, string $draft): JsonResponse
+    /** The one consistent read (Story 3.13c), with an ETag of both revisions and a 304 for a matching `If-None-Match`. */
+    public function show(Request $request, string $draft): Response
     {
-        return $this->respond($request, fn (): DraftChecklist => $this->slots->checklist($this->actor($request), $draft));
+        return $this->respond(
+            $request,
+            fn (): DraftMapping => $this->slots->read($this->actor($request), $draft),
+            function (DraftMapping $mapping) use ($request): Response {
+                $headers = ['Cache-Control' => self::NO_STORE, 'ETag' => $mapping->etag()];
+
+                if (self::matches($request->header('If-None-Match'), $mapping->etag())) {
+                    return response('', 304, $headers);
+                }
+
+                return response()->json(['data' => [
+                    'checklist' => $mapping->checklist?->toArray(),
+                    'roles' => $mapping->roles?->toArray(),
+                    'slot_map' => (object) $mapping->slotMap,
+                    'query_plan' => $mapping->queryPlan,
+                    'draft_revision' => $mapping->draftRevision,
+                    'sample_revision' => $mapping->sampleRevision,
+                    'plan_stale' => $mapping->planStale,
+                    'sample' => $mapping->sample,
+                ]], 200, $headers);
+            },
+        );
+    }
+
+    /** Whether an `If-None-Match` header names the validator (a list, weak tags and `*` included). */
+    private static function matches(?string $header, string $etag): bool
+    {
+        if ($header === null) {
+            return false;
+        }
+
+        foreach (explode(',', $header) as $candidate) {
+            $candidate = trim($candidate);
+
+            if ($candidate === '*' || (str_starts_with($candidate, 'W/') ? substr($candidate, 2) : $candidate) === $etag) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function recordPath(DraftSlotRequest $request, string $draft): Response
+    {
+        return $this->respond($request, function () use ($request, $draft): DraftChecklist {
+            $actor = $this->actor($request);
+
+            return $this->slots->setRecordPath($actor, $draft, $request->recordPath(), $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
+        });
+    }
+
+    public function fieldRole(DraftSlotRequest $request, string $draft): Response
+    {
+        return $this->respond($request, function () use ($request, $draft): DraftChecklist {
+            $actor = $this->actor($request);
+
+            return $this->slots->setFieldRole($actor, $draft, (string) $request->slotPath(), $request->role(), $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
+        });
+    }
+
+    public function fieldType(DraftSlotRequest $request, string $draft): Response
+    {
+        return $this->respond($request, function () use ($request, $draft): DraftChecklist {
+            $actor = $this->actor($request);
+
+            return $this->slots->setFieldType($actor, $draft, (string) $request->slotPath(), $request->fieldType(), $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
+        });
     }
 
     /** The field picker of a slot (Story 3.13a): read-only, like the checklist. */
-    public function fields(Request $request, string $draft, string $slot): JsonResponse
+    public function fields(Request $request, string $draft, string $slot): Response
     {
         return $this->respond(
             $request,
@@ -61,47 +130,47 @@ final class DraftSlotsController extends Controller
         );
     }
 
-    public function undo(DraftSlotRequest $request, string $draft): JsonResponse
+    public function undo(DraftSlotRequest $request, string $draft): Response
     {
         return $this->respond($request, function () use ($request, $draft): DraftChecklist {
             $actor = $this->actor($request);
 
-            return $this->slots->undo($actor, $draft, $request->undoPayload(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
+            return $this->slots->undo($actor, $draft, $request->undoPayload(), $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
         });
     }
 
-    public function rerun(DraftSlotRequest $request, string $draft): JsonResponse
+    public function rerun(DraftSlotRequest $request, string $draft): Response
     {
         return $this->respond($request, function () use ($request, $draft): DraftChecklist {
             $actor = $this->actor($request);
 
-            return $this->slots->rerun($actor, $draft, $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
+            return $this->slots->rerun($actor, $draft, $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
         });
     }
 
-    public function confirm(DraftSlotRequest $request, string $draft, string $slot): JsonResponse
+    public function confirm(DraftSlotRequest $request, string $draft, string $slot): Response
     {
         return $this->respond($request, function () use ($request, $draft, $slot): DraftChecklist {
             $actor = $this->actor($request);
 
-            return $this->slots->confirm($actor, $draft, $slot, $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
+            return $this->slots->confirm($actor, $draft, $slot, $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
         });
     }
 
-    public function override(DraftSlotRequest $request, string $draft, string $slot): JsonResponse
+    public function override(DraftSlotRequest $request, string $draft, string $slot): Response
     {
         return $this->respond($request, function () use ($request, $draft, $slot): DraftChecklist {
             $actor = $this->actor($request);
 
-            return $this->slots->override($actor, $draft, $slot, $request->slotPath(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
+            return $this->slots->override($actor, $draft, $slot, $request->slotPath(), $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
         });
     }
 
     /**
      * @param  Closure(): mixed  $call
-     * @param  (Closure(mixed): array<string, mixed>)|null  $render  the response data; the checklist's by default
+     * @param  (Closure(mixed): (array<string, mixed>|Response))|null  $render  the response data (or the whole response); a write's checklist by default
      */
-    private function respond(Request $request, Closure $call, ?Closure $render = null): JsonResponse
+    private function respond(Request $request, Closure $call, ?Closure $render = null): Response
     {
         try {
             $result = $call();
@@ -112,7 +181,9 @@ final class DraftSlotsController extends Controller
         } catch (DraftPublished) {
             return AdminApiError::json($request, BlocksErrorCode::DraftPublished->value, 409, 'This draft was published.');
         } catch (DraftRevisionConflict $e) {
-            return AdminApiError::json($request, BlocksErrorCode::RevisionConflict->value, 409, 'This slot was changed after that override.', extra: ['current' => ['data' => (new DraftResource($e->current, withConfig: true))->resolve($request)]]);
+            return AdminApiError::json($request, BlocksErrorCode::RevisionConflict->value, 409, 'This draft was changed after you loaded it.', extra: ['current' => ['data' => (new DraftResource($e->current, withConfig: true))->resolve($request)]]);
+        } catch (SlotChanged $e) {
+            return AdminApiError::json($request, BlocksErrorCode::SlotChanged->value, 409, 'This slot was changed after that override.', extra: ['current' => ['data' => (new DraftResource($e->current, withConfig: true))->resolve($request)]]);
         } catch (PreviewRefused $e) {
             return AdminApiError::json($request, $e->reason, 422, 'This draft has no sample yet.');
         } catch (SampleUnavailable) {
@@ -122,18 +193,20 @@ final class DraftSlotsController extends Controller
         } catch (SlotRefused $e) {
             return AdminApiError::json($request, PlatformErrorCode::ValidationFailed->value, 422, $e->problem, errors: ["slot.{$e->slot}" => [$e->problem]], extra: ['slot' => $e->slot] + ($e->compatible === [] ? [] : ['compatible' => $e->compatible]));
         } catch (InvalidDraft $e) {
-            return AdminApiError::json($request, $e->errorCode ?? PlatformErrorCode::ValidationFailed->value, 422, 'The undo is not valid.', errors: $e->errors);
+            return AdminApiError::json($request, $e->errorCode ?? PlatformErrorCode::ValidationFailed->value, 422, 'The mapping change is not valid.', errors: $e->errors);
         }
 
         if ($render !== null) {
-            return response()->json(['data' => $render($result)], 200, ['Cache-Control' => self::NO_STORE]);
+            $rendered = $render($result);
+
+            return $rendered instanceof Response ? $rendered : response()->json(['data' => $rendered], 200, ['Cache-Control' => self::NO_STORE]);
         }
 
         /** @var DraftChecklist $checklist */
         $checklist = $result;
 
         return response()->json(
-            ['data' => $checklist->result->toArray() + ['draft_revision' => $checklist->revision] + ($checklist->queryPlan === null ? [] : ['query_plan' => $checklist->queryPlan]) + ($checklist->roleChange === null ? [] : ['role_change' => $checklist->roleChange]) + ($checklist->undo === null ? [] : ['undo' => $checklist->undo])],
+            ['data' => $checklist->result->toArray() + ['draft_revision' => $checklist->revision, 'sample_revision' => $checklist->sampleRevision, 'query_plan' => $checklist->queryPlan] + ($checklist->roleChange === null ? [] : ['role_change' => $checklist->roleChange]) + ($checklist->undo === null ? [] : ['undo' => $checklist->undo])],
             200,
             ['Cache-Control' => self::NO_STORE],
         );

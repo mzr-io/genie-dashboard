@@ -64,7 +64,7 @@ final class DraftPreviewController extends Controller
         }
 
         return response()->json(
-            ['data' => ['payload' => $preview->payload, 'unavailable' => (object) $preview->unavailable, 'sample_revision' => $preview->sampleRevision]],
+            ['data' => ['payload' => $preview->payload, 'unavailable' => (object) $preview->unavailable, 'slots' => (object) $preview->slots, 'sample_revision' => $preview->sampleRevision, 'draft_revision' => $preview->draftRevision, 'plan_stale' => $preview->planStale]],
             200,
             ['Cache-Control' => self::NO_STORE],
         );

@@ -39,6 +39,6 @@ final class QueryPlanEngine implements QueryPlans
 
         $result = $this->executor->execute($plan, $document, $type, $guards);
 
-        return new PlanResult($this->shapers->shape($type, $result->slots), $result->unavailable);
+        return new PlanResult($this->shapers->shape($type, $result->slots), $result->unavailable, $result->slots);
     }
 }

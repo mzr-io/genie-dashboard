@@ -5,7 +5,7 @@ namespace App\Modules\Blocks\Contracts;
 use RuntimeException;
 
 /** A preview that has nothing to run: the Draft has no sample, or no Query Plan. `reason` is the Mapping error code. */
-final class PreviewRefused extends RuntimeException
+class PreviewRefused extends RuntimeException
 {
     public const NO_SAMPLE = 'mapping.no_sample';
 

@@ -14,7 +14,7 @@ use App\Platform\Json\SamplePath;
 /**
  * The lenient `config` document of a Draft (Story 3.4, `schema_version` 1): the Configure Block step's fields. Nothing is required (a
  * Draft saves as it is); what is present must have the right type, and sizes must lie inside the Block Type's registry limits, which
- * are named in the error. The Query Plan (`query_plan`, Story 3.10) is judged by Mapping's {@see QueryPlan}. The mapping choices `record_path` (a stored path ending in `[*]`, or null to clear) and `field_roles` (stored path => role) are judged here too, as are `field_types` (Story 3.13a: stored path => `text|number|boolean|date`, "Treat as") and `slot_map` (Story 3.12a: slot key => `{path, state}`, written by the mapping endpoints and kept over a save that omits it). Unknown keys are dropped. The "Footer action" slot is derived: it is present, optional and empty exactly when
+ * are named in the error. The Query Plan (`query_plan`, Story 3.10) is judged by Mapping's {@see QueryPlan}. The mapping choices `record_path` (a stored path ending in `[*]`, or null to clear) and `field_roles` (stored path => role) are judged by {@see self::normaliseMapping()}; since Story 3.13c they are server-owned (written only through the mapping endpoints) and a save that carries one is refused, as are `field_types` (Story 3.13a: stored path => `text|number|boolean|date`, "Treat as") and `slot_map` (Story 3.12a: slot key => `{path, state}`, written by the mapping endpoints and kept over a save that omits it). Unknown keys are dropped. The "Footer action" slot is derived: it is present, optional and empty exactly when
  * "Show footer action" is on. Stored and read through the platform's JSON codec, never `json_decode`.
  */
 final class DraftConfig
@@ -28,6 +28,9 @@ final class DraftConfig
     public const DESCRIPTION_MAX = 500;
 
     public const FIELD_TYPES = ['text', 'number', 'boolean', 'date'];
+
+    /** Written only through the mapping endpoints. */
+    public const MAPPING_KEYS = ['record_path', 'field_roles', 'field_types', 'slot_map'];
 
     private const FLAGS = ['show_header', 'show_subtitle', 'allow_resize', 'allow_minimize', 'allow_refresh', 'show_footer_action'];
 
@@ -88,6 +91,34 @@ final class DraftConfig
                 $errors += $faults;
             }
         }
+
+        // The mapping keys are the mapping endpoints' (Story 3.13c): a save that carries one is refused, and a save that omits them keeps the stored ones.
+        foreach (self::MAPPING_KEYS as $key) {
+            if (array_key_exists($key, $input)) {
+                $errors["config.{$key}"] = ['Set this through the mapping endpoints.'];
+            }
+        }
+
+        if ($errors !== []) {
+            throw new InvalidDraft($errors, 'blocks.invalid_config');
+        }
+
+        return $out;
+    }
+
+    /**
+     * The mapping keys of a config as the mapping endpoints write them (Story 3.13c): `record_path`, `field_roles`, `field_types` and `slot_map`, judged by the
+     * same rules a save of them was before they became server-owned. Only the keys present are returned.
+     *
+     * @param  array<mixed>  $input
+     * @return array<string, mixed>
+     *
+     * @throws InvalidDraft
+     */
+    public static function normaliseMapping(array $input, BlockType $type): array
+    {
+        $errors = [];
+        $out = [];
 
         // The Admin's choices for mapping (Story 3.11a): the record path and the role overrides, in the stored path subset.
         if (array_key_exists('record_path', $input)) {
@@ -184,7 +215,7 @@ final class DraftConfig
     }
 
     /** A stored path in its canonical spelling, naming at least one segment. */
-    private static function isCanonicalPath(string $path): bool
+    public static function isCanonicalPath(string $path): bool
     {
         try {
             $segments = SamplePath::parse($path);
@@ -196,7 +227,7 @@ final class DraftConfig
     }
 
     /** A record path names an array's elements: a stored path that ends in `[*]`. */
-    private static function isRecordPath(string $path): bool
+    public static function isRecordPath(string $path): bool
     {
         try {
             return str_ends_with($path, '[*]') && SamplePath::parse($path) !== [] && SamplePath::stored(SamplePath::parse($path)) === $path;
@@ -309,16 +340,13 @@ final class DraftConfig
      */
     public static function merge(array $stored, array $step): array
     {
-        // `source` is Step 2's key (Story 3.7): it is replaced only when the save carries one (see ManageDrafts).
-        $kept = array_diff_key($stored, array_flip(['schema_version', 'description', 'icon', 'display', 'slots', ...(array_key_exists('source', $step) ? ['source'] : []), ...(array_key_exists('query_plan', $step) ? ['query_plan'] : []), ...(array_key_exists('record_path', $step) ? ['record_path'] : []), ...(array_key_exists('field_roles', $step) ? ['field_roles'] : []), ...(array_key_exists('field_types', $step) ? ['field_types'] : []), ...(array_key_exists('slot_map', $step) ? ['slot_map'] : [])]));
+        // `source` is Step 2's key (Story 3.7): it is replaced only when the save carries one (see ManageDrafts). The mapping keys are never in a step (they
+        // are refused by normalise); a save that carries a plan replaces it, and so drops the sample revision the stored plan was stamped with.
+        $replaced = ['schema_version', 'description', 'icon', 'display', 'slots', ...(array_key_exists('source', $step) ? ['source'] : []), ...(array_key_exists('query_plan', $step) ? ['query_plan', 'mapped_sample_revision'] : [])];
+        $kept = array_diff_key($stored, array_flip($replaced));
         $slots = is_array($stored['slots'] ?? null) ? $stored['slots'] : [];
         unset($slots['footer_action']);
         $slots += $step['slots'] ?? [];
-
-        // `record_path: null` clears the choice (the suggested path is used again).
-        if (array_key_exists('record_path', $step) && $step['record_path'] === null) {
-            unset($step['record_path']);
-        }
 
         return $kept + ($slots === [] ? [] : ['slots' => $slots]) + $step;
     }

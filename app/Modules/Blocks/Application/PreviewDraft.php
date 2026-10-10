@@ -19,6 +19,7 @@ use App\Platform\Json\InvalidLimitSetting;
 use App\Platform\Json\JsonDepthExceeded;
 use App\Platform\Json\JsonParseFailed;
 use App\Platform\Json\LosslessJson;
+use App\Platform\Json\SampleShape;
 use App\Platform\Tenancy\TenantKey;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use App\Support\Observability\MetricEmitter;
@@ -58,6 +59,7 @@ final class PreviewDraft implements DraftPreviews
     public static function forget(): void
     {
         self::$decoded = [];
+        SampleShapes::forget();
     }
 
     public function preview(DraftActor $actor, string $draftId): DraftPreview
@@ -113,7 +115,35 @@ final class PreviewDraft implements DraftPreviews
             );
         }
 
-        return new DraftPreview($result->payload, $result->unavailable, $revision);
+        return new DraftPreview($result->payload, $result->unavailable, $revision, $draft->revision, $this->slotValues($plan, $result->slots, $result->unavailable), ManageDraftSlots::planStale($draft->config, $revision));
+    }
+
+    /**
+     * The value each mapped slot rendered (Story 3.13c): `{value, path, unavailable?}`. A number is its decimal string as received; text is bounded like a
+     * field's example. It is sample-derived, so it only goes to the Admin who is previewing.
+     *
+     * @param  array<string, mixed>  $plan
+     * @param  array<string, string|bool|null>  $values
+     * @param  array<string, string>  $unavailable
+     * @return array<string, array<string, mixed>>
+     */
+    private function slotValues(array $plan, array $values, array $unavailable): array
+    {
+        $fields = is_array($plan['extract']['fields'] ?? null) ? $plan['extract']['fields'] : [];
+        $out = [];
+
+        foreach (is_array($plan['shape'] ?? null) ? $plan['shape'] : [] as $slot => $alias) {
+            $value = $values[$slot] ?? null;
+
+            if (is_string($value) && mb_strlen($value) > SampleShape::EXAMPLE_CHARS) {
+                $value = mb_substr($value, 0, SampleShape::EXAMPLE_CHARS).'…';
+            }
+
+            $out[(string) $slot] = ['value' => $value, 'path' => is_string($fields[$alias] ?? null) ? $fields[$alias] : null]
+                + (isset($unavailable[$slot]) ? ['unavailable' => $unavailable[$slot]] : []);
+        }
+
+        return $out;
     }
 
     /**

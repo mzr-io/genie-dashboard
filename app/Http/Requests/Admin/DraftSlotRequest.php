@@ -9,8 +9,8 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
 
 /**
- * A write of the slot checklist (Story 3.12a): re-run, confirm, override or undo (the `undo` payload an override returned). It carries the edit-lock claim a Draft save carries (`lock_epoch`,
- * `lock_token`); an override also carries the `path` of the field, or null to clear the slot. The `admin` middleware has authorised the request.
+ * A write of the mapping (Story 3.12a, 3.13c): re-run, confirm, override or undo (the `undo` payload an override returned), or set the record path, a field's role or a field's type. It carries
+ * the Draft's `draft_revision` and the edit-lock claim a Draft save carries (`lock_epoch`, `lock_token`); an override also carries the `path` of the field, or null to clear the slot. The `admin` middleware has authorised the request.
  */
 final class DraftSlotRequest extends FormRequest
 {
@@ -23,12 +23,26 @@ final class DraftSlotRequest extends FormRequest
     public function rules(): array
     {
         $rules = [
+            'draft_revision' => ['required', 'integer', 'min:1'],
             'lock_epoch' => ['required', 'integer', 'min:1'],
             'lock_token' => ['nullable', 'string', 'max:128'],
         ];
 
-        if ($this->isMethod('PUT')) {
+        // An override names a field or null; a role or a type names a field and a value or null (which clears it).
+        if ($this->routeIs('api.admin.blocks.drafts.mapping.override')) {
             $rules['path'] = ['present', 'nullable', 'string', 'max:1024'];
+        }
+
+        if ($this->routeIs('api.admin.blocks.drafts.mapping.record_path')) {
+            $rules['record_path'] = ['present', 'nullable', 'string', 'max:1024'];
+        }
+
+        if ($this->routeIs('api.admin.blocks.drafts.mapping.field_roles')) {
+            $rules += ['path' => ['required', 'string', 'max:1024'], 'role' => ['present', 'nullable', 'string', 'max:32']];
+        }
+
+        if ($this->routeIs('api.admin.blocks.drafts.mapping.field_types')) {
+            $rules += ['path' => ['required', 'string', 'max:1024'], 'type' => ['present', 'nullable', 'string', 'max:32']];
         }
 
         if ($this->routeIs('api.admin.blocks.drafts.mapping.undo')) {
@@ -69,6 +83,32 @@ final class DraftSlotRequest extends FormRequest
         return is_string($path) ? $path : null;
     }
 
+    public function draftRevision(): int
+    {
+        return (int) $this->input('draft_revision');
+    }
+
+    public function recordPath(): ?string
+    {
+        $value = $this->input('record_path');
+
+        return is_string($value) ? $value : null;
+    }
+
+    public function role(): ?string
+    {
+        $value = $this->input('role');
+
+        return is_string($value) ? $value : null;
+    }
+
+    public function fieldType(): ?string
+    {
+        $value = $this->input('type');
+
+        return is_string($value) ? $value : null;
+    }
+
     public function lockEpoch(): int
     {
         return (int) $this->input('lock_epoch');
@@ -85,8 +125,15 @@ final class DraftSlotRequest extends FormRequest
     public function withValidator(Validator $validator): void
     {
         $validator->after(function (Validator $v): void {
-            if ($this->isMethod('PUT') && $this->input('path') === '') {
+            if ($this->routeIs('api.admin.blocks.drafts.mapping.override') && $this->input('path') === '') {
                 $v->errors()->add('path', 'Choose a field, or send null to clear the slot.');
+            }
+
+            // Only an explicit null clears a record path, a role or a type.
+            foreach (['record_path', 'role', 'type'] as $key) {
+                if ($this->input($key) === '') {
+                    $v->errors()->add($key, 'Send a value, or null to clear it.');
+                }
             }
 
             // A cleared slot is `{path: null, state}`: the path key must be there, null or not; an empty object is no entry.

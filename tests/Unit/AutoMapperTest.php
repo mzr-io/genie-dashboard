@@ -287,3 +287,15 @@ it('fits a string treated as a number exactly when the executor accepts it', fun
         expect(amFields(json_encode(['v' => $text]), 'headline_value', ['$.v' => 'number'])[0]['compatible'])->toBeFalse($text);
     }
 });
+
+// Story 3.13c: every checklist row carries the field's bounded example.
+it('gives a checklist row the example of its field, null when it has no field', function () {
+    $r = amMap('{"total":284680.50,"label":"Revenue"}');
+
+    expect(amSlot($r, 'headline_value')['example'])->toBe('284680.50')
+        ->and(amSlot($r, 'kpi_label')['example'])->toBe('Revenue')
+        ->and(amSlot($r, 'subtitle')['example'])->toBeNull();
+
+    $changed = amMap('{"grand_total":1}', ['headline_value' => ['path' => '$.total', 'state' => 'confirmed']]);
+    expect(amSlot($changed, 'headline_value')['example'])->toBeNull();
+});

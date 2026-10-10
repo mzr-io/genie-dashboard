@@ -22,4 +22,6 @@ enum ErrorCode: string
     case SampleInvalid = 'blocks.sample_invalid';
     /** A pasted sample could not be sealed or opened because the `data` key is unusable (Story 3.8): HTTP 503, nothing stored. */
     case SampleUnavailable = 'blocks.sample_unavailable';
+    /** An undo of a slot that was changed after the override (Story 3.13c): HTTP 409, nothing written. */
+    case SlotChanged = 'blocks.slot_changed';
 }

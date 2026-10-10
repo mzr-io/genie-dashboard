@@ -47,6 +47,12 @@ function drGet(string $id)
     return test()->getJson(BD_URL."/{$id}/sample/roles", BD_HEADERS);
 }
 
+/** A mapping write of the Draft (Story 3.13c), at its current revision unless one is given. */
+function drWrite(string $id, string $what, array $body, ?int $revision = null)
+{
+    return test()->putJson(BD_URL."/{$id}/mapping/{$what}", $body + ['draft_revision' => $revision ?? (int) bdRows()[0]['revision'], 'lock_epoch' => 1], BD_HEADERS);
+}
+
 it('returns candidates, the chosen path and every field with its role, and is repeatable and read-only', function () {
     $id = drDraft();
     $before = bdRows();
@@ -55,6 +61,8 @@ it('returns candidates, the chosen path and every field with its role, and is re
     $second = drGet($id)->assertOk()->json('data');
 
     expect($second)->toBe($first)
+        ->and($first['draft_revision'])->toBe((int) bdRows()[0]['revision'])
+        ->and($first['sample_revision'])->toBe(1)
         ->and($first['needs_choice'])->toBeTrue()
         ->and($first['record_path'])->toBe('$.data[*]')
         ->and(array_column($first['candidates'], 'pagination_like', 'path'))->toBe(['$.data[*]' => false, '$.meta.links[*]' => true])
@@ -63,31 +71,43 @@ it('returns candidates, the chosen path and every field with its role, and is re
         ->and(bdRows())->toBe($before);
 });
 
-it('applies the saved record path and field role overrides, and keeps them over a save that omits them', function () {
+it('applies the record path and field role overrides written through the mapping endpoints, and keeps them over a save that omits them', function () {
     $id = drDraft();
 
-    bdSave($id, 1, 1, ['config' => ['record_path' => '$.meta.links[*]', 'field_roles' => ['$.data[*].revenue' => 'dimension']]])->assertOk();
-    bdSave($id, 2, 1, ['config' => ['description' => 'later']])->assertOk();
+    drWrite($id, 'record-path', ['record_path' => '$.meta.links[*]'])->assertOk();
+    $written = drWrite($id, 'field-roles', ['path' => '$.data[*].revenue', 'role' => 'dimension'])->assertOk();
+    bdSave($id, (int) $written->json('data.draft_revision'), 1, ['config' => ['description' => 'later']])->assertOk();
 
     $data = drGet($id)->assertOk()->json('data');
     $revenue = array_column($data['fields'], null, 'path')['$.data[*].revenue'];
 
     expect($data['record_path'])->toBe('$.meta.links[*]')
+        ->and($data['draft_revision'])->toBe((int) bdRows()[0]['revision'])
         ->and($revenue)->toMatchArray(['role' => 'dimension', 'overridden' => true, 'confidence' => 'high', 'suggestion' => null]);
 
     // null clears the record path; the suggested one is used again.
-    bdSave($id, 3, 1, ['config' => ['record_path' => null]])->assertOk();
+    drWrite($id, 'record-path', ['record_path' => null])->assertOk();
     expect(drGet($id)->json('data.record_path'))->toBe('$.data[*]');
 });
 
-it('refuses a bad role or a malformed path with the config key', function () {
+it('refuses a bad role or a malformed path from the mapping endpoints, and a generic save of a mapping key', function () {
     $id = drDraft();
+    $before = bdRows();
 
-    $bad = bdSave($id, 1, 1, ['config' => ['field_roles' => ['$.data[*].revenue' => 'bogus']]])->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config');
-    expect(array_keys($bad->json('errors')))->toBe(['config.field_roles.$.data[*].revenue']);
-    expect(array_keys(bdSave($id, 1, 1, ['config' => ['field_roles' => ['a..b' => 'measure']]])->assertStatus(422)->json('errors')))->toBe(['config.field_roles.a..b']);
-    bdSave($id, 1, 1, ['config' => ['record_path' => 'a..b']])->assertStatus(422)->assertJsonStructure(['errors' => ['config.record_path']]);
-    bdSave($id, 1, 1, ['config' => ['record_path' => '$.data']])->assertStatus(422)->assertJsonStructure(['errors' => ['config.record_path']]);
+    drWrite($id, 'field-roles', ['path' => '$.data[*].revenue', 'role' => 'bogus'])->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config')->assertJsonStructure(['errors' => ['role']]);
+    drWrite($id, 'field-roles', ['path' => 'a..b', 'role' => 'measure'])->assertStatus(422)->assertJsonStructure(['errors' => ['path']]);
+    drWrite($id, 'field-roles', ['path' => '$.data[*].nope', 'role' => 'measure'])->assertStatus(422)->assertJsonStructure(['errors' => ['path']]);
+    drWrite($id, 'record-path', ['record_path' => 'a..b'])->assertStatus(422)->assertJsonStructure(['errors' => ['record_path']]);
+    drWrite($id, 'record-path', ['record_path' => '$.data'])->assertStatus(422)->assertJsonStructure(['errors' => ['record_path']]);
+    drWrite($id, 'record-path', ['record_path' => '$.nowhere[*]'])->assertStatus(422)->assertJsonStructure(['errors' => ['record_path']]);
+    expect(bdRows())->toBe($before);
+
+    foreach (['record_path' => '$.meta.links[*]', 'field_roles' => ['$.data[*].revenue' => 'dimension'], 'field_types' => ['$.data[*].revenue' => 'text'], 'slot_map' => null] as $key => $value) {
+        $res = bdSave($id, 1, 1, ['config' => [$key => $value]])->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config');
+        expect(array_keys($res->json('errors')))->toBe(["config.{$key}"])->and($res->json('errors')["config.{$key}"][0])->toContain('mapping endpoints');
+    }
+
+    expect(bdRows())->toBe($before);
 });
 
 it('is 422 mapping.no_sample without a sample and 404 for a missing draft', function () {
@@ -114,25 +134,32 @@ it('lets a read-only viewer ask while another member holds the lock, but not a m
     drGet($id)->assertForbidden();
 });
 
-it('clears overrides with null or {}, refuses non-canonical keys, and keeps both over an unrelated save', function () {
+it('clears a role override with null, refuses non-canonical keys, and keeps both over an unrelated save', function () {
     $id = drDraft();
     $roles = fn () => collect(drGet($id)->json('data.fields'))->where('overridden', true)->count();
 
-    bdSave($id, 1, 1, ['config' => ['field_roles' => ['$.data[*].revenue' => 'dimension'], 'record_path' => '$.meta.links[*]']])->assertOk();
-    bdSave($id, 2, 1, ['config' => ['description' => 'x']])->assertOk();
+    drWrite($id, 'field-roles', ['path' => '$.data[*].revenue', 'role' => 'dimension'])->assertOk();
+    drWrite($id, 'record-path', ['record_path' => '$.meta.links[*]'])->assertOk();
+    bdSave($id, (int) bdRows()[0]['revision'], 1, ['config' => ['description' => 'x']])->assertOk();
     expect($roles())->toBe(1)->and(drGet($id)->json('data.record_path'))->toBe('$.meta.links[*]');
 
-    bdSave($id, 3, 1, ['config' => ['field_roles' => null]])->assertOk();
-    expect($roles())->toBe(0);
-
-    bdSave($id, 4, 1, ['config' => ['field_roles' => ['$.data[*].revenue' => 'dimension']]])->assertOk();
-    bdSave($id, 5, 1, ['config' => ['field_roles' => (object) []]])->assertOk();
-    expect($roles())->toBe(0);
+    drWrite($id, 'field-roles', ['path' => '$.data[*].revenue', 'role' => null])->assertOk();
+    expect($roles())->toBe(0)->and(bdRows()[0]['config'])->not->toContain('field_roles');
 
     foreach (["\$['data'][*].revenue", '$'] as $bad) {
-        $res = bdSave($id, 6, 1, ['config' => ['field_roles' => [$bad => 'measure']]])->assertStatus(422);
-        expect(array_keys($res->json('errors')))->toBe(["config.field_roles.{$bad}"]);
+        drWrite($id, 'field-roles', ['path' => $bad, 'role' => 'measure'])->assertStatus(422)->assertJsonStructure(['errors' => ['path']]);
     }
+});
+
+it('refuses a stale draft_revision on a mapping write with a 409 and the current draft, writing nothing', function () {
+    $id = drDraft();
+    drWrite($id, 'field-roles', ['path' => '$.data[*].revenue', 'role' => 'dimension'])->assertOk();
+    $before = bdRows();
+
+    $res = drWrite($id, 'field-roles', ['path' => '$.data[*].revenue', 'role' => 'measure'], 1)->assertStatus(409)->assertJsonPath('error.code', 'blocks.revision_conflict');
+    expect($res->json('current.data.revision'))->toBe((int) $before[0]['revision'])->and(bdRows())->toBe($before);
+
+    test()->putJson(BD_URL."/{$id}/mapping/field-roles", ['path' => '$.data[*].revenue', 'role' => null, 'lock_epoch' => 1], BD_HEADERS)->assertStatus(422)->assertJsonStructure(['errors' => ['draft_revision']]);
 });
 
 it('is 422 mapping.no_sample when the stored sample no longer passes the limits', function () {
