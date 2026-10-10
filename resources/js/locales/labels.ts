@@ -2022,6 +2022,50 @@ export const blockMapLabels = {
     blockerMismatch: (slot: string) => `Fix ${slot}, its field does not fit.`,
     blockerChanged: (slot: string) =>
         `Review ${slot}, its field is no longer in the response.`,
+    // The field picker, override with Undo, Treat as and API-change messages (Story 3.13b).
+    changeField: 'Change field',
+    changeFieldFor: (slot: string) => `Change field for ${slot}`,
+    pickerLabel: (slot: string) => `Fields for ${slot}`,
+    pickerSearch: 'Search fields',
+    pickerSearchHint: 'Search by name, type or role',
+    fieldsMatch: (n: number) =>
+        `${n} ${n === 1 ? 'field matches' : 'fields match'}`,
+    pickerLoading: 'Reading the fields…',
+    pickerFailed: "We couldn't list the fields.",
+    pickerEmpty: 'No fields match.',
+    overriddenNote: (field: string, role: string, old: string) =>
+        `${field} is now a ${role} (was ${old}).`,
+    overriddenPlain: (field: string | null, slot: string) =>
+        field === null ? `${slot} was cleared.` : `${slot} now uses ${field}.`,
+    undoFor: (slot: string) => `Undo the change to ${slot}`,
+    undoneSlot: (slot: string) => `Undone. ${slot} is back as it was.`,
+    overriddenAnnounce: (slot: string, field: string | null) =>
+        field === null ? `${slot} cleared.` : `${slot} now uses ${field}.`,
+    undoStale:
+        'That slot changed after the override, so it was not undone. The list is up to date.',
+    notPicked: "That field can't be used for this slot.",
+    typeMismatchPill: 'Type mismatch',
+    fitsHeading: 'Fields that fit:',
+    useField: (field: string) => `Use ${field}`,
+    useFieldFor: (field: string, slot: string) => `Use ${field} for ${slot}`,
+    treatAs: 'Treat as…',
+    treatAsFor: (field: string) => `Treat ${field} as…`,
+    treatAsMenu: (field: string) => `Treat ${field} as`,
+    typeNames: {
+        text: 'Text',
+        number: 'Number',
+        boolean: 'True or false',
+        date: 'Date',
+    } as Record<string, string>,
+    typeAutomatic: 'Automatic',
+    treatedAs: (field: string, type: string) =>
+        `${field} is now treated as ${type}.`,
+    treatedAuto: (field: string) =>
+        `${field} is read as its detected type again.`,
+    notTreated: "That type can't be set for this field.",
+    apiMatchFound: (field: string, value: string | null) =>
+        `Dashflow found a new field ${field} that looks like the same data${value ? ` (matching value ${value})` : ''}.`,
+    useMatchFor: (match: string, slot: string) => `Use ${match} for ${slot}`,
     blockerShort: {
         required_missing: 'needs a field',
         unconfirmed_low: 'needs your confirmation',

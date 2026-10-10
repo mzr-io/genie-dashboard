@@ -1,9 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import ConfidenceMeter from '@/components/wizard/ConfidenceMeter.vue';
+import FieldPicker from '@/components/wizard/FieldPicker.vue';
+import TreatAsMenu from '@/components/wizard/TreatAsMenu.vue';
 import { Button } from '@/components/ui/button';
-import { confidenceOf, needsReview } from '@/lib/blockMapping';
-import type { ChecklistSlot } from '@/lib/blockMapping';
+import {
+    compatibleFields,
+    confidenceOf,
+    needsReview,
+} from '@/lib/blockMapping';
+import type {
+    ChecklistSlot,
+    FieldType,
+    OverrideNote,
+    PickerField,
+} from '@/lib/blockMapping';
 import { blockMapLabels as labels } from '@/locales/labels';
 
 // One row of the slot checklist (Story 3.12b): the slot, its state and confidence, the field that feeds it and, for a Medium or Low guess, the
@@ -16,9 +27,30 @@ const props = defineProps<{
     reasonId?: string;
     // A write is in flight: Confirm waits.
     busy?: boolean;
+    // Lists the fields the slot could take (the picker and a Type-mismatch row's compatible fields).
+    loadFields?: (slot: string) => Promise<PickerField[]>;
+    // What the last override did to this slot, while it can still be undone.
+    note?: OverrideNote | null;
+    // The API change under this slot: the message, and the candidate it offers (never applied by itself).
+    changeText?: string | null;
+    match?: { path: string; display: string } | null;
+    matchText?: string | null;
 }>();
 
-const emit = defineEmits<{ (e: 'confirm', slot: string): void }>();
+const emit = defineEmits<{
+    (e: 'confirm', slot: string): void;
+    (e: 'pick', slot: string, path: string | null): void;
+    (e: 'undo', slot: string): void;
+    (e: 'treat', slot: string, path: string, type: FieldType | null): void;
+}>();
+
+const picker = ref<InstanceType<typeof FieldPicker> | null>(null);
+// A read-only view (read-only viewer, offline, published): nothing that changes the mapping is drawn.
+const editable = computed(() => props.blocked === undefined);
+const fits = ref<PickerField[]>([]);
+// The mismatched field's own effective type, for the Treat as menu.
+const fieldType = ref<string | null>(null);
+let reading = 0;
 
 const level = computed(() => confidenceOf(props.item));
 // Only a guess carries a confidence badge; a decision reads "Confirmed by you" or "Overridden".
@@ -51,6 +83,47 @@ const flagged = computed(
 const suggestion = computed(() =>
     props.item.state === 'required_missing' ? props.item.suggestion : null,
 );
+const mismatch = computed(() => props.item.state === 'type_mismatch');
+const list = (): Promise<PickerField[]> =>
+    props.loadFields?.(props.item.slot) ?? Promise.resolve([]);
+
+// A Type-mismatch row lists the fields that would fit (a read; it writes nothing). A late answer to an earlier read is dropped; a failed read
+// leaves the area hidden.
+watch(
+    () => [mismatch.value, editable.value, props.item.path] as const,
+    async ([isMismatch, canEdit, path]) => {
+        const mine = (reading += 1);
+
+        if (!isMismatch || !canEdit || props.loadFields === undefined) {
+            fits.value = [];
+            fieldType.value = null;
+
+            return;
+        }
+
+        try {
+            const all = await list();
+
+            if (mine === reading) {
+                fits.value = compatibleFields(all).slice(0, 5);
+                fieldType.value =
+                    all.find((f) => f.path === path)?.effective_type ?? null;
+            }
+        } catch {
+            if (mine === reading) {
+                fits.value = [];
+                fieldType.value = null;
+            }
+        }
+    },
+    { immediate: true },
+);
+
+function pick(field: PickerField): void {
+    emit('pick', props.item.slot, field.path);
+}
+
+defineExpose({ focusPicker: () => picker.value?.focus() });
 </script>
 
 <template>
@@ -77,6 +150,13 @@ const suggestion = computed(() =>
                 >
             </span>
             <span
+                v-if="mismatch"
+                class="slot-pill-error type-caption rounded-sm border border-error-border bg-error-soft px-2 font-semibold text-error-text"
+                data-test="slot-state"
+                >{{ labels.typeMismatchPill }}</span
+            >
+            <span
+                v-else
                 class="type-caption rounded-sm bg-surface-muted px-2 text-text-secondary"
                 data-test="slot-state"
                 >{{ stateName }}</span
@@ -124,6 +204,95 @@ const suggestion = computed(() =>
         >
             {{ labels.useAs(suggestion.display, item.label) }}
         </p>
+
+        <p
+            v-if="changeText"
+            class="type-body-sm text-error-text"
+            data-test="slot-api-changed"
+        >
+            {{ changeText }}
+        </p>
+
+        <p
+            v-if="matchText && match"
+            class="type-body-sm flex flex-wrap items-center gap-2 text-text-secondary"
+            data-test="slot-api-match"
+        >
+            <span>{{ matchText }}</span>
+            <Button
+                v-if="editable"
+                type="button"
+                variant="secondary"
+                size="sm"
+                :blocked="busy === true"
+                :aria-busy="busy ? 'true' : undefined"
+                :aria-label="labels.useMatchFor(match.display, item.label)"
+                data-test="use-match"
+                @click="emit('pick', item.slot, match.path)"
+                >{{ labels.useField(match.display) }}</Button
+            >
+        </p>
+
+        <p
+            v-if="note"
+            class="type-body-sm flex flex-wrap items-center gap-2 text-text-secondary"
+            data-test="override-note"
+        >
+            <span>{{ note.text }}</span>
+            <Button
+                v-if="editable"
+                type="button"
+                variant="link"
+                :aria-busy="busy ? 'true' : undefined"
+                :aria-label="labels.undoFor(item.label)"
+                data-test="undo-override"
+                @click="emit('undo', item.slot)"
+                >{{ labels.undo }}</Button
+            >
+        </p>
+
+        <div
+            v-if="mismatch && editable && fits.length > 0"
+            class="flex flex-wrap items-center gap-2"
+            role="group"
+            :aria-label="labels.fitsHeading"
+            data-test="fitting-fields"
+        >
+            <span class="type-caption text-text-secondary">{{
+                labels.fitsHeading
+            }}</span>
+            <Button
+                v-for="field in fits"
+                :key="field.path ?? field.display"
+                type="button"
+                variant="secondary"
+                size="sm"
+                :blocked="busy === true"
+                :aria-label="labels.useFieldFor(field.display, item.label)"
+                data-test="fitting-field"
+                @click="pick(field)"
+                >{{ labels.useField(field.display) }}</Button
+            >
+        </div>
+
+        <div v-if="editable" class="flex flex-wrap items-center gap-2">
+            <FieldPicker
+                v-if="loadFields"
+                ref="picker"
+                :slot-key="item.slot"
+                :slot-label="item.label"
+                :current="item.path"
+                :load="list"
+                :busy="busy"
+                @pick="pick"
+            />
+            <TreatAsMenu
+                v-if="mismatch && item.path && item.display"
+                :field="item.display"
+                :current="fieldType"
+                @pick="(type) => emit('treat', item.slot, item.path!, type)"
+            />
+        </div>
 
         <div v-if="needsReview(item)">
             <Button

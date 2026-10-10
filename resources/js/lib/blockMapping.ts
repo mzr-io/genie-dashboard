@@ -122,7 +122,17 @@ export type Checklist = {
     counts: ChecklistCounts;
     blockers: Blocker[];
     baseline: { path: string; display: string }[];
-    api_changed: Record<string, unknown>[];
+    api_changed: ApiChange[];
+};
+
+// A decided slot whose field left the sample (Story 3.13a): the slot reads Required missing or Optional empty, and `match` is a candidate that is
+// only ever offered, never applied.
+export type ApiChange = {
+    slot: string;
+    path: string;
+    display: string;
+    state: string;
+    match: { path: string; display: string } | null;
 };
 
 export type SampleStatus = 'ok' | 'expired' | 'invalid';
@@ -144,7 +154,25 @@ export type MappingWrite = Checklist & {
     sample_revision: number | null;
     query_plan: unknown;
     role_change?: { path: string; from: string; to: string };
+    // Opaque to the client: posted back as it is to restore the slot and the role.
+    undo?: Record<string, unknown>;
 };
+
+// One entry of a slot's field picker (`GET .../mapping/slots/{slot}/fields`), compatible fields first.
+export type PickerField = {
+    kind: 'field' | 'static_text';
+    path: string | null;
+    display: string;
+    type?: string;
+    effective_type?: string;
+    role?: string;
+    example?: string | null;
+    compatible: boolean;
+    reason?: string;
+};
+
+export const FIELD_TYPES = ['text', 'number', 'boolean', 'date'] as const;
+export type FieldType = (typeof FIELD_TYPES)[number];
 
 const mappingUrl = (draftId: string, tail = ''): string =>
     `${DRAFT_BLOCKS_URL}/${encodeURIComponent(draftId)}/mapping${tail}`;
@@ -275,6 +303,65 @@ export function postConfirm(
         revision,
         claim,
     );
+}
+
+// The fields a slot could take, each with whether it fits and, when not, why. Read-only: it writes nothing. "Static text" is dropped: the
+// backend cannot store it (reported in the story's notes).
+export async function fetchSlotFields(
+    draftId: string,
+    slot: string,
+): Promise<PickerField[]> {
+    const answer = await wizardCall(
+        'GET',
+        mappingUrl(draftId, `/slots/${encodeURIComponent(slot)}/fields`),
+    );
+    const data = answer.data as { fields?: PickerField[] } | undefined;
+
+    return (data?.fields ?? []).filter((field) => field.kind === 'field');
+}
+
+// Feeds a slot from a field (or clears it with null); answers with `role_change` and `undo` when they apply.
+export function putSlotOverride(
+    draftId: string,
+    slot: string,
+    path: string | null,
+    revision: number,
+    claim: SampleClaim,
+): Promise<MappingWrite> {
+    return write(
+        draftId,
+        `/slots/${encodeURIComponent(slot)}`,
+        { path },
+        revision,
+        claim,
+    );
+}
+
+// Undoes an override with the payload it returned.
+export async function postUndo(
+    draftId: string,
+    undo: Record<string, unknown>,
+    revision: number,
+    claim: SampleClaim,
+): Promise<MappingWrite> {
+    const answer = await wizardCall('POST', mappingUrl(draftId, '/undo'), {
+        undo,
+        draft_revision: revision,
+        ...claim,
+    });
+
+    return answer.data as MappingWrite;
+}
+
+// "Treat as": one field's effective type; null clears it.
+export function putFieldType(
+    draftId: string,
+    path: string,
+    type: FieldType | null,
+    revision: number,
+    claim: SampleClaim,
+): Promise<MappingWrite> {
+    return write(draftId, '/field-types', { path, type }, revision, claim);
 }
 
 async function post(
@@ -519,3 +606,42 @@ export function blockingSlots(
         .sort((a, b) => a.at - b.at)
         .map(({ at: _at, ...entry }) => entry);
 }
+
+// ---- Field picker helpers (Story 3.13b) -------------------------------------------------------------------------------
+
+// How deep a field sits (`data.items.total` is 2), for the indent guides.
+export function pathDepth(display: string): number {
+    return Math.max(0, display.split(/[.[\]]+/).filter(Boolean).length - 1);
+}
+
+// The fields that match a search (path, type or role), compatible first and the server's order kept within each half.
+export function filterFields(
+    fields: PickerField[],
+    query: string,
+): PickerField[] {
+    const needle = query.trim().toLowerCase();
+    const kept = fields.filter(
+        (field) =>
+            needle === '' ||
+            [field.display, field.effective_type, field.type, field.role]
+                .filter((part): part is string => typeof part === 'string')
+                .some((part) => part.toLowerCase().includes(needle)),
+    );
+
+    return [
+        ...kept.filter((field) => field.compatible),
+        ...kept.filter((field) => !field.compatible),
+    ];
+}
+
+// The compatible fields of a list, for a Type-mismatch row's buttons.
+export function compatibleFields(fields: PickerField[]): PickerField[] {
+    return fields.filter((field) => field.compatible && field.path !== null);
+}
+
+// What the last override did to a slot, kept while Undo can still restore it: the sentence to show and the payload the server returned.
+export type OverrideNote = {
+    slot: string;
+    text: string;
+    undo: Record<string, unknown>;
+};

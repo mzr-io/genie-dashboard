@@ -395,3 +395,7 @@
 - source_spec: `spec-3-12b-slot-checklist-ui.md`
   summary: Merge the two confidence meters, review row list semantics and unfilled-segment contrast, explain the Sample data badge, and add the preview client so the live preview refreshes after mapping writes.
   evidence: Review findings; the preview client is built with the hotspots stage because nothing in the front end calls the preview endpoint yet.
+
+- source_spec: `spec-3-13b-field-picker-ui.md`
+  summary: Add a "None" entry to clear an optional slot, support static text once the backend stores it, reopen the picker after a refused pick, list all fitting fields, and fetch fitting fields lazily instead of one GET per mismatch row.
+  evidence: Review findings; the backend cannot store static text yet.

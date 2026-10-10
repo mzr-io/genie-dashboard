@@ -4,7 +4,13 @@ import SegmentedControl from '@/components/SegmentedControl.vue';
 import { Button } from '@/components/ui/button';
 import SlotRow from '@/components/wizard/SlotRow.vue';
 import { filterCounts, matchesFilter } from '@/lib/blockMapping';
-import type { Checklist, SlotFilter } from '@/lib/blockMapping';
+import type {
+    Checklist,
+    FieldType,
+    OverrideNote,
+    PickerField,
+    SlotFilter,
+} from '@/lib/blockMapping';
 import { blockMapLabels as labels } from '@/locales/labels';
 
 // "2 · Review block slots" (Story 3.12b): the slots in HEADER, KPI and META groups (the order is the page's: Low first, computed on load and on
@@ -17,11 +23,26 @@ const props = defineProps<{
     reasonId?: string;
     // A write is in flight: Confirm and Re-run wait.
     busy?: boolean;
+    loadFields?: (slot: string) => Promise<PickerField[]>;
+    // The last override of each slot, while it can be undone.
+    notes?: Record<string, OverrideNote>;
+    // The API change under each slot (the message and the candidate it offers).
+    changes?: Record<
+        string,
+        {
+            text: string;
+            match: { path: string; display: string } | null;
+            matchText: string | null;
+        }
+    >;
 }>();
 
 const emit = defineEmits<{
     (e: 'confirm', slot: string): void;
     (e: 'rerun'): void;
+    (e: 'pick', slot: string, path: string | null): void;
+    (e: 'undo', slot: string): void;
+    (e: 'treat', slot: string, path: string, type: FieldType | null): void;
 }>();
 
 const filter = ref<SlotFilter>('all');
@@ -161,7 +182,15 @@ defineExpose({ focusSlot, showAll, keep, clearKept, focusConfirm });
                     :blocked="blocked"
                     :reason-id="reasonId"
                     :busy="busy"
+                    :load-fields="loadFields"
+                    :note="notes?.[slot.slot] ?? null"
+                    :change-text="changes?.[slot.slot]?.text ?? null"
+                    :match="changes?.[slot.slot]?.match ?? null"
+                    :match-text="changes?.[slot.slot]?.matchText ?? null"
                     @confirm="emit('confirm', $event)"
+                    @pick="(key, path) => emit('pick', key, path)"
+                    @undo="emit('undo', $event)"
+                    @treat="(key, path, type) => emit('treat', key, path, type)"
                 />
             </ul>
         </section>

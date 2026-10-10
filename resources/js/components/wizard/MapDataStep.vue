@@ -24,21 +24,28 @@ import {
     blockingSlots,
     computeOrder,
     fetchMapping,
+    fetchSlotFields,
     flaggedFields,
     postAutoMap,
     postConfirm,
+    postUndo,
     putFieldRole,
+    putFieldType,
     putRecordPath,
+    putSlotOverride,
 } from '@/lib/blockMapping';
 import type {
+    FieldType,
     MappingRead,
     MappingRole,
     MappingWrite,
+    OverrideNote,
     RoleField,
     RoleUndo,
 } from '@/lib/blockMapping';
 import type { SampleClaim, SampleState } from '@/lib/blockSample';
 import { WizardError } from '@/lib/blockWizard';
+import { ErrorCode } from '@/types/error-codes';
 import { blockMapLabels as labels } from '@/locales/labels';
 
 // Wizard step 3, Map Data (Story 3.11b, UI stage 1; UX-DR-65, 66, 123 to 129, 138, 180 to 182). The left column is the step 1 and 2 summaries, a
@@ -80,6 +87,11 @@ const refreshFailed = ref(false);
 const dismissed = ref<Set<string>>(new Set());
 const expanded = ref(true);
 const undo = ref<RoleUndo | null>(null);
+// The most recent override only, while Undo can still restore it (gone after any other write).
+const lastNote = ref<OverrideNote | null>(null);
+const notes = computed<Record<string, OverrideNote>>(() =>
+    lastNote.value ? { [lastNote.value.slot]: lastNote.value } : {},
+);
 // Why the last change was not saved (visible and announced); cleared when the next one is.
 const notSaved = ref<string | null>(null);
 // The Admin has chosen a record path in this visit; until then a pending choice keeps the roles open.
@@ -175,6 +187,38 @@ const blockerReason = computed(() => {
     }
 
     return parts.join(' ');
+});
+// The API-change messages, one per affected slot: the catalogue's `api-changed`, and the match sentence built from the labels (the button the row
+// draws carries "Use {match}"). The value clause is left out when the sample gives no example.
+const changes = computed(() => {
+    const out: Record<
+        string,
+        {
+            text: string;
+            match: { path: string; display: string } | null;
+            matchText: string | null;
+        }
+    > = {};
+    const all = slotGroups.value.flatMap((group) => group.slots);
+
+    for (const entry of read.value?.checklist?.api_changed ?? []) {
+        const label =
+            all.find((slot) => slot.slot === entry.slot)?.label ?? entry.slot;
+        const value =
+            roles.value?.fields.find(
+                (field) => field.path === entry.match?.path,
+            )?.example ?? null;
+
+        out[entry.slot] = {
+            text: t('api-changed', { field: entry.display, slot: label }),
+            match: entry.match,
+            matchText: entry.match
+                ? labels.apiMatchFound(entry.match.display, value)
+                : null,
+        };
+    }
+
+    return out;
 });
 const summaryItems = computed(() =>
     blocking.value.map((entry) => ({
@@ -413,6 +457,8 @@ function submit(
         revision: number,
         claim: SampleClaim,
     ) => Promise<MappingWrite>,
+    // A refusal this step words itself (a field that does not fit, a stale undo): true when it did, so the page does not also react to it.
+    local?: (error: WizardError) => boolean,
 ): Promise<MappingWrite | null> {
     seq += 1;
     notSaved.value = null;
@@ -436,6 +482,14 @@ function submit(
 
             return done;
         } catch (error) {
+            if (
+                error instanceof WizardError &&
+                local !== undefined &&
+                local(error)
+            ) {
+                return null;
+            }
+
             emit('error', error);
 
             if (!handledByPage(error)) {
@@ -610,6 +664,7 @@ async function confirmSlot(slot: string): Promise<void> {
 
         // The row is kept (under Needs review) in the same tick its state changes, so it never drops out for a moment.
         checklistRef.value?.keep(slot);
+        clearNote();
 
         if (!adopt(done)) {
             return;
@@ -621,6 +676,250 @@ async function confirmSlot(slot: string): Promise<void> {
         );
         await nextTick();
         await checklistRef.value?.focusSlot(slot);
+    } finally {
+        pending.value = false;
+    }
+}
+
+// ---- Field picker, override, Undo and Treat as (Story 3.13b) ---------------------------------------------------------------
+
+function loadFields(slot: string) {
+    return props.draftId === null
+        ? Promise.reject(new WizardError(0))
+        : fetchSlotFields(props.draftId, slot);
+}
+
+function labelOf(slot: string): string {
+    return (
+        slotGroups.value.flatMap((g) => g.slots).find((s) => s.slot === slot)
+            ?.label ?? slot
+    );
+}
+
+function say(message: string): void {
+    notSaved.value = message;
+    announce(message, 'assertive');
+}
+
+// A field the server refused for a slot (422 with a `slot.<key>` error): its reason is shown and announced, and nothing changed. Any other 422
+// is the page's to show.
+function refused(error: WizardError): boolean {
+    const keys = Object.keys(error.fields ?? {}).filter((key) =>
+        key.startsWith('slot.'),
+    );
+
+    if (error.status !== 422 || keys.length === 0) {
+        return false;
+    }
+
+    say(error.fields[keys[0]]?.[0] ?? labels.notPicked);
+
+    return true;
+}
+
+// A Treat as the server refused (422): said in its own words, nothing changed.
+function treatRefused(error: WizardError): boolean {
+    if (error.status !== 422) {
+        return false;
+    }
+
+    say(Object.values(error.fields ?? {}).flat()[0] ?? labels.notTreated);
+
+    return true;
+}
+
+function clearNote(): void {
+    lastNote.value = null;
+}
+
+// Settles what a write moved (the roles, a suggestion) with the server's own view; a read that fails says so and keeps what is shown.
+async function reread(): Promise<void> {
+    try {
+        await load(true);
+    } catch {
+        refreshFailed.value = true;
+    }
+}
+
+async function pickField(slot: string, path: string | null): Promise<void> {
+    if (pending.value) {
+        return;
+    }
+
+    pending.value = true;
+
+    try {
+        const done = await submit(
+            (id, revision, claim) =>
+                putSlotOverride(id, slot, path, revision, claim),
+            refused,
+        );
+
+        if (done === null) {
+            await checklistRef.value?.focusSlot(slot);
+
+            return;
+        }
+
+        clearNote();
+
+        if (!adopt(done)) {
+            await reread();
+
+            return;
+        }
+
+        const display =
+            done.groups.flatMap((g) => g.slots).find((s) => s.slot === slot)
+                ?.display ?? null;
+        const change = done.role_change;
+
+        undo.value = null;
+
+        if (done.undo) {
+            lastNote.value = {
+                slot,
+                undo: done.undo,
+                text: change
+                    ? labels.overriddenNote(
+                          display ?? change.path,
+                          labels.roleNames[change.to] ?? change.to,
+                          labels.roleNames[change.from] ?? change.from,
+                      )
+                    : labels.overriddenPlain(display, labelOf(slot)),
+            };
+        }
+
+        announce(
+            change
+                ? labels.overriddenNote(
+                      display ?? change.path,
+                      labels.roleNames[change.to] ?? change.to,
+                      labels.roleNames[change.from] ?? change.from,
+                  )
+                : labels.overriddenAnnounce(labelOf(slot), display),
+            'polite',
+        );
+        await nextTick();
+        await checklistRef.value?.focusSlot(slot);
+
+        // The field's role may have moved: the server's own view settles the roles (the checklist is already fresh).
+        if (change) {
+            await reread();
+        }
+    } finally {
+        pending.value = false;
+    }
+}
+
+async function undoSlot(slot: string): Promise<void> {
+    const note = lastNote.value;
+
+    if (pending.value || note === null || note.slot !== slot) {
+        return;
+    }
+
+    pending.value = true;
+
+    try {
+        const done = await submit(
+            (id, revision, claim) => postUndo(id, note.undo, revision, claim),
+            (error) => {
+                if (
+                    error.status !== 409 ||
+                    error.code !== ErrorCode.BlocksSlotChanged
+                ) {
+                    return false;
+                }
+
+                // Someone changed the slot after the override: nothing was undone, and the page shows what is there now.
+                if (error.current) {
+                    emit('revision', error.current.revision);
+                }
+
+                clearNote();
+                say(labels.undoStale);
+
+                return true;
+            },
+        );
+
+        if (done === null) {
+            await reread();
+            await checklistRef.value?.focusSlot(slot);
+
+            return;
+        }
+
+        clearNote();
+        undo.value = null;
+
+        if (!adopt(done)) {
+            await reread();
+
+            return;
+        }
+
+        announce(labels.undoneSlot(labelOf(slot)), 'polite');
+        await nextTick();
+        await checklistRef.value?.focusSlot(slot);
+
+        // Only a restored role needs the roles read again.
+        if (note.undo.role) {
+            await reread();
+        }
+    } finally {
+        pending.value = false;
+    }
+}
+
+async function treatAs(
+    slot: string,
+    path: string,
+    type: FieldType | null,
+): Promise<void> {
+    if (pending.value) {
+        return;
+    }
+
+    pending.value = true;
+
+    try {
+        const done = await submit(
+            (id, revision, claim) =>
+                putFieldType(id, path, type, revision, claim),
+            treatRefused,
+        );
+
+        if (done === null) {
+            await checklistRef.value?.focusSlot(slot);
+
+            return;
+        }
+
+        clearNote();
+
+        if (!adopt(done)) {
+            await reread();
+
+            return;
+        }
+
+        const shown =
+            done.groups.flatMap((g) => g.slots).find((s) => s.slot === slot)
+                ?.display ?? path;
+
+        announce(
+            type === null
+                ? labels.treatedAuto(shown)
+                : labels.treatedAs(shown, labels.typeNames[type] ?? type),
+            'polite',
+        );
+        await nextTick();
+        await checklistRef.value?.focusSlot(slot);
+
+        // Re-read: the field's effective type moved, and so may its role and the plan.
+        await reread();
     } finally {
         pending.value = false;
     }
@@ -643,6 +942,7 @@ async function rerun(): Promise<void> {
         }
 
         order.value = computeOrder(done.groups);
+        clearNote();
         attempted.value = false;
         checklistRef.value?.clearKept();
         announce(labels.rerunDone, 'polite');
@@ -958,8 +1258,14 @@ onBeforeUnmount(() => {
                     :blocked="blocked"
                     :reason-id="reasonId"
                     :busy="pending"
+                    :load-fields="loadFields"
+                    :notes="notes"
+                    :changes="changes"
                     @confirm="confirmSlot"
                     @rerun="rerun"
+                    @pick="pickField"
+                    @undo="undoSlot"
+                    @treat="treatAs"
                 />
 
                 <FormErrorSummary
