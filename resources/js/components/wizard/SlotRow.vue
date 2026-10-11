@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { ChevronDown, ChevronRight } from '@lucide/vue';
+import { computed, ref, useId, watch } from 'vue';
 import ConfidenceMeter from '@/components/wizard/ConfidenceMeter.vue';
 import FieldPicker from '@/components/wizard/FieldPicker.vue';
+import PresentationEditor from '@/components/wizard/PresentationEditor.vue';
 import TreatAsMenu from '@/components/wizard/TreatAsMenu.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,7 +17,12 @@ import type {
     OverrideNote,
     PickerField,
 } from '@/lib/blockMapping';
-import { blockMapLabels as labels } from '@/locales/labels';
+import { errorsUnder, slotPath } from '@/lib/blockPresentation';
+import type { PresentationRules } from '@/lib/blockPresentation';
+import {
+    blockMapLabels as labels,
+    blockPresentationLabels as presentationLabels,
+} from '@/locales/labels';
 
 // One row of the slot checklist (Story 3.12b): the slot, its state and confidence, the field that feeds it and, for a Medium or Low guess, the
 // reason and a Confirm button. A required slot with nothing mapped carries the error rule and, when the server knows a candidate, says so.
@@ -37,6 +44,10 @@ const props = defineProps<{
     changeText?: string | null;
     match?: { path: string; display: string } | null;
     matchText?: string | null;
+    // The presentation editor (Story 3.15b): the rules, their faults, and whether this row's editor is the one open.
+    rules?: PresentationRules;
+    presentationErrors?: Record<string, string>;
+    open?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -46,7 +57,21 @@ const emit = defineEmits<{
     (e: 'treat', slot: string, path: string, type: FieldType | null): void;
     // "Choose from the field tree" on a required slot with nothing mapped (Story 3.11d).
     (e: 'tree', slot: string): void;
+    // The format and display editor of this row opens or closes (one row at a time; the checklist decides).
+    (e: 'toggle', slot: string): void;
+    (e: 'presentation', rules: PresentationRules): void;
 }>();
+
+const editorId = useId();
+// A fault under this slot (or, on the headline, in the bands) shows on the row even while the editor is closed.
+const presentationFaults = computed(() => {
+    const all = props.presentationErrors ?? {};
+    const own = errorsUnder(all, slotPath(props.item.slot));
+
+    return props.item.slot === 'headline_value'
+        ? [...own, ...errorsUnder(all, 'config.presentation.bands')]
+        : own;
+});
 
 const picker = ref<InstanceType<typeof FieldPicker> | null>(null);
 // A read-only view (read-only viewer, offline, published): nothing that changes the mapping is drawn.
@@ -316,6 +341,43 @@ defineExpose({ focusPicker: () => picker.value?.focus(), openPicker });
                 :field="item.display"
                 :current="fieldType"
                 @pick="(type) => emit('treat', item.slot, item.path!, type)"
+            />
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+            <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                :aria-expanded="open ? 'true' : 'false'"
+                :aria-controls="open ? editorId : undefined"
+                :aria-label="presentationLabels.openFor(item.label)"
+                data-test="presentation-toggle"
+                @click="emit('toggle', item.slot)"
+            >
+                <ChevronDown v-if="open" class="size-4" aria-hidden="true" />
+                <ChevronRight v-else class="size-4" aria-hidden="true" />
+                {{ presentationLabels.open }}
+            </Button>
+            <span
+                v-if="presentationFaults.length > 0 && !open"
+                class="type-caption text-error-text"
+                data-test="presentation-fault"
+                >{{ presentationFaults[0].message }}</span
+            >
+        </div>
+
+        <div
+            v-if="open"
+            :id="editorId"
+            class="mt-1 border-t border-border-default pt-3"
+        >
+            <PresentationEditor
+                :item="item"
+                :rules="rules ?? {}"
+                :errors="presentationErrors ?? {}"
+                :disabled="!editable"
+                @change="(next) => emit('presentation', next)"
             />
         </div>
 

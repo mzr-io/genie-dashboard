@@ -429,3 +429,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-15a-presentation-rules-backend.md`
   summary: Band icon is validated as a kebab-case slug, not against the block icon set; the renderer falls back silently. Also emptySlots lists slots the Renderer does not show, headlines with exponent over 1000 match no band, and clearing presentation needs a usable sample (unverified severity: low-medium).
   evidence: matches existing config.icon validation; settle with the UI work in 3.15b.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-15b-presentation-rules-editor-ui.md`
+  summary: Presentation editor lacks band reorder (move up/down), a `between` value > to check, an unreachable-band warning, and a parity guard against the server's limits.
+  evidence: Review noted first-match-wins order cannot be changed except by remove and re-add; the server also does not reject value > to.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-15b-presentation-rules-editor-ui.md`
+  summary: Missing tests for the in-flight write race (rulesSeq) and example text for date, relative-time and duration formats.
+  evidence: The tests await settle() after each change, so only one write is ever in flight (needs a deferred-promise harness).

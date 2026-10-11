@@ -2155,3 +2155,139 @@ export const blockPreviewLabels = {
     // A read-only view still shows what is mapped.
     readOnlyRegions: 'Read-only: fields cannot be changed here.',
 } as const;
+
+// The presentation rules editor on the Map Data step (Story 3.15b): format, emphasis, direction, threshold bands, labels and the empty display.
+export const blockPresentationLabels = {
+    open: 'Format and display',
+    openFor: (slot: string) => `Format and display for ${slot}`,
+    close: 'Hide format and display',
+    heading: (slot: string) => `Format and display · ${slot}`,
+    // The three columns.
+    formatTitle: 'Format',
+    emphasisTitle: 'Emphasis',
+    directionTitle: 'Direction',
+    kind: 'Show as',
+    kinds: {
+        number: 'Number',
+        integer: 'Integer',
+        percent: 'Percent',
+        currency: 'Currency',
+        compact: 'Compact (1.2K)',
+        date: 'Date',
+        'relative-time': 'Relative time',
+        duration: 'Duration',
+    } as Record<string, string>,
+    places: 'Decimal places',
+    placesHint: 'Leave empty to keep every digit',
+    thousands: 'Thousands separator',
+    currencyCode: 'Currency code',
+    currencyCodeHint: 'Three letters, such as USD',
+    currencyDisplay: 'Show currency as',
+    currencyDisplays: { symbol: 'Symbol ($)', code: 'Code (USD)' } as Record<
+        string,
+        string
+    >,
+    datePattern: 'Date pattern',
+    datePatterns: {
+        short: 'Short',
+        medium: 'Medium',
+        long: 'Long',
+        full: 'Full',
+    } as Record<string, string>,
+    units: 'Units suffix',
+    unitsHint: 'Such as kg or items',
+    example: 'Example',
+    exampleValue: (shown: string) => `Example: ${shown}`,
+    exampleNone: 'Example: complete the format to see one',
+    noFormat: 'Text is shown as it is. There are no format options.',
+    // Emphasis.
+    role: 'Role',
+    roles: {
+        headline: 'Headline',
+        primary: 'Primary',
+        secondary: 'Secondary',
+        badge: 'Badge',
+    } as Record<string, string>,
+    size: 'Size',
+    sizes: { sm: 'Small', md: 'Medium', lg: 'Large' } as Record<string, string>,
+    weight: 'Weight',
+    weights: { regular: 'Regular', medium: 'Medium', bold: 'Bold' } as Record<
+        string,
+        string
+    >,
+    notSet: 'Card default',
+    // Direction.
+    direction: 'Direction',
+    directions: {
+        higher_is_better: 'Higher is better',
+        lower_is_better: 'Lower is better',
+    } as Record<string, string>,
+    directionNote: 'Colors the comparison: up = green',
+    directionNoteLower:
+        'Colors the comparison: down = green · better, up = red · worse',
+    better: 'better',
+    worse: 'worse',
+    directionComparisonOnly: 'Direction applies to the comparison slot only.',
+    directionNotHere: 'Direction applies to the comparison slot only.',
+    // Labels.
+    labelText: 'Label text',
+    labelHint: 'Shown with the value',
+    prefix: 'Prefix',
+    suffix: 'Suffix',
+    // Bands.
+    bandsTitle: 'Threshold bands',
+    bandsCaption:
+        'The first band that matches, from the top, colors the status badge.',
+    addBand: '+ Add band',
+    removeBand: (n: number) => `Remove band ${n}`,
+    bandName: (n: number) => `Band ${n}`,
+    bandOrder: (n: number) => `${n}`,
+    bandCondition: 'Condition',
+    bandOps: {
+        '>=': '≥ at least',
+        '<=': '≤ at most',
+        between: 'between',
+    } as Record<string, string>,
+    bandValue: 'Value',
+    bandTo: 'and',
+    bandColor: 'Color',
+    colors: {
+        success: 'Success',
+        warning: 'Warning',
+        error: 'Error',
+        info: 'Info',
+        neutral: 'Neutral',
+    } as Record<string, string>,
+    bandIcon: 'Icon',
+    bandIconNone: 'Choose an icon',
+    bandLabel: 'Label',
+    bandsNone: 'No bands yet. The status badge shows the mapped text, if any.',
+    bandIconNeeded: 'A band needs an icon.',
+    bandIconUnknown: 'Choose an icon from the list.',
+    bandLabelNeeded: 'A band needs a label.',
+    colorNeeded: 'Choose a color.',
+    decimalNeeded: 'Use a number, such as 100 or 2.5.',
+    bandsMax: (n: number) => `Use at most ${n} bands.`,
+    // The empty display.
+    emptyTitle: 'Empty display',
+    emptyHint:
+        'Shown for a mapped value that is missing. Never used for the headline.',
+    emptyForHeadline:
+        'The headline shows Unavailable when it has no value, never an empty display.',
+    // Faults and states.
+    textLimit: (max: number) =>
+        `Use 1 to ${max} characters, with no control characters.`,
+    placesRange: (max: number) => `Use a whole number from 0 to ${max}.`,
+    currencyShape: 'Use a three-letter currency code, such as USD.',
+    currencyNeeded: 'A currency format needs a currency code.',
+    unknownSlot: 'This slot is not part of the block.',
+    invalid: 'This value is not valid.',
+    errorsTitle: 'Fix the format and display settings to continue.',
+    blockedContinue:
+        'Fix the format and display settings (marked below) to continue to Preview.',
+    saved: 'Format and display saved.',
+    notSaved: 'The format and display settings were not saved.',
+    refused:
+        'The format and display settings were refused. Check the marked fields.',
+    readOnly: 'Read-only: format and display cannot be changed here.',
+} as const;

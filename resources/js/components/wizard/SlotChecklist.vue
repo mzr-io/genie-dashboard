@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import SlotRow from '@/components/wizard/SlotRow.vue';
 import { announce } from '@/lib/announce';
 import { filterCounts, matchesFilter } from '@/lib/blockMapping';
+import type { PresentationRules } from '@/lib/blockPresentation';
 import type {
     Checklist,
     FieldType,
@@ -38,6 +39,9 @@ const props = defineProps<{
             matchText: string | null;
         }
     >;
+    // The presentation rules and their faults (Story 3.15b).
+    rules?: PresentationRules;
+    presentationErrors?: Record<string, string>;
 }>();
 
 const emit = defineEmits<{
@@ -47,7 +51,15 @@ const emit = defineEmits<{
     (e: 'undo', slot: string): void;
     (e: 'treat', slot: string, path: string, type: FieldType | null): void;
     (e: 'tree', slot: string): void;
+    (e: 'presentation', rules: PresentationRules): void;
 }>();
+
+// One row's format and display editor is open at a time.
+const openRow = ref<string | null>(null);
+
+function toggleRow(slot: string): void {
+    openRow.value = openRow.value === slot ? null : slot;
+}
 
 const filter = ref<SlotFilter>('all');
 const kept = ref<Set<string>>(new Set());
@@ -177,6 +189,7 @@ function focusFirst(): void {
 }
 
 defineExpose({
+    openRow,
     focusSlot,
     showAll,
     keep,
@@ -251,7 +264,12 @@ defineExpose({
                     @pick="(key, path) => emit('pick', key, path)"
                     @undo="emit('undo', $event)"
                     @treat="(key, path, type) => emit('treat', key, path, type)"
+                    :rules="rules"
+                    :presentation-errors="presentationErrors"
+                    :open="openRow === slot.slot"
                     @tree="emit('tree', $event)"
+                    @toggle="toggleRow"
+                    @presentation="emit('presentation', $event)"
                 />
             </ul>
         </section>

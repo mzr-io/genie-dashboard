@@ -1,6 +1,10 @@
 import { WizardError, wizardCall } from '@/lib/blockWizard';
 import type { SampleClaim } from '@/lib/blockSample';
 import type { SampleNode, SampleTable, SampleState } from '@/lib/blockSample';
+import type {
+    PresentationRules,
+    PresentationWrite,
+} from '@/lib/blockPresentation';
 import { DRAFT_BLOCKS_URL } from '@/lib/draftBlocks';
 
 // The Map Data client (Story 3.11b, stage 1): the one consistent read of a Draft's mapping (`GET .../mapping`, with its ETag) and the two writes
@@ -155,6 +159,8 @@ export type MappingRead = {
     plan_stale: boolean;
     sample: SampleStatus;
     dataset_suggestion?: DatasetSuggestion | null;
+    // The Draft's presentation rules (Story 3.15a): descriptors only, `{}` when there are none.
+    presentation?: PresentationRules;
 };
 
 // What a mapping write answers: the checklist, the revisions it stored and the plan; a role write also says what it changed.
@@ -360,6 +366,22 @@ export async function postUndo(
     });
 
     return answer.data as MappingWrite;
+}
+
+// The presentation rules, whole (Story 3.15b); `{}` clears them. A 422 `blocks.invalid_config` names each fault as `config.presentation.<path>`.
+export async function putPresentation(
+    draftId: string,
+    presentation: PresentationRules,
+    revision: number,
+    claim: SampleClaim,
+): Promise<PresentationWrite> {
+    const answer = await wizardCall(
+        'PUT',
+        mappingUrl(draftId, '/presentation'),
+        { presentation, draft_revision: revision, ...claim },
+    );
+
+    return answer.data as PresentationWrite;
 }
 
 // "Treat as": one field's effective type; null clears it.

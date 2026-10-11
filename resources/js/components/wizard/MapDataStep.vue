@@ -38,6 +38,7 @@ import {
     postUndo,
     putFieldRole,
     putFieldType,
+    putPresentation,
     putRecordPath,
     putSlotOverride,
 } from '@/lib/blockMapping';
@@ -50,10 +51,21 @@ import type {
     RoleField,
     RoleUndo,
 } from '@/lib/blockMapping';
+import {
+    ROOT as PRESENTATION_ROOT,
+    clean as cleanRules,
+    judge as judgeRules,
+    sameRules,
+    serverErrors as presentationServerErrors,
+} from '@/lib/blockPresentation';
+import type { PresentationRules } from '@/lib/blockPresentation';
 import type { SampleClaim, SampleState } from '@/lib/blockSample';
 import { WizardError } from '@/lib/blockWizard';
 import { ErrorCode } from '@/types/error-codes';
-import { blockMapLabels as labels } from '@/locales/labels';
+import {
+    blockMapLabels as labels,
+    blockPresentationLabels as presentationLabels,
+} from '@/locales/labels';
 
 // Wizard step 3, Map Data (Story 3.11b, UI stage 1; UX-DR-65, 66, 123 to 129, 138, 180 to 182). The left column is the step 1 and 2 summaries, a
 // sticky status bar, "1 · Roles", a placeholder for "2 · Review block slots" (3.12b) and a collapsed "3 · Transforms" placeholder; the live preview
@@ -142,6 +154,26 @@ let pendingCollapse = false;
 // A suggestion was just applied: the Admin is working in the roles, so they stay open until focus leaves (a button need not take focus on click).
 let holdOpen = false;
 let lastAnnounced: string | null = null;
+
+// The presentation rules the editors show (Story 3.15b): the server's, or the Admin's latest edit while it is invalid or not yet saved.
+const rules = ref<PresentationRules>({});
+// Faults by `config.presentation.<path>`, from the client's own judgement or the server's refusal; any fault blocks Continue.
+const presentationErrors = ref<Record<string, string>>({});
+let rulesSeq = 0;
+// Writes of the rules in flight, and the rules last asked for (what a no-op is measured against until the server answers).
+let rulesInFlight = 0;
+let lastRequested: PresentationRules | null = null;
+
+const presentationFaultList = computed(() =>
+    Object.entries(presentationErrors.value).map(([path, message]) => {
+        const slot = /^config\.presentation\.slots\.([^.]+)/.exec(path)?.[1];
+
+        return {
+            path,
+            message: slot ? `${labelOf(slot)}: ${message}` : message,
+        };
+    }),
+);
 
 const roles = computed(() => read.value?.roles ?? null);
 const counts = computed(() => read.value?.checklist?.counts ?? null);
@@ -270,6 +302,10 @@ const continueBlocked = computed<string | undefined>(() => {
 
     if (checklist === null) {
         return labels.checklistMissing;
+    }
+
+    if (Object.keys(presentationErrors.value).length > 0) {
+        return presentationLabels.blockedContinue;
     }
 
     return checklist.blockers.length > 0 ? blockerReason.value : props.blocked;
@@ -483,15 +519,11 @@ function failNotSaved(): void {
 
 // One write, after the saves in flight. The revision the server stored is handed to the page; a refusal is the page's to show. A read that
 // started earlier must not land over the result, so reads in flight are dropped when a write starts and again when it ends.
-function submit(
-    call: (
-        draftId: string,
-        revision: number,
-        claim: SampleClaim,
-    ) => Promise<MappingWrite>,
+function submit<T extends { draft_revision: number } = MappingWrite>(
+    call: (draftId: string, revision: number, claim: SampleClaim) => Promise<T>,
     // A refusal this step words itself (a field that does not fit, a stale undo): true when it did, so the page does not also react to it.
     local?: (error: WizardError) => boolean,
-): Promise<MappingWrite | null> {
+): Promise<T | null> {
     seq += 1;
     notSaved.value = null;
 
@@ -765,6 +797,106 @@ function clearNote(): void {
     lastNote.value = null;
 }
 
+// ---- Presentation rules (Story 3.15b) ----------------------------------------------------------------------------------------
+
+// The server refused the rules (422 with `config.presentation.<path>` errors): each fault is shown on its field, nothing was stored and the
+// preview keeps its last valid state.
+function presentationRefused(error: WizardError): boolean {
+    const faults = presentationServerErrors(error.fields ?? {});
+
+    if (error.status !== 422 || Object.keys(faults).length === 0) {
+        return false;
+    }
+
+    presentationErrors.value = faults;
+    announce(
+        Object.values(faults)[0] ?? presentationLabels.refused,
+        'assertive',
+    );
+
+    return true;
+}
+
+async function savePresentation(next: PresentationRules): Promise<void> {
+    const wanted = cleanRules(next);
+    const mine = (rulesSeq += 1);
+
+    rules.value = wanted;
+
+    // Judged here first: an invalid value is shown, blocks Continue and is never sent.
+    const faults = judgeRules(wanted);
+
+    if (Object.keys(faults).length > 0) {
+        presentationErrors.value = faults;
+        announce(Object.values(faults)[0], 'assertive');
+
+        return;
+    }
+
+    presentationErrors.value = {};
+
+    // Nothing changed from what is stored: no write.
+    if (sameRules(wanted, lastRequested ?? read.value?.presentation ?? {})) {
+        return;
+    }
+
+    lastRequested = wanted;
+    rulesInFlight += 1;
+
+    let done: Awaited<ReturnType<typeof putPresentation>> | null;
+
+    try {
+        done = await submit(
+            (id, revision, claim) =>
+                putPresentation(id, wanted, revision, claim),
+            presentationRefused,
+        );
+    } finally {
+        rulesInFlight -= 1;
+    }
+
+    if (done === null || read.value === null) {
+        if (rulesInFlight === 0) {
+            lastRequested = null;
+        }
+
+        return;
+    }
+
+    read.value = {
+        ...read.value,
+        draft_revision: done.draft_revision,
+        query_plan: done.query_plan,
+        presentation: done.presentation,
+    };
+
+    if (rulesInFlight === 0) {
+        lastRequested = null;
+    }
+
+    if (
+        mine === rulesSeq &&
+        Object.keys(presentationErrors.value).length === 0
+    ) {
+        rules.value = cleanRules(done.presentation ?? wanted);
+    }
+}
+
+// The server's rules are the editors' rules unless an edit is invalid or unsaved.
+watch(
+    () => read.value?.presentation,
+    (stored) => {
+        // A newer edit is still on its way: its answer settles the rules, not this read.
+        if (
+            rulesInFlight === 0 &&
+            Object.keys(presentationErrors.value).length === 0
+        ) {
+            rules.value = cleanRules(stored ?? {});
+        }
+    },
+    { immediate: true },
+);
+
 // Settles what a write moved (the roles, a suggestion) with the server's own view; a read that fails says so and keeps what is shown.
 async function reread(): Promise<void> {
     try {
@@ -990,6 +1122,40 @@ function onContinueBlocked(): HTMLElement | null {
 
     const list = blocking.value;
     const first = list[0];
+
+    // A fault in the format and display settings: its row opens and takes focus.
+    const fault = Object.keys(presentationErrors.value)[0];
+
+    if (first === undefined && fault !== undefined) {
+        const bands = `${PRESENTATION_ROOT}.bands`;
+        const slot =
+            /^config\.presentation\.slots\.([^.]+)/.exec(fault)?.[1] ??
+            (fault === bands || fault.startsWith(`${bands}.`)
+                ? 'headline_value'
+                : fault === `${PRESENTATION_ROOT}.empty_display`
+                  ? slotGroups.value
+                        .flatMap((g) => g.slots)
+                        .find((s) => s.slot !== 'headline_value')?.slot
+                  : undefined);
+
+        if (slot !== undefined && checklistRef.value !== null) {
+            checklistRef.value.openRow = slot;
+            void nextTick(async () => {
+                await checklistRef.value?.focusSlot(slot);
+                await nextTick();
+                (
+                    root.value?.querySelector<HTMLElement>(
+                        `[data-slot-key="${slot}"] [data-test=presentation-editor] [aria-invalid=true]`,
+                    ) ??
+                    root.value?.querySelector<HTMLElement>(
+                        `[data-slot-key="${slot}"] [data-test=presentation-editor] input, [data-slot-key="${slot}"] [data-test=presentation-editor] select`,
+                    )
+                )?.focus();
+            });
+        }
+
+        return null;
+    }
 
     if (first === undefined) {
         return null;
@@ -1398,6 +1564,9 @@ onBeforeUnmount(() => {
                     :load-fields="loadFields"
                     :notes="notes"
                     :changes="changes"
+                    :rules="rules"
+                    :presentation-errors="presentationErrors"
+                    @presentation="savePresentation"
                     @confirm="confirmSlot"
                     @rerun="rerun"
                     @pick="pickField"
@@ -1413,6 +1582,20 @@ onBeforeUnmount(() => {
                     @click.capture="onSummaryClick"
                     data-test="blockers-summary"
                 />
+
+                <ul
+                    v-if="presentationFaultList.length > 0"
+                    class="m-0 grid list-none gap-1 rounded-md border border-error-border bg-error-soft p-3"
+                    data-test="presentation-errors"
+                >
+                    <li
+                        v-for="fault in presentationFaultList"
+                        :key="fault.path"
+                        class="type-body-sm text-error-text"
+                    >
+                        {{ fault.message }}
+                    </li>
+                </ul>
 
                 <div class="flex flex-col items-end gap-1">
                     <Button
