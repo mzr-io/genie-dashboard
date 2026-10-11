@@ -8,6 +8,7 @@ use App\Modules\Blocks\Contracts\DraftChecklist;
 use App\Modules\Blocks\Contracts\DraftLockLost;
 use App\Modules\Blocks\Contracts\DraftMapping;
 use App\Modules\Blocks\Contracts\DraftNotFound;
+use App\Modules\Blocks\Contracts\DraftPresentation;
 use App\Modules\Blocks\Contracts\DraftPublished;
 use App\Modules\Blocks\Contracts\DraftRevisionConflict;
 use App\Modules\Blocks\Contracts\Drafts;
@@ -27,6 +28,7 @@ use App\Modules\Mapping\Contracts\AutoMapResult;
 use App\Modules\Mapping\Contracts\FieldRole;
 use App\Modules\Mapping\Contracts\FieldRoleReport;
 use App\Modules\Mapping\Contracts\FieldRoles;
+use App\Modules\Mapping\Contracts\Presentation;
 use App\Modules\Mapping\Contracts\SlotState;
 use App\Platform\Json\SamplePath;
 use App\Platform\Tenancy\WorkspaceTransaction;
@@ -70,13 +72,13 @@ final class ManageDraftSlots implements DraftSlots
 
         // No usable sample (none, it ended, or it no longer passes the limits): the stored decisions and plan are still the Admin's, and nothing is computed from it.
         if ($found === null) {
-            return new DraftMapping(null, null, self::slotMap($draft->config), $plan, $draft->revision, null, $stale, $state, $suggestion);
+            return new DraftMapping(null, null, self::slotMap($draft->config), $plan, $draft->revision, null, $stale, $state, $suggestion, self::presentation($draft->config));
         }
 
         $type = $this->types->resolve($draft->type, $this->contractVersion($actor->workspaceId, $draft->blockId));
         $report = $this->report($found[0], $draft->config);
 
-        return new DraftMapping($this->map($type, $report, $draft->config), $report, self::slotMap($draft->config), $plan, $draft->revision, $sampleRevision, $stale, DraftMapping::SAMPLE_OK, $suggestion);
+        return new DraftMapping($this->map($type, $report, $draft->config), $report, self::slotMap($draft->config), $plan, $draft->revision, $sampleRevision, $stale, DraftMapping::SAMPLE_OK, $suggestion, self::presentation($draft->config));
     }
 
     /**
@@ -382,6 +384,29 @@ final class ManageDraftSlots implements DraftSlots
 
             return self::withKey($config, 'field_types', $types);
         });
+    }
+
+    public function setPresentation(DraftActor $actor, string $draftId, ?array $presentation, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftPresentation
+    {
+        $stored = [];
+
+        $checklist = $this->write($actor, $draftId, $revision, $lockEpoch, $holdsLock, function (array $config, AutoMapResult $now, FieldRoleReport $report, BlockType $type) use ($presentation, &$stored): array {
+            // Judged whole, against the Block Type's slots: nothing is stored when any part is faulty.
+            $stored = DraftConfig::normalisePresentation($presentation, $type);
+
+            return self::withKey($config, Presentation::KEY, $stored);
+        });
+
+        return new DraftPresentation($stored, $checklist->revision, $checklist->queryPlan);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return array<string, mixed>
+     */
+    private static function presentation(array $config): array
+    {
+        return is_array($config[Presentation::KEY] ?? null) ? $config[Presentation::KEY] : [];
     }
 
     /** A path to set a role or a type for: a stored path of a field of the sample. */

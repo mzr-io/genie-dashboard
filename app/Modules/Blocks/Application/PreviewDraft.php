@@ -13,6 +13,7 @@ use App\Modules\Blocks\Contracts\PreviewRefused;
 use App\Modules\BlockTypes\Contracts\BlockTypeRegistry;
 use App\Modules\Mapping\Contracts\GuardExceeded;
 use App\Modules\Mapping\Contracts\InvalidPlan;
+use App\Modules\Mapping\Contracts\Presentation;
 use App\Modules\Mapping\Contracts\PreviewThrottle;
 use App\Modules\Mapping\Contracts\QueryPlans;
 use App\Platform\Json\InvalidLimitSetting;
@@ -94,7 +95,7 @@ final class PreviewDraft implements DraftPreviews
         try {
             $type = $this->types->resolve($draft->type, $this->contractVersion($actor->workspaceId, $draft->blockId));
             [$document, $revision] = $this->document($actor->workspaceId, $draft->id, $revision);
-            $result = $this->plans->run($type, $plan, $document, $guards);
+            $result = $this->plans->run($type, $plan, $document, $guards, is_array($draft->config[Presentation::KEY] ?? null) ? $draft->config[Presentation::KEY] : []);
         } catch (GuardExceeded $e) {
             $outcome = 'guard_exceeded';
 

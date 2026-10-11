@@ -768,7 +768,7 @@ it('reads the mapping in one pass with an ETag of both revisions and a 304 for a
     $etag = '"d'.dslRev().'-s1"';
 
     expect($res->headers->get('ETag'))->toBe($etag)
-        ->and(array_keys($data))->toEqualCanonicalizing(['checklist', 'roles', 'slot_map', 'query_plan', 'draft_revision', 'sample_revision', 'plan_stale', 'sample', 'dataset_suggestion'])
+        ->and(array_keys($data))->toEqualCanonicalizing(['checklist', 'roles', 'slot_map', 'query_plan', 'draft_revision', 'sample_revision', 'plan_stale', 'sample', 'dataset_suggestion', 'presentation'])
         ->and($data['sample'])->toBe('ok')->and($data['plan_stale'])->toBeFalse()
         ->and($data['draft_revision'])->toBe(dslRev())->and($data['sample_revision'])->toBe(1)
         ->and($data['query_plan'])->toEqual(dslConfig()['query_plan'])
@@ -952,4 +952,194 @@ it('bounds a long text slot value in the preview to 120 characters and an ellips
     $value = dslPreview($id)->assertOk()->json('data.slots.kpi_label.value');
 
     expect($value)->toBe(str_repeat('x', 120).'…');
+});
+
+// Story 3.15a: presentation rules (`config.presentation`), written through PUT .../mapping/presentation.
+function dslPresentation(array $overrides = []): array
+{
+    return array_replace_recursive([
+        'slots' => [
+            'headline_value' => ['format' => ['kind' => 'currency', 'currencyCode' => 'usd', 'decimalPlaces' => 0], 'emphasis' => ['role' => 'headline', 'size' => 'lg', 'weight' => 'bold'], 'label' => ['prefix' => '~', 'suffix' => '*']],
+            'comparison' => ['format' => ['kind' => 'percent', 'decimalPlaces' => 1], 'direction' => 'lower_is_better'],
+        ],
+        'bands' => [
+            ['op' => '>=', 'value' => '100000', 'color' => 'success', 'icon' => 'trending-up', 'label' => 'On target'],
+            ['op' => '>=', 'value' => '50', 'color' => 'warning', 'icon' => 'gauge', 'label' => 'Watch'],
+        ],
+        'empty_display' => '—',
+    ], $overrides);
+}
+
+function dslPresent(string $id, ?array $presentation, array $extra = [])
+{
+    return test()->putJson(BD_URL."/{$id}/mapping/presentation", $extra + ['presentation' => $presentation, 'draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS);
+}
+
+it('stores the presentation, returns it with the revision and plan, reads it back and the preview carries the descriptors, emphasis and the matching band', function () {
+    $id = dslDraft();
+    $saved = dslPresent($id, dslPresentation())->assertOk()->assertHeader('Cache-Control', 'no-store, private')->json('data');
+
+    expect($saved['presentation']['slots']['headline_value']['format'])->toEqual(['kind' => 'currency', 'currencyCode' => 'USD', 'decimalPlaces' => 0])
+        ->and($saved['draft_revision'])->toBe(dslRev())
+        ->and($saved['query_plan']['extract']['fields']['headline_value'])->toBe('$.total')
+        ->and(dslConfig()['presentation'])->toEqual($saved['presentation'])
+        ->and(dslConfig()['presentation']['bands'])->toBeList();
+
+    expect(dslGet($id)->assertOk()->json('data.presentation'))->toEqual($saved['presentation']);
+
+    $payload = dslPreview($id)->assertOk()->json('data.payload');
+    expect($payload['headline']['format']['kind'])->toBe('currency')
+        ->and($payload['headline']['format']['currencyCode'])->toBe('USD')
+        ->and($payload['headline']['format']['decimalPlaces'])->toBe(0)
+        ->and($payload['headline']['emphasis'])->toBe(['role' => 'headline', 'size' => 'lg', 'weight' => 'bold'])
+        ->and($payload['prefix'])->toBe('~')->and($payload['suffix'])->toBe('*')
+        ->and($payload['statusBadge'])->toBe(['text' => 'On target', 'color' => 'success', 'icon' => 'trending-up'])
+        ->and($payload['emptyDisplay'])->toBe('—');
+});
+
+it('picks the first matching band top to bottom, and no band when the headline is below every limit', function () {
+    $id = dslDraft();
+    $bands = [
+        ['op' => '>=', 'value' => '50', 'color' => 'warning', 'icon' => 'gauge', 'label' => 'Watch'],
+        ['op' => '>=', 'value' => '100000', 'color' => 'success', 'icon' => 'trending-up', 'label' => 'On target'],
+    ];
+    dslPresent($id, ['bands' => $bands])->assertOk();
+    expect(dslPreview($id)->json('data.payload.statusBadge.text'))->toBe('Watch');
+
+    dslPresent($id, ['bands' => [['op' => '<=', 'value' => '10', 'color' => 'error', 'icon' => 'zap', 'label' => 'Low']]])->assertOk();
+    // No band matched: the status_badge slot's own text (the sample's status field) shows, never a band.
+    expect(dslPreview($id)->json('data.payload.statusBadge'))->toBe(DSL_CANARY);
+});
+
+it('puts lower_is_better in the payload and leaves it out for higher_is_better', function () {
+    $id = dslDraft();
+    dslOverride($id, 'comparison', '$.previous_total')->assertOk();
+    dslPresent($id, ['slots' => ['comparison' => ['direction' => 'lower_is_better']]])->assertOk();
+    expect(dslPreview($id)->json('data.payload.comparison.lowerIsBetter'))->toBeTrue();
+
+    dslPresent($id, ['slots' => ['comparison' => ['direction' => 'higher_is_better']]])->assertOk();
+    expect(dslPreview($id)->json('data.payload.comparison.lowerIsBetter'))->toBeFalse();
+});
+
+it('refuses an invalid presentation naming each path, and stores nothing', function () {
+    $id = dslDraft();
+    dslPresent($id, dslPresentation())->assertOk();
+    $before = bdRows();
+
+    $bad = [
+        'slots' => [
+            'headline_value' => ['format' => ['kind' => 'currency', 'currencyCode' => 'XX1', 'decimalPlaces' => -1]],
+            'comparison' => ['format' => ['kind' => 'number', 'decimalPlaces' => 21], 'direction' => 'sideways'],
+            'subtitle' => ['direction' => 'lower_is_better', 'format' => ['kind' => 'weird']],
+            'nope' => ['format' => ['kind' => 'number']],
+        ],
+        'bands' => [
+            ['op' => '>=', 'value' => '1', 'color' => 'accent', 'icon' => 'gauge', 'label' => 'x'],
+            ['op' => '>=', 'value' => '1', 'color' => 'success', 'label' => 'No icon'],
+            ['op' => '>=', 'value' => '1', 'color' => 'success', 'icon' => 'gauge'],
+            ['op' => 'between', 'value' => '9', 'to' => '1', 'color' => 'info', 'icon' => 'gauge', 'label' => 'Backwards'],
+            ['op' => '>=', 'value' => 'abc', 'color' => 'info', 'icon' => 'gauge', 'label' => 'Not a number'],
+        ],
+        'empty_display' => str_repeat('x', 200),
+    ];
+    $res = dslPresent($id, $bad)->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config');
+    $paths = array_keys($res->json('errors'));
+
+    foreach ([
+        'config.presentation.slots.headline_value.format.currencyCode',
+        'config.presentation.slots.headline_value.format.decimalPlaces',
+        'config.presentation.slots.comparison.format.decimalPlaces',
+        'config.presentation.slots.comparison.direction',
+        'config.presentation.slots.subtitle.direction',
+        'config.presentation.slots.subtitle.format.kind',
+        'config.presentation.slots.nope',
+        'config.presentation.bands.0.color',
+        'config.presentation.bands.1.icon',
+        'config.presentation.bands.2.label',
+        'config.presentation.bands.3.to',
+        'config.presentation.bands.4.value',
+        'config.presentation.empty_display',
+    ] as $path) {
+        expect($paths)->toContain($path);
+    }
+
+    expect(bdRows())->toBe($before);
+});
+
+it('refuses a second headline with the reason, on the second slot', function () {
+    $id = dslDraft();
+    $before = bdRows();
+    $res = dslPresent($id, ['slots' => [
+        'headline_value' => ['emphasis' => ['role' => 'headline']],
+        'comparison' => ['emphasis' => ['role' => 'headline']],
+    ]])->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config');
+
+    expect(array_keys($res->json('errors')))->toBe(['config.presentation.slots.comparison.emphasis'])
+        ->and($res->json('errors')['config.presentation.slots.comparison.emphasis'][0])->toContain('headline_value')
+        ->and(bdRows())->toBe($before);
+});
+
+it('refuses text over the limits and a non-object presentation, without echoing the input', function () {
+    $id = dslDraft();
+
+    $res = dslPresent($id, ['slots' => ['headline_value' => ['label' => ['prefix' => 'CANARY-'.str_repeat('z', 40)]]]])->assertStatus(422);
+    expect(array_keys($res->json('errors')))->toBe(['config.presentation.slots.headline_value.label.prefix'])
+        ->and($res->getContent())->not->toContain('CANARY-zzzz');
+
+    test()->putJson(BD_URL."/{$id}/mapping/presentation", ['presentation' => 'nope', 'draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS)->assertStatus(422);
+    test()->putJson(BD_URL."/{$id}/mapping/presentation", ['draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS)->assertStatus(422);
+});
+
+it('refuses a generic save that carries presentation, keeps it over a save that omits it, and clears it with null or an empty object', function () {
+    $id = dslDraft();
+    dslPresent($id, dslPresentation())->assertOk();
+    $stored = dslConfig()['presentation'];
+    $before = bdRows();
+
+    bdSave($id, dslRev(), 1, ['config' => ['presentation' => dslPresentation()]])->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config')->assertJsonStructure(['errors' => ['config.presentation']]);
+    expect(bdRows())->toBe($before);
+
+    bdSave($id, dslRev(), 1, ['config' => ['description' => 'later']])->assertOk();
+    expect(dslConfig()['presentation'])->toBe($stored);
+
+    dslPresent($id, null)->assertOk()->assertJsonPath('data.presentation', []);
+    expect(dslConfig())->not->toHaveKey('presentation');
+
+    dslPresent($id, dslPresentation())->assertOk();
+    dslPresent($id, [])->assertOk();
+    expect(dslConfig())->not->toHaveKey('presentation');
+});
+
+it('leaves the revision alone for a presentation write that changes nothing, and counts a real one', function () {
+    $id = dslDraft();
+    dslPresent($id, dslPresentation())->assertOk();
+    $revision = dslRev();
+
+    expect(dslPresent($id, dslPresentation())->assertOk()->json('data.draft_revision'))->toBe($revision)->and(dslRev())->toBe($revision);
+
+    dslPresent($id, dslPresentation(['empty_display' => 'n/a']))->assertOk();
+    expect(dslRev())->toBe($revision + 1);
+});
+
+it('refuses a presentation write on a stale revision (409, nothing written) and without the lock claim (423)', function () {
+    $id = dslDraft();
+    dslPresent($id, dslPresentation())->assertOk();
+    $before = bdRows();
+
+    $res = dslPresent($id, dslPresentation(['empty_display' => 'x']), ['draft_revision' => 1])->assertStatus(409)->assertJsonPath('error.code', 'blocks.revision_conflict');
+    expect($res->json('current.data.revision'))->toBe((int) $before[0]['revision'])->and(bdRows())->toBe($before);
+
+    config(['dashflow.tunables.timeouts.edit_lock_ttl.value' => '60']);
+    test()->postJson(BD_URL."/{$id}/lock", [], BD_HEADERS)->assertOk();
+    $before = bdRows();
+    dslPresent($id, dslPresentation(['empty_display' => 'y']))->assertStatus(423);
+    expect(bdRows())->toBe($before);
+});
+
+it('stores lexeme band limits as given and compares by value: a headline of 1E2 matches between 50 and 150', function () {
+    $id = dslDraft('{"total":1E2}');
+    dslPresent($id, ['bands' => [['op' => 'between', 'value' => '50', 'to' => '1.5E2', 'color' => 'info', 'icon' => 'gauge', 'label' => 'Middle']]])->assertOk();
+
+    expect(dslConfig()['presentation']['bands'][0]['to'])->toBe('1.5E2')
+        ->and(dslPreview($id)->json('data.payload.statusBadge.text'))->toBe('Middle');
 });

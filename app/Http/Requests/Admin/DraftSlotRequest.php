@@ -9,7 +9,7 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
 
 /**
- * A write of the mapping (Story 3.12a, 3.13c): re-run, confirm, override or undo (the `undo` payload an override returned), or set the record path, a field's role or a field's type. It carries
+ * A write of the mapping (Story 3.12a, 3.13c): re-run, confirm, override or undo (the `undo` payload an override returned), set the record path, a field's role or a field's type, or set the presentation rules (Story 3.15a). It carries
  * the Draft's `draft_revision` and the edit-lock claim a Draft save carries (`lock_epoch`, `lock_token`); an override also carries the `path` of the field, or null to clear the slot. The `admin` middleware has authorised the request.
  */
 final class DraftSlotRequest extends FormRequest
@@ -43,6 +43,11 @@ final class DraftSlotRequest extends FormRequest
 
         if ($this->routeIs('api.admin.blocks.drafts.mapping.field_types')) {
             $rules += ['path' => ['required', 'string', 'max:1024'], 'type' => ['present', 'nullable', 'string', 'max:32']];
+        }
+
+        // The presentation rules (Story 3.15a): an object, judged whole by Mapping's `Presentation`; null or `{}` clears them.
+        if ($this->routeIs('api.admin.blocks.drafts.mapping.presentation')) {
+            $rules['presentation'] = ['present', 'nullable', 'array'];
         }
 
         if ($this->routeIs('api.admin.blocks.drafts.mapping.undo')) {
@@ -93,6 +98,14 @@ final class DraftSlotRequest extends FormRequest
         $value = $this->input('record_path');
 
         return is_string($value) ? $value : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function presentation(): ?array
+    {
+        $value = $this->input('presentation');
+
+        return is_array($value) ? $value : null;
     }
 
     public function role(): ?string

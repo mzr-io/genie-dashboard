@@ -118,6 +118,8 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::put('blocks/drafts/{draft}/mapping/record-path', [DraftSlotsController::class, 'recordPath'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.record_path');
     Route::put('blocks/drafts/{draft}/mapping/field-roles', [DraftSlotsController::class, 'fieldRole'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.field_roles');
     Route::put('blocks/drafts/{draft}/mapping/field-types', [DraftSlotsController::class, 'fieldType'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.field_types');
+    // The presentation rules (Story 3.15a): format, emphasis, direction, labels, threshold bands and the empty display; server-owned like the mapping keys.
+    Route::put('blocks/drafts/{draft}/mapping/presentation', [DraftSlotsController::class, 'presentation'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.presentation');
 
     // What wizard Step 2 reads (Story 3.7): `blocks.edit`, so an Admin who may build blocks but not manage Data Sources can still choose one.
     Route::get('blocks/data-sources', [BlockSourceController::class, 'dataSources'])->middleware('admin')->name('api.admin.blocks.data-sources.index');

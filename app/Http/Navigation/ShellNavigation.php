@@ -119,6 +119,7 @@ final class ShellNavigation
         'api.admin.blocks.drafts.mapping.record_path' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.mapping.field_roles' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.mapping.field_types' => Permission::BlocksEdit,
+        'api.admin.blocks.drafts.mapping.presentation' => Permission::BlocksEdit,
         'api.admin.blocks.data-sources.index' => Permission::BlocksEdit,
         'api.admin.blocks.data-sources.endpoints.index' => Permission::BlocksEdit,
         'api.admin.blocks.refresh-intervals' => Permission::BlocksEdit,

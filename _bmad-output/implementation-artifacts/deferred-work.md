@@ -415,3 +415,17 @@
 - source_spec: `spec-3-11d-field-tree-ui.md`
   summary: Take the footer formatter from the slot's Block Type instead of the kpi-card, show the Datasets suggestion's typed fields and age, show the hint when the record-path list is not rendered, add `*` expand-siblings, and verify the listing path form against live server data.
   evidence: Review findings; only kpi-card exists today.
+
+- source_spec: `spec-3-15a-presentation-rules-backend.md`
+  summary: Story 3.15b: the presentation editor UI (expandable slot rows with Format, Emphasis, Direction, band rows, label settings, live example, inline errors blocking Continue, locale preview).
+  evidence: Split from Story 3.15 on the scope rule. kpi-card v1 is amended in place because no block can be published before 3.19; after 3.19 this needs a v2.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-15a-presentation-rules-backend.md`
+  summary: Per-slot presentation settings (format/emphasis/label on non-headline slots, label.text) are validated and stored but not consumed by PresentationOptions or the Shaper.
+  evidence: PresentationOptions::options reads only headline_value and comparison; 3.15b should wire or narrow the accepted keys.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-15a-presentation-rules-backend.md`
+  summary: schema.json `presentation` vocabulary is not read by Presentation.php or the Shaper; the sets are duplicated and can drift.
+  evidence: grep finds no reader of the block; add a drift test or load from the schema.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-15a-presentation-rules-backend.md`
+  summary: Band icon is validated as a kebab-case slug, not against the block icon set; the renderer falls back silently. Also emptySlots lists slots the Renderer does not show, headlines with exponent over 1000 match no band, and clearing presentation needs a usable sample (unverified severity: low-medium).
+  evidence: matches existing config.icon validation; settle with the UI work in 3.15b.

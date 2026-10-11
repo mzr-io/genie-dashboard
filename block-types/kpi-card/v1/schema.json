@@ -95,5 +95,27 @@
     "defaultAggregations": {
         "headline_value": "sum",
         "comparison": "sum"
+    },
+    "presentation": {
+        "headlineSlot": "headline_value",
+        "directionSlot": "comparison",
+        "formatKinds": [
+            "number",
+            "percent",
+            "currency",
+            "compact",
+            "date",
+            "relative-time",
+            "duration"
+        ],
+        "emphasis": {
+            "roles": ["headline", "primary", "secondary", "badge"],
+            "sizes": ["sm", "md", "lg"],
+            "weights": ["regular", "medium", "bold"]
+        },
+        "bands": {
+            "ops": [">=", "<=", "between"],
+            "colors": ["success", "warning", "error", "info", "neutral"]
+        }
     }
 }

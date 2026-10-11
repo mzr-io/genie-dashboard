@@ -254,3 +254,82 @@ it('replaces a stored plan with the plan a later save carries', function () {
 
     expect($merged['query_plan'])->toBe(qpPlan(['b' => '$.y'], ['kpi_label' => 'b']));
 });
+
+// Story 3.15a: the engine judges the threshold bands on exact decimals and hands the presentation to the Shaper.
+function qpBands(string $headline, array $bands, array $extra = []): array
+{
+    $plan = ['v' => 1, 'extract' => ['fields' => ['h' => '$.h', 'n' => '$.n']], 'shape' => ['headline_value' => 'h', 'secondary_note' => 'n']];
+    $document = LosslessJson::decode('{"h":'.$headline.',"n":null}');
+    $result = qpEngine()->run(qpType(), $plan, $document, qpEngine()->guards(), ['bands' => $bands] + $extra);
+
+    return [$result->payload, $result];
+}
+
+function qpBand(string $op, string $value, string $label, ?string $to = null): array
+{
+    return ['op' => $op, 'value' => $value, 'color' => 'info', 'icon' => 'gauge', 'label' => $label] + ($to === null ? [] : ['to' => $to]);
+}
+
+it('matches bands on exact decimals, first match top to bottom, and between by value for lexemes', function () {
+    [$payload] = qpBands('120', [qpBand('>=', '100', 'A'), qpBand('>=', '50', 'B')]);
+    expect($payload['statusBadge']['text'])->toBe('A');
+
+    [$payload] = qpBands('120', [qpBand('>=', '50', 'B'), qpBand('>=', '100', 'A')]);
+    expect($payload['statusBadge']['text'])->toBe('B');
+
+    [$payload] = qpBands('1E2', [qpBand('between', '50', 'Mid', '150')]);
+    expect($payload['statusBadge']['text'])->toBe('Mid');
+
+    [$payload] = qpBands('1E3', [qpBand('>=', '1000', 'Exact')]);
+    expect($payload['statusBadge']['text'])->toBe('Exact');
+
+    // Beyond float precision: 0.1 + 0.2 style traps and 20-digit values compare exactly.
+    [$payload] = qpBands('12345678901234567890.10', [qpBand('<=', '12345678901234567890.09', 'Below'), qpBand('>=', '12345678901234567890.10', 'At')]);
+    expect($payload['statusBadge']['text'])->toBe('At');
+
+    [$payload] = qpBands('100', [qpBand('<=', '100', 'Edge')]);
+    expect($payload['statusBadge']['text'])->toBe('Edge');
+
+    [$payload] = qpBands('-5', [qpBand('between', '-10', 'Neg', '-1')]);
+    expect($payload['statusBadge']['text'])->toBe('Neg');
+
+    [$payload] = qpBands('5', [qpBand('>=', '100', 'No')]);
+    expect($payload['statusBadge'])->toBeNull();
+
+    foreach (['50', '150'] as $edge) {
+        [$payload] = qpBands($edge, [qpBand('between', '50', 'Edge', '150')]);
+        expect($payload['statusBadge']['text'])->toBe('Edge');
+    }
+
+    [$payload] = qpBands('150.01', [qpBand('between', '50', 'Edge', '150')]);
+    expect($payload['statusBadge'])->toBeNull();
+});
+
+it('shows Unavailable for a null headline: no band and no empty display, while a null note shows the empty display', function () {
+    [$payload, $result] = qpBands('null', [qpBand('>=', '0', 'Any'), qpBand('<=', '0', 'Zero')], ['empty_display' => '—']);
+
+    expect($payload['state'])->toBe('unavailable')
+        ->and($payload['statusBadge'])->toBeNull()
+        ->and($payload['headline'])->toBe(['available' => false, 'field' => 'Headline value'])
+        ->and($payload['emptySlots'])->toBe(['secondary_note'])
+        ->and($payload['emptyDisplay'])->toBe('—')
+        ->and($result->unavailable['headline_value'])->toBe('missing');
+
+    [$payload] = qpBands('5', [], ['empty_display' => '—']);
+    expect($payload['emptySlots'])->toBe(['secondary_note']);
+});
+
+it('passes formats, direction, emphasis and affixes from the slot presentation to the Shaper', function () {
+    [$payload] = qpBands('284680', [], ['slots' => [
+        'headline_value' => ['format' => ['kind' => 'currency', 'currencyCode' => 'USD'], 'emphasis' => ['role' => 'headline', 'size' => 'sm', 'weight' => 'regular'], 'label' => ['prefix' => '≈', 'suffix' => '!']],
+    ]]);
+
+    expect($payload['headline']['format']['kind'])->toBe('currency')
+        ->and($payload['headline']['emphasis'])->toBe(['role' => 'headline', 'size' => 'sm', 'weight' => 'regular'])
+        ->and($payload['prefix'])->toBe('≈')->and($payload['suffix'])->toBe('!');
+
+    $plan = ['v' => 1, 'extract' => ['fields' => ['h' => '$.h', 'c' => '$.c']], 'shape' => ['headline_value' => 'h', 'comparison' => 'c']];
+    $result = qpEngine()->run(qpType(), $plan, LosslessJson::decode('{"h":1,"c":-3}'), qpEngine()->guards(), ['slots' => ['comparison' => ['direction' => 'lower_is_better', 'format' => ['kind' => 'percent', 'decimalPlaces' => 1]]]]);
+
+    expect($result->payload['comparison']['lowerIsBetter'])->toBeTrue()->and($result->payload['comparison']['format']['kind'])->toBe('percent');
+});

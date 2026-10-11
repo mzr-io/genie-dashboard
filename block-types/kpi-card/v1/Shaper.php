@@ -17,9 +17,20 @@ final class Shaper
 
     private const HEADLINE_FIELD = 'Headline value';
 
+    private const ROLES = ['headline', 'primary', 'secondary', 'badge'];
+
+    private const SIZES = ['sm', 'md', 'lg'];
+
+    private const WEIGHTS = ['regular', 'medium', 'bold'];
+
+    /** A band's colour: the accent colour is never a status. */
+    private const COLORS = ['success', 'warning', 'error', 'info', 'neutral'];
+
+    private const ICON = '/^[a-z0-9]+(-[a-z0-9]+)*\z/';
+
     /**
      * @param  array<string, mixed>  $slots  slot key => value (measures as decimal strings or integers)
-     * @param  array<string, mixed>  $options  state, headline/comparison format descriptors, lowerIsBetter, staleSince, errorMessage
+     * @param  array<string, mixed>  $options  state, headline/comparison format descriptors, lowerIsBetter, staleSince, errorMessage, and the presentation rules (Story 3.15a): headlineEmphasis, prefix, suffix, emptyDisplay, emptySlots (the mapped slots with no value) and statusBand ({text, color, icon}, the band the engine matched)
      * @return array<string, mixed>
      */
     public function shape(array $slots, array $options = []): array
@@ -30,10 +41,17 @@ final class Shaper
             ? ['available' => false, 'field' => self::HEADLINE_FIELD]
             : ['available' => true, 'value' => $headlineValue, 'format' => $this->descriptor($this->array($options['headlineFormat'] ?? null))];
 
+        $emphasis = $this->emphasis($options['headlineEmphasis'] ?? null);
+
+        if ($headlineValue !== null && $emphasis !== null) {
+            $headline['emphasis'] = $emphasis;
+        }
+
         if ($state === 'normal' && $headlineValue === null) {
             $state = 'unavailable';
         }
 
+        $emptyDisplay = $this->text($options['emptyDisplay'] ?? null);
         $comparisonValue = $this->decimal($slots['comparison'] ?? null);
         $comparison = $comparisonValue === null ? null : [
             'value' => $comparisonValue,
@@ -53,10 +71,73 @@ final class Shaper
             'comparison' => $comparison,
             'comparisonLabel' => $this->text($slots['comparison_label'] ?? null),
             'secondaryNote' => $this->text($slots['secondary_note'] ?? null),
-            'statusBadge' => $this->text($slots['status_badge'] ?? null),
+            'statusBadge' => $this->statusBadge($options['statusBand'] ?? null) ?? $this->text($slots['status_badge'] ?? null),
+            'prefix' => $this->text($options['prefix'] ?? null),
+            'suffix' => $this->text($options['suffix'] ?? null),
+            'emptyDisplay' => $emptyDisplay,
+            'emptySlots' => $emptyDisplay === null ? [] : $this->emptySlots($options['emptySlots'] ?? null),
             'staleSince' => $this->text($options['staleSince'] ?? null),
             'errorMessage' => $this->text($options['errorMessage'] ?? null),
         ];
+    }
+
+    /**
+     * The band the engine matched, as a badge with its icon and label (colour is never the only signal); a malformed band is no band.
+     *
+     * @return array{text: string, color: string, icon: string}|null
+     */
+    private function statusBadge(mixed $band): ?array
+    {
+        if (! is_array($band)) {
+            return null;
+        }
+
+        $text = $this->text($band['text'] ?? null);
+        $color = $band['color'] ?? null;
+        $icon = $band['icon'] ?? null;
+
+        if ($text === null || ! in_array($color, self::COLORS, true) || ! is_string($icon) || preg_match(self::ICON, $icon) !== 1) {
+            return null;
+        }
+
+        return ['text' => $text, 'color' => $color, 'icon' => $icon];
+    }
+
+    /** @return array{role: string, size?: string, weight?: string}|null a size or weight left unset is omitted: the card keeps its own default */
+    private function emphasis(mixed $emphasis): ?array
+    {
+        if (! is_array($emphasis)) {
+            return null;
+        }
+
+        $role = $emphasis['role'] ?? null;
+        $size = $emphasis['size'] ?? null;
+        $weight = $emphasis['weight'] ?? null;
+        $out = ['role' => in_array($role, self::ROLES, true) ? $role : 'headline'];
+
+        if (in_array($size, self::SIZES, true)) {
+            $out['size'] = $size;
+        }
+
+        if (in_array($weight, self::WEIGHTS, true)) {
+            $out['weight'] = $weight;
+        }
+
+        return $out;
+    }
+
+    /** @return list<string> */
+    private function emptySlots(mixed $slots): array
+    {
+        $out = [];
+
+        foreach (is_array($slots) ? $slots : [] as $slot) {
+            if (is_string($slot) && $slot !== '' && ! in_array($slot, $out, true)) {
+                $out[] = $slot;
+            }
+        }
+
+        return $out;
     }
 
     /** A decimal string as given (integers become their digits); anything else, floats included, is not a measure. */

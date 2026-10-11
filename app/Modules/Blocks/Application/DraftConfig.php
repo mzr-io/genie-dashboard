@@ -5,6 +5,7 @@ namespace App\Modules\Blocks\Application;
 use App\Modules\Blocks\Contracts\InvalidDraft;
 use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\Mapping\Contracts\FieldRole;
+use App\Modules\Mapping\Contracts\Presentation;
 use App\Modules\Mapping\Contracts\QueryPlan;
 use App\Platform\Json\DecimalLiteral;
 use App\Platform\Json\JsonObject;
@@ -30,7 +31,7 @@ final class DraftConfig
     public const FIELD_TYPES = ['text', 'number', 'boolean', 'date'];
 
     /** Written only through the mapping endpoints. */
-    public const MAPPING_KEYS = ['record_path', 'field_roles', 'field_types', 'slot_map'];
+    public const MAPPING_KEYS = ['record_path', 'field_roles', 'field_types', 'slot_map', Presentation::KEY];
 
     private const FLAGS = ['show_header', 'show_subtitle', 'allow_resize', 'allow_minimize', 'allow_refresh', 'show_footer_action'];
 
@@ -95,7 +96,7 @@ final class DraftConfig
         // The mapping keys are the mapping endpoints' (Story 3.13c): a save that carries one is refused, and a save that omits them keeps the stored ones.
         foreach (self::MAPPING_KEYS as $key) {
             if (array_key_exists($key, $input)) {
-                $errors["config.{$key}"] = ['Set this through the mapping endpoints.'];
+                $errors["config.{$key}"] = [$key === Presentation::KEY ? 'Set this through PUT /api/v1/admin/blocks/drafts/{draft}/mapping/presentation.' : 'Set this through the mapping endpoints.'];
             }
         }
 
@@ -206,6 +207,26 @@ final class DraftConfig
                 $out['slot_map'] = $map;
             }
         }
+
+        if ($errors !== []) {
+            throw new InvalidDraft($errors, 'blocks.invalid_config');
+        }
+
+        return $out;
+    }
+
+    /**
+     * The presentation rules of a Block (Story 3.15a) as the mapping endpoint writes them, judged by Mapping's {@see Presentation}: every fault is keyed
+     * `config.presentation.<path>` and nothing is stored when there is one. Null or an empty object is no presentation (an empty result).
+     *
+     * @return array<string, mixed>
+     *
+     * @throws InvalidDraft
+     */
+    public static function normalisePresentation(mixed $input, BlockType $type): array
+    {
+        $errors = [];
+        $out = Presentation::check($input, $type, $errors);
 
         if ($errors !== []) {
             throw new InvalidDraft($errors, 'blocks.invalid_config');
@@ -411,11 +432,15 @@ final class DraftConfig
         return is_array($plain) ? $plain : [];
     }
 
-    /** Every array of a config is an object (it holds no lists); whole numbers go out as the lexemes the codec writes. */
+    /** Every array of a config is an object, but the presentation's `bands` list (Story 3.15a); whole numbers go out as the lexemes the codec writes. */
     private static function toObjects(mixed $value): mixed
     {
         if (is_int($value)) {
             return new DecimalLiteral((string) $value);
+        }
+
+        if (is_array($value) && $value !== [] && array_is_list($value)) {
+            return array_map(self::toObjects(...), $value);
         }
 
         return is_array($value) ? new JsonObject(array_map(self::toObjects(...), $value)) : $value;

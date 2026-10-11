@@ -523,3 +523,140 @@ describe('kpi-card renderer edge cases (review)', () => {
         );
     });
 });
+
+// Story 3.15a: presentation rules.
+describe('kpi-card renderer presentation rules', () => {
+    const headline = (
+        emphasis?: NonNullable<
+            Extract<KpiCardPayload['headline'], { available: true }>['emphasis']
+        >,
+    ): KpiCardPayload['headline'] => ({
+        available: true,
+        value: '284680',
+        format: descriptor({
+            kind: 'currency',
+            currencyCode: 'USD',
+            decimalPlaces: 0,
+        }),
+        ...(emphasis === undefined ? {} : { emphasis }),
+    });
+
+    it('formats currency with Intl and wraps the value in its prefix and suffix as literal text', () => {
+        const w = render(
+            payload({
+                headline: headline(),
+                prefix: '~',
+                suffix: ' gross',
+            }),
+        );
+
+        expect(w.get('[data-test=kpi-headline]').text()).toBe(
+            '~$284,680 gross',
+        );
+    });
+
+    it('applies the headline emphasis size and weight, and leaves the default alone without one', () => {
+        const plain = render(payload({ headline: headline() }));
+        const big = render(
+            payload({
+                headline: headline({
+                    role: 'headline',
+                    size: 'lg',
+                    weight: 'regular',
+                }),
+            }),
+        );
+        const small = render(
+            payload({
+                headline: headline({
+                    role: 'primary',
+                    size: 'sm',
+                    weight: 'medium',
+                }),
+            }),
+        );
+
+        const classes = (w: ReturnType<typeof render>) =>
+            w.get('[data-test=kpi-headline]').classes();
+
+        expect(classes(plain)).not.toContain('font-bold');
+        expect(classes(big)).toEqual(
+            expect.arrayContaining(['text-4xl', 'font-normal']),
+        );
+        expect(classes(small)).toEqual(
+            expect.arrayContaining(['text-xl', 'font-medium']),
+        );
+        expect(
+            big.get('[data-test=kpi-headline]').attributes('data-emphasis'),
+        ).toBe('headline');
+    });
+
+    it('shows a band badge with its icon and its label, colour never alone', () => {
+        const w = render(
+            payload({
+                statusBadge: {
+                    text: 'On target',
+                    color: 'success',
+                    icon: 'trending-up',
+                },
+            }),
+        );
+
+        expect(w.get('[data-test=kpi-band-label]').text()).toBe('On target');
+        expect(w.find('[data-test=kpi-band] svg').exists()).toBe(true);
+        expect(w.get('[data-test=kpi-band]').classes()).toContain(
+            'bg-success-soft',
+        );
+        expect(w.find('[data-test=kpi-badge]').exists()).toBe(false);
+    });
+
+    it('shows a plain status text as before when no band matched', () => {
+        const w = render(payload({ statusBadge: 'Open' }));
+
+        expect(w.get('[data-test=kpi-badge]').text()).toBe('Open');
+        expect(w.find('[data-test=kpi-band]').exists()).toBe(false);
+    });
+
+    it('shows the empty display for a mapped empty slot, and never for the headline', () => {
+        const w = render(
+            payload({
+                emptyDisplay: '—',
+                emptySlots: ['secondary_note', 'comparison'],
+            }),
+        );
+
+        expect(w.get('[data-test=kpi-note-empty]').text()).toBe('—');
+        expect(w.get('[data-test=kpi-delta-empty]').text()).toBe('—');
+
+        const unavailable = render(
+            payload({
+                state: 'unavailable',
+                headline: { available: false, field: 'Headline value' },
+                emptyDisplay: '—',
+                emptySlots: ['secondary_note'],
+            }),
+        );
+
+        expect(unavailable.find('[data-test=kpi-headline]').exists()).toBe(
+            false,
+        );
+        expect(unavailable.get('[data-test=kpi-unavailable]').text()).not.toBe(
+            '—',
+        );
+    });
+
+    it('does not show the empty display for a slot that was not mapped or has a value', () => {
+        const none = render(payload({ emptyDisplay: '—', emptySlots: [] }));
+        const valued = render(
+            payload({
+                secondaryNote: 'Note',
+                emptyDisplay: '—',
+                emptySlots: ['secondary_note'],
+            }),
+        );
+
+        expect(none.find('[data-test=kpi-note-empty]').exists()).toBe(false);
+        expect(valued.find('[data-test=kpi-note-empty]').exists()).toBe(false);
+        expect(valued.get('[data-test=kpi-note]').text()).toBe('Note');
+    });
+});

@@ -34,6 +34,8 @@ final readonly class DraftMapping
         public string $sample,
         /** @var array{record_path: string, record_path_display: string, fields: list<array{path: string, type: string, role: string|null}>, updated_at: string}|null the Dataset catalog's suggestion for a Draft with no chosen record path (Story 3.11c); never applied */
         public ?array $datasetSuggestion = null,
+        /** @var array<string, mixed> the stored presentation rules (Story 3.15a); empty when none */
+        public array $presentation = [],
     ) {}
 
     /** The validator of a conditional GET: both revisions name the content. */

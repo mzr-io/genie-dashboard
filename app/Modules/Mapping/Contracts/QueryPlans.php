@@ -16,9 +16,10 @@ interface QueryPlans
      *
      * @param  array<string, mixed>  $plan
      * @param  mixed  $document  the tree {@see LosslessJson} made
+     * @param  array<string, mixed>  $presentation  the Draft's `config.presentation` (Story 3.15a), already validated when it was stored; none by default
      *
      * @throws InvalidPlan the plan is not one this engine runs (an unknown `v` included)
      * @throws GuardExceeded
      */
-    public function run(BlockType $type, array $plan, mixed $document, PlanGuards $guards): PlanResult;
+    public function run(BlockType $type, array $plan, mixed $document, PlanGuards $guards, array $presentation = []): PlanResult;
 }

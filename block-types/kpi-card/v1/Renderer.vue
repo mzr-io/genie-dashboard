@@ -3,10 +3,11 @@ import { Clock, OctagonX, TriangleAlert } from '@lucide/vue';
 import { computed, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Skeleton } from '@/components/ui/skeleton';
+import { iconFor } from '@/lib/blockIcons';
 import { formatDate, formatDateTime, resolveLocale } from '@/lib/format';
 import { kpiCardLabels, shellLabels } from '@/locales/labels';
 import { formatMeasure, magnitude } from './display';
-import type { KpiCardPayload } from './payload';
+import type { BandColor, KpiCardPayload } from './payload';
 
 // The kpi-card v1 renderer (Story 3.2): Normal, Loading, Empty, Stale, Unavailable and Error. Every slot is interpolated as literal text
 // (no raw HTML, ever); numbers and dates are formatted in the browser from the payload's decimal strings and format descriptors; colour
@@ -41,6 +42,67 @@ const headlineText = computed(() => {
         ? formatMeasure(headline.value, headline.format, locale.value)
         : '';
 });
+
+// The presentation rules' affixes go around the formatted value, as literal text.
+const headlineShown = computed(
+    () =>
+        `${props.payload.prefix ?? ''}${headlineText.value}${props.payload.suffix ?? ''}`,
+);
+
+// The headline's emphasis: the card's own size and weight unless the rules choose another. Whole class names, so the build finds them.
+const SIZE_CLASS = { sm: 'text-xl', md: '', lg: 'text-4xl' } as const;
+const WEIGHT_CLASS = {
+    regular: 'font-normal',
+    medium: 'font-medium',
+    bold: 'font-bold',
+} as const;
+
+const headlineClass = computed(() => {
+    const { headline } = props.payload;
+    const emphasis = headline.available ? headline.emphasis : undefined;
+
+    return emphasis === undefined
+        ? ''
+        : `${emphasis.size === undefined ? '' : SIZE_CLASS[emphasis.size]} ${emphasis.weight === undefined ? '' : WEIGHT_CLASS[emphasis.weight]}`.trim();
+});
+
+const BAND_CLASS: Record<BandColor, string> = {
+    success: 'bg-success-soft text-success-text',
+    warning: 'bg-warning-soft text-warning-text',
+    error: 'bg-error-soft text-error-text',
+    info: 'bg-info-soft text-info-strong',
+    neutral: 'bg-surface-muted text-text-primary',
+};
+
+// A matched band: its icon AND its label say it; the colour only agrees.
+const band = computed(() => {
+    const badge = props.payload.statusBadge;
+
+    if (badge === null || typeof badge === 'string') {
+        return null;
+    }
+
+    return {
+        text: badge.text,
+        icon: iconFor(badge.icon),
+        class: BAND_CLASS[badge.color] ?? BAND_CLASS.neutral,
+    };
+});
+
+const statusText = computed(() => {
+    const badge = props.payload.statusBadge;
+
+    return typeof badge === 'string' && badge !== '' ? badge : null;
+});
+
+// The empty display stands in for a mapped slot with no value, never for the headline.
+const emptyFor = (slot: string): string | null => {
+    const shown = props.payload.emptyDisplay ?? null;
+
+    return shown !== null && (props.payload.emptySlots ?? []).includes(slot)
+        ? shown
+        : null;
+};
 
 // A headline that cannot be formatted is as unavailable as a missing one: never "0", "NaN" or a dash.
 const unavailable = computed(
@@ -238,14 +300,20 @@ const staleMessage = computed(() => {
                 <p
                     v-else
                     class="type-kpi-headline break-words"
-                    :class="
+                    :class="[
                         payload.state === 'stale'
                             ? 'text-text-muted'
-                            : 'text-text-primary'
+                            : 'text-text-primary',
+                        headlineClass,
+                    ]"
+                    :data-emphasis="
+                        payload.headline.available
+                            ? payload.headline.emphasis?.role
+                            : undefined
                     "
                     data-test="kpi-headline"
                 >
-                    {{ headlineText }}
+                    {{ headlineShown }}
                 </p>
 
                 <p
@@ -281,6 +349,14 @@ const staleMessage = computed(() => {
                 </p>
 
                 <p
+                    v-if="!unavailable && !delta && emptyFor('comparison')"
+                    class="type-body-sm text-text-muted"
+                    data-test="kpi-delta-empty"
+                >
+                    {{ emptyFor('comparison') }}
+                </p>
+
+                <p
                     v-if="payload.secondaryNote"
                     class="type-caption break-words text-text-secondary"
                     data-test="kpi-note"
@@ -288,11 +364,32 @@ const staleMessage = computed(() => {
                     {{ payload.secondaryNote }}
                 </p>
                 <p
-                    v-if="payload.statusBadge"
+                    v-else-if="emptyFor('secondary_note')"
+                    class="type-caption break-words text-text-muted"
+                    data-test="kpi-note-empty"
+                >
+                    {{ emptyFor('secondary_note') }}
+                </p>
+                <p
+                    v-if="band"
+                    class="type-caption inline-flex w-fit items-center gap-1 rounded-sm px-2 py-0.5 break-words"
+                    :class="band.class"
+                    data-test="kpi-band"
+                >
+                    <component
+                        :is="band.icon"
+                        class="size-3.5 shrink-0"
+                        aria-hidden="true"
+                        data-test="kpi-band-icon"
+                    />
+                    <span data-test="kpi-band-label">{{ band.text }}</span>
+                </p>
+                <p
+                    v-else-if="statusText"
                     class="type-caption w-fit rounded-sm bg-surface-muted px-2 py-0.5 break-words text-text-primary"
                     data-test="kpi-badge"
                 >
-                    {{ payload.statusBadge }}
+                    {{ statusText }}
                 </p>
                 <p
                     v-if="payload.state === 'stale'"

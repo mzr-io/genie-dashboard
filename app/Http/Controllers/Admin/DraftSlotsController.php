@@ -13,6 +13,7 @@ use App\Modules\Blocks\Contracts\DraftChecklist;
 use App\Modules\Blocks\Contracts\DraftLockLost;
 use App\Modules\Blocks\Contracts\DraftMapping;
 use App\Modules\Blocks\Contracts\DraftNotFound;
+use App\Modules\Blocks\Contracts\DraftPresentation;
 use App\Modules\Blocks\Contracts\DraftPublished;
 use App\Modules\Blocks\Contracts\DraftRevisionConflict;
 use App\Modules\Blocks\Contracts\Drafts;
@@ -71,6 +72,7 @@ final class DraftSlotsController extends Controller
                     'plan_stale' => $mapping->planStale,
                     'sample' => $mapping->sample,
                     'dataset_suggestion' => $mapping->datasetSuggestion,
+                    'presentation' => (object) $mapping->presentation,
                 ]], 200, $headers);
             },
         );
@@ -119,6 +121,20 @@ final class DraftSlotsController extends Controller
 
             return $this->slots->setFieldType($actor, $draft, (string) $request->slotPath(), $request->fieldType(), $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
         });
+    }
+
+    /** The presentation rules (Story 3.15a): the validated rules, the Draft's new revision and the plan it stores. */
+    public function presentation(DraftSlotRequest $request, string $draft): Response
+    {
+        return $this->respond(
+            $request,
+            function () use ($request, $draft): DraftPresentation {
+                $actor = $this->actor($request);
+
+                return $this->slots->setPresentation($actor, $draft, $request->presentation(), $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
+            },
+            fn (DraftPresentation $saved): array => ['presentation' => (object) $saved->presentation, 'draft_revision' => $saved->revision, 'query_plan' => $saved->queryPlan],
+        );
     }
 
     /** The field picker of a slot (Story 3.13a): read-only, like the checklist. */

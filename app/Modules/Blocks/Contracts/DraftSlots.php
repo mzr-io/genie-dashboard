@@ -131,4 +131,16 @@ interface DraftSlots
      * @throws InvalidDraft
      */
     public function setFieldType(DraftActor $actor, string $draftId, string $path, ?string $type, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist;
+
+    /**
+     * Stores the presentation rules (Story 3.15a): per-slot format, emphasis, direction and label, threshold bands and the empty display, judged by Mapping's
+     * `Presentation` (every fault keyed `config.presentation.<path>`, nothing stored). Null or an empty object clears them. Same lock, revision and no-op
+     * rules as the other mapping writes; it also needs the Draft's sample, as they do.
+     *
+     * @param  array<string, mixed>|null  $presentation
+     * @param  (\Closure(): bool)|null  $holdsLock
+     *
+     * @throws InvalidDraft
+     */
+    public function setPresentation(DraftActor $actor, string $draftId, ?array $presentation, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftPresentation;
 }

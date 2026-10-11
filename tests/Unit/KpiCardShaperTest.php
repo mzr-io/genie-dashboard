@@ -76,3 +76,47 @@ it('rejects a trailing newline on a decimal or currency code', function () {
 
     expect($payload['headline']['format']['currencyCode'])->toBeNull();
 });
+
+// Story 3.15a: presentation options reach the payload; existing options leave the existing fields as they were.
+it('maps presentation options to the payload and leaves the headline exactly as before when none is given', function () {
+    $plain = (new Shaper)->shape(['headline_value' => '1']);
+
+    expect($plain['headline'])->not->toHaveKey('emphasis')
+        ->and($plain['statusBadge'])->toBeNull()
+        ->and($plain['prefix'])->toBeNull()->and($plain['suffix'])->toBeNull()
+        ->and($plain['emptyDisplay'])->toBeNull()->and($plain['emptySlots'])->toBe([]);
+
+    $payload = (new Shaper)->shape(['headline_value' => '284680', 'status_badge' => 'Open'], [
+        'headlineEmphasis' => ['role' => 'headline', 'size' => 'lg', 'weight' => 'medium'],
+        'prefix' => '~', 'suffix' => ' gross',
+        'statusBand' => ['text' => 'On target', 'color' => 'success', 'icon' => 'trending-up'],
+        'emptyDisplay' => '—', 'emptySlots' => ['secondary_note', 'secondary_note'],
+    ]);
+
+    expect($payload['headline']['emphasis'])->toBe(['role' => 'headline', 'size' => 'lg', 'weight' => 'medium'])
+        ->and($payload['prefix'])->toBe('~')->and($payload['suffix'])->toBe(' gross')
+        ->and($payload['statusBadge'])->toBe(['text' => 'On target', 'color' => 'success', 'icon' => 'trending-up'])
+        ->and($payload['emptyDisplay'])->toBe('—')->and($payload['emptySlots'])->toBe(['secondary_note']);
+});
+
+it('lets the status_badge text show only when no band matched, and ignores a malformed band', function () {
+    $text = (new Shaper)->shape(['headline_value' => '1', 'status_badge' => 'Open']);
+    expect($text['statusBadge'])->toBe('Open');
+
+    foreach ([['text' => 'x', 'color' => 'accent', 'icon' => 'gauge'], ['text' => '', 'color' => 'info', 'icon' => 'gauge'], ['text' => 'x', 'color' => 'info', 'icon' => 'Bad Icon'], 'nope'] as $bad) {
+        expect((new Shaper)->shape(['headline_value' => '1', 'status_badge' => 'Open'], ['statusBand' => $bad])['statusBadge'])->toBe('Open');
+    }
+});
+
+it('omits an emphasis size or weight the rules leave unset', function () {
+    $payload = (new Shaper)->shape(['headline_value' => '5'], ['headlineEmphasis' => ['size' => 'lg']]);
+
+    expect($payload['headline']['emphasis'])->toBe(['role' => 'headline', 'size' => 'lg']);
+});
+
+it('gives no headline emphasis, and no empty slots, for an unavailable headline or no empty display', function () {
+    $payload = (new Shaper)->shape(['headline_value' => null], ['headlineEmphasis' => ['role' => 'headline'], 'emptySlots' => ['comparison']]);
+
+    expect($payload['headline'])->toBe(['available' => false, 'field' => 'Headline value'])
+        ->and($payload['emptySlots'])->toBe([]);
+});
