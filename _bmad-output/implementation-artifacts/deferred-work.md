@@ -450,3 +450,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-17-fetch-and-preview-as-a-user.md`
   summary: Reading or previewing a member's fetched result is not audited per read (only the start is), the encrypted blob is not forgotten when the Admin switches back to the shared sample, and the picker lists members not groups first.
   evidence: ManageUserSamples view/open log nothing; clear() only resets browser state; the spec said "pick a user or a member of a group".
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-18-validate-the-block-against-the-real-api.md`
+  summary: validation_reports history is never pruned (every run inserts a row, only discarded Drafts purge), and the client-supplied date range/period is not bounded or recomputed server-side.
+  evidence: only the latest report is read; range/period are forwarded to the live API as sent (30/min throttle limits volume).
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-18-validate-the-block-against-the-real-api.md`
+  summary: Rollback tests hard-code `migrate:rollback --step N` counts that break with each new migration; the unbound-publishable branch of RunEndpointValidation is exercised only through a fake EndpointValidations.
+  evidence: seven tests were bumped by one; RunSampleFetch always refuses unbound user-context Endpoints so the branch is unreachable end to end.

@@ -2348,6 +2348,111 @@ export const blockPreviewStepLabels = {
             : `${open} ${open === 1 ? 'warning' : 'warnings'} left to acknowledge.`,
 } as const;
 
+// Step 5, Validate (Story 3.18): the Draft checked against the live API, the version it will create and whether Publish is allowed. The messages
+// `live-shape-unreachable` and `version-safe` come from the catalogue.
+export const blockValidateStepLabels = {
+    title: 'Validate against the real API',
+    caption:
+        'Dashflow calls your endpoint once, live, and checks that every mapped field is still there with the right type. A pasted sample is never accepted as proof.',
+    versionTitle: 'Version to create',
+    versionValue: (version: string) => `Version ${version}`,
+    validate: 'Validate',
+    validateAgain: 'Validate again',
+    running: 'Checking the live response.',
+    startedAnnounce: 'Validation started.',
+    back: 'Back',
+    saveDraft: 'Save draft',
+    publish: 'Publish',
+    // Publish readiness.
+    readyTitle: 'Ready to publish',
+    readyBody: (version: string) =>
+        `The live response matches this block. Publishing creates version ${version}.`,
+    notReadyTitle: 'Publish is blocked',
+    publishLater: 'Publishing is added in a later update.',
+    blockedNoSource:
+        'Choose a real data source and endpoint in Data Source. A pasted sample is never accepted as proof.',
+    pastedOnly:
+        'This block only has a pasted sample. Choose a real data source and endpoint, then validate.',
+    blockedNotValidated: 'Validate the block against the real API to continue.',
+    blockedFailed:
+        'The live response does not match the mapping. Fix the fields listed, then validate again.',
+    blockedStrict:
+        'The draft is not complete. Fix what is listed, then validate again.',
+    blockedUnreachable: 'The live API could not be reached.',
+    blockedStale:
+        'The draft changed after it was last validated. Validate again.',
+    blockedRunning: 'Wait for the validation to finish.',
+    // Results.
+    passedTitle: 'Validated',
+    passedBody: (version: string) =>
+        `The live response matches. Version ${version} is ready to create.`,
+    failedTitle: 'The live response does not match',
+    strictTitle: 'The draft is not complete',
+    staleTitle: 'Validate again',
+    staleBody:
+        'The draft changed after the last validation, or while it ran. Validate again to check it.',
+    unreachableTitle: 'The API could not be reached',
+    unboundTitle: 'This endpoint could be published without a member',
+    unboundBody:
+        "A request without the member's attribute was not refused. Check the endpoint's user bindings.",
+    contextMissingTitle: 'The live check could not run as you',
+    contextMissingBody:
+        'This endpoint uses user context and your account lacks a value it needs, so no request was made. Ask a colleague to set it, then validate again.',
+    mismatchesTitle: 'Fields to fix',
+    mismatch: {
+        missing: (slot: string, path: string) =>
+            `${slot}: ${path} is not in the live response.`,
+        wrong_type: (slot: string, path: string, expected: string) =>
+            `${slot}: ${path} is not a ${expected} in the live response.`,
+        not_single_value: (slot: string, path: string) =>
+            `${slot}: ${path} matches more than one value in the live response.`,
+        required_slot_unmapped: (slot: string) =>
+            `${slot} is required and is not mapped. Map it in Map Data.`,
+        no_plan: 'Nothing is mapped yet. Map the fields in Map Data.',
+        invalid: (path: string) => `${path} is not valid.`,
+    },
+    // Why a validation was not started or could not finish.
+    refusedNoSource:
+        'There is no real data source and endpoint to validate against.',
+    settingNotConfigured: (setting: string | null) =>
+        setting === null
+            ? 'A setting validation needs is not configured.'
+            : `${setting} is not configured, so the block cannot be validated.`,
+    startFailed: 'Validation could not start. Try again.',
+    checkFailed:
+        'Validation could not finish. Try again, or save the draft and come back.',
+    expired: 'The validation ran out of time. Validate again.',
+    throttled: (seconds: number) =>
+        `Too many validations. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`,
+    loadFailed: 'The last validation could not be loaded.',
+    validatedAt: (time: string) => `Validated ${time}`,
+    unreachableReason: (reason: string | null) => {
+        const known: Record<string, string> = {
+            'host-not-allowlisted':
+                'The data source host is not on the allowlist.',
+            'blocked-address':
+                'The data source address is blocked by the network guard.',
+            'fetch-failed': 'The API did not answer successfully.',
+            'not-json': 'The API did not answer with JSON.',
+            'response-too-large': 'The response was larger than the limit.',
+            'auth-failed': 'The API refused the credentials.',
+            'too-many-pages': 'The response needs more pages than allowed.',
+            blob_unavailable: 'The response could not be kept for checking.',
+        };
+
+        return reason === null
+            ? ''
+            : (known[reason] ?? 'The API could not be checked.');
+    },
+    guardExceeded:
+        'The check passed a safety limit and was stopped. Simplify the mapping or ask an operator to review the limits.',
+    settingMissing:
+        'A setting the check needs is not configured. Ask an operator, then validate again.',
+    invalidInput:
+        'The check could not be built from this draft. Validate again.',
+    engineError: 'The check hit an unexpected error. Try again.',
+} as const;
+
 // Fetch as user and Preview as in the Create block wizard (Story 3.17). The failure messages are the shared error card's; these are the panel's own.
 export const blockAsUserLabels = {
     fetchTitle: 'Fetch as user',

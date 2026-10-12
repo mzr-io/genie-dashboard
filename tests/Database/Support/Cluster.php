@@ -269,6 +269,7 @@ final class Cluster
             'block_versions' => self::seedBlockVersion($workspaceId),
             'draft_samples' => self::seedDraftSample($workspaceId),
             'draft_ui_state' => self::seedDraftUiState($workspaceId),
+            'validation_reports' => self::seedValidationReport($workspaceId),
             'datasets' => self::seedDataset($workspaceId),
             'dataset_fields' => self::seedDatasetField($workspaceId),
             default => null,
@@ -417,6 +418,17 @@ final class Cluster
         $versionId ??= self::seedBlockVersion($workspaceId);
         self::superuser()->prepare('INSERT INTO draft_ui_state (id, workspace_id, block_version_id) VALUES (?, ?, ?)')
             ->execute([$id, $workspaceId, $versionId]);
+
+        return $id;
+    }
+
+    /** A ValidationReport (Story 3.18) of a Draft of the Workspace (a new Draft unless one is given). */
+    public static function seedValidationReport(string $workspaceId, ?string $versionId = null, string $status = 'passed', int $revision = 1): string
+    {
+        $id = (string) Str::uuid7();
+        $versionId ??= self::seedBlockVersion($workspaceId);
+        self::superuser()->prepare('INSERT INTO validation_reports (id, workspace_id, block_version_id, operation_id, subject_revision, status, created_by_membership_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            ->execute([$id, $workspaceId, $versionId, (string) Str::uuid7(), $revision, $status, (string) Str::uuid7()]);
 
         return $id;
     }

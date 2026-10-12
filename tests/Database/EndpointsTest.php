@@ -582,7 +582,7 @@ it('rolls the Endpoints migration back and migrates forward again', function () 
 
     try {
         // Sixteen steps: the newest migrations are Story 3.11c's (datasets), Story 3.9's (fetch columns of draft samples), Story 3.8's (paste columns of draft samples), Story 3.4's (block categories), Story 3.3's (Blocks and Drafts), Story 2.20's (sync generations), Story 2.19's (subscriptions), Story 2.18's (health), Story 2.17's (attempt), Story 2.16's (retention), Story 2.15's (conditional state), Story 2.14's (scheduled fetch), Story 2.13's (user context), Story 2.12's (user attributes) and Story 2.11's (pagination), then this one.
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 16, '--force' => true]))->toBe(0)
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 17, '--force' => true]))->toBe(0)
             ->and($tables())->toBe(0);
     } finally {
         Artisan::call('migrate', ['--database' => 'migrator', '--force' => true]);

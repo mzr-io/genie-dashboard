@@ -78,5 +78,5 @@ return [
 
     'json_decode_banned' => ['Ingestion', 'RawStore', 'Mapping', 'Results'],
 
-    'json_decode_banned_paths' => ['Platform/Json', 'Modules/Blocks/Application/ManageDraftSamples.php', 'Modules/Blocks/Application/PreviewDraft.php', 'Modules/Blocks/Infrastructure/SodiumSampleVault.php'],
+    'json_decode_banned_paths' => ['Platform/Json', 'Modules/Blocks/Application/ManageDraftSamples.php', 'Modules/Blocks/Application/PreviewDraft.php', 'Modules/Blocks/Application/RunDraftValidation.php', 'Modules/Blocks/Application/StartDraftValidation.php', 'Modules/Blocks/Infrastructure/SodiumSampleVault.php'],
 ];

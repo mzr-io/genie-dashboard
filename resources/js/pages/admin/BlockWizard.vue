@@ -24,6 +24,7 @@ import DataSourceStep from '@/components/wizard/DataSourceStep.vue';
 import LivePreview from '@/components/wizard/LivePreview.vue';
 import MapDataStep from '@/components/wizard/MapDataStep.vue';
 import PreviewStep from '@/components/wizard/PreviewStep.vue';
+import ValidateStep from '@/components/wizard/ValidateStep.vue';
 import WizardStepper from '@/components/wizard/WizardStepper.vue';
 import { useEditLock } from '@/composables/useEditLock';
 import { useOfflineAction } from '@/composables/useOfflineAction';
@@ -1237,6 +1238,11 @@ function goTo(step: number): void {
     }
 }
 
+// Step 5 validates the Draft as it is stored: what is still pending is saved first (nothing is sent when nothing changed, so no revision is spent).
+async function settleForValidation(): Promise<boolean> {
+    return dirty.value ? persist(reached.value) : true;
+}
+
 function onPreview(): void {
     goTo(4);
 }
@@ -1733,32 +1739,31 @@ onBeforeUnmount(() => {
                         />
                     </div>
 
-                    <section
+                    <div
                         v-else
-                        data-test="later-step"
-                        class="flex flex-col items-start gap-4 rounded-lg border border-border-default bg-surface-card p-6"
+                        class="flex flex-col gap-4"
+                        data-test="step-5-wrap"
                     >
-                        <h2 class="type-title-sm text-text-primary">
-                            {{
-                                labels.stepStatus(
-                                    current,
-                                    STEP_COUNT,
-                                    labels.steps[current - 1].label,
-                                )
-                            }}
-                        </h2>
-                        <p class="type-body-md text-text-secondary">
-                            {{ labels.laterStep }}
-                        </p>
-                        <Button
-                            type="button"
-                            variant="secondary"
-                            data-test="back"
-                            @click="goTo(current - 1)"
-                        >
-                            {{ labels.back }}
-                        </Button>
-                    </section>
+                        <ValidateStep
+                            :draft-id="draft?.draft_id ?? null"
+                            :type-key="form.type"
+                            :version="version"
+                            :revision="draft?.revision ?? null"
+                            :has-source="
+                                form.source.dataSourceId !== null &&
+                                form.source.endpointId !== null
+                            "
+                            :pasted="sample.stored?.origin === 'pasted'"
+                            :fetch-body="fetchBodyNow"
+                            :claim="sampleClaim"
+                            :save="settleForValidation"
+                            :blocked="mapBlocked"
+                            @auth-error="sessionEnded"
+                            @error="onMappingError"
+                            @back="goTo(4)"
+                            @save-draft="saveDraft"
+                        />
+                    </div>
                 </div>
 
                 <div

@@ -13,6 +13,7 @@ use App\Http\Controllers\Admin\DraftRolesController;
 use App\Http\Controllers\Admin\DraftSampleController;
 use App\Http\Controllers\Admin\DraftSlotsController;
 use App\Http\Controllers\Admin\DraftUserSampleController;
+use App\Http\Controllers\Admin\DraftValidationController;
 use App\Http\Controllers\Admin\EndpointController;
 use App\Http\Controllers\Admin\GroupController;
 use App\Http\Controllers\Admin\HostAllowlistController;
@@ -108,6 +109,11 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::get('blocks/preview-as-user/members', [DraftUserSampleController::class, 'members'])->middleware('admin')->name('api.admin.blocks.preview-as-user.members');
     Route::post('blocks/drafts/{draft}/sample/fetch-as-user', [DraftUserSampleController::class, 'fetch'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,data-source-endpoint-test'])->name('api.admin.blocks.drafts.sample.fetch-as-user');
     Route::get('blocks/drafts/{draft}/sample/as-user/{operation}', [DraftUserSampleController::class, 'shape'])->whereUuid(['draft', 'operation'])->middleware(['admin', 'throttle:120,1,data-source-endpoint-sample'])->name('api.admin.blocks.drafts.sample.as-user');
+
+    // Validate against the real API (Story 3.18, wizard step 5): starts a `publish_validation` Operation (`blocks.edit`, the Draft's edit-lock claim; 429 with `retry_after`
+    // over the per-membership limit shared with Fetch from API) and reads the latest ValidationReport back. The Draft's own Data Source and Endpoint are validated.
+    Route::post('blocks/drafts/{draft}/validation', [DraftValidationController::class, 'store'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-validation'])->name('api.admin.blocks.drafts.validation.store');
+    Route::get('blocks/drafts/{draft}/validation', [DraftValidationController::class, 'show'])->whereUuid('draft')->middleware(['admin', 'throttle:60,1,block-validation-read'])->name('api.admin.blocks.drafts.validation.show');
 
     // Field roles and record-path candidates of the sample (Story 3.11a): read-only, `blocks.edit`, no edit-lock claim.
     Route::get('blocks/drafts/{draft}/sample/roles', [DraftRolesController::class, 'show'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.sample.roles');

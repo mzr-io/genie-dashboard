@@ -21,6 +21,7 @@ final class BlocksAuditSerializer implements AuditSerializer
             'block_type' => AuditField::Enum,
             'name' => AuditField::Hashed,
             'revision' => AuditField::Count,
+            'report_id' => AuditField::Id,
         ];
     }
 }

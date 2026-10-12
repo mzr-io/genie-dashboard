@@ -28,4 +28,6 @@ enum ErrorCode: string
     case PreviewAsUserEnded = 'blocks.preview_as_user_ended';
     /** A preview as a user named a Data Source or Endpoint that is not the Draft's (Story 3.17): HTTP 422, nothing run. */
     case PreviewAsUserMismatch = 'blocks.preview_as_user_mismatch';
+    /** A validation against the real API (Story 3.18) was not started: no real Endpoint (a pasted sample is never proof) or a setting unset. HTTP 422 with `reason`. */
+    case ValidationRefused = 'blocks.validation_refused';
 }

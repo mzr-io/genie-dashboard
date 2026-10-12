@@ -40,7 +40,9 @@ use App\Modules\Blocks\Application\ManageDraftSlots;
 use App\Modules\Blocks\Application\ManageUserSamples;
 use App\Modules\Blocks\Application\PreviewDraft;
 use App\Modules\Blocks\Application\ReadDraftFieldRoles;
+use App\Modules\Blocks\Application\RunDraftValidation;
 use App\Modules\Blocks\Application\StartDraftSampleFetch;
+use App\Modules\Blocks\Application\StartDraftValidation;
 use App\Modules\Blocks\Contracts\BlockCategories;
 use App\Modules\Blocks\Contracts\DraftFieldRoles;
 use App\Modules\Blocks\Contracts\DraftPreviews;
@@ -49,6 +51,7 @@ use App\Modules\Blocks\Contracts\DraftSampleFetches;
 use App\Modules\Blocks\Contracts\DraftSamples;
 use App\Modules\Blocks\Contracts\DraftSlots;
 use App\Modules\Blocks\Contracts\DraftUserSamples;
+use App\Modules\Blocks\Contracts\DraftValidations;
 use App\Modules\Blocks\Contracts\SampleVault;
 use App\Modules\Blocks\Infrastructure\BlocksAuditSerializer;
 use App\Modules\Blocks\Infrastructure\DraftLockEpochs;
@@ -70,6 +73,7 @@ use App\Modules\Connector\Application\RecordEgressBlock;
 use App\Modules\Connector\Application\RecordSyncRun;
 use App\Modules\Connector\Application\RunConnectionTest;
 use App\Modules\Connector\Application\RunDraftSampleFetch;
+use App\Modules\Connector\Application\RunEndpointValidation;
 use App\Modules\Connector\Application\RunFetchAsUser;
 use App\Modules\Connector\Application\RunSampleFetch;
 use App\Modules\Connector\Application\StartConnectionTest;
@@ -83,6 +87,7 @@ use App\Modules\Connector\Contracts\EgressGuard;
 use App\Modules\Connector\Contracts\EgressTransport;
 use App\Modules\Connector\Contracts\EndpointFetcher;
 use App\Modules\Connector\Contracts\Endpoints;
+use App\Modules\Connector\Contracts\EndpointValidations;
 use App\Modules\Connector\Contracts\FetchesAsUser;
 use App\Modules\Connector\Contracts\FetchTransport;
 use App\Modules\Connector\Contracts\HostAllowlist;
@@ -236,6 +241,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(DatasetSuggestions::class, ManageDatasets::class);
         $this->app->bind(PreviewThrottle::class, PreviewRateLimit::class);
         $this->app->bind(DraftSampleFetches::class, StartDraftSampleFetch::class);
+        $this->app->bind(DraftValidations::class, StartDraftValidation::class);
         $this->app->bind(SampleVault::class, SodiumSampleVault::class);
         $this->app->bind(BlockCategories::class, ManageBlockCategories::class);
         $this->app->bind(Endpoints::class, ManageEndpoints::class);
@@ -256,6 +262,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(Samples::class, ReadSample::class);
         // Blocks' Fetch from API (Story 3.9) runs the Endpoint fetch through this contract only.
         $this->app->bind(SampleRuns::class, RunDraftSampleFetch::class);
+        // Blocks' validation against the real API (Story 3.18) fetches through this contract only.
+        $this->app->bind(EndpointValidations::class, RunEndpointValidation::class);
         $this->app->bind(FetchesAsUser::class, StartFetchAsUser::class);
         // Ingestion's scheduled fetch (Story 2.14) reaches the Connector through these two contracts only.
         $this->app->bind(EndpointFetcher::class, FetchEndpoint::class);
@@ -336,6 +344,8 @@ class AppServiceProvider extends ServiceProvider
 
         // The `draft_sample_fetch` kind (Story 3.9): registered by Blocks, on the queue only `worker-connector` consumes. Its lifetime is set per Operation from the platform timeout ceiling ({@see Operations::enqueue()}), and the sealed blob's TTL is that Operation's remaining lifetime; 600 is only the default when none is given.
         $this->app->make(OperationKinds::class)->register(new OperationKind(DraftSampleFetches::KIND, DraftSampleFetches::QUEUE, 600, FetchDraftSample::class));
+        // The `publish_validation` kind (Story 3.18): registered by Blocks on the same queue; its lifetime is also the platform timeout ceiling, set per Operation.
+        $this->app->make(OperationKinds::class)->register(new OperationKind(DraftValidations::KIND, DraftValidations::QUEUE, 600, RunDraftValidation::class));
 
         QueueContext::register($this->app->make(RequestContext::class), $this->app->make('events'));
         JobSignatureGuard::register($this->app, $this->app->make('events'));

@@ -79,6 +79,9 @@ enum AuditAction: string
     case BlocksDraftCreated = 'blocks.draft.created';
     case BlocksDraftDiscarded = 'blocks.draft.discarded';
 
+    // Blocks: a Draft passed validation against the real API (Story 3.18). Only a pass is audited; the Draft and Block IDs, the revision it was bound to and the report ID.
+    case BlocksDraftValidated = 'blocks.draft.validated';
+
     // Platform: operator actions mirrored into the Workspace audit log.
     case PlatformWorkspaceCreated = 'platform.workspace.created';
 

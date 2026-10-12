@@ -72,6 +72,7 @@ final class PurgeDiscardedDrafts
 
         $db->delete("delete from draft_samples where workspace_id = ? and block_version_id in ({$marks})", [$workspaceId, ...$ids]);
         $db->delete("delete from draft_ui_state where workspace_id = ? and block_version_id in ({$marks})", [$workspaceId, ...$ids]);
+        $db->delete("delete from validation_reports where workspace_id = ? and block_version_id in ({$marks})", [$workspaceId, ...$ids]);
 
         // The state is re-checked: only a discarded Draft is ever deleted.
         $deleted = $db->delete("delete from block_versions where workspace_id = ? and state = 'discarded' and id in ({$marks})", [$workspaceId, ...$ids]);

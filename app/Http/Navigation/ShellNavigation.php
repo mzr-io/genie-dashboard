@@ -124,6 +124,8 @@ final class ShellNavigation
         'api.admin.blocks.preview-as-user.members' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.sample.fetch-as-user' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.sample.as-user' => Permission::BlocksEdit,
+        'api.admin.blocks.drafts.validation.store' => Permission::BlocksEdit,
+        'api.admin.blocks.drafts.validation.show' => Permission::BlocksEdit,
         'api.admin.blocks.data-sources.index' => Permission::BlocksEdit,
         'api.admin.blocks.data-sources.endpoints.index' => Permission::BlocksEdit,
         'api.admin.blocks.refresh-intervals' => Permission::BlocksEdit,

@@ -38,6 +38,8 @@ const { default: BlockWizard } =
 
 const BASE = '/api/v1/admin/blocks/drafts/d-1';
 let storedAck: string[] = [];
+let stepNow = 4;
+let sourceNow: Record<string, string> | undefined;
 
 function draft(): WizardDraft {
     return {
@@ -51,12 +53,16 @@ function draft(): WizardDraft {
         state: 'draft',
         revision: 1,
         lock_epoch: 1,
-        step: 4,
+        step: stepNow,
         owner_membership_id: 'm-1',
         owner: null,
         created_at: '2026-10-01T09:30:00Z',
         updated_at: '2026-10-02T10:00:00Z',
-        config: { schema_version: 1, description: 'Daily revenue' },
+        config: {
+            schema_version: 1,
+            description: 'Daily revenue',
+            ...(sourceNow ? { source: sourceNow } : {}),
+        },
         ui_state: { acknowledged_warnings: storedAck, slot_statuses: {} },
     } as WizardDraft;
 }
@@ -224,6 +230,8 @@ beforeEach(() => {
     rerunSlots = null;
     previewReply = () => ({ status: 200, json: { data: preview() } });
     storedAck = [];
+    stepNow = 4;
+    sourceNow = undefined;
     sessionStorage.clear();
     localStorage.clear();
     Object.defineProperty(window, 'innerWidth', {
@@ -339,6 +347,36 @@ beforeEach(() => {
                         reply = previewReply();
                     } else if (url === `${BASE}/sample`) {
                         reply = { status: 200, json: { data: null } };
+                    } else if (
+                        url === `${BASE}/validation` &&
+                        method === 'POST'
+                    ) {
+                        reply = {
+                            status: 202,
+                            json: {
+                                data: {
+                                    operation_id: 'o-1',
+                                    status: 'queued',
+                                    expires_at: '2026-10-12T09:20:00Z',
+                                    draft_revision: 9,
+                                },
+                            },
+                        };
+                    } else if (url === `${BASE}/validation`) {
+                        reply = { status: 200, json: { data: null } };
+                    } else if (url.startsWith('/api/v1/operations/')) {
+                        reply = {
+                            status: 200,
+                            json: {
+                                data: {
+                                    id: 'o-1',
+                                    kind: 'publish_validation',
+                                    status: 'failed',
+                                    result: { ok: false, report_id: null },
+                                    expires_at: '2026-10-12T09:20:00Z',
+                                },
+                            },
+                        };
                     } else if (url === BASE && method === 'GET') {
                         reply = { status: 200, json: { data: draft() } };
                     } else if (url === BASE && method === 'PUT') {
@@ -583,7 +621,8 @@ describe('Step 4: warnings and acknowledgements', () => {
         expect(body.ui_state.acknowledged_warnings[0]).toMatch(
             /^w:cleared_optional:secondary_note:/,
         );
-        expect($('[data-test=later-step]')).not.toBeNull();
+        expect($('[data-test=validate-step]')).not.toBeNull();
+        expect($('[data-test=later-step]')).toBeNull();
     });
 
     it('keeps the acknowledgement after a reload', async () => {
@@ -746,5 +785,39 @@ describe('Step 4: warnings and acknowledgements', () => {
         expect(text('[data-test=continue-reason]')).toContain(
             'preview could not be built',
         );
+    });
+});
+
+describe('Step 5: Validate in the wizard', () => {
+    it("saves a dirty Draft first, then sends the page's lock claim and the dates, and never the data source", async () => {
+        stepNow = 5;
+        sourceNow = { data_source_id: 's-1', endpoint_id: 'e-1' };
+        await open([headline({ state: 'confirmed' }), kpiLabel(), cleared()]);
+        await click($('[data-test=warning-ack]'));
+        await click($('[data-step="5"] [data-test=step-button]'));
+
+        expect($('[data-test=validate-step]')).not.toBeNull();
+
+        calls.length = 0;
+        await click($('[data-test=validate]'));
+
+        const methods = calls
+            .filter((c) => c.url === BASE || c.url === `${BASE}/validation`)
+            .map((c) => `${c.method} ${c.url.replace(BASE, '')}`);
+
+        expect(methods.slice(0, 2)).toEqual(['PUT ', 'POST /validation']);
+
+        const post = calls.find(
+            (c) => c.url === `${BASE}/validation` && c.method === 'POST',
+        )!;
+
+        expect(post.body).toMatchObject({ lock_epoch: 1 });
+        expect(post.body).toHaveProperty('range');
+        expect(post.body).not.toHaveProperty('data_source_id');
+        // The Operation stored no report: the step says it could not check, and shows no result.
+        expect(text('[data-test=validate-problem]')).toContain(
+            'could not finish',
+        );
+        expect($('[data-test=result-title]')).toBeNull();
     });
 });
