@@ -24,8 +24,6 @@ interface DraftValidations
      * published), the edit-lock claim (423), the lifetime setting, a real Data Source and Endpoint, then either the fail-fast path (strict-schema
      * errors: queued without a request and without counting a fetch) or the fetch's checks and rate limit (422, 429).
      *
-     * @param  array{from: string, to: string}|null  $range
-     * @param  array{start: string, end: string}|null  $period
      * @param  (\Closure(): bool)|null  $holdsLock  checks, inside the transaction, that the caller's lock token still holds the soft lock
      *
      * @throws DraftNotFound
@@ -37,7 +35,7 @@ interface DraftValidations
      * @throws InvalidDataSource
      * @throws SampleFetchThrottled
      */
-    public function start(DraftActor $actor, string $draftId, ?array $range, ?array $period, int $lockEpoch, ?\Closure $holdsLock = null): Operation;
+    public function start(DraftActor $actor, string $draftId, int $lockEpoch, ?\Closure $holdsLock = null): Operation;
 
     /**
      * The Draft's latest report, or null when it was never validated.

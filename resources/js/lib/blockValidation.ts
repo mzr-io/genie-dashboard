@@ -78,18 +78,13 @@ export async function fetchValidationReport(
     };
 }
 
-// Starts a validation (`202` with the Operation to poll). The Data Source and the Endpoint are the Draft's own; only the dates and the lock claim
-// travel. Throws the 422 with its reason, the 429 with `retry_after` in its body, the 423.
+// Starts a validation (`202` with the Operation to poll). The Data Source, the Endpoint and the date range are the Draft's own; only the lock claim
+// travels. Throws the 422 with its reason, the 429 with `retry_after` in its body, the 423.
 export async function startValidation(
     draftId: string,
-    dates: {
-        range: { from: string; to: string } | null;
-        period: { start: string; end: string } | null;
-    },
     claim: SampleClaim,
 ): Promise<StartedValidation> {
     const answer = await wizardCall('POST', url(draftId), {
-        ...dates,
         ...claim,
     });
     const data = answer.data as Partial<StartedValidation> | undefined;

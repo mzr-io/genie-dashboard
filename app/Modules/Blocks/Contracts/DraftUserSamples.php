@@ -22,8 +22,7 @@ interface DraftUserSamples
      * Starts the Fetch as user for a Draft's Endpoint choices (one audit event, and the outbox event the notifications epic delivers).
      *
      * @param  array<string, string|null>  $bindings  the Fixed parameters' own values
-     * @param  array{from: string, to: string}|null  $range
-     * @param  array{start: string, end: string}|null  $period
+     * @param  array{preset: string, from?: string, to?: string}|null  $defaultRange  the form's Default date range choice; the server resolves its dates (Story 4.1)
      *
      * @throws DraftNotFound
      * @throws DraftPublished
@@ -33,7 +32,7 @@ interface DraftUserSamples
      * @throws InvalidDataSource
      * @throws SampleFetchThrottled
      */
-    public function start(DraftActor $actor, string $draftId, string $dataSourceId, string $endpointId, string $membershipId, array $bindings, ?array $range, ?array $period): Operation;
+    public function start(DraftActor $actor, string $draftId, string $dataSourceId, string $endpointId, string $membershipId, array $bindings, ?array $defaultRange): Operation;
 
     /**
      * The structure of a finished Fetch as user, or null when it is gone (expired, not the requester's, failed, or the Endpoint moved on).

@@ -384,6 +384,19 @@ it('needs the edit-lock claim of a save: a stale epoch is a 423 and nothing is q
         ->and(sfCount('operations'))->toBe(0);
 });
 
+it('never takes dates from the client: a range or a period in the request is a 422 and nothing is queued', function (array $dates, string $field) {
+    Queue::fake();
+    [, , , , $draft] = pvWorld();
+
+    pvStart($draft, $dates)->assertStatus(422)->assertJsonValidationErrors([$field], 'errors');
+
+    expect(sfCount('operations'))->toBe(0);
+    Queue::assertNothingPushed();
+})->with([
+    'range' => [['range' => ['from' => '2026-01-01', 'to' => '2026-01-31']], 'range'],
+    'period' => [['period' => ['start' => '2026-01-01', 'end' => '2026-01-31']], 'period'],
+]);
+
 it('is the Workspace\'s alone: another Workspace reads a 404', function () {
     [, , , , $draft] = pvWorld();
     $this->curl->queue = [FakeCurl::answer(200, PV_BODY)];

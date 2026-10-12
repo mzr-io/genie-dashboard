@@ -73,6 +73,14 @@ final class WorkspaceSettings
         }
     }
 
+    /** The Workspace's IANA time zone, in which periods are resolved; `UTC` when none is stored or the stored value is not a zone. */
+    public function timezone(): string
+    {
+        $zone = $this->row()['timezone'] ?? null;
+
+        return is_string($zone) && in_array($zone, \DateTimeZone::listIdentifiers(), true) ? $zone : 'UTC';
+    }
+
     /** @var array<string, mixed>|null|false The row, read once per instance; false until read. */
     private array|null|false $loaded = false;
 
@@ -89,7 +97,7 @@ final class WorkspaceSettings
         }
 
         try {
-            $row = DB::transaction(fn () => DB::table('workspace_settings')->select(['help_links', 'contact_href'])->first());
+            $row = DB::transaction(fn () => DB::table('workspace_settings')->select(['help_links', 'contact_href', 'timezone'])->first());
 
             return $this->loaded = $row === null ? null : (array) $row;
         } catch (Throwable $e) {

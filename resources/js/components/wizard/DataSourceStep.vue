@@ -94,7 +94,7 @@ const sourceName = computed(
 );
 // What the request is now: the page-level form, read when Fetch is activated.
 const currentKey = computed(() => requestKey(source.value));
-const fetchBody = () => fetchBodyOf(source.value, props.form.display.period);
+const fetchBody = () => fetchBodyOf(source.value);
 const rangeError = computed(() => customRangeError(source.value));
 const liveCapable = computed(() => chosenSource.value?.live_capable === true);
 

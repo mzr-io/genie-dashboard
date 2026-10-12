@@ -167,8 +167,7 @@ export async function startUserFetch(
             data_source_id: body.data_source_id,
             endpoint_id: body.endpoint_id,
             bindings: body.bindings,
-            range: body.range,
-            period: body.period,
+            default_date_range: body.default_date_range,
         },
     );
     const data = answer.data as Partial<StartedAsUser> | undefined;

@@ -14,7 +14,7 @@ import { Button } from '@/components/ui/button';
 import { useShell } from '@/composables/useShell';
 import { announce } from '@/lib/announce';
 import { clockText } from '@/lib/blockSample';
-import type { FetchBody, SampleClaim } from '@/lib/blockSample';
+import type { SampleClaim } from '@/lib/blockSample';
 import {
     effectiveStatus,
     fetchValidationReport,
@@ -50,8 +50,7 @@ const props = defineProps<{
     // A real Data Source and Endpoint are chosen in Step 2; a pasted sample alone is never proof.
     hasSource: boolean;
     pasted: boolean;
-    // What the request is now (its dates) and the lock claim of a save; null when this tab may not write.
-    fetchBody: () => FetchBody;
+    // The lock claim of a save; null when this tab may not write.
     claim: () => SampleClaim | null;
     // Saves what is pending so the validation is of the Draft as it stands. Resolves whether it saved.
     save: () => Promise<boolean>;
@@ -343,12 +342,7 @@ async function run(): Promise<void> {
             return;
         }
 
-        const dates = props.fetchBody();
-        const started = await startValidation(
-            id,
-            { range: dates.range, period: dates.period },
-            claim,
-        );
+        const started = await startValidation(id, claim);
         const operation = await pollOperation(
             started.operation_id,
             mine.signal,

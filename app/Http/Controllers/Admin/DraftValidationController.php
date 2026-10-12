@@ -60,7 +60,7 @@ final class DraftValidationController extends Controller
     {
         try {
             $actor = $this->actor($request);
-            $operation = $this->validations->start($actor, $draft, $request->range(), $request->period(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
+            $operation = $this->validations->start($actor, $draft, $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
         } catch (DraftNotFound) {
             abort(404);
         } catch (DraftLockLost $e) {

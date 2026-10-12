@@ -294,7 +294,7 @@ it('sends the Fixed parameter and the date-range value of the wizard choices, ne
     usFetch($w, null, [
         'endpoint_id' => $endpoint,
         'bindings' => ['k' => 'over'],
-        'range' => ['from' => '2026-01-01', 'to' => '2026-01-31'],
+        'default_date_range' => ['preset' => 'custom', 'from' => '2026-01-01', 'to' => '2026-01-31'],
     ])->assertStatus(202);
 
     $url = $this->curl->calls[0][CURLOPT_URL];

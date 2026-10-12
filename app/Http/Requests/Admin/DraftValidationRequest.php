@@ -9,9 +9,9 @@ use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Http\Exceptions\HttpResponseException;
 
 /**
- * A validation of a Draft against the real API (Story 3.18, wizard step 5): the edit-lock claim of a Draft save (`lock_epoch`, `lock_token`) and the
- * dates the default range and the Block's period stand for. The Data Source, the Endpoint and the Fixed parameters are the Draft's own and are
- * never taken from the client. The `admin` middleware has authorised the request (`blocks.edit`).
+ * A validation of a Draft against the real API (Story 3.18, wizard step 5): the edit-lock claim of a Draft save (`lock_epoch`, `lock_token`). Dates are never
+ * sent: the default range and the Block's period come from the Draft, like the Data Source, the Endpoint and the Fixed parameters, none of which is
+ * taken from the client. The `admin` middleware has authorised the request (`blocks.edit`).
  */
 final class DraftValidationRequest extends FormRequest
 {
@@ -24,31 +24,12 @@ final class DraftValidationRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'range' => ['nullable', 'array'],
-            'range.from' => ['required_with:range', 'string', 'date_format:Y-m-d'],
-            'range.to' => ['required_with:range', 'string', 'date_format:Y-m-d', 'after_or_equal:range.from'],
-            'period' => ['nullable', 'array'],
-            'period.start' => ['required_with:period', 'string', 'date_format:Y-m-d'],
-            'period.end' => ['required_with:period', 'string', 'date_format:Y-m-d', 'after_or_equal:period.start'],
+            // Resolved dates are never accepted from a client (AD-27): the server derives them from the Draft.
+            'range' => ['prohibited'],
+            'period' => ['prohibited'],
             'lock_epoch' => ['required', 'integer', 'min:1'],
             'lock_token' => ['nullable', 'string', 'max:128'],
         ];
-    }
-
-    /** @return array{from: string, to: string}|null */
-    public function range(): ?array
-    {
-        $range = $this->input('range');
-
-        return is_array($range) && isset($range['from'], $range['to']) ? ['from' => (string) $range['from'], 'to' => (string) $range['to']] : null;
-    }
-
-    /** @return array{start: string, end: string}|null */
-    public function period(): ?array
-    {
-        $period = $this->input('period');
-
-        return is_array($period) && isset($period['start'], $period['end']) ? ['start' => (string) $period['start'], 'end' => (string) $period['end']] : null;
     }
 
     public function lockEpoch(): int

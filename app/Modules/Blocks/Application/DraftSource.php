@@ -8,6 +8,8 @@ use App\Modules\Connector\Contracts\DataSources;
 use App\Modules\Connector\Contracts\EndpointNotFound;
 use App\Modules\Connector\Contracts\Endpoints;
 use App\Modules\Ingestion\Contracts\RefreshIntervals;
+use App\Platform\Period\PeriodPreset;
+use App\Platform\Period\PeriodResolver;
 use Illuminate\Support\Str;
 
 /**
@@ -23,8 +25,6 @@ use Illuminate\Support\Str;
  */
 final class DraftSource
 {
-    public const PRESETS = ['today', 'this_week', 'this_month', 'current_year', 'custom'];
-
     public const LIVE = 'live';
 
     public const VALUE_MAX = 2048;
@@ -288,7 +288,7 @@ final class DraftSource
 
         $preset = is_array($value) ? ($value['preset'] ?? null) : null;
 
-        if (! is_string($preset) || ! in_array($preset, self::PRESETS, true)) {
+        if (! is_string($preset) || (PeriodPreset::tryFrom($preset) === null && $preset !== PeriodResolver::CUSTOM)) {
             $errors['config.source.default_date_range'] = ['Choose a default date range from the list.'];
 
             return null;
@@ -296,7 +296,7 @@ final class DraftSource
 
         $out = ['preset' => $preset];
 
-        if ($preset !== 'custom') {
+        if ($preset !== PeriodResolver::CUSTOM) {
             return $out;
         }
 

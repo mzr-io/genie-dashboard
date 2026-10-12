@@ -91,7 +91,7 @@ final class DraftUserSampleController extends Controller
         try {
             $operation = $this->samples->start(
                 $this->actor($request), $draft, $request->dataSourceId(), $request->endpointId(), $request->membership(),
-                $request->bindings(), $request->range(), $request->period(),
+                $request->bindings(), $request->defaultDateRange(),
             );
         } catch (DraftNotFound|DataSourceNotFound|EndpointNotFound|MembershipNotFound) {
             abort(404);

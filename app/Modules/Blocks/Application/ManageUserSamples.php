@@ -2,6 +2,7 @@
 
 namespace App\Modules\Blocks\Application;
 
+use App\Modules\Blocks\Contracts\Draft;
 use App\Modules\Blocks\Contracts\DraftActor;
 use App\Modules\Blocks\Contracts\DraftNotFound;
 use App\Modules\Blocks\Contracts\DraftPublished;
@@ -19,6 +20,7 @@ use App\Platform\Json\JsonParseFailed;
 use App\Platform\Json\LosslessJson;
 use App\Platform\Json\SampleShape;
 use App\Platform\Operations\Operation;
+use App\Platform\Tenancy\WorkspaceSettings;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -35,11 +37,13 @@ final class ManageUserSamples implements DraftUserSamples
         private readonly Drafts $drafts,
         private readonly FetchesAsUser $fetches,
         private readonly Samples $samples,
+        private readonly WorkspaceSettings $settings,
     ) {}
 
-    public function start(DraftActor $actor, string $draftId, string $dataSourceId, string $endpointId, string $membershipId, array $bindings, ?array $range, ?array $period): Operation
+    public function start(DraftActor $actor, string $draftId, string $dataSourceId, string $endpointId, string $membershipId, array $bindings, ?array $defaultRange): Operation
     {
-        $this->ensureDraft($actor->workspaceId, $draftId);
+        $draft = $this->ensureDraft($actor->workspaceId, $draftId);
+        [$range, $period] = DraftPeriod::dates($draft->config, $defaultRange, $this->settings->timezone(), now());
 
         return $this->fetches->startFromChoices(new DataSourceActor($actor->membershipId, $actor->workspaceId), $dataSourceId, $endpointId, $membershipId, $bindings, $range, $period);
     }
@@ -96,10 +100,10 @@ final class ManageUserSamples implements DraftUserSamples
         }
     }
 
-    private function ensureDraft(string $workspaceId, string $draftId): void
+    private function ensureDraft(string $workspaceId, string $draftId): Draft
     {
         try {
-            $this->drafts->find($workspaceId, $draftId);
+            return $this->drafts->find($workspaceId, $draftId);
         } catch (DraftNotFound $e) {
             $published = $this->transactions->run($workspaceId, function () use ($workspaceId, $draftId): bool {
                 $row = Str::isUuid($draftId) ? DB::selectOne('select state from block_versions where workspace_id = ? and id = ?', [$workspaceId, strtolower($draftId)]) : null;

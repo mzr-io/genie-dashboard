@@ -824,7 +824,7 @@ describe('Step 4: warnings and acknowledgements', () => {
 });
 
 describe('Step 5: Validate in the wizard', () => {
-    it("saves a dirty Draft first, then sends the page's lock claim and the dates, and never the data source", async () => {
+    it("saves a dirty Draft first, then sends the page's lock claim and no dates, and never the data source", async () => {
         stepNow = 5;
         sourceNow = { data_source_id: 's-1', endpoint_id: 'e-1' };
         await open([headline({ state: 'confirmed' }), kpiLabel(), cleared()]);
@@ -847,7 +847,8 @@ describe('Step 5: Validate in the wizard', () => {
         )!;
 
         expect(post.body).toMatchObject({ lock_epoch: 1 });
-        expect(post.body).toHaveProperty('range');
+        expect(post.body).not.toHaveProperty('range');
+        expect(post.body).not.toHaveProperty('period');
         expect(post.body).not.toHaveProperty('data_source_id');
         // The Operation stored no report: the step says it could not check, and shows no result.
         expect(text('[data-test=validate-problem]')).toContain(

@@ -88,15 +88,14 @@ function dsfUrl(string $draft): string
     return splUrl($draft, '/fetch');
 }
 
-/** The body of a fetch request: the Data Source, the Endpoint, the dates and the acknowledgement. */
+/** The body of a fetch request: the Data Source, the Endpoint, the Default date range choice and the acknowledgement. */
 function dsfBody(string $source, string $endpoint, array $overrides = []): array
 {
     return $overrides + [
         'data_source_id' => $source,
         'endpoint_id' => $endpoint,
         'bindings' => [],
-        'range' => ['from' => '2026-01-01', 'to' => '2026-01-31'],
-        'period' => null,
+        'default_date_range' => ['preset' => 'custom', 'from' => '2026-01-01', 'to' => '2026-01-31'],
         'request_key' => '["ds","ep",[],"this_month",null]',
         'contains_personal_data' => true,
         'lock_epoch' => 1,
@@ -187,10 +186,12 @@ it('sends the Fixed parameter\'s own value, and a date-bound header and period p
     ], 'headers' => [['name' => 'X-Day', 'binding' => 'date_range_to']], 'path' => '/customers/{id}']);
     $this->curl->queue = [FakeCurl::answer(200, '{"a":1}')];
 
-    dsfRun($draft, $source, $endpoint, ['period' => ['start' => '2026-02-01', 'end' => '2026-02-28']]);
+    // A Block with its own period selector starts at its Default date range; the server derives both dates, none comes from the client.
+    bdSave($draft, 1, 1, ['config' => ['display' => ['period' => 'own_selector']]])->assertOk();
+    dsfRun($draft, $source, $endpoint, ['default_date_range' => ['preset' => 'custom', 'from' => '2026-02-01', 'to' => '2026-02-28']]);
 
     expect($this->curl->calls[0][CURLOPT_URL])->toBe('https://api.example.com/customers/c-42?start=2026-02-01&end=2026-02-28')
-        ->and($this->curl->calls[0][CURLOPT_HTTPHEADER])->toContain('X-Day: 2026-01-31');
+        ->and($this->curl->calls[0][CURLOPT_HTTPHEADER])->toContain('X-Day: 2026-02-28');
 });
 
 it('replaces the sample with a re-fetch and raises sample_revision, and a paste raises it too', function () {
@@ -436,7 +437,7 @@ it('refuses a missing, malformed or unsafe value with a 422 naming the parameter
         ->and($this->curl->calls)->toBe([]);
     Queue::assertNothingPushed();
 })->with([
-    'no range for a date parameter' => [['range' => null], 'from', 'param-value-required'],
+    'no range for a date parameter' => [['default_date_range' => null], 'from', 'param-value-required'],
     'a slash in a path value' => [['bindings' => ['region' => 'a/b-CANARY']], 'region', 'param-value-invalid'],
     'a dot segment' => [['bindings' => ['region' => '..']], 'region', 'param-value-invalid'],
     'a control character' => [['bindings' => ['region' => "e\x07CANARY"]], 'region', 'param-value-invalid'],
@@ -595,15 +596,16 @@ it('ends as failed with store_failed, not a crash, when the sample cannot be wri
         ->and(splRows())->toBe([]);
 });
 
-it('refuses a range or period that ends before it starts', function (array $overrides, string $field) {
+it('refuses resolved dates from a client, and a range that ends before it starts', function (array $overrides, string $field) {
     Queue::fake();
     [, , $source, $endpoint, $draft] = dsfWorld();
 
     dsfFetch($draft, $source, $endpoint, $overrides)->assertStatus(422)->assertJsonValidationErrors([$field]);
     expect(sfCount('operations'))->toBe(0);
 })->with([
-    'range' => [['range' => ['from' => '2026-02-01', 'to' => '2026-01-01']], 'range.to'],
-    'period' => [['period' => ['start' => '2026-02-01', 'end' => '2026-01-01']], 'period.end'],
+    'client range' => [['range' => ['from' => '2026-02-01', 'to' => '2026-02-28']], 'range'],
+    'client period' => [['period' => ['start' => '2026-02-01', 'end' => '2026-02-28']], 'period'],
+    'custom range backwards' => [['default_date_range' => ['preset' => 'custom', 'from' => '2026-02-01', 'to' => '2026-01-01']], 'default_date_range.to'],
 ]);
 
 it('accepts a read-only POST Endpoint and sends it once', function () {

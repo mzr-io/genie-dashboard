@@ -500,3 +500,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-4-add-authentication-and-write-only-secrets-to-a-data-source.md`
   summary: Give `RejectsSecretValues` an explicit non-secret allowlist (`page_token`, `max_tokens`, `credential_scheme`, `secret_refs`) before Draft endpoints reuse it.
   evidence: `SENSITIVE_KEY` is substring-based and would refuse legitimate pagination and token-parameter names with 422.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-1-resolve-every-blocks-period-in-one-place.md`
+  summary: Replace the wizard's client-side `resolveRange` (display labels of date-bound parameter rows, browser time zone) with values resolved by the server's PeriodResolver in the Workspace time zone.
+  evidence: Story 4.1 made the server the only source of the dates a fetch or validation sends; the browser still shows its own computation, which can differ near a boundary when the Workspace and browser time zones differ.

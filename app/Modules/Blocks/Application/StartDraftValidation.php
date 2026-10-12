@@ -28,6 +28,7 @@ use App\Platform\Json\LimitSetting;
 use App\Platform\Json\LosslessJson;
 use App\Platform\Operations\Operation;
 use App\Platform\Operations\Operations;
+use App\Platform\Tenancy\WorkspaceSettings;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Contracts\Config\Repository;
 use Illuminate\Support\Facades\DB;
@@ -52,11 +53,12 @@ final class StartDraftValidation implements DraftValidations
         private readonly BlockTypeRegistry $types,
         private readonly QueryPlans $plans,
         private readonly Repository $config,
+        private readonly WorkspaceSettings $settings,
     ) {}
 
-    public function start(DraftActor $actor, string $draftId, ?array $range, ?array $period, int $lockEpoch, ?\Closure $holdsLock = null): Operation
+    public function start(DraftActor $actor, string $draftId, int $lockEpoch, ?\Closure $holdsLock = null): Operation
     {
-        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $range, $period, $lockEpoch, $holdsLock): Operation {
+        return $this->transactions->run($actor->workspaceId, function () use ($actor, $draftId, $lockEpoch, $holdsLock): Operation {
             $row = Str::isUuid($draftId)
                 ? DB::selectOne("select id, revision, lock_epoch, block_id from block_versions where workspace_id = ? and id = ? and state = 'draft' for update", [$actor->workspaceId, strtolower($draftId)])
                 : null;
@@ -102,6 +104,9 @@ final class StartDraftValidation implements DraftValidations
             foreach (is_array($source['bindings'] ?? null) ? $source['bindings'] : [] as $name => $value) {
                 $bindings[(string) $name] = is_string($value) ? $value : null;
             }
+
+            // The Draft's own default range and period behaviour, resolved by the platform's period resolver, never client dates.
+            [$range, $period] = DraftPeriod::dates($draft->config, null, $this->settings->timezone(), now());
 
             $bound = new DataSourceActor($actor->membershipId, $actor->workspaceId);
 

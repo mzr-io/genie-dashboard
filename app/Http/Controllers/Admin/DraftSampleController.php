@@ -100,7 +100,7 @@ final class DraftSampleController extends Controller
         try {
             $actor = $this->actor($request);
             $operation = $this->fetches->start(
-                $actor, $draft, $request->dataSourceId(), $request->endpointId(), $request->bindings(), $request->range(), $request->period(),
+                $actor, $draft, $request->dataSourceId(), $request->endpointId(), $request->bindings(), $request->defaultDateRange(),
                 $request->requestKey(), $request->containsPersonalData(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft),
             );
         } catch (DraftNotFound) {

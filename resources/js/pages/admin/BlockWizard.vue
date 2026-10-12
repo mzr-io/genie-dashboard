@@ -461,7 +461,7 @@ const gate = computed(() => {
 // What the request is now, for Fetch as user in Steps 2 and 4: its key (a result taken with other parameters is not previewed), the body, the Data
 // Source's name for the error card and why a fetch cannot run (the form's own reason, then offline).
 const requestKeyNow = computed(() => sourceRequestKey(form.source));
-const fetchBodyNow = () => fetchBodyOf(form.source, form.display.period);
+const fetchBodyNow = () => fetchBodyOf(form.source);
 const sourceNameNow = computed(
     () =>
         catalog.sources?.find(
@@ -1781,7 +1781,6 @@ onBeforeUnmount(() => {
                                 form.source.endpointId !== null
                             "
                             :pasted="sample.stored?.origin === 'pasted'"
-                            :fetch-body="fetchBodyNow"
                             :claim="sampleClaim"
                             :save="settleForValidation"
                             :blocked="mapBlocked"

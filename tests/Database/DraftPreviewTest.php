@@ -108,6 +108,16 @@ it('previews the plan over the stored sample: the Shaper payload, exact numbers 
     expect(bdRows()[0])->toMatchArray(['revision' => 2]);
 });
 
+it('returns the period the platform resolver gives the Block default, in half-open Workspace dates, and null while none is chosen', function () {
+    [, $id] = dpDraft(dpPlan());
+
+    expect(dpPreview($id)->assertOk()->json('data.period'))->toBeNull();
+
+    bdSave($id, 2, 1, ['config' => ['source' => ['default_date_range' => ['preset' => 'custom', 'from' => '2026-01-01', 'to' => '2026-01-31']]]])->assertOk();
+
+    expect(dpPreview($id)->assertOk()->json('data.period'))->toBe(['token' => 'custom', 'start' => '2026-01-01', 'end' => '2026-02-01']);
+});
+
 it('returns the same payload twice and parses the sample once in this worker', function () {
     [, $id] = dpDraft(dpPlan());
     $opened = 0;

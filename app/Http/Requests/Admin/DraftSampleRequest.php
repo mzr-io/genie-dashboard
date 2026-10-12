@@ -30,12 +30,14 @@ final class DraftSampleRequest extends FormRequest
                 'endpoint_id' => ['required', 'uuid'],
                 'bindings' => ['nullable', 'array', 'max:100'],
                 'bindings.*' => ['nullable', 'string', 'max:2048'],
-                'range' => ['nullable', 'array'],
-                'range.from' => ['required_with:range', 'string', 'date_format:Y-m-d'],
-                'range.to' => ['required_with:range', 'string', 'date_format:Y-m-d', 'after_or_equal:range.from'],
-                'period' => ['nullable', 'array'],
-                'period.start' => ['required_with:period', 'string', 'date_format:Y-m-d'],
-                'period.end' => ['required_with:period', 'string', 'date_format:Y-m-d', 'after_or_equal:period.start'],
+                // The Default date range is a choice (a preset, or the Admin's own dates for `custom`); the server resolves it in the Workspace time zone.
+                'default_date_range' => ['nullable', 'array'],
+                'default_date_range.preset' => ['required_with:default_date_range', 'string', 'max:32'],
+                'default_date_range.from' => ['nullable', 'string', 'date_format:Y-m-d'],
+                'default_date_range.to' => ['nullable', 'string', 'date_format:Y-m-d', 'after_or_equal:default_date_range.from'],
+                // Resolved dates are never accepted from a client (AD-27).
+                'range' => ['prohibited'],
+                'period' => ['prohibited'],
                 'request_key' => ['required', 'string', 'max:16384'],
                 'contains_personal_data' => ['required', 'boolean'],
                 'lock_epoch' => ['required', 'integer', 'min:1'],
@@ -85,20 +87,18 @@ final class DraftSampleRequest extends FormRequest
         return $out;
     }
 
-    /** @return array{from: string, to: string}|null */
-    public function range(): ?array
+    /** @return array{preset: string, from?: string, to?: string}|null the form's Default date range choice */
+    public function defaultDateRange(): ?array
     {
-        $range = $this->input('range');
+        $range = $this->input('default_date_range');
 
-        return is_array($range) && isset($range['from'], $range['to']) ? ['from' => (string) $range['from'], 'to' => (string) $range['to']] : null;
-    }
+        if (! is_array($range) || ! is_string($range['preset'] ?? null)) {
+            return null;
+        }
 
-    /** @return array{start: string, end: string}|null */
-    public function period(): ?array
-    {
-        $period = $this->input('period');
-
-        return is_array($period) && isset($period['start'], $period['end']) ? ['start' => (string) $period['start'], 'end' => (string) $period['end']] : null;
+        return ['preset' => $range['preset']]
+            + (is_string($range['from'] ?? null) ? ['from' => $range['from']] : [])
+            + (is_string($range['to'] ?? null) ? ['to' => $range['to']] : []);
     }
 
     public function requestKey(): string

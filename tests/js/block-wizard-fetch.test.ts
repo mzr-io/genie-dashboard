@@ -436,8 +436,7 @@ describe('Fetch from API: starting a fetch', () => {
             data_source_id: SOURCE,
             endpoint_id: ENDPOINT,
             bindings: {},
-            range: null,
-            period: null,
+            default_date_range: null,
             contains_personal_data: true,
             lock_epoch: 1,
         });

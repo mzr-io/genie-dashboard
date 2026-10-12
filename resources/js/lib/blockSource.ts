@@ -395,30 +395,32 @@ export function requestKey(form: SourceForm): string {
 export type Gate = { fetch: string | undefined; continue: string | undefined };
 
 // The body of a fetch (Story 3.9): what the request is, from the form. The Fixed parameters' own values are the block's overrides (the Endpoint's value
-// otherwise); the dates are what the default range stands for; the period is the same two dates when the Block has its own selector.
-export function fetchBodyOf(
-    form: SourceForm,
-    period: string,
-    today: Date = new Date(),
-): {
+// otherwise); the Default date range travels as the choice and the server resolves its dates (Story 4.1), so no date is computed or sent here.
+export function fetchBodyOf(form: SourceForm): {
     data_source_id: string;
     endpoint_id: string;
     bindings: Record<string, string>;
-    range: { from: string; to: string } | null;
-    period: { start: string; end: string } | null;
+    default_date_range: { preset: string; from?: string; to?: string } | null;
     request_key: string;
 } {
-    const range = resolveRange(form, today);
-
     return {
         data_source_id: form.dataSourceId ?? '',
         endpoint_id: form.endpointId ?? '',
         bindings: { ...form.bindings },
-        range,
-        period:
-            range !== null && period === 'own_selector'
-                ? { start: range.from, end: range.to }
-                : null,
+        default_date_range:
+            form.preset === ''
+                ? null
+                : {
+                      preset: form.preset,
+                      ...(form.preset === 'custom'
+                          ? {
+                                ...(form.from === ''
+                                    ? {}
+                                    : { from: form.from }),
+                                ...(form.to === '' ? {} : { to: form.to }),
+                            }
+                          : {}),
+                  },
         request_key: requestKey(form),
     };
 }

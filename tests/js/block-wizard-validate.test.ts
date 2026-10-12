@@ -71,14 +71,6 @@ async function mountStep(
             revision: 12,
             hasSource: true,
             pasted: false,
-            fetchBody: () => ({
-                data_source_id: 's-1',
-                endpoint_id: 'e-1',
-                bindings: {},
-                range: { from: '2026-10-01', to: '2026-10-31' },
-                period: null,
-                request_key: 'k',
-            }),
             claim: () => ({ lock_epoch: 1, lock_token: 'tok' }),
             save: async () => {
                 saved = true;
@@ -213,7 +205,7 @@ describe('Step 5: Validate', () => {
         ).toBeNull();
     });
 
-    it('starts the Operation with the lock claim and the dates only, saves first, and reports a pass bound to the revision', async () => {
+    it('starts the Operation with the lock claim only, saves first, and reports a pass bound to the revision', async () => {
         await mountStep();
         report = () => ({ status: 200, json: { data: reportOf() } });
         await validate();
@@ -223,8 +215,6 @@ describe('Step 5: Validate', () => {
         expect(saved).toBe(true);
         expect(post.url).toBe(`${BASE}/validation`);
         expect(post.body).toEqual({
-            range: { from: '2026-10-01', to: '2026-10-31' },
-            period: null,
             lock_epoch: 1,
             lock_token: 'tok',
         });

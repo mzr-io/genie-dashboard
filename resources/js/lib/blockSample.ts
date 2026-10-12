@@ -213,15 +213,18 @@ export async function storeSample(
 
 // ---- Fetch from API (Story 3.9) ----------------------------------------------------------------------------------
 
-// What the server needs to run the request: the Data Source and the Endpoint, the Fixed parameters' own values, the dates the default range stands for,
-// the Block's own period (when it has one) and the key of this request, which the server keeps with the sample. The Draft's acknowledgement and lock claim
+// What the server needs to run the request: the Data Source and the Endpoint, the Fixed parameters' own values, the Default date range choice (the server resolves
+// its dates in the Workspace time zone; the client never sends dates) and the key of this request, which the server keeps with the sample. The Draft's acknowledgement and lock claim
 // travel with it. Nothing here is a secret: the server renders the request from the Endpoint's current revision.
 export type FetchBody = {
     data_source_id: string;
     endpoint_id: string;
     bindings: Record<string, string>;
-    range: { from: string; to: string } | null;
-    period: { start: string; end: string } | null;
+    default_date_range: {
+        preset: string;
+        from?: string;
+        to?: string;
+    } | null;
     request_key: string;
 };
 

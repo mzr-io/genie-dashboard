@@ -503,10 +503,9 @@ describe('Step 2: Fetch as user', () => {
         expect(Object.keys(start[0].body!).sort()).toEqual([
             'bindings',
             'data_source_id',
+            'default_date_range',
             'endpoint_id',
             'membership',
-            'period',
-            'range',
         ]);
         expect(
             calls.some((c) => c.url.startsWith(`${BASE}/sample/as-user/`)),

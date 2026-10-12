@@ -27,8 +27,7 @@ interface DraftSampleFetches
      * values (422) and the rate limit (429). Then enqueues the Operation with the Draft's revision as its `subject_revision`.
      *
      * @param  array<string, string|null>  $bindings  the Fixed parameters' own values
-     * @param  array{from: string, to: string}|null  $range
-     * @param  array{start: string, end: string}|null  $period
+     * @param  array{preset: string, from?: string, to?: string}|null  $defaultRange  the form's Default date range choice; the server resolves its dates (Story 4.1)
      * @param  string  $requestKey  the client's key of this request, kept with the sample to tell later that it belongs to earlier parameters
      * @param  (\Closure(): bool)|null  $holdsLock  checks, inside the transaction, that the caller's lock token still holds the soft lock
      *
@@ -39,5 +38,5 @@ interface DraftSampleFetches
      * @throws InvalidDataSource 422, a field error naming the parameter as `values.{name}`
      * @throws SampleFetchThrottled
      */
-    public function start(DraftActor $actor, string $draftId, string $dataSourceId, string $endpointId, array $bindings, ?array $range, ?array $period, string $requestKey, bool $containsPersonalData, int $lockEpoch, ?\Closure $holdsLock = null): Operation;
+    public function start(DraftActor $actor, string $draftId, string $dataSourceId, string $endpointId, array $bindings, ?array $defaultRange, string $requestKey, bool $containsPersonalData, int $lockEpoch, ?\Closure $holdsLock = null): Operation;
 }

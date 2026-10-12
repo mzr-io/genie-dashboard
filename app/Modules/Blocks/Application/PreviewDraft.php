@@ -23,6 +23,7 @@ use App\Platform\Json\JsonParseFailed;
 use App\Platform\Json\LosslessJson;
 use App\Platform\Json\SampleShape;
 use App\Platform\Tenancy\TenantKey;
+use App\Platform\Tenancy\WorkspaceSettings;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use App\Support\Observability\MetricEmitter;
 use App\Support\Observability\MetricName;
@@ -56,6 +57,7 @@ final class PreviewDraft implements DraftPreviews
         private readonly PreviewThrottle $throttle,
         private readonly MetricEmitter $metrics,
         private readonly ManageUserSamples $userSamples,
+        private readonly WorkspaceSettings $settings,
     ) {}
 
     /** Forgets every decoded sample held by this process. */
@@ -129,7 +131,7 @@ final class PreviewDraft implements DraftPreviews
             );
         }
 
-        return new DraftPreview($result->payload, $result->unavailable, $revision, $draft->revision, $this->slotValues($plan, $result->slots, $result->unavailable), ManageDraftSlots::planStale($draft->config, $revision), $user['expires_at'] ?? null);
+        return new DraftPreview($result->payload, $result->unavailable, $revision, $draft->revision, $this->slotValues($plan, $result->slots, $result->unavailable), ManageDraftSlots::planStale($draft->config, $revision), $user['expires_at'] ?? null, DraftPeriod::resolve($draft->config, $this->settings->timezone(), now())?->toArray());
     }
 
     /**
