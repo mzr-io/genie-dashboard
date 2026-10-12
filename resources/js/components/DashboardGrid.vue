@@ -1,13 +1,19 @@
 <script setup lang="ts">
 import BlockCard from '@/components/BlockCard.vue';
 import { HEIGHT_UNITS } from '@/lib/dashboards';
-import type { DashboardItem } from '@/lib/dashboards';
+import type { DashboardItem, ItemResult } from '@/lib/dashboards';
 import { dashboardLabels as labels } from '@/locales/labels';
 
 // The 12-column dashboard grid (Story 4.4; UX-DR-149): 14 px gaps and 60 px rows. From the `md` breakpoint each Block sits where the server clamped it
 // (`col`, `row`, width in columns, height preset in 60 px units); below it the Blocks stack in layout order in one column. The grid height is a track
 // size, so a Block's content scrolls inside its body instead of being clipped.
-defineProps<{ items: DashboardItem[] }>();
+defineProps<{
+    items: DashboardItem[];
+    // The latest result of each item by item id; an item with none shows its skeleton.
+    results?: Record<string, ItemResult>;
+}>();
+
+defineEmits<{ retry: [itemId: string] }>();
 
 const placement = (item: DashboardItem): Record<string, string> => ({
     '--col': String(item.geometry.col + 1),
@@ -31,7 +37,11 @@ const placement = (item: DashboardItem): Record<string, string> => ({
             :style="placement(item)"
             :data-item="item.item_id"
         >
-            <BlockCard :item="item" />
+            <BlockCard
+                :item="item"
+                :result="results?.[item.item_id] ?? null"
+                @retry="$emit('retry', $event)"
+            />
         </div>
     </div>
 </template>

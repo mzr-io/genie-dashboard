@@ -1,3 +1,4 @@
+import type { KpiCardPayload } from '@block-types/kpi-card/v1/payload';
 import { xsrfToken } from '@/lib/session';
 
 // Client of the dashboard layout API (Story 4.4, AD-20): `GET /api/v1/dashboards/{id}`. The Inertia page carries only the dashboard id and revision;
@@ -109,4 +110,115 @@ export async function fetchDashboard(
     }
 
     return data as Dashboard;
+}
+
+// ---- Results (Story 4.5) --------------------------------------------------------------------------------------------------------------------------
+
+export const resultsUrl = (id: string, range?: string | null): string =>
+    `${dashboardUrl(id)}/results${range ? `?range=${encodeURIComponent(range)}` : ''}`;
+
+export type ResultState =
+    | 'ok'
+    | 'empty'
+    | 'unavailable'
+    | 'error'
+    | 'pending'
+    | 'unpublished'
+    | 'access_removed';
+
+// One Block's current result as the server serialises it. Measures are decimal strings; nothing here is a float and nothing is HTML. A state
+// without data carries a null payload.
+export type ItemResult = {
+    item_id: string;
+    block_id: string;
+    state: ResultState;
+    stale: boolean;
+    refreshing: boolean;
+    data_as_of: string | null;
+    last_success_at: string | null;
+    stale_at: string | null;
+    result_etag: string | null;
+    slot_states: Record<string, { state: string; reason?: string }>;
+    render_payload: Record<string, unknown> | null;
+};
+
+export async function fetchResults(
+    id: string,
+    range: string | null,
+    signal?: AbortSignal,
+): Promise<ItemResult[]> {
+    let response: Response;
+
+    try {
+        response = await fetch(resultsUrl(id, range), {
+            method: 'GET',
+            credentials: 'same-origin',
+            signal,
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-XSRF-TOKEN': xsrfToken(),
+            },
+        });
+    } catch (error) {
+        if (signal?.aborted) {
+            throw error;
+        }
+
+        throw new DashboardError(0);
+    }
+
+    let json: { data?: { items?: ItemResult[] } } | null = null;
+
+    try {
+        json = (await response.json()) as { data?: { items?: ItemResult[] } };
+    } catch {
+        json = null;
+    }
+
+    if (!response.ok) {
+        throw new DashboardError(response.status);
+    }
+
+    if (!json?.data || !Array.isArray(json.data.items)) {
+        throw new DashboardError(500);
+    }
+
+    return json.data.items;
+}
+
+// What the kpi-card Renderer draws for a result (Story 4.5): the stored render payload, with a result that is past its stale time shown as Stale
+// since its last successful check. A state without a payload gets the Renderer's own Unavailable or Error card; a miss is null (a skeleton).
+export function kpiPayloadOf(result: ItemResult): KpiCardPayload | null {
+    const base: KpiCardPayload = {
+        state: 'normal',
+        title: null,
+        subtitle: null,
+        icon: null,
+        footerAction: null,
+        kpiLabel: null,
+        headline: { available: false, field: 'headline_value' },
+        comparison: null,
+        comparisonLabel: null,
+        secondaryNote: null,
+        statusBadge: null,
+        staleSince: null,
+        errorMessage: null,
+    };
+
+    if (result.state === 'error') {
+        return { ...base, state: 'error' };
+    }
+
+    if (result.render_payload === null) {
+        return result.state === 'unavailable'
+            ? { ...base, state: 'unavailable' }
+            : null;
+    }
+
+    const payload = result.render_payload as unknown as KpiCardPayload;
+
+    return result.stale && payload.state === 'normal'
+        ? { ...payload, state: 'stale', staleSince: result.last_success_at }
+        : payload;
 }

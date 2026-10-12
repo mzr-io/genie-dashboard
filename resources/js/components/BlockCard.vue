@@ -2,23 +2,42 @@
 import { computed, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Button } from '@/components/ui/button';
-import type { DashboardItem } from '@/lib/dashboards';
+import { Skeleton } from '@/components/ui/skeleton';
+import { rendererFor } from '@/lib/blockRenderers';
+import { kpiPayloadOf } from '@/lib/dashboards';
+import type { DashboardItem, ItemResult } from '@/lib/dashboards';
 import { dashboardLabels as labels } from '@/locales/labels';
 
-// One Block on a dashboard (Story 4.4; UX-DR-50): a `section` labelled by its `h2` title, on the card surface with a 1px border and the large radius.
-// The server decides the state. An item that is not `ok` shows its message and a Remove action and no data; its values arrive with Story 4.5 and its
-// header controls with Story 4.6. Remove is in place and says it is not available yet: the layout commands arrive with Story 4.9, and a control that
-// hid the Block without saving would be a lie. The body is the focusable region that scrolls when its content overflows, never a clipping box (UX-DR-149).
-const props = defineProps<{ item: DashboardItem }>();
+// One Block on a dashboard (Story 4.4, 4.5; UX-DR-50): a `section` labelled by its `h2` title, on the card surface with a 1px border and the large
+// radius. The server decides the state. An item that is not `ok` shows its message and a Remove action and no data. A Block with no result yet shows
+// its real header and its own skeleton; one with a result draws it with its Block Type's Renderer, which implements every state and writes each slot
+// as literal text. A later result replaces the last one in place: a skeleton shows only while no result has ever arrived. The body is the focusable
+// region that scrolls when its content overflows, never a clipping box (UX-DR-149). Remove is in place and says it is not available yet: the layout
+// commands arrive with Story 4.9, and a control that hid the Block without saving would be a lie.
+const props = defineProps<{
+    item: DashboardItem;
+    result?: ItemResult | null;
+}>();
+
+defineEmits<{ retry: [itemId: string] }>();
 
 const { t } = useI18n();
 const headingId = useId();
 const reasonId = useId();
 
-const unavailable = computed(() => props.item.state !== 'ok');
+// The state to show: the layout's unless the results say the Block has since become unavailable.
+const state = computed(() =>
+    props.item.state !== 'ok'
+        ? props.item.state
+        : props.result?.state === 'access_removed' ||
+            props.result?.state === 'unpublished'
+          ? props.result.state
+          : 'ok',
+);
+const unavailable = computed(() => state.value !== 'ok');
 const title = computed(() => props.item.block?.name ?? labels.unavailableBlock);
 const message = computed(() =>
-    props.item.state === 'access_removed'
+    state.value === 'access_removed'
         ? t('block-access-removed')
         : t('block-unpublished'),
 );
@@ -30,12 +49,21 @@ const subtitle = computed(() =>
         ? null
         : (props.item.block?.subtitle ?? null),
 );
+
+const renderer = computed(() =>
+    props.item.block === null ? null : rendererFor(props.item.block.type),
+);
+const payload = computed(() =>
+    props.result === null || props.result === undefined
+        ? null
+        : kpiPayloadOf(props.result),
+);
 </script>
 
 <template>
     <section
         data-slot="block-card"
-        :data-state="item.state"
+        :data-state="state"
         :aria-labelledby="headingId"
         class="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-default bg-surface-card"
     >
@@ -71,7 +99,31 @@ const subtitle = computed(() =>
             data-slot="block-body"
         >
             <div
-                v-if="unavailable"
+                v-if="!unavailable && payload !== null && renderer !== null"
+                data-slot="block-result"
+                :data-etag="result?.result_etag ?? undefined"
+            >
+                <component
+                    :is="renderer"
+                    :payload="payload"
+                    bare
+                    @retry="$emit('retry', item.item_id)"
+                />
+            </div>
+            <div
+                v-else-if="!unavailable"
+                role="status"
+                aria-busy="true"
+                class="grid gap-2"
+                data-slot="block-skeleton"
+            >
+                <span class="sr-only">{{ labels.loadingBlock(title) }}</span>
+                <Skeleton class="h-3 w-1/2" :caption="false" />
+                <Skeleton class="h-8 w-3/4" :caption="false" />
+                <Skeleton class="h-3 w-1/3" />
+            </div>
+            <div
+                v-else
                 class="flex flex-col items-start gap-3"
                 data-slot="block-unavailable"
             >

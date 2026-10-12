@@ -2561,6 +2561,7 @@ export const dashboardLabels = {
     loading: 'Loading your dashboard',
     grid: 'Blocks',
     unavailableBlock: 'Unavailable block',
+    loadingBlock: (title: string): string => `Loading ${title}`,
     bodyRegion: (title: string): string => `${title} content`,
     removeBlock: (title: string): string => `Remove ${title}`,
     minimized: 'Minimized',

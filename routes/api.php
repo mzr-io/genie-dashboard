@@ -38,6 +38,7 @@ Route::middleware('auth:sanctum')->group(function () {
 // A member's own dashboard (Story 4.4): layout, item states and User-safe Block cards. Not an Admin route: any active member of the Workspace.
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])->name('api.dashboards.show');
+    Route::get('dashboards/{dashboard}/results', [DashboardController::class, 'results'])->middleware('throttle:120,1')->name('api.dashboards.results');
 });
 
 // The session's idle clock (Story 1.15). Status never extends; extend is user-initiated and CSRF-protected.

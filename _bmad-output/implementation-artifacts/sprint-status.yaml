@@ -113,7 +113,7 @@ development_status:
   4-2-compute-block-results-when-payload-changes: review
   4-3-judge-freshness-and-keep-viewed-data-hot: review
   4-4-open-my-overview-and-see-my-blocks-frames: review
-  4-5-see-live-block-values-without-waiting-on-the-source: backlog
+  4-5-see-live-block-values-without-waiting-on-the-source: review
   4-6-use-block-chrome-refresh-minimize-about-this-block-footer: backlog
   4-7-browse-the-add-blocks-panel: backlog
   4-8-preview-a-block-with-generated-sample-values: backlog

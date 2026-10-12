@@ -19,8 +19,10 @@ const props = withDefaults(
         audience?: 'user' | 'admin';
         // Used when the person has not saved a locale of their own.
         workspaceLocale?: string | null;
+        // A card on a dashboard (Story 4.5) has its own header and border: the Renderer then draws the body only.
+        bare?: boolean;
     }>(),
-    { audience: 'user', workspaceLocale: null },
+    { audience: 'user', workspaceLocale: null, bare: false },
 );
 
 const emit = defineEmits<{ (e: 'retry'): void }>();
@@ -205,11 +207,16 @@ const staleMessage = computed(() => {
 
 <template>
     <article
-        class="kpi-card flex min-h-0 flex-col gap-2 rounded-md border border-border-default bg-surface-card p-4"
+        class="kpi-card flex min-h-0 flex-col gap-2"
+        :class="
+            bare
+                ? ''
+                : 'rounded-md border border-border-default bg-surface-card p-4'
+        "
         :data-state="payload.state"
         data-test="kpi-card"
     >
-        <header class="grid gap-0.5">
+        <header v-if="!bare" class="grid gap-0.5">
             <h3
                 :id="titleId"
                 class="type-title-sm break-words text-text-primary"
@@ -227,9 +234,9 @@ const staleMessage = computed(() => {
         </header>
 
         <div
-            role="region"
-            tabindex="0"
-            :aria-labelledby="titleId"
+            :role="bare ? undefined : 'region'"
+            :tabindex="bare ? undefined : 0"
+            :aria-labelledby="bare ? undefined : titleId"
             class="grid max-h-full min-h-0 gap-2 overflow-auto focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
             data-test="kpi-body"
         >

@@ -142,6 +142,7 @@ use App\Modules\Identity\Contracts\SignInMemberships;
 use App\Modules\Identity\Infrastructure\DatabaseSessionRevocation;
 use App\Modules\Identity\Infrastructure\IdentityAuditSerializer;
 use App\Modules\Ingestion\Application\ReadComputeSources;
+use App\Modules\Ingestion\Application\ReadEndpointUserBindings;
 use App\Modules\Ingestion\Application\ReadSourceHealths;
 use App\Modules\Ingestion\Application\ReadSyncGenerations;
 use App\Modules\Ingestion\Application\ReadSyncStatuses;
@@ -151,6 +152,7 @@ use App\Modules\Ingestion\Application\RegisterSyncTargets;
 use App\Modules\Ingestion\Application\ResolveFetchKey;
 use App\Modules\Ingestion\Contracts\ComputeSources;
 use App\Modules\Ingestion\Contracts\ContextDigest;
+use App\Modules\Ingestion\Contracts\EndpointUserBindings;
 use App\Modules\Ingestion\Contracts\FetchKeyResolver;
 use App\Modules\Ingestion\Contracts\RefreshIntervals;
 use App\Modules\Ingestion\Contracts\SourceHealths;
@@ -307,6 +309,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SyncGenerations::class, ReadSyncGenerations::class);
         $this->app->bind(Subscribe::class, RegisterSubscription::class);
         $this->app->bind(ComputeSources::class, ReadComputeSources::class);
+        $this->app->bind(EndpointUserBindings::class, ReadEndpointUserBindings::class);
         // Blocks and Results (Story 4.2): a version's frozen configuration for compute, and the Valkey `cache` store of Block Results.
         $this->app->bind(PublishedConfigs::class, ReadPublishedConfigs::class);
         $this->app->bind(ViewedResults::class, ViewBlockResult::class);
@@ -314,7 +317,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(Dashboards::class, ManageDashboards::class);
         $this->app->bind(BlockCards::class, ReadBlockCards::class);
         $this->app->bind(SubjectAccess::class, ReadSubjectAccess::class);
-        $this->app->bind(ValkeyCommands::class, fn ($app) => new LaravelValkeyCommands($app['redis']->connection('cache')));
+        $this->app->bind(ValkeyCommands::class, fn ($app) => new LaravelValkeyCommands(fn () => $app['redis']->connection('cache')));
         $this->app->bind(ResultStore::class, fn ($app) => new ValkeyResultStore(
             $app->make(ValkeyCommands::class),
             fn (): ?int => LimitSetting::positive('results.ttl', $app['config']->get('dashflow.results.ttl.value')),

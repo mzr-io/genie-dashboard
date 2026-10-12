@@ -36,6 +36,28 @@ final class DashboardController extends Controller
         return Inertia::render('Dashboard', ['dashboard_id' => $ref->dashboardId, 'revision' => $ref->revision]);
     }
 
+    /**
+     * The current results of the dashboard's Blocks (Story 4.5): what is stored, immediately. `?range=<preset>` is the dashboard Date Range as a
+     * preset token; a token the Blocks do not offer is a 422 and a date is never accepted.
+     */
+    public function results(Request $request, string $dashboard): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+        $range = $request->query('range');
+
+        if ($range !== null && ! is_string($range)) {
+            abort(422, 'Choose one of the periods this block offers.');
+        }
+
+        try {
+            $items = $this->dashboards->results($workspaceId, $membershipId, $dashboard, $range === '' ? null : $range);
+        } catch (DashboardNotFound) {
+            abort(404);
+        }
+
+        return response()->json(['data' => ['items' => $items]], 200, ['Cache-Control' => 'no-store, private']);
+    }
+
     public function show(Request $request, string $dashboard): JsonResponse
     {
         [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);

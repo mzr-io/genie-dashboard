@@ -2,9 +2,13 @@
 
 namespace App\Modules\Results\Application;
 
+use App\Modules\Access\Contracts\AttributesUnavailable;
+use App\Modules\Access\Contracts\MembershipNotFound;
+use App\Modules\Access\Contracts\UserContext;
 use App\Modules\Blocks\Contracts\PublishedConfig;
 use App\Modules\Blocks\Contracts\PublishedConfigs;
 use App\Modules\Ingestion\Contracts\ComputeSources;
+use App\Modules\Ingestion\Contracts\EndpointUserBindings;
 use App\Modules\Ingestion\Contracts\RefreshIntervals;
 use App\Modules\Ingestion\Contracts\Subscribe;
 use App\Modules\Ingestion\Contracts\SubscribeInput;
@@ -20,6 +24,7 @@ use App\Platform\Period\InvalidPeriodInput;
 use App\Platform\Period\PeriodBehaviour;
 use App\Platform\Period\PeriodResolver;
 use App\Platform\Period\ResolvedPeriod;
+use App\Platform\Tenancy\TenantCache;
 use App\Platform\Tenancy\WorkspaceSettings;
 use Carbon\CarbonImmutable;
 use DateTimeImmutable;
@@ -40,6 +45,12 @@ final class ViewBlockResult implements ViewedResults
     /** The version names no Data Source or Endpoint, so there is nothing to keep hot. */
     public const NO_SOURCE = 'no_source';
 
+    /** A user-bound Endpoint whose value for this member could not be produced: nothing is fetched, nothing guessed. */
+    public const CONTEXT_MISSING = 'access.context_missing';
+
+    /** How long a queued compute for a target suppresses another from a read. */
+    private const COMPUTE_DEBOUNCE_SECONDS = 10;
+
     public function __construct(
         private readonly PublishedConfigs $configs,
         private readonly Subscribe $subscribe,
@@ -47,6 +58,9 @@ final class ViewBlockResult implements ViewedResults
         private readonly ResultStore $store,
         private readonly WorkspaceSettings $settings,
         private readonly RefreshIntervals $intervals,
+        private readonly EndpointUserBindings $bindings,
+        private readonly UserContext $context,
+        private readonly TenantCache $cache,
     ) {}
 
     public function view(ViewRequest $request): ViewedResult
@@ -68,7 +82,14 @@ final class ViewBlockResult implements ViewedResults
             $config->contractVersion,
         );
 
-        [$hotUntil, $refusal] = $this->keepHot($config, $request, $period, $context);
+        $bound = $this->bound($config, $request);
+
+        if ($bound === null) {
+            // The member's own data for a user-bound Endpoint is incomplete: nothing is fetched or shown for it, and no value is guessed.
+            return new ViewedResult(ResultState::Unavailable, null, null, null, self::CONTEXT_MISSING);
+        }
+
+        [$hotUntil, $refusal] = $this->keepHot($config, $request, $period, $context, $bound);
         $watching = $this->sources->watching($workspaceId, $config->versionId, $context);
 
         if ($watching === null) {
@@ -79,6 +100,11 @@ final class ViewBlockResult implements ViewedResults
         $stored = $this->store->get($workspaceId, $key);
 
         if ($stored === null) {
+            // A miss with a payload is computed, once at a time: concurrent reads of the same target queue one job. The read never waits for it.
+            if ($this->cache->lock($workspaceId, 'compute-queued:'.$watching->target->id, self::COMPUTE_DEBOUNCE_SECONDS)->get()) {
+                ComputeResultsJob::dispatch($workspaceId, $watching->target->id)->afterCommit();
+            }
+
             return new ViewedResult(ResultState::Pending, null, null, $hotUntil, $refusal);
         }
 
@@ -112,8 +138,38 @@ final class ViewBlockResult implements ViewedResults
         );
     }
 
-    /** @return array{0: ?string, 1: ?string} hot until, and why the Block is not kept hot */
-    private function keepHot(PublishedConfig $config, ViewRequest $request, ?ResolvedPeriod $period, string $context): array
+    /**
+     * The values of the Endpoint's user-bound rows for this member, resolved from server-side membership data (never from a client). An empty list
+     * for shared data; null when any value could not be produced.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function bound(PublishedConfig $config, ViewRequest $request): ?array
+    {
+        if ($request->bound !== [] || $config->dataSourceId === null || $config->endpointId === null) {
+            return $request->bound;
+        }
+
+        $references = $this->bindings->forEndpoint($request->workspaceId, $config->dataSourceId, $config->endpointId);
+
+        if ($references === []) {
+            return [];
+        }
+
+        try {
+            $values = $this->context->resolve($request->workspaceId, $request->membershipId, $references);
+        } catch (MembershipNotFound|AttributesUnavailable) {
+            return null;
+        }
+
+        return $values->complete() ? $values->values : null;
+    }
+
+    /**
+     * @param  array<string, mixed>  $bound
+     * @return array{0: ?string, 1: ?string} hot until, and why the Block is not kept hot
+     */
+    private function keepHot(PublishedConfig $config, ViewRequest $request, ?ResolvedPeriod $period, string $context, array $bound): array
     {
         if ($config->dataSourceId === null || $config->endpointId === null) {
             return [null, self::NO_SOURCE];
@@ -140,7 +196,7 @@ final class ViewBlockResult implements ViewedResults
             $context,
             $period?->start,
             $period?->lastDay(),
-            $request->bound,
+            $bound,
             $request->membershipId,
         ));
 

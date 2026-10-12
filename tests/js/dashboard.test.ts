@@ -7,6 +7,7 @@ import { resetAnnouncer } from '../../resources/js/lib/announce';
 import type {
     Dashboard,
     DashboardItem,
+    ItemResult,
 } from '../../resources/js/lib/dashboards';
 import { createCatalogue } from '../../resources/js/lib/i18n';
 import en from '../../resources/js/locales/en';
@@ -72,6 +73,7 @@ async function mountPage(): Promise<void> {
         global: { plugins: [createCatalogue()] },
     });
     await flushPromises();
+    await vi.dynamicImportSettled();
     await flushPromises();
 }
 
@@ -116,6 +118,60 @@ const ok = (data: Dashboard): Reply => ({
     json: { data },
 });
 
+const resultsOf = (items: ItemResult[]): Reply => ({
+    ok: true,
+    status: 200,
+    json: { data: { items } },
+});
+
+function result(overrides: Partial<ItemResult> = {}): ItemResult {
+    return {
+        item_id: 'i-1',
+        block_id: 'b-1',
+        state: 'ok',
+        stale: false,
+        refreshing: false,
+        data_as_of: '2026-10-12T10:00:00Z',
+        last_success_at: '2026-10-12T10:05:00Z',
+        stale_at: '2026-10-12T10:07:00Z',
+        result_etag: 'e-1',
+        slot_states: {},
+        render_payload: payload(),
+        ...overrides,
+    };
+}
+
+function payload(overrides: Record<string, unknown> = {}) {
+    return {
+        state: 'normal',
+        title: null,
+        subtitle: null,
+        icon: null,
+        footerAction: null,
+        kpiLabel: 'Net revenue',
+        headline: {
+            available: true,
+            value: '1234.5',
+            format: {
+                kind: 'number',
+                decimalPlaces: 2,
+                thousandsSeparator: true,
+                currencyCode: null,
+                currencyDisplay: 'symbol',
+                datePattern: 'medium',
+                unitsSuffix: null,
+            },
+        },
+        comparison: null,
+        comparisonLabel: null,
+        secondaryNote: null,
+        statusBadge: null,
+        staleSince: null,
+        errorMessage: null,
+        ...overrides,
+    };
+}
+
 describe('Dashboard page', () => {
     it('requests the layout from the API by dashboard id and renders each Block as a section labelled by its h2', async () => {
         replies = [
@@ -131,9 +187,14 @@ describe('Dashboard page', () => {
             ),
         ];
 
+        replies.push(resultsOf([]));
+
         await mountPage();
 
-        expect(urls).toEqual(['/api/v1/dashboards/d-1']);
+        expect(urls).toEqual([
+            '/api/v1/dashboards/d-1',
+            '/api/v1/dashboards/d-1/results',
+        ]);
 
         const cards = $$('[data-slot=block-card]');
 
@@ -154,7 +215,7 @@ describe('Dashboard page', () => {
     });
 
     it('places a Block by its clamped geometry and gives the body a focusable, labelled region', async () => {
-        replies = [ok(dashboard([item()]))];
+        replies = [ok(dashboard([item()])), resultsOf([])];
 
         await mountPage();
 
@@ -180,7 +241,10 @@ describe('Dashboard page', () => {
     ] as const)(
         'shows %s with its message and a Remove action and no name or data',
         async (state, message) => {
-            replies = [ok(dashboard([item({ state, block: null })]))];
+            replies = [
+                ok(dashboard([item({ state, block: null })])),
+                resultsOf([]),
+            ];
 
             await mountPage();
 
@@ -214,6 +278,7 @@ describe('Dashboard page', () => {
         replies = [
             { ok: false, status: 500, json: {} },
             ok(dashboard([item()])),
+            resultsOf([]),
         ];
 
         await mountPage();
@@ -233,7 +298,7 @@ describe('Dashboard page', () => {
     });
 
     it('renders the shell header with the title, switcher, Date Range and Edit layout slots', async () => {
-        replies = [ok(dashboard([item()]))];
+        replies = [ok(dashboard([item()])), resultsOf([])];
 
         await mountPage();
 
@@ -259,11 +324,189 @@ describe('Dashboard page', () => {
                     }),
                 ]),
             ),
+            resultsOf([]),
         ];
 
         await mountPage();
 
         expect($('[data-slot=block-card] img')).toBeNull();
         expect($('h2')?.textContent).toContain(hostile);
+    });
+});
+
+describe('Block results', () => {
+    it('shows the real header and a skeleton for a Block with no result yet, then the value in place', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([
+                result({
+                    state: 'pending',
+                    render_payload: null,
+                    result_etag: null,
+                }),
+            ]),
+            resultsOf([result()]),
+        ];
+
+        await mountPage();
+
+        expect($('h2')?.textContent).toContain('Revenue overview');
+        expect($('[data-slot=block-skeleton]')).not.toBeNull();
+        expect($('[data-test=kpi-headline]')).toBeNull();
+
+        await vi.advanceTimersByTimeAsync(3000);
+        await flushPromises();
+        await vi.dynamicImportSettled();
+        await flushPromises();
+
+        expect($('[data-slot=block-skeleton]')).toBeNull();
+        expect($('[data-test=kpi-headline]')?.textContent?.trim()).toBe(
+            '1,234.50',
+        );
+        expect(urls).toHaveLength(3);
+        vi.useRealTimers();
+    });
+
+    it('keeps the last values when a later answer is pending, and replaces them in place when it differs', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        replies = [ok(dashboard([item()])), resultsOf([result()])];
+
+        await mountPage();
+
+        expect($('[data-test=kpi-headline]')?.textContent?.trim()).toBe(
+            '1,234.50',
+        );
+        // No poll is scheduled once nothing is pending.
+        await vi.advanceTimersByTimeAsync(10000);
+
+        expect(urls).toHaveLength(2);
+        vi.useRealTimers();
+    });
+
+    it('shows a stale result with its values muted and "Stale: last data" text, and the Block is not hidden', async () => {
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([result({ stale: true })]),
+        ];
+
+        await mountPage();
+
+        expect($('[data-test=kpi-stale]')?.textContent).toContain(
+            'Stale: last data',
+        );
+        expect($('[data-test=kpi-headline]')?.textContent?.trim()).toBe(
+            '1,234.50',
+        );
+    });
+
+    it('shows msg:block-error with Retry that asks again, and msg:block-empty for an empty result', async () => {
+        replies = [
+            ok(dashboard([item(), item({ item_id: 'i-2', block_id: 'b-2' })])),
+            resultsOf([
+                result({ state: 'error', render_payload: null }),
+                result({
+                    item_id: 'i-2',
+                    block_id: 'b-2',
+                    state: 'empty',
+                    render_payload: payload({ state: 'empty' }),
+                }),
+            ]),
+            resultsOf([
+                result(),
+                result({
+                    item_id: 'i-2',
+                    block_id: 'b-2',
+                    state: 'empty',
+                    render_payload: payload({ state: 'empty' }),
+                }),
+            ]),
+        ];
+
+        await mountPage();
+
+        expect($('[data-test=kpi-error]')).not.toBeNull();
+        expect($('[data-test=kpi-empty]')).not.toBeNull();
+
+        $('[data-test=kpi-retry]')!.click();
+        await flushPromises();
+        await vi.dynamicImportSettled();
+        await flushPromises();
+
+        expect(urls.filter((u) => u.endsWith('/results'))).toHaveLength(2);
+        expect($('[data-test=kpi-error]')).toBeNull();
+        expect($('[data-test=kpi-headline]')).not.toBeNull();
+    });
+
+    it('shows msg:unavailable-user for a Block whose value cannot be produced, never 0 or blank', async () => {
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([result({ state: 'unavailable', render_payload: null })]),
+        ];
+
+        await mountPage();
+
+        const text = $('[data-test=kpi-unavailable]')?.textContent ?? '';
+
+        expect(text).toContain(en['unavailable-user']);
+        expect($('[data-test=kpi-headline]')).toBeNull();
+    });
+
+    it('turns a Block into access_removed when the results say so, with no data', async () => {
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([
+                result({
+                    state: 'access_removed',
+                    render_payload: null,
+                    result_etag: null,
+                }),
+            ]),
+        ];
+
+        await mountPage();
+
+        const card = $('[data-slot=block-card]')!;
+
+        expect(card.dataset.state).toBe('access_removed');
+        expect(card.textContent).toContain(en['block-access-removed']);
+        expect($('[data-test=kpi-headline]')).toBeNull();
+    });
+
+    it('writes hostile text in every slot as literal text', async () => {
+        const hostile = '<img src=x onerror=alert(1)>';
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([
+                result({
+                    render_payload: payload({
+                        kpiLabel: hostile,
+                        secondaryNote: hostile,
+                        footerAction: hostile,
+                        comparisonLabel: hostile,
+                        statusBadge: hostile,
+                    }),
+                }),
+            ]),
+        ];
+
+        await mountPage();
+
+        expect($('[data-slot=block-card] img')).toBeNull();
+        expect($('[data-test=kpi-label]')?.textContent).toBe(hostile);
+        expect($('[data-test=kpi-note]')?.textContent).toBe(hostile);
+        expect($('[data-test=kpi-footer]')?.textContent).toBe(hostile);
+    });
+
+    it('does not request results for a person with no dashboard', async () => {
+        wrapper = mount(DashboardPage as never, {
+            props: { dashboard_id: null, revision: 0 },
+            attachTo: document.body,
+            global: { plugins: [createCatalogue()] },
+        });
+        await flushPromises();
+
+        expect(urls).toEqual([]);
+        expect($('[data-slot=dashboard-empty]')).not.toBeNull();
     });
 });

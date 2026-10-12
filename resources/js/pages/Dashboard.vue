@@ -6,8 +6,10 @@ import DashboardGrid from '@/components/DashboardGrid.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
-import { DashboardError, fetchDashboard } from '@/lib/dashboards';
-import type { Dashboard } from '@/lib/dashboards';
+import { announce, announceAggregated } from '@/lib/announce';
+import { DashboardError, fetchDashboard, fetchResults } from '@/lib/dashboards';
+import type { Dashboard, ItemResult } from '@/lib/dashboards';
+import { formatDateTime } from '@/lib/format';
 import { SIGN_IN_URL } from '@/lib/session';
 import { dashboardLabels as labels, shellPages } from '@/locales/labels';
 
@@ -20,6 +22,16 @@ const props = defineProps<{ dashboard_id: string | null; revision: number }>();
 const { t } = useI18n();
 
 const dashboard = ref<Dashboard | null>(null);
+// The latest result of each item, kept in memory by item id and replaced only when its `result_etag` changes; a pending answer never replaces data.
+const results = ref<Record<string, ItemResult>>({});
+let resultsTimer: ReturnType<typeof setTimeout> | null = null;
+let resultsController: AbortController | null = null;
+let polls = 0;
+let announcedStale = 0;
+
+// Pending results are asked for again, a bounded number of times, until they arrive; live updates (Story 4.13) replace this.
+const POLL_MS = 3000;
+const MAX_POLLS = 20;
 const state = ref<'loading' | 'ready' | 'error'>('loading');
 let controller: AbortController | null = null;
 
@@ -70,8 +82,134 @@ async function load(): Promise<void> {
     }
 }
 
-onMounted(load);
-onBeforeUnmount(() => controller?.abort());
+function applyResults(items: ItemResult[]): boolean {
+    let pending = false;
+    const next = { ...results.value };
+
+    for (const item of items) {
+        const known = next[item.item_id];
+
+        if (item.state === 'pending') {
+            pending = true;
+
+            if (known === undefined) {
+                next[item.item_id] = item;
+            }
+
+            continue;
+        }
+
+        if (
+            known === undefined ||
+            known.result_etag !== item.result_etag ||
+            known.state !== item.state ||
+            known.stale !== item.stale
+        ) {
+            next[item.item_id] = item;
+        }
+    }
+
+    results.value = next;
+
+    return pending;
+}
+
+// Stale blocks are announced once, together, about two seconds after the change; recovery says so once.
+function announceStale(): void {
+    const stale = Object.values(results.value).filter((r) => r.stale);
+
+    if (stale.length === announcedStale) {
+        return;
+    }
+
+    if (stale.length === 0) {
+        announce(t('stale-aggregate.recovered'));
+    } else {
+        const latest = stale
+            .map((r) => r.last_success_at)
+            .filter((at): at is string => at !== null)
+            .sort()
+            .at(-1);
+
+        announceAggregated(
+            'stale-aggregate',
+            t(
+                'stale-aggregate.announce',
+                {
+                    count: stale.length,
+                    time:
+                        latest === undefined
+                            ? ''
+                            : formatDateTime(latest, { timeStyle: 'short' }),
+                },
+                stale.length,
+            ),
+        );
+    }
+
+    announcedStale = stale.length;
+}
+
+async function loadResults(): Promise<void> {
+    if (props.dashboard_id === null) {
+        return;
+    }
+
+    resultsController?.abort();
+    resultsController = new AbortController();
+    const mine = resultsController;
+
+    if (resultsTimer !== null) {
+        clearTimeout(resultsTimer);
+        resultsTimer = null;
+    }
+
+    try {
+        const items = await fetchResults(props.dashboard_id, null, mine.signal);
+
+        if (mine.signal.aborted) {
+            return;
+        }
+
+        const pending = applyResults(items);
+        announceStale();
+        polls = pending ? polls + 1 : 0;
+
+        if (pending && polls < MAX_POLLS) {
+            resultsTimer = setTimeout(loadResults, POLL_MS);
+        }
+    } catch (error) {
+        if (mine.signal.aborted) {
+            return;
+        }
+
+        if (
+            error instanceof DashboardError &&
+            (error.status === 401 || error.status === 419)
+        ) {
+            window.location.assign(SIGN_IN_URL);
+        }
+
+        // Any other failure leaves what is shown as it is: a Block with a result keeps it, one without keeps its skeleton.
+    }
+}
+
+onMounted(async () => {
+    await load();
+
+    if (state.value === 'ready' && items.value.length > 0) {
+        await loadResults();
+    }
+});
+
+onBeforeUnmount(() => {
+    controller?.abort();
+    resultsController?.abort();
+
+    if (resultsTimer !== null) {
+        clearTimeout(resultsTimer);
+    }
+});
 </script>
 
 <template>
@@ -145,6 +283,11 @@ onBeforeUnmount(() => controller?.abort());
             </Button>
         </div>
 
-        <DashboardGrid v-else :items="items" />
+        <DashboardGrid
+            v-else
+            :items="items"
+            :results="results"
+            @retry="loadResults"
+        />
     </div>
 </template>

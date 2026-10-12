@@ -9,6 +9,9 @@ use App\Modules\Dashboards\Contracts\DashboardNotFound;
 use App\Modules\Dashboards\Contracts\DashboardRef;
 use App\Modules\Dashboards\Contracts\Dashboards;
 use App\Modules\Dashboards\Contracts\DashboardView;
+use App\Modules\Results\Contracts\ResultState;
+use App\Modules\Results\Contracts\ViewedResults;
+use App\Modules\Results\Contracts\ViewRequest;
 use App\Platform\Layout\Grid;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -20,7 +23,11 @@ use Illuminate\Support\Str;
  */
 final class ManageDashboards implements Dashboards
 {
-    public function __construct(private readonly BlockCards $cards, private readonly SubjectAccess $access) {}
+    public function __construct(
+        private readonly BlockCards $cards,
+        private readonly SubjectAccess $access,
+        private readonly ViewedResults $results,
+    ) {}
 
     public function overview(string $workspaceId, string $membershipId): DashboardRef
     {
@@ -97,5 +104,67 @@ final class ManageDashboards implements Dashboards
             $items,
             Grid::nextFreeSlot($placed, 3, 'small'),
         );
+    }
+
+    public function results(string $workspaceId, string $membershipId, string $dashboardId, ?string $range): array
+    {
+        $dashboard = Str::isUuid($dashboardId)
+            ? DB::selectOne('select id from dashboards where workspace_id = ? and membership_id = ? and id = ?', [$workspaceId, $membershipId, strtolower($dashboardId)])
+            : null;
+
+        if ($dashboard === null) {
+            throw new DashboardNotFound;
+        }
+
+        /** @var list<\stdClass> $rows */
+        $rows = DB::select('select id, block_id from dashboard_items where workspace_id = ? and dashboard_id = ? order by row, col, id', [$workspaceId, strtolower((string) $dashboard->id)]);
+        $blockIds = array_map(fn (\stdClass $r): string => strtolower((string) $r->block_id), $rows);
+        $cards = $this->cards->forBlocks($workspaceId, $blockIds);
+        $visible = $this->access->canView($workspaceId, $membershipId, RegisterAccessSubject::BLOCK, $blockIds);
+        $out = [];
+
+        foreach ($rows as $row) {
+            $blockId = strtolower((string) $row->block_id);
+            $base = ['item_id' => strtolower((string) $row->id), 'block_id' => $blockId];
+            $card = $cards[$blockId] ?? null;
+
+            if (! ($visible[$blockId] ?? false)) {
+                $out[] = $base + self::empty(ResultState::AccessRemoved);
+
+                continue;
+            }
+
+            if ($card === null) {
+                $out[] = $base + self::empty(ResultState::Unpublished);
+
+                continue;
+            }
+
+            $viewed = $this->results->view(new ViewRequest($workspaceId, $membershipId, $card->versionId, null, $range));
+            $result = $viewed->result;
+
+            $out[] = $base + ($result === null ? self::empty($viewed->state) : [
+                'state' => $viewed->state->value,
+                'stale' => $result->stale,
+                'refreshing' => $result->refreshing,
+                'data_as_of' => $result->dataAsOf,
+                'last_success_at' => $result->lastSuccessAt,
+                'stale_at' => $viewed->staleAt,
+                'result_etag' => $result->resultEtag,
+                'slot_states' => $result->slotStates,
+                'render_payload' => $result->renderPayload,
+            ]);
+        }
+
+        return $out;
+    }
+
+    /** @return array<string, mixed> an item with a state and no data */
+    private static function empty(ResultState $state): array
+    {
+        return [
+            'state' => $state->value, 'stale' => false, 'refreshing' => false, 'data_as_of' => null, 'last_success_at' => null, 'stale_at' => null,
+            'result_etag' => null, 'slot_states' => (object) [], 'render_payload' => null,
+        ];
     }
 }
