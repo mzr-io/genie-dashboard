@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Http\Responses\AdminApiError;
+use App\Modules\Blocks\Contracts\ErrorCode as BlocksErrorCode;
 use App\Modules\Connector\Contracts\ErrorCode;
 use App\Support\Observability\Scrubber;
 use Closure;
@@ -15,23 +16,30 @@ use Symfony\Component\HttpFoundation\Response;
  * log line or a store that was not built for it. A field is secret-valued when it is named like one (the Scrubber's credential names, at any depth) or is flagged `secret` with a value.
  * Only the field names are inspected and reported: the value is never read into a message.
  *
- * Use it as route middleware: `->middleware(RejectsSecretValues::class)`.
+ * Use it as route middleware: `->middleware(RejectsSecretValues::class)`. The error code is the owning module's: Connector's by default
+ * (`secret_values_refused`), Blocks' with the parameter `blocks` (`->middleware(RejectsSecretValues::class.':blocks')`, Story 3.3).
  */
 final class RejectsSecretValues
 {
     private const MAX_DEPTH = 8;
 
-    public function handle(Request $request, Closure $next): Response
+    public function handle(Request $request, Closure $next, string $module = 'connector'): Response
     {
-        if (self::containsSecretValue($request->all())) {
-            return AdminApiError::json($request, ErrorCode::SecretValuesRefused->value, 422, 'This request cannot carry a secret value.', extra: ['reason' => 'secret-values-refused']);
+        if (! in_array($module, ['connector', 'blocks'], true)) {
+            throw new \InvalidArgumentException('RejectsSecretValues takes the module connector or blocks.');
+        }
+
+        if (self::containsSecretValue($request->all(), 0, $module === 'blocks')) {
+            $code = $module === 'blocks' ? BlocksErrorCode::SecretValuesRefused : ErrorCode::SecretValuesRefused;
+
+            return AdminApiError::json($request, $code->value, 422, 'This request cannot carry a secret value.', extra: ['reason' => 'secret-values-refused']);
         }
 
         return $next($request);
     }
 
     /** Whether any field, at any depth, is a secret-valued one. */
-    public static function containsSecretValue(mixed $value, int $depth = 0): bool
+    public static function containsSecretValue(mixed $value, int $depth = 0, bool $allowLockToken = false): bool
     {
         if (! is_array($value)) {
             return false;
@@ -47,11 +55,16 @@ final class RejectsSecretValues
         }
 
         foreach ($value as $name => $inner) {
+            // The soft lock's per-tab token (Story 3.6) is a random identifier, not a credential: it rides a Draft save at the top level only, and only on the `blocks` profile.
+            if ($allowLockToken && $depth === 0 && $name === 'lock_token' && is_string($inner) && strlen($inner) <= 128) {
+                continue;
+            }
+
             if (is_string($name) && $name !== 'secret' && self::isSecretName($name) && $inner !== null && $inner !== '' && $inner !== [] && ! is_bool($inner)) {
                 return true;
             }
 
-            if (self::containsSecretValue($inner, $depth + 1)) {
+            if (self::containsSecretValue($inner, $depth + 1, $allowLockToken)) {
                 return true;
             }
         }

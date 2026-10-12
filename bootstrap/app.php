@@ -12,6 +12,7 @@ use App\Support\Observability\RequestContextMiddleware;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Foundation\Http\Middleware\ConvertEmptyStringsToNull;
 use Illuminate\Http\Middleware\AddLinkHeadersForPreloadedAssets;
 use Illuminate\Http\Request;
 
@@ -31,6 +32,9 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->statefulApi();
 
+        // A mapping write's empty string (an override's `path`, a record path, a role, a type) must reach validation as one (a 422); only an explicit null clears (Story 3.12a, 3.13c).
+        ConvertEmptyStringsToNull::skipWhen(fn ($request): bool => $request->isMethod('PUT') && $request->is('api/v1/admin/blocks/drafts/*/mapping/*'));
+
         // `admin` / `admin:{permission}`: the Admin area and permission gate (Story 1.19).
         $middleware->alias(['admin' => RequireAdminAccess::class]);
 
@@ -38,9 +42,10 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // The host allowlist refuses whitespace instead of silently trimming it (Story 2.1).
         // Data source header values are never trimmed either: a trailing CR or LF must reach the validation (Story 2.3).
-        $middleware->trimStrings(except: [fn (Request $request): bool => $request->is('api/v1/admin/host-allowlist', 'api/v1/admin/host-allowlist/*', 'api/v1/admin/data-sources', 'api/v1/admin/data-sources/*')]);
+        // A pasted sample's `text` is kept exactly as pasted, whitespace and all (Story 3.8).
+        $middleware->trimStrings(except: [fn (Request $request): bool => $request->is('api/v1/admin/host-allowlist', 'api/v1/admin/host-allowlist/*', 'api/v1/admin/data-sources', 'api/v1/admin/data-sources/*', 'api/v1/admin/blocks/drafts/*/sample', 'api/v1/admin/blocks/drafts/*/sample/check')]);
         // An empty scheme or host reaches the validation as the empty string and is refused, never repaired to a default.
-        $middleware->convertEmptyStringsToNull(except: [fn (Request $request): bool => $request->is('api/v1/admin/host-allowlist', 'api/v1/admin/host-allowlist/*', 'api/v1/admin/data-sources', 'api/v1/admin/data-sources/*')]);
+        $middleware->convertEmptyStringsToNull(except: [fn (Request $request): bool => $request->is('api/v1/admin/host-allowlist', 'api/v1/admin/host-allowlist/*', 'api/v1/admin/data-sources', 'api/v1/admin/data-sources/*', 'api/v1/admin/blocks/drafts/*/sample', 'api/v1/admin/blocks/drafts/*/sample/check')]);
 
         $middleware->web(append: [
             HandleInertiaRequests::class,

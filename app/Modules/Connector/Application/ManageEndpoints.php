@@ -77,6 +77,19 @@ final class ManageEndpoints implements Endpoints
         });
     }
 
+    public function lockRevision(string $workspaceId, string $dataSourceId, string $id): int
+    {
+        return $this->transactions->run($workspaceId, function () use ($workspaceId, $dataSourceId, $id): int {
+            $this->assertDataSource($workspaceId, $dataSourceId, false);
+
+            $row = Str::isUuid($id)
+                ? DB::selectOne('select revision from endpoints where workspace_id = ? and data_source_id = ? and id = ? for share', [$workspaceId, strtolower($dataSourceId), strtolower($id)])
+                : null;
+
+            return $row === null ? throw new EndpointNotFound : (int) $row->revision;
+        });
+    }
+
     public function create(DataSourceActor $actor, string $dataSourceId, EndpointInput $input): Endpoint
     {
         return $this->transactions->run($actor->workspaceId, function () use ($actor, $dataSourceId, $input): Endpoint {

@@ -35,7 +35,7 @@ it('fails on a fully-qualified \json_decode in a banned module', function () use
 
 // Story 2.6: the lossless decoder may not delegate to PHP's decoder either.
 it('bans json_decode inside app/Platform/Json', function () use ($fixtures) {
-    expect((require __DIR__.'/dependencies.php')['json_decode_banned_paths'])->toBe(['Platform/Json']);
+    expect((require __DIR__.'/dependencies.php')['json_decode_banned_paths'])->toContain('Platform/Json');
 
     $violations = (new Scanner)->jsonDecodeViolations("{$fixtures}/json-decode-kernel/app");
 
@@ -59,4 +59,25 @@ it('scans real .php files, not only fixtures, and finds the decoder clean', func
     expect((new Scanner($rules))->jsonDecodeViolations($app))->not->toBe([])
         ->and((new Scanner)->jsonDecodeViolations($app))->toBe([])
         ->and(is_file($app.'/Platform/Json/LosslessJson.php'))->toBeTrue();
+});
+
+// Story 3.8: a pasted sample is read only by the lossless decoder; the files that check, structure and seal it may not call PHP's.
+it('bans json_decode in the files that read and seal a pasted sample', function () {
+    expect((require __DIR__.'/dependencies.php')['json_decode_banned_paths'])
+        ->toContain('Modules/Blocks/Application/ManageDraftSamples.php', 'Modules/Blocks/Infrastructure/SodiumSampleVault.php');
+
+    $app = dirname(__DIR__, 2).'/app';
+
+    expect(is_file("{$app}/Modules/Blocks/Application/ManageDraftSamples.php"))->toBeTrue()
+        ->and(is_file("{$app}/Modules/Blocks/Infrastructure/SodiumSampleVault.php"))->toBeTrue()
+        ->and(is_file("{$app}/Platform/Json/SampleShape.php"))->toBeTrue()
+        ->and((new Scanner)->jsonDecodeViolations($app))->toBe([]);
+});
+
+it('fails on json_decode in a banned single file', function () use ($fixtures) {
+    $rules = require __DIR__.'/dependencies.php';
+    $rules['json_decode_banned'] = [];
+    $rules['json_decode_banned_paths'] = ['Modules/Ingestion/Application/DecodesJson.php.stub'];
+
+    expect((new Scanner($rules))->jsonDecodeViolations("{$fixtures}/json-decode/app"))->toHaveCount(1);
 });

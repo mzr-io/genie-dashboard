@@ -301,6 +301,8 @@ it('fires dashflow.connector.ssrf_blocked once a Workspace passes the threshold 
         {
             $this->emitted[] = [$name, $labels];
         }
+
+        public function record(string $name, float|int $value, array $labels = []): void {}
     };
     app()->instance(MetricEmitter::class, $spy);
 
@@ -332,6 +334,8 @@ it('fires no alert while the threshold or the window is unset', function (?strin
         {
             $this->emitted[] = [$name, $labels];
         }
+
+        public function record(string $name, float|int $value, array $labels = []): void {}
     };
     app()->instance(MetricEmitter::class, $spy);
 

@@ -1,0 +1,15 @@
+<?php
+
+namespace BlockTypes\Bad2\V1;
+
+final class Shaper
+{
+    public function shape(array $slots): array
+    {
+        $fn = 'strtoupper';
+        require '/tmp/x.php';
+        eval('1;');
+
+        return [$fn('a')];
+    }
+}

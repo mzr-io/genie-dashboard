@@ -9,6 +9,7 @@ use App\Modules\Access\Application\InviteMembers;
 use App\Modules\Access\Application\ManageAttributeKeys;
 use App\Modules\Access\Application\ManageGroups;
 use App\Modules\Access\Application\ManageMemberAttributes;
+use App\Modules\Access\Application\RegisterAccessSubjectRow;
 use App\Modules\Access\Application\ResolveUserContext;
 use App\Modules\Access\Contracts\AttributeKeys;
 use App\Modules\Access\Contracts\AttributeVault;
@@ -22,6 +23,7 @@ use App\Modules\Access\Contracts\MemberInvitations;
 use App\Modules\Access\Contracts\MemberNames;
 use App\Modules\Access\Contracts\MembershipLookup;
 use App\Modules\Access\Contracts\MembershipPermissions;
+use App\Modules\Access\Contracts\RegisterAccessSubject;
 use App\Modules\Access\Contracts\UserContext;
 use App\Modules\Access\Infrastructure\AccessAuditSerializer;
 use App\Modules\Access\Infrastructure\AdminMembershipGranter;
@@ -32,6 +34,38 @@ use App\Modules\Access\Infrastructure\SodiumAttributeVault;
 use App\Modules\Access\Infrastructure\SqlGroupDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberNames;
+use App\Modules\Blocks\Application\FetchDraftSample;
+use App\Modules\Blocks\Application\ManageBlockCategories;
+use App\Modules\Blocks\Application\ManageDrafts;
+use App\Modules\Blocks\Application\ManageDraftSamples;
+use App\Modules\Blocks\Application\ManageDraftSlots;
+use App\Modules\Blocks\Application\ManagePublishedBlocks;
+use App\Modules\Blocks\Application\ManageUserSamples;
+use App\Modules\Blocks\Application\PreviewDraft;
+use App\Modules\Blocks\Application\PublishDraft;
+use App\Modules\Blocks\Application\ReadDraftFieldRoles;
+use App\Modules\Blocks\Application\RunDraftValidation;
+use App\Modules\Blocks\Application\StartDraftSampleFetch;
+use App\Modules\Blocks\Application\StartDraftValidation;
+use App\Modules\Blocks\Contracts\BlockCategories;
+use App\Modules\Blocks\Contracts\BlockPublishing;
+use App\Modules\Blocks\Contracts\DraftFieldRoles;
+use App\Modules\Blocks\Contracts\DraftPreviews;
+use App\Modules\Blocks\Contracts\Drafts;
+use App\Modules\Blocks\Contracts\DraftSampleFetches;
+use App\Modules\Blocks\Contracts\DraftSamples;
+use App\Modules\Blocks\Contracts\DraftSlots;
+use App\Modules\Blocks\Contracts\DraftUserSamples;
+use App\Modules\Blocks\Contracts\DraftValidations;
+use App\Modules\Blocks\Contracts\PublishedBlocks;
+use App\Modules\Blocks\Contracts\SampleVault;
+use App\Modules\Blocks\Infrastructure\BlocksAuditSerializer;
+use App\Modules\Blocks\Infrastructure\DraftLockEpochs;
+use App\Modules\Blocks\Infrastructure\SodiumSampleVault;
+use App\Modules\BlockTypes\Application\LoadBlockTypes;
+use App\Modules\BlockTypes\Contracts\BlockTypeRegistry;
+use App\Modules\BlockTypes\Contracts\BlockTypeShapers;
+use App\Modules\BlockTypes\Infrastructure\PackageShapers;
 use App\Modules\Connector\Application\FetchEndpoint;
 use App\Modules\Connector\Application\GuardEgressUrl;
 use App\Modules\Connector\Application\ManageDataSources;
@@ -44,6 +78,8 @@ use App\Modules\Connector\Application\ReadSample;
 use App\Modules\Connector\Application\RecordEgressBlock;
 use App\Modules\Connector\Application\RecordSyncRun;
 use App\Modules\Connector\Application\RunConnectionTest;
+use App\Modules\Connector\Application\RunDraftSampleFetch;
+use App\Modules\Connector\Application\RunEndpointValidation;
 use App\Modules\Connector\Application\RunFetchAsUser;
 use App\Modules\Connector\Application\RunSampleFetch;
 use App\Modules\Connector\Application\StartConnectionTest;
@@ -57,6 +93,7 @@ use App\Modules\Connector\Contracts\EgressGuard;
 use App\Modules\Connector\Contracts\EgressTransport;
 use App\Modules\Connector\Contracts\EndpointFetcher;
 use App\Modules\Connector\Contracts\Endpoints;
+use App\Modules\Connector\Contracts\EndpointValidations;
 use App\Modules\Connector\Contracts\FetchesAsUser;
 use App\Modules\Connector\Contracts\FetchTransport;
 use App\Modules\Connector\Contracts\HostAllowlist;
@@ -64,6 +101,7 @@ use App\Modules\Connector\Contracts\HostAllowlistDependents;
 use App\Modules\Connector\Contracts\HostResolver;
 use App\Modules\Connector\Contracts\Jitter;
 use App\Modules\Connector\Contracts\SampleFetches;
+use App\Modules\Connector\Contracts\SampleRuns;
 use App\Modules\Connector\Contracts\Samples;
 use App\Modules\Connector\Contracts\SecretVault;
 use App\Modules\Connector\Contracts\SourceGovernor;
@@ -84,6 +122,8 @@ use App\Modules\Connector\Infrastructure\RandomJitter;
 use App\Modules\Connector\Infrastructure\SqlHostAllowlistDependents;
 use App\Modules\Connector\Infrastructure\SyncRunTokenLog;
 use App\Modules\Connector\Infrastructure\ValkeySourceGovernor;
+use App\Modules\Datasets\Application\ManageDatasets;
+use App\Modules\Datasets\Contracts\DatasetSuggestions;
 use App\Modules\Identity\Application\IssueInvitation;
 use App\Modules\Identity\Application\QueuedInvitationCourier;
 use App\Modules\Identity\Contracts\InvitationCourier;
@@ -102,12 +142,24 @@ use App\Modules\Ingestion\Application\RegisterSyncTargets;
 use App\Modules\Ingestion\Application\ResolveFetchKey;
 use App\Modules\Ingestion\Contracts\ContextDigest;
 use App\Modules\Ingestion\Contracts\FetchKeyResolver;
+use App\Modules\Ingestion\Contracts\RefreshIntervals;
 use App\Modules\Ingestion\Contracts\SourceHealths;
 use App\Modules\Ingestion\Contracts\Subscribe;
 use App\Modules\Ingestion\Contracts\SyncGenerations;
 use App\Modules\Ingestion\Contracts\SyncStatuses;
 use App\Modules\Ingestion\Infrastructure\IngestionAuditSerializer;
 use App\Modules\Ingestion\Infrastructure\KeyFileContextDigest;
+use App\Modules\Ingestion\Infrastructure\SyncSettings;
+use App\Modules\Mapping\Application\AutoMapper;
+use App\Modules\Mapping\Application\FieldRoleInference;
+use App\Modules\Mapping\Application\PreviewRateLimit;
+use App\Modules\Mapping\Application\QueryPlanEngine;
+use App\Modules\Mapping\Contracts\AutoMapping;
+use App\Modules\Mapping\Contracts\FieldRoles;
+use App\Modules\Mapping\Contracts\PreviewThrottle;
+use App\Modules\Mapping\Contracts\QueryExecutor;
+use App\Modules\Mapping\Contracts\QueryPlans;
+use App\Modules\Mapping\Infrastructure\InProcessExecutor;
 use App\Modules\RawStore\Contracts\RawStore;
 use App\Modules\RawStore\Contracts\RawTierSweep;
 use App\Modules\RawStore\Infrastructure\PostgresRawStore;
@@ -156,6 +208,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(AuditSerializers::class);
         $this->app->singleton(OutboxConsumers::class);
         $this->app->singleton(EditLockResources::class);
+        // One registry per process, reading `block-types/` once.
+        $this->app->singleton(BlockTypeRegistry::class, fn ($app) => new LoadBlockTypes($app->basePath('block-types')));
         $this->app->bind(MembershipLookup::class, SecurityDefinerMembershipLookup::class);
         $this->app->bind(MembershipPermissions::class, EloquentMembershipPermissions::class);
         $this->app->bind(MemberDirectory::class, SqlMemberDirectory::class);
@@ -179,6 +233,27 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(HostAllowlist::class, ManageHostAllowlist::class);
         $this->app->bind(HostAllowlistDependents::class, SqlHostAllowlistDependents::class);
         $this->app->bind(DataSources::class, ManageDataSources::class);
+        $this->app->bind(Drafts::class, ManageDrafts::class);
+        $this->app->bind(DraftSamples::class, ManageDraftSamples::class);
+        $this->app->singleton(DraftPreviews::class, PreviewDraft::class);
+        $this->app->bind(DraftUserSamples::class, ManageUserSamples::class);
+        $this->app->bind(BlockTypeShapers::class, PackageShapers::class);
+        $this->app->bind(QueryExecutor::class, InProcessExecutor::class);
+        $this->app->bind(QueryPlans::class, QueryPlanEngine::class);
+        $this->app->bind(FieldRoles::class, FieldRoleInference::class);
+        $this->app->bind(DraftFieldRoles::class, ReadDraftFieldRoles::class);
+        $this->app->bind(AutoMapping::class, AutoMapper::class);
+        $this->app->bind(DraftSlots::class, ManageDraftSlots::class);
+        $this->app->bind(DatasetSuggestions::class, ManageDatasets::class);
+        $this->app->bind(PreviewThrottle::class, PreviewRateLimit::class);
+        $this->app->bind(DraftSampleFetches::class, StartDraftSampleFetch::class);
+        $this->app->bind(DraftValidations::class, StartDraftValidation::class);
+        // Publish v1.0 (Story 3.19): the freeze and activation, the Published list, and Access's subject registry the activation writes through.
+        $this->app->bind(BlockPublishing::class, PublishDraft::class);
+        $this->app->bind(PublishedBlocks::class, ManagePublishedBlocks::class);
+        $this->app->bind(RegisterAccessSubject::class, RegisterAccessSubjectRow::class);
+        $this->app->bind(SampleVault::class, SodiumSampleVault::class);
+        $this->app->bind(BlockCategories::class, ManageBlockCategories::class);
         $this->app->bind(Endpoints::class, ManageEndpoints::class);
         $this->app->bind(SecretVault::class, LocalSecretVault::class);
         $this->app->bind(HostResolver::class, DnsHostResolver::class);
@@ -195,6 +270,10 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ConnectionTests::class, StartConnectionTest::class);
         $this->app->bind(SampleFetches::class, StartSampleFetch::class);
         $this->app->bind(Samples::class, ReadSample::class);
+        // Blocks' Fetch from API (Story 3.9) runs the Endpoint fetch through this contract only.
+        $this->app->bind(SampleRuns::class, RunDraftSampleFetch::class);
+        // Blocks' validation against the real API (Story 3.18) fetches through this contract only.
+        $this->app->bind(EndpointValidations::class, RunEndpointValidation::class);
         $this->app->bind(FetchesAsUser::class, StartFetchAsUser::class);
         // Ingestion's scheduled fetch (Story 2.14) reaches the Connector through these two contracts only.
         $this->app->bind(EndpointFetcher::class, FetchEndpoint::class);
@@ -210,6 +289,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SyncGenerations::class, ReadSyncGenerations::class);
         $this->app->bind(Subscribe::class, RegisterSubscription::class);
         $this->app->bind(SourceHealths::class, ReadSourceHealths::class);
+        $this->app->bind(RefreshIntervals::class, SyncSettings::class);
         $this->app->bind(SourceProbe::class, ProbeDataSource::class);
         $this->app->bind(SyncRunHistory::class, QuerySyncRunHistory::class);
         $this->app->singleton(OperationKinds::class);
@@ -234,13 +314,21 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDefaults();
 
+        // Validates every Block Type package at boot: one invalid package fails here, readably, and registers none.
+        // The generator command skips it, so it can still regenerate (and report) around a broken package; it validates lazily itself.
+        if (! in_array('dashflow:block-types', $_SERVER['argv'] ?? [], true)) {
+            $this->app->make(BlockTypeRegistry::class)->all();
+        }
+
         // The Data source soft lock (Story 2.8) has its own bucket, per person: several tabs polling and heartbeating once a
         // second must not exhaust it, and exhausting it must not throttle anything else.
         RateLimiter::for('data-source-lock', fn (Request $request): Limit => Limit::perMinute(600)->by('data-source-lock|'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
+        RateLimiter::for('draft-lock', fn (Request $request): Limit => Limit::perMinute(600)->by('draft-lock|'.($request->user()?->getAuthIdentifier() ?? $request->ip())));
 
         // Each module registers its audit allowlist with the kernel (the kernel calls no module).
         $serializers = $this->app->make(AuditSerializers::class);
         $serializers->register(new AccessAuditSerializer);
+        $serializers->register(new BlocksAuditSerializer);
         $serializers->register(new ConnectorAuditSerializer);
         $serializers->register(new IdentityAuditSerializer);
         $serializers->register(new IngestionAuditSerializer);
@@ -253,6 +341,8 @@ class AppServiceProvider extends ServiceProvider
 
         // Each module registers the lockable resources it owns with the kernel's edit lock (the kernel calls no module).
         $this->app->make(EditLockResources::class)->register(DataSourceLockEpochs::TYPE, new DataSourceLockEpochs);
+        // A Draft block's epoch (Story 3.3); its lock endpoints are `DraftLockController` (Story 3.6).
+        $this->app->make(EditLockResources::class)->register(DraftLockEpochs::TYPE, new DraftLockEpochs);
 
         // Each module registers its Operation kinds with the kernel (the kernel calls no module). A connection test runs on
         // `fetch-interactive`, which only `worker-connector` consumes.
@@ -261,6 +351,11 @@ class AppServiceProvider extends ServiceProvider
         $this->app->make(OperationKinds::class)->register(new OperationKind(SampleFetches::KIND, SampleFetches::QUEUE, 600, RunSampleFetch::class));
         // The `fetch_as_user` kind (Story 2.13): the same queue and lifetime as `sample_fetch`, and the same sealed blob (its TTL is this lifetime).
         $this->app->make(OperationKinds::class)->register(new OperationKind(FetchesAsUser::KIND, FetchesAsUser::QUEUE, 600, RunFetchAsUser::class));
+
+        // The `draft_sample_fetch` kind (Story 3.9): registered by Blocks, on the queue only `worker-connector` consumes. Its lifetime is set per Operation from the platform timeout ceiling ({@see Operations::enqueue()}), and the sealed blob's TTL is that Operation's remaining lifetime; 600 is only the default when none is given.
+        $this->app->make(OperationKinds::class)->register(new OperationKind(DraftSampleFetches::KIND, DraftSampleFetches::QUEUE, 600, FetchDraftSample::class));
+        // The `publish_validation` kind (Story 3.18): registered by Blocks on the same queue; its lifetime is also the platform timeout ceiling, set per Operation.
+        $this->app->make(OperationKinds::class)->register(new OperationKind(DraftValidations::KIND, DraftValidations::QUEUE, 600, RunDraftValidation::class));
 
         QueueContext::register($this->app->make(RequestContext::class), $this->app->make('events'));
         JobSignatureGuard::register($this->app, $this->app->make('events'));

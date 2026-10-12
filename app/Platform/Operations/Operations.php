@@ -38,6 +38,7 @@ final class Operations
 
     /**
      * @param  array<string, mixed>  $input  small and never a secret; handed to the handler as it is
+     * @param  int|null  $ttlSeconds  how long this Operation lives, instead of its kind's lifetime (a kind whose ceiling is a setting)
      */
     public function enqueue(
         string $workspaceId,
@@ -47,22 +48,24 @@ final class Operations
         ?string $subjectId = null,
         ?int $subjectRevision = null,
         array $input = [],
+        ?int $ttlSeconds = null,
     ): Operation {
         $workspaceId = TenantKey::workspace($workspaceId);
         $definition = $this->kinds->get($kind);
+        $lifetime = $ttlSeconds !== null && $ttlSeconds >= 1 ? $ttlSeconds : $definition->ttlSeconds;
 
         if (! Str::isUuid($requesterMembershipId) || ($subjectId !== null && ! Str::isUuid($subjectId))) {
             throw new InvalidArgumentException('An Operation names its requester and subject by UUID.');
         }
 
-        return $this->transactions->run($workspaceId, function () use ($workspaceId, $definition, $requesterMembershipId, $subjectType, $subjectId, $subjectRevision, $input): Operation {
+        return $this->transactions->run($workspaceId, function () use ($workspaceId, $definition, $lifetime, $requesterMembershipId, $subjectType, $subjectId, $subjectRevision, $input): Operation {
             $id = (string) Str::uuid7();
             $requestId = $this->context->requestId();
 
             DB::insert(
                 'insert into operations (id, workspace_id, kind, requester_membership_id, subject_type, subject_id, subject_revision, status, expires_at, request_id, created_at, updated_at) '
                 ."values (?, ?, ?, ?, ?, ?, ?, 'queued', now() + (? * interval '1 second'), ?, now(), now())",
-                [$id, $workspaceId, $definition->name, strtolower($requesterMembershipId), $subjectType, $subjectId === null ? null : strtolower($subjectId), $subjectRevision, $definition->ttlSeconds, $requestId === null ? null : substr($requestId, 0, 64)],
+                [$id, $workspaceId, $definition->name, strtolower($requesterMembershipId), $subjectType, $subjectId === null ? null : strtolower($subjectId), $subjectRevision, $lifetime, $requestId === null ? null : substr($requestId, 0, 64)],
             );
 
             $operation = $this->find($workspaceId, $id) ?? throw new \LogicException('The Operation was not stored.');

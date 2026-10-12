@@ -264,6 +264,15 @@ final class Cluster
             'data_source_health' => self::seedSourceHealth($workspaceId),
             'raw_bodies' => self::seedRawBody($workspaceId),
             'raw_observations' => self::seedRawObservation($workspaceId),
+            'block_categories' => self::seedBlockCategory($workspaceId),
+            'blocks' => self::seedBlock($workspaceId),
+            'block_versions' => self::seedBlockVersion($workspaceId),
+            'draft_samples' => self::seedDraftSample($workspaceId),
+            'draft_ui_state' => self::seedDraftUiState($workspaceId),
+            'validation_reports' => self::seedValidationReport($workspaceId),
+            'datasets' => self::seedDataset($workspaceId),
+            'dataset_fields' => self::seedDatasetField($workspaceId),
+            'access_subjects' => self::seedAccessSubject($workspaceId),
             default => null,
         };
     }
@@ -347,6 +356,113 @@ final class Cluster
         $url = $scheme.'://'.$host.($port === ($scheme === 'https' ? 443 : 80) ? '' : ':'.$port);
         self::superuser()->prepare('INSERT INTO data_sources (id, workspace_id, name, base_url, scheme, host, port, created_by_membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, now(), now())')
             ->execute([$id, $workspaceId, $name ?? 'Source '.$id, $url, $scheme, $host, $port, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /** A block category (Story 3.4) of the Workspace. */
+    public static function seedBlockCategory(string $workspaceId, ?string $name = null): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO block_categories (id, workspace_id, name, created_at, updated_at) VALUES (?, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $name ?? 'Category '.$id]);
+
+        return $id;
+    }
+
+    /** A Block (Story 3.3) of the Workspace, owned by a made-up membership. */
+    public static function seedBlock(string $workspaceId, string $type = 'kpi-card'): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO blocks (id, workspace_id, type_key, owner_membership_id, created_at, updated_at) VALUES (?, ?, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $type, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /**
+     * A version of a new Block (Story 3.3): a Draft unless another state is given.
+     *
+     * @param  array<string, mixed>  $columns  overrides, by column name (`block_id` reuses a Block)
+     */
+    public static function seedBlockVersion(string $workspaceId, array $columns = []): string
+    {
+        $id = (string) Str::uuid7();
+        $row = $columns + [
+            'id' => $id, 'workspace_id' => $workspaceId, 'block_id' => self::seedBlock($workspaceId), 'state' => 'draft', 'name' => 'Block '.$id,
+            'created_by_membership_id' => (string) Str::uuid7(),
+        ];
+
+        if (($row['state'] ?? '') === 'discarded') {
+            $row += ['discarded_at' => '2026-10-09 10:00:00+00'];
+        }
+
+        self::superuser()->prepare('INSERT INTO block_versions ('.implode(', ', array_keys($row)).') VALUES ('.implode(', ', array_fill(0, count($row), '?')).')')
+            ->execute(array_values($row));
+
+        return (string) $row['id'];
+    }
+
+    public static function seedDraftSample(string $workspaceId, ?string $versionId = null): string
+    {
+        $id = (string) Str::uuid7();
+        $versionId ??= self::seedBlockVersion($workspaceId);
+        self::superuser()->prepare("INSERT INTO draft_samples (id, workspace_id, block_version_id, source, body, size_bytes) VALUES (?, ?, ?, 'paste', '{}', 2)")
+            ->execute([$id, $workspaceId, $versionId]);
+
+        return $id;
+    }
+
+    public static function seedDraftUiState(string $workspaceId, ?string $versionId = null): string
+    {
+        $id = (string) Str::uuid7();
+        $versionId ??= self::seedBlockVersion($workspaceId);
+        self::superuser()->prepare('INSERT INTO draft_ui_state (id, workspace_id, block_version_id) VALUES (?, ?, ?)')
+            ->execute([$id, $workspaceId, $versionId]);
+
+        return $id;
+    }
+
+    /** A ValidationReport (Story 3.18) of a Draft of the Workspace (a new Draft unless one is given). */
+    public static function seedValidationReport(string $workspaceId, ?string $versionId = null, string $status = 'passed', int $revision = 1): string
+    {
+        $id = (string) Str::uuid7();
+        $versionId ??= self::seedBlockVersion($workspaceId);
+        self::superuser()->prepare('INSERT INTO validation_reports (id, workspace_id, block_version_id, operation_id, subject_revision, status, created_by_membership_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
+            ->execute([$id, $workspaceId, $versionId, (string) Str::uuid7(), $revision, $status, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /** An Access subject (Story 3.19): a Block of the Workspace (a new one unless given), "All users" and visible. */
+    public static function seedAccessSubject(string $workspaceId, ?string $blockId = null): string
+    {
+        $id = (string) Str::uuid7();
+        $blockId ??= self::seedBlock($workspaceId);
+        self::superuser()->prepare("INSERT INTO access_subjects (id, workspace_id, subject_type, subject_id) VALUES (?, ?, 'block', ?)")
+            ->execute([$id, $workspaceId, $blockId]);
+
+        return $id;
+    }
+
+    /** A Dataset (Story 3.11c) of the Workspace, for a new Endpoint unless one is given. */
+    public static function seedDataset(string $workspaceId, ?string $endpointId = null, string $recordPath = '$.data[*]'): string
+    {
+        $id = (string) Str::uuid7();
+        $endpointId ??= self::seedEndpoint($workspaceId);
+        self::superuser()->prepare('INSERT INTO datasets (id, workspace_id, endpoint_id, record_path, created_at, updated_at) VALUES (?, ?, ?, ?, now(), now())')
+            ->execute([$id, $workspaceId, $endpointId, $recordPath]);
+
+        return $id;
+    }
+
+    /** A field of a Dataset of the Workspace (a new Dataset unless one is given). */
+    public static function seedDatasetField(string $workspaceId, ?string $datasetId = null): string
+    {
+        $id = (string) Str::uuid7();
+        $datasetId ??= self::seedDataset($workspaceId);
+        self::superuser()->prepare("INSERT INTO dataset_fields (id, workspace_id, dataset_id, path, type, role, position) VALUES (?, ?, ?, '\$.data[*].revenue', 'number', 'measure', 0)")
+            ->execute([$id, $workspaceId, $datasetId]);
 
         return $id;
     }

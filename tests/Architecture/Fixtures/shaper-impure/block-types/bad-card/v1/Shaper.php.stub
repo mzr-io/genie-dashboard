@@ -1,0 +1,17 @@
+<?php
+
+namespace BlockTypes\BadCard\V1;
+
+use Illuminate\Support\Facades\DB;
+
+final class Shaper
+{
+    public function shape(array $slots): array
+    {
+        $body = json_decode('{}', true);
+        $rows = DB::table('blocks')->get();
+        $at = time();
+
+        return [$body, $rows, $at, file_get_contents('/etc/hosts'), new \DateTimeImmutable];
+    }
+}

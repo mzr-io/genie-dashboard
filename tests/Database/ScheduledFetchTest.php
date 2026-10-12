@@ -1238,6 +1238,8 @@ it('counts each outcome on its own metric: payload_changed for a change only', f
         {
             $this->seen[] = $name;
         }
+
+        public function record(string $name, float|int $value, array $labels = []): void {}
     });
     $this->curl->queue = [sdOk(SD_BODY, '"v1"'), sdNotModified(), sdOk(' '.SD_BODY), sdOk('{"x":1}')];
 
@@ -1258,8 +1260,8 @@ it('backfills Data as of and nulls the old byte hashes when the conditional-stat
     sdRun($workspace, $target, 1);
 
     try {
-        // Six steps: the newest migrations are Story 2.20's (sync generations), Story 2.19's (subscriptions), Story 2.18's (health), Story 2.17's (attempt), 2.16's (retention), then 2.15's (conditional state).
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 6, '--force' => true]))->toBe(0);
+        // Thirteen steps: the newest migrations are Story 3.19's (publish lifecycle), Story 3.18's (validation reports), Story 3.11c's (datasets), Story 3.9's (fetch columns of draft samples), Story 3.8's (paste columns of draft samples), Story 3.4's (block categories), Story 3.3's (Blocks and Drafts), Story 2.20's (sync generations), Story 2.19's (subscriptions), Story 2.18's (health), Story 2.17's (attempt), 2.16's (retention), then 2.15's (conditional state).
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 13, '--force' => true]))->toBe(0);
 
         // A target as 2.14 left it: a payload, the hash of the bytes and a last success.
         Cluster::superuser()->prepare('update sync_targets set content_hash = ?, last_success_at = ? where id = ?')->execute([hash('sha256', SD_BODY), '2026-10-01 10:00:00+00', $target]);
@@ -1330,6 +1332,8 @@ function rbMetrics(array &$seen): void
             expect(array_keys($labels))->toBe(['workspace_id']);
             $this->seen[] = $name;
         }
+
+        public function record(string $name, float|int $value, array $labels = []): void {}
     });
 }
 

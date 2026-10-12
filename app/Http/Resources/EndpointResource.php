@@ -49,6 +49,8 @@ final class EndpointResource extends JsonResource
             'test_values' => (object) $endpoint->testValues,
             'sync' => $this->syncState($endpoint),
             'revision' => $endpoint->revision,
+            // Story 3.7: the immutable revision a Block pins (`endpoint_revision_id`); `revision` is the number an edit compares.
+            'revision_id' => $endpoint->revisionId,
             'created_at' => $endpoint->createdAt,
             'updated_at' => $endpoint->updatedAt,
         ];

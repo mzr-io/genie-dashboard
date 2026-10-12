@@ -11,6 +11,8 @@
         "types:check": "vue-tsc --noEmit",
         "test": "vp test run",
         "lint:colors": "node scripts/lint-colors.mjs",
+        "lint:renderers": "node scripts/lint-renderers.mjs",
+        "check:block-type-pins": "node scripts/check-block-type-pins.mjs",
         "audit:deps": "npm audit --audit-level=high",
         "audit:licenses": "node scripts/license-audit.mjs",
         "load": "node load/run.mjs",

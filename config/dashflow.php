@@ -74,6 +74,8 @@ return [
             'total_timeout' => $tunable('DASHFLOW_TOTAL_TIMEOUT'),
             'draft_sample_ttl' => $tunable('DASHFLOW_DRAFT_SAMPLE_TTL'),
             'edit_lock_ttl' => $tunable('DASHFLOW_EDIT_LOCK_TTL'),
+            // Story 3.5: whole milliseconds the Create block wizard waits after the last change before it autosaves. Unset: no autosave.
+            'autosave_debounce' => $tunable('DASHFLOW_AUTOSAVE_DEBOUNCE'),
         ],
 
         'budgets' => [
@@ -218,6 +220,18 @@ return [
         'membership_limit' => $tunable('DASHFLOW_SAMPLE_FETCH_MEMBERSHIP_LIMIT'),
         'workspace_limit' => $tunable('DASHFLOW_SAMPLE_FETCH_WORKSPACE_LIMIT'),
         'window' => $tunable('DASHFLOW_SAMPLE_FETCH_WINDOW_SECONDS'),
+    ],
+
+    // Live preview of a Draft through the Query Plan engine (Story 3.10). Every one is `pending_input` with no default, outside the
+    // AR-57 tunable list: a preview is refused (422 naming the variable) while any of the first five is unset. `p95_target_ms` is only
+    // recorded (the C6 spike): nothing enforces it.
+    'preview' => [
+        'membership_limit' => $tunable('DASHFLOW_PREVIEW_MEMBERSHIP_LIMIT'),
+        'window_seconds' => $tunable('DASHFLOW_PREVIEW_WINDOW_SECONDS'),
+        'max_extracted_values' => $tunable('DASHFLOW_PREVIEW_MAX_EXTRACTED_VALUES'),
+        'max_evaluations' => $tunable('DASHFLOW_PREVIEW_MAX_EVALUATIONS'),
+        'max_wall_ms' => $tunable('DASHFLOW_PREVIEW_MAX_WALL_MS'),
+        'p95_target_ms' => $tunable('DASHFLOW_PREVIEW_P95_TARGET_MS'),
     ],
 
     // Load-test harness targets (Story 1.25), read by `npm run load` (load/config.mjs) from the environment.

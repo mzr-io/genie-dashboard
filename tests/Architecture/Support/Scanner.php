@@ -113,7 +113,7 @@ final class Scanner
             $bannedPath = false;
 
             foreach ($this->rules['json_decode_banned_paths'] ?? [] as $path) {
-                $bannedPath = $bannedPath || str_starts_with($relative, rtrim($path, '/').'/');
+                $bannedPath = $bannedPath || $relative === $path || str_starts_with($relative, rtrim($path, '/').'/');
             }
 
             if (! $bannedPath && ! in_array($owner, $this->rules['json_decode_banned'], true)) {

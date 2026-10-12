@@ -75,8 +75,9 @@ final class RunSampleFetch implements OperationHandler
      *
      * @param  array<string, mixed>  $input
      * @param  (callable(Operation, Endpoint, array<string, string>): array<string, string>)|null  $bind
+     * @param  bool  $contextMissing  only validation (Story 3.18) sets it: the unbound refusal of a user-context Endpoint is then `access.context_missing`
      */
-    public function execute(Operation $operation, array $input, ?callable $bind): OperationOutcome
+    public function execute(Operation $operation, array $input, ?callable $bind, bool $contextMissing = false): OperationOutcome
     {
         $startedAt = CarbonImmutable::now()->utc();
         $requestId = $operation->requestId ?? $this->context->requestId();
@@ -120,7 +121,8 @@ final class RunSampleFetch implements OperationHandler
                 $code = ConnectionTestCode::FetchFailed;
                 $reason = 'not_read_only';
             } elseif ($bind === null && $endpoint->requiresUserContext) {
-                $code = ConnectionTestCode::FetchFailed;
+                // Refused before any request. Story 3.18's validation asks for the code a member without the attribute gets; every other caller keeps `fetch-failed`.
+                $code = $contextMissing ? ConnectionTestCode::ContextMissing : ConnectionTestCode::FetchFailed;
                 $reason = 'user_context_required';
             } else {
                 if ($bind !== null) {

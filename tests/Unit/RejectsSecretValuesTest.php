@@ -26,3 +26,13 @@ it('spots secret-valued fields by name or flag at any depth, and leaves plain se
     'flag off' => [['headers' => [['name' => 'A', 'secret' => false, 'value' => 'v']]], false],
     'flagged header without value' => [['headers' => [['name' => 'A', 'secret' => true]]], false],
 ]);
+
+it('lets the soft lock token ride a Draft save on the blocks profile only, at the top level, as a short string', function (array $payload, bool $allow, bool $refused) {
+    expect(RejectsSecretValues::containsSecretValue($payload, 0, $allow))->toBe($refused);
+})->with([
+    'top level on blocks' => [['name' => 'x', 'lock_token' => 'abc123'], true, false],
+    'nested config' => [['config' => ['lock_token' => 'abc123']], true, true],
+    'not a string' => [['lock_token' => ['x']], true, true],
+    'too long' => [['lock_token' => str_repeat('a', 129)], true, true],
+    'another profile' => [['lock_token' => 'abc123'], false, true],
+]);

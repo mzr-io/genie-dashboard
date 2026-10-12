@@ -3,6 +3,7 @@
 namespace App\Modules\Ingestion\Infrastructure;
 
 use App\Modules\Connector\Contracts\GovernorLimits;
+use App\Modules\Ingestion\Contracts\RefreshIntervals;
 use Illuminate\Contracts\Config\Repository;
 
 /**
@@ -10,7 +11,7 @@ use Illuminate\Contracts\Config\Repository;
  * an unset or malformed interval list means no target is ever scheduled, and an unset or malformed tick falls back to the proposed 5 seconds
  * the configuration already shows.
  */
-final class SyncSettings
+final class SyncSettings implements RefreshIntervals
 {
     /** The proposed tick (seconds), used when the setting is unset or malformed. */
     public const DEFAULT_TICK = 5;

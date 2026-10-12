@@ -1,5 +1,7 @@
 <?php
 
+use App\Modules\Blocks\Application\ActivatePreparedVersionsJob;
+use App\Modules\Blocks\Application\PurgeDiscardedDraftsJob;
 use App\Modules\Ingestion\Application\DispatchDueProbesJob;
 use App\Modules\Ingestion\Application\DispatchDueSyncsJob;
 use App\Modules\Ingestion\Application\SweepRawHistoryJob;
@@ -80,6 +82,28 @@ it('schedules the raw history sweep every five minutes on queue maintenance with
     Queue::fake();
     $event->run(app());
     Queue::assertPushedOn('maintenance', SweepRawHistoryJob::class);
+});
+
+// Story 3.3: the discarded-Draft purge is the safety net behind a lost enqueue: every five minutes over every Workspace, on queue `maintenance`.
+it('schedules the discarded draft purge every five minutes on queue maintenance with onOneServer', function () {
+    $event = collect(app(Schedule::class)->events())->first(fn ($e) => ($e->description ?? null) === PurgeDiscardedDraftsJob::class);
+
+    expect($event)->not->toBeNull()->and($event->onOneServer)->toBeTrue()->and($event->expression)->toBe('*/5 * * * *');
+
+    Queue::fake();
+    $event->run(app());
+    Queue::assertPushedOn('maintenance', PurgeDiscardedDraftsJob::class, fn (PurgeDiscardedDraftsJob $job): bool => $job->workspaceId === null);
+});
+
+// Story 3.19: a version left prepared is activated by the maintenance job every minute, on queue `maintenance`, onOneServer.
+it('schedules the prepared version activation every minute on queue maintenance with onOneServer', function () {
+    $event = collect(app(Schedule::class)->events())->first(fn ($e) => ($e->description ?? null) === ActivatePreparedVersionsJob::class);
+
+    expect($event)->not->toBeNull()->and($event->onOneServer)->toBeTrue()->and($event->expression)->toBe('* * * * *');
+
+    Queue::fake();
+    $event->run(app());
+    Queue::assertPushedOn('maintenance', ActivatePreparedVersionsJob::class, fn (ActivatePreparedVersionsJob $job): bool => $job->workspaceId === null);
 });
 
 // Story 2.18: the periodic health probe tick runs every minute on queue `maintenance` (worker-compute holds the `system` credentials), onOneServer.

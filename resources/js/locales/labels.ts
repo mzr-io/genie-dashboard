@@ -32,6 +32,37 @@ export const controlLabels = {
     sortBy: (column: string) => `Sort by ${column}`,
 } as const;
 
+// Labels of the kpi-card Block Type's renderer (Story 3.2). The canonical catalogue is closed, so the card's own copy lives here.
+export const kpiCardLabels = {
+    fallbackTitle: 'KPI card',
+    noChange: 'No change',
+    better: '· better',
+    worse: '· worse',
+    empty: 'No data to show yet.',
+    errorMessage: "This block couldn't load.",
+    headlineField: 'Headline value',
+    up: 'Up',
+    down: 'Down',
+    flat: 'No change',
+    betterSpoken: 'better',
+    worseSpoken: 'worse',
+    favourableSpoken: 'favourable',
+    unfavourableSpoken: 'unfavourable',
+    staleGeneric: 'Stale: last update time unknown',
+    // "Up 12.5% vs last month, better"
+    deltaSpoken: (
+        direction: string,
+        value: string,
+        label: string | null,
+        judgement: string | null,
+    ) =>
+        [
+            value === '' ? direction : `${direction} ${value}`,
+            label ? ` ${label}` : '',
+            judgement ? `, ${judgement}` : '',
+        ].join(''),
+} as const;
+
 // Labels of dialogs, toasts, banners and landmarks (Story 1.9). Buttons repeat across screens,
 // so they live here once.
 export const overlayLabels = {
@@ -778,6 +809,202 @@ export const hostAllowlistLabels = {
     removeVerb: 'Remove',
 } as const;
 
+// Draft blocks (Story 3.3; UX-DR-261, 263, 271, 282): the list of Drafts under Admin > Draft blocks. Messages for the standard
+// states (`list-empty`, `list-no-match`, `msg:perm-denied`, the failure row) come from the catalogue and `shellLabels`.
+export const draftBlockLabels = {
+    pageTitle: 'Draft blocks',
+    pageSubtitle:
+        'Blocks you have started and not published. Open one to carry on where you stopped.',
+    items: 'draft blocks',
+    // The phrase of `list-empty` ("No draft blocks yet. Create a block to start.").
+    action: 'Create a block',
+    create: '+ Create block',
+    caption:
+        'Draft blocks of this workspace, with category, type, version, owner and last update',
+    tableRegion: 'Draft blocks table',
+    toolbar: 'Draft block tools',
+    search: 'Search draft blocks',
+    searchPlaceholder: 'Search by name, type or category',
+    clearSearch: 'Clear search',
+    count: (matched: number, total: number) =>
+        `${matched} of ${total} ${total === 1 ? 'draft block' : 'draft blocks'}`,
+    columns: {
+        name: 'Name',
+        category: 'Category',
+        type: 'Type',
+        version: 'Version',
+        owner: 'Owner',
+        updated: 'Last updated',
+        status: 'Status',
+        actions: 'Actions',
+    },
+    // The status badge of every row on this list.
+    draft: 'Draft',
+    noCategory: '—',
+    noOwner: '—',
+    open: (name: string) => `Open ${name}`,
+    // The Block Type keys the registry lists, by their display name; an unknown key shows as it is.
+    types: { 'kpi-card': 'KPI card' } as Record<string, string>,
+    // Discard.
+    discard: 'Discard',
+    discardAria: (name: string) => `Discard ${name}`,
+    discardTitle: (name: string) => `Discard ${name}?`,
+    discardImpact:
+        'The draft and its sample data will be deleted. This cannot be undone. Published blocks are not affected.',
+    discarded: (name: string) => `${name} discarded.`,
+    gone: 'This draft no longer exists.',
+};
+
+// The Create block wizard (Story 3.4; UX-DR-86, 22, 23, 26, 274): the five-step shell, Step 1 (Configure Block) and the live preview. The
+// messages `perm-publish` and `version-safe` come from the catalogue; everything else is here.
+export const blockWizardLabels = {
+    breadcrumb: 'Block management / Create block',
+    pageTitle: 'Create block',
+    untitled: 'Untitled block',
+    draftBadge: '• Draft',
+    saveDraft: 'Save draft',
+    saving: 'Saving…',
+    saved: 'Draft saved.',
+    preview: 'Preview',
+    publish: 'Publish block',
+    continue: 'Continue',
+    back: 'Back',
+    loading: 'Loading the draft…',
+    notFound: 'This draft no longer exists. It may have been discarded.',
+    backToDrafts: 'Back to Draft blocks',
+    loadFailed: "We couldn't load this draft.",
+    retry: 'Retry',
+    conflict:
+        'This draft was changed somewhere else. Reload the page to see the latest version.',
+    // After a take-over: the wizard shows the holder's last saved version.
+    reloaded: 'Showing the latest saved version of this draft.',
+    notReady: 'Finish the earlier steps first.',
+    // Autosave and recovery (Story 3.5). `offline-editing`, `save-failed.draft`, `unsaved-changes` and `session-expired` come from the catalogue.
+    retrySave: 'Retry',
+    publishedTitle: 'This draft was published',
+    // `publish-success` names the category; a block with none says it without.
+    publishedNoCategory: (block: string, version: string) =>
+        `${block} v${version} is live in the Block Library.`,
+    publishedBody:
+        'Someone published this draft, so it can no longer be edited here and nothing more will be saved.',
+    publishedLink: 'Go to Published blocks',
+    conflictTitle: 'This draft was changed somewhere else',
+    conflictBody:
+        'Choose which version to keep. Nothing is overwritten until you choose.',
+    conflictMine: 'Your version',
+    conflictTheirs: 'Saved version',
+    conflictName: 'Name',
+    conflictDescription: 'Description',
+    conflictSize: 'Size',
+    conflictSavedAt: 'Last saved',
+    conflictNone: '(none)',
+    conflictKeepMine: 'Keep my version',
+    conflictUseTheirs: 'Use the saved version',
+    conflictKept: 'Your version was saved.',
+    conflictTook: 'The saved version is now open.',
+    // Progress.
+    progress: 'Create block progress',
+    notStarted: '(not started)',
+    edit: 'Edit',
+    steps: [
+        { key: 'configure', label: 'Configure Block' },
+        { key: 'data-source', label: 'Data Source' },
+        { key: 'map-data', label: 'Map Data' },
+        { key: 'preview', label: 'Preview' },
+        { key: 'publish', label: 'Save/Publish' },
+    ],
+    stepButton: (n: number, label: string, completed: boolean) =>
+        `${n}. ${label}, ${completed ? 'completed' : 'not completed'}`,
+    stepStatus: (n: number, total: number, label: string) =>
+        `Step ${n} of ${total}: ${label}`,
+    laterStep: 'This step is built in a later update.',
+    // Step 1.
+    sections: {
+        basics: {
+            title: 'Basic information',
+            caption: 'Name the block and say what it is for.',
+        },
+        display: {
+            title: 'Display & behavior',
+            caption: 'How the block looks and what a user can do with it.',
+        },
+        period: {
+            title: 'Period behavior',
+            caption: 'Whether the block follows the dashboard date range.',
+        },
+    },
+    name: 'Block name',
+    namePlaceholder: 'Revenue today',
+    nameRequired: 'Enter a name.',
+    nameTooLong: (max: number) => `Use up to ${max} characters.`,
+    description: 'Description',
+    descriptionHelper: 'Shown to people browsing the Block Library.',
+    descriptionRequired: 'Enter a description.',
+    descriptionTooLong: (max: number) => `Use up to ${max} characters.`,
+    category: 'Category',
+    type: 'Block type',
+    typeNames: { 'kpi-card': 'KPI card' } as Record<string, string>,
+    icon: 'Icon',
+    iconChange: 'Change',
+    iconUseCategory: 'Use category icon',
+    iconFromCategory: (name: string) => `From the ${name} category`,
+    iconChosen: 'Chosen for this block',
+    iconPopover: 'Choose an icon',
+    iconSearch: 'Search icons',
+    iconNone: 'No icon matches.',
+    iconTile: (name: string) => name,
+    width: 'Default width (columns)',
+    widthHelper: (min: number, max: number) =>
+        `Allowed: ${min} to ${max} columns.`,
+    height: 'Default height',
+    heights: {
+        small: 'Small',
+        medium: 'Medium (360 px)',
+        large: 'Large',
+    } as Record<string, string>,
+    heightHelper: (min: string, max: string) => `Allowed: ${min} to ${max}.`,
+    minWidth: 'Minimum width (columns)',
+    maxWidth: 'Maximum width (columns)',
+    minHeight: 'Minimum height',
+    maxHeight: 'Maximum height',
+    widthRange: (min: number, max: number) => `Use ${min} to ${max} columns.`,
+    heightRange: (min: string, max: string) =>
+        `Use a height from ${min} to ${max}.`,
+    minAboveMax: 'The minimum cannot be more than the maximum.',
+    outsideLimits: 'The default must be between the minimum and maximum.',
+    showHeader: 'Show block header',
+    showSubtitle: 'Show subtitle',
+    allowResize: 'Allow resize',
+    allowMinimize: 'Allow minimize',
+    allowRefresh: 'Allow refresh',
+    showFooterAction: 'Show footer action',
+    showFooterActionHelper:
+        'Adds an optional, empty Footer action slot to map later.',
+    period: 'Period',
+    periods: {
+        follow_dashboard: 'Follow dashboard default',
+        own_selector: 'Own selector',
+        not_date_filtered: 'Not date-filtered',
+    } as Record<string, string>,
+    periodHelper:
+        'Own selector is stored only for now: the block period selector arrives with dashboards.',
+    errorSummary: 'Fix these fields',
+    // Preview pane.
+    previewTitle: 'Live preview',
+    previewCaption: 'Changes appear here automatically.',
+    devices: 'Preview device',
+    deviceOptions: [
+        { value: 'desktop', label: 'Desktop' },
+        { value: 'tablet', label: 'Tablet' },
+        { value: 'mobile', label: 'Mobile' },
+    ],
+    canvas: (device: string) => `${device} preview canvas`,
+    sizePill: (columns: number, height: string) =>
+        `${columns} ${columns === 1 ? 'column' : 'columns'} × ${height}`,
+    summary: (columns: number, height: string, category: string) =>
+        `${category} · ${columns} × ${height}`,
+};
+
 // Labels of the Data sources list and form (Story 2.3; UX-DR-207, 115, 261, 263, 23, 26, 22, 37, 39, 274, 282). The
 // messages for the standard states (`list-empty`, `list-no-match`, `msg:saved`, `msg:perm-denied`, the allowlist miss
 // `host-not-allowlisted`, the save failure) come from the catalogue and `shellLabels`.
@@ -1423,6 +1650,32 @@ export const editLockLabels = {
     retry: 'Try again',
 } as const;
 
+// The wording the soft lock's banner and composable need, so a resource can word it its own way.
+export type EditLockLabelSet = {
+    takeOver: string;
+    close: string;
+    waiting: (name: string) => string;
+    takenOverUnsaved: (name: string, time: string) => string;
+    lost: string;
+    takeOverFailed: string;
+    readOnly: string;
+    someone: string;
+    unavailable: string;
+    retry: string;
+};
+
+// The same banner on a Draft block (Story 3.6): draft-specific wording for what a Data source's says about "this form". `draft-locked` and
+// `draft-taken-over` come from the catalogue.
+export const draftLockLabels: EditLockLabelSet = {
+    ...editLockLabels,
+    waiting: (name: string) =>
+        `Waiting for ${name} to save their changes. This draft becomes editable as soon as they have.`,
+    lost: 'You no longer hold the edit lock on this draft, so your latest changes were not saved. Reload the page to edit again.',
+    readOnly: 'This draft is read-only while someone else is editing it.',
+    unavailable:
+        "We couldn't check whether someone else is editing this draft, so it is read-only for now.",
+};
+
 // Units of a size for people (Story 2.6), smallest first, 1024 apart.
 export const byteUnitLabels = ['B', 'KB', 'MB', 'GB', 'TB'] as const;
 
@@ -1433,4 +1686,865 @@ export const sessionLabels = {
     stay: 'Stay signed in',
     signOut: 'Sign out',
     extendFailed: "We couldn't keep you signed in. Try again.",
+} as const;
+
+// Wizard Step 2, Data Source (Story 3.7). `post-readonly`, `live-not-supported`, `datasource-none` and `perm-denied` come from the catalogue;
+// the parameter table reuses `endpointLabels` (column names, binding names, the user-context tag and shared-data badge).
+export const blockSourceLabels = {
+    title: 'Data source',
+    caption: 'Which API this block reads, and how often.',
+    sourceSection: { title: 'Data source and endpoint' },
+    paramsSection: {
+        title: 'Parameters',
+        caption: 'How each parameter of the endpoint gets its value.',
+    },
+    refreshSection: {
+        title: 'Refresh and date range',
+        caption: 'How often the data is fetched and the period it starts on.',
+    },
+    dataSource: 'Data source',
+    dataSourcePlaceholder: 'Choose a data source',
+    // A select option is plain text: the name and the health word.
+    sourceOption: (name: string, health: string) => `${name} (${health})`,
+    endpoint: 'Endpoint',
+    endpointPlaceholder: 'Choose an endpoint',
+    endpointOption: (method: string, path: string) => `${method} ${path}`,
+    noEndpoints: 'This data source has no endpoints yet.',
+    editSource: 'Edit data source',
+    editSourceHint: 'Opens in a new tab.',
+    registerHint: 'Opens in a new tab.',
+    newTab: '(opens in a new tab)',
+    chooseSource: 'Choose a data source first.',
+    chooseEndpoint: 'Choose an endpoint first.',
+    postRequired:
+        'Mark this POST as a read-only query before you fetch or continue.',
+    pathEmpty: (names: string[]) =>
+        names.length === 1
+            ? `Enter a value for the path parameter ${names[0]}.`
+            : `Enter a value for the path parameters ${names.join(', ')}.`,
+    parametersCaption: 'Parameters of the endpoint',
+    noParams: 'This endpoint has no parameters.',
+    paramsNone: 'Choose an endpoint to see its parameters.',
+    valueLabel: (name: string) => `Value of ${name}`,
+    periodUnavailable: 'Needs "Own selector" under Period behavior in step 1.',
+    pinned: (revision: number) => `Pinned to data source revision ${revision}.`,
+    outOfDateTitle: 'The sample is out of date',
+    outOfDate:
+        'The data source, endpoint or a parameter changed. Fetch or paste a new sample, or confirm the one you have, before you map the data.',
+    // Fetch from API (Story 3.9): the button, and the two reasons a request cannot be made until the default range is chosen.
+    fetch: 'Fetch sample',
+    rangeNeeded:
+        'Choose a default date range under Refresh and date range before you fetch: the endpoint needs dates.',
+    periodNeeded:
+        'This endpoint uses the block period, which needs "Own selector" under Period behavior in step 1, before you fetch.',
+    loading: 'Loading data sources…',
+    loadFailed: "We couldn't load the data sources.",
+    retry: 'Try again',
+    // Refresh Interval.
+    refresh: 'Refresh interval',
+    refreshPlaceholder: 'Choose how often to refresh',
+    live: 'Live',
+    daily: 'Daily',
+    days: (n: number) => `Every ${n} days`,
+    minutes: (n: number) => (n === 1 ? '1 minute' : `${n} minutes`),
+    seconds: (n: number) => (n === 1 ? '1 second' : `${n} seconds`),
+    refreshNone:
+        'No refresh intervals are set up in System settings yet, so none can be chosen.',
+    refreshFailed: "We couldn't load the refresh intervals.",
+    // Default date range.
+    range: 'Default date range',
+    rangePlaceholder: 'Choose a default date range',
+    presets: {
+        today: 'Today',
+        this_week: 'This week',
+        this_month: 'This month',
+        current_year: 'Current year',
+        custom: 'Custom',
+    } as Record<string, string>,
+    from: 'From',
+    to: 'To',
+    rangeOrder: 'The start date cannot be after the end date.',
+    // The out-of-date flag and the pins in words, for a screen reader.
+    sourceHealthLabel: 'Health',
+} as const;
+
+// The Sample Response of wizard Step 2 (Story 3.8, paste). `json-valid`, `json-invalid` and `sample-wizard` are catalogue messages; the rest is
+// control vocabulary. Nothing here ever quotes the sample.
+export const blockSampleLabels = {
+    title: 'Sample response',
+    caption:
+        'A sample shows the structure of the response, so you can map it. It is used for mapping and preview only.',
+    modeLabel: 'Where the sample comes from',
+    fetchOption: 'Fetch from API',
+    pasteOption: 'Paste sample JSON',
+    textLabel: 'Sample JSON',
+    textHint:
+        'Paste a response from your API. The server reads it exactly, so every digit of a number is kept.',
+    checking: 'Checking the JSON…',
+    validNoRecords: (time: string, bytes: number, shape: string) =>
+        `✓ Valid JSON · no list of records found · Pasted ${time} · ${bytes} bytes · ${shape}`,
+    goToLine: (line: number) => `Go to line ${line}`,
+    tooLarge: (size: number, limit: number) =>
+        `This sample is ${size} bytes and the limit is ${limit} bytes, so it was rejected. Nothing was stored.`,
+    tooDeep: (limit: number) =>
+        `This sample is nested more than ${limit} levels deep, which is the limit, so it was rejected. Nothing was stored.`,
+    notConfigured: (setting: string | null) =>
+        setting === 'depth_limit'
+            ? 'The nesting limit is not set in System settings, so a sample cannot be accepted. Ask an operator to set it.'
+            : 'The size limit is not set in System settings, so a sample cannot be accepted. Ask an operator to set it.',
+    checkFailed: "We couldn't check the JSON. Try again.",
+    recheck: 'Check again',
+    ackLabel: 'This sample may contain personal data',
+    ackHint:
+        'It is stored encrypted, for this draft only, and deleted automatically. It is never used as a live source.',
+    ackRequired: 'Confirm that the sample may contain personal data.',
+    use: 'Use this sample',
+    useReplace: 'Replace the sample',
+    saving: 'Saving the sample…',
+    needValid: 'Paste valid JSON first.',
+    needAck: 'Confirm the personal data box first.',
+    needLock: 'You are not editing this draft, so the sample cannot be saved.',
+    ttlNotConfigured:
+        'The sample lifetime is not set in System settings, so a sample cannot be stored. Ask an operator to set it.',
+    storeFailed: "We couldn't save the sample. Try again.",
+    storeLocked:
+        'You no longer hold the edit lock on this draft, so the sample was not saved.',
+    unavailable:
+        'The sample cannot be saved or opened right now. Ask an operator to check the encryption key.',
+    accepted: 'Sample saved.',
+    inUse: 'Sample in use',
+    pastedAt: (time: string) => `Pasted ${time}`,
+    summary: (time: string, bytes: number) => `Pasted ${time} · ${bytes} bytes`,
+    // Fetch from API (Story 3.9). `fetch-ok`, `host-not-allowlisted`, `blocked-address`, `response-too-large`, `not-json`, `fetch-failed` and
+    // `offline-editing` are catalogue messages; the rest is control vocabulary.
+    fetchOkNoRecords: (status: number, ms: number) =>
+        `✓ ${status} · ${ms} ms · no list of records found`,
+    fetching: 'Fetching the sample…',
+    fetchedAt: (time: string) => `Fetched ${time}`,
+    fetchedSummary: (time: string, bytes: number) =>
+        `Fetched ${time} · ${bytes} bytes`,
+    fetchFailedTitle: 'Fetch failed',
+    pasteInstead: 'Paste sample JSON instead',
+    fetchExpired:
+        'The fetch took too long or expired. Nothing was stored. Try again.',
+    fetchStale:
+        'This result is not current: someone else took over editing this draft while the fetch ran. Nothing was stored.',
+    fetchRetry: 'Retry',
+    waitFor: (seconds: number) =>
+        `Too many fetches. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`,
+    waitButton: (seconds: number) => `Wait ${seconds} s`,
+    earlierParameters:
+        'This sample belongs to earlier parameters. Fetch again to get one for the current ones.',
+    fetchAckHint:
+        'The response is stored encrypted, for this draft only, and deleted automatically.',
+    settingNotConfigured: (setting: string | null) =>
+        setting
+            ? `${setting} is not set, so a sample cannot be fetched. Ask an operator to set it.`
+            : 'A setting that fetching needs is not set. Ask an operator to set it.',
+    endpointGone:
+        'The data source or endpoint no longer exists. Choose another one.',
+    fetchRefused: "The sample can't be fetched with these values.",
+    fetchStartFailed: "We couldn't start the fetch. Try again.",
+    fetchPollFailed: "We couldn't read the result of the fetch. Try again.",
+    restoreFailed: "We couldn't load the sample saved with this draft.",
+    retry: 'Try again',
+    invalidBlocked:
+        'Fix the JSON in the sample, or switch back to fetching, before you continue.',
+    uncheckedBlocked:
+        'Wait for the sample JSON to be checked, or clear it or switch back to fetching, before you continue.',
+    // The structure view.
+    structure: 'Structure of the sample',
+    view: 'View',
+    viewTree: 'Tree',
+    viewTable: 'Table',
+    viewJson: 'View JSON',
+    hideJson: 'Hide JSON',
+    columns: { path: 'Path', type: 'Type', example: 'Example' },
+    expand: (path: string) => `Expand ${path}`,
+    collapse: (path: string) => `Collapse ${path}`,
+    records: (count: number) => (count === 1 ? '1 item' : `${count} items`),
+    tableOf: 'Records to show as a table',
+    tableCaption: (path: string) => `Records at ${path}`,
+    tableTruncated: (shown: number, total: number) =>
+        `Showing the first ${shown} of ${total} records.`,
+    noTables: 'This sample has no list of records to show as a table.',
+    nodes: 'Fields in the sample',
+} as const;
+
+// Map Data (Story 3.11b, stage 1: the shell and the Roles section; UX-DR-65, 66, 123, 125 to 129, 180 to 182). `map-small-screen` is a catalogue message;
+// the rest is control vocabulary. Nothing here ever quotes the sample.
+export const blockMapLabels = {
+    region: 'Map Data',
+    loading: 'Reading the field roles…',
+    loadFailed: "We couldn't read the mapping for this draft.",
+    retry: 'Try again',
+    notSaved: 'The change was not saved. Try again.',
+    refreshFailed:
+        "We couldn't refresh the mapping. What you see may be out of date.",
+    summaryLabel: (n: number, label: string) => `Step ${n} · ${label}`,
+    // The recovery message when the sample has ended or cannot be read.
+    sampleGoneTitle: 'This draft has no usable sample',
+    sampleExpired:
+        'The sample for this draft has expired, so there is nothing to map. Go back to Data Source to fetch or paste it again.',
+    sampleInvalid:
+        'The sample for this draft cannot be read. Go back to Data Source to fetch or paste it again.',
+    toDataSource: 'Back to Data Source',
+    noFields: 'This sample has no fields to map.',
+    // The status bar.
+    statusBar: 'Mapping status',
+    statusSummary: (
+        autoMapped: number,
+        total: number,
+        confirmed: number,
+        requiredMissing: number,
+    ) =>
+        `Auto-mapped ${autoMapped} of ${total} · ${confirmed} confirmed · ${requiredMissing} required missing`,
+    statusSubtitle: 'Fields → slots of your KPI block',
+    // The three sections.
+    rolesTitle: '1 · Roles',
+    rolesCaption: 'What does each field mean?',
+    slotsTitle: '2 · Review block slots',
+    slotsCaption: 'Which field fills each part of the block.',
+    transformsTitle: '3 · Transforms',
+    transformsCaption: 'Optional steps that reshape the rows.',
+    transformsPlaceholder:
+        'Transforms arrive in a later update. There is nothing to set here yet.',
+    // Roles.
+    roleNames: {
+        label: 'Label',
+        value: 'Value',
+        dimension: 'Dimension',
+        measure: 'Measure',
+        time: 'Time',
+        filter: 'Filter/Category',
+    } as Record<string, string>,
+    roleDescriptions: {
+        label: 'Names or describes something.',
+        value: 'One headline number.',
+        dimension: 'Groups or splits the rows.',
+        measure: 'A number to plot or add up.',
+        time: 'When something happened.',
+        filter: 'Lets people narrow the data.',
+    } as Record<string, string>,
+    roleQualifiers: {
+        main: 'main',
+        baseline: 'baseline',
+        unit: 'unit',
+        asOf: 'as-of',
+    },
+    chipName: (field: string, role: string, flagged: boolean) =>
+        `Role for ${field}: ${role}${flagged ? ', possible wrong role' : ''}`,
+    chipMenu: (field: string) => `Roles for ${field}`,
+    roleChanged: (field: string, role: string) =>
+        `Role for ${field} is now ${role}.`,
+    undoNote: (field: string, role: string) => `${field} is now ${role}.`,
+    undo: 'Undo',
+    undone: (field: string, role: string) =>
+        `Undone. Role for ${field} is ${role} again.`,
+    scalarsTitle: 'Single values',
+    noScalars: 'No single values outside the list of records.',
+    scalarList: 'Single values in the response',
+    exampleNone: '(no example)',
+    typeOf: (type: string) => `Type: ${type}`,
+    exampleOf: (example: string) => `Example: ${example}`,
+    tableRegion: 'Sample rows, scrolls sideways',
+    tableCaption: (path: string) => `Sample rows of ${path}`,
+    tableHeading: 'Sample rows',
+    suggestion: (field: string, role: string) =>
+        `✦ ${field} looks like a ${role} — use as series?`,
+    setAs: (role: string) => `Set as ${role}`,
+    keepAs: (role: string) => `Keep as ${role}`,
+    looksRight: 'Looks right',
+    editRoles: 'Edit roles',
+    rolesAccepted: 'Roles accepted. Roles table collapsed.',
+    summaryTitle: 'Roles accepted',
+    summaryNone: 'No fields have a role yet.',
+    saving: 'Saving the role…',
+    // The record path.
+    recordPath: 'Rows from (record path)',
+    recordPathHint:
+        'This response has more than one list. Choose the one that holds the rows.',
+    rowsColumns: (rows: number, columns: number) =>
+        `${rows} ${rows === 1 ? 'row' : 'rows'} · ${columns} ${columns === 1 ? 'column' : 'columns'}`,
+    suggested: 'Suggested',
+    paginationLike: 'looks like pagination, not data',
+    recordPathChanged: (path: string) => `Rows now come from ${path}.`,
+    // The slot checklist (Story 3.12b).
+    checklist: 'Block slots',
+    groupNames: {
+        HEADER: 'Header',
+        KPI: 'KPI',
+        META: 'Meta',
+    } as Record<string, string>,
+    requiredMark: '*',
+    slotRow: (slot: string, required: boolean, state: string, level: string) =>
+        `${slot}, ${required ? 'required' : 'optional'}, ${state}, ${level} confidence`,
+    stateNames: {
+        auto_high: 'Auto-mapped',
+        auto_medium: 'Auto-mapped',
+        auto_low: 'Auto-mapped',
+        confirmed: 'Confirmed',
+        overridden: 'Overridden',
+        optional_empty: 'Optional, empty',
+        required_missing: 'Required, missing',
+        type_mismatch: 'Type mismatch',
+    } as Record<string, string>,
+    confidenceWords: {
+        high: 'High',
+        medium: 'Medium',
+        low: 'Low',
+        none: 'No',
+    } as Record<string, string>,
+    confidenceBadge: (word: string) => `Confidence: ${word}`,
+    confirmedByYou: 'Confirmed by you',
+    confirm: 'Confirm',
+    confirmFor: (slot: string) => `Confirm ${slot}`,
+    noField: 'No field mapped',
+    exampleShort: (example: string) => `e.g. ${example}`,
+    useAs: (field: string, slot: string) => `Use ${field} as ${slot}`,
+    baselineNote: (fields: string) =>
+        `Baseline field, shown but not mapped: ${fields}`,
+    filterLabel: 'Show slots',
+    filterAll: (n: number) => `All (${n})`,
+    filterReview: (n: number) => `Needs review (${n})`,
+    filterMissing: (n: number) => `Missing (${n})`,
+    filterEmpty: 'No slots match this filter.',
+    rerun: '↻ Re-run auto-map',
+    rerunNote: 'Confirmed and changed slots stay as they are.',
+    rerunDone: 'Auto-map ran again. Confirmed and changed slots were kept.',
+    confirmedAnnounce: (slot: string, left: number) =>
+        `${slot} confirmed. ${left} ${left === 1 ? 'slot still needs' : 'slots still need'} review.`,
+    checklistMissing:
+        'The slot checklist is not ready yet. Try again in a moment.',
+    blockerOtherShort: 'needs a look',
+    blockerOther: (slot: string) => `Look at ${slot} before you continue.`,
+    sampleBadge: 'Sample data',
+    continueToPreview: 'Continue to Preview →',
+    blockerUnconfirmed: (slot: string) =>
+        `Confirm ${slot}, its mapping is a low-confidence guess.`,
+    blockerMismatch: (slot: string) => `Fix ${slot}, its field does not fit.`,
+    blockerChanged: (slot: string) =>
+        `Review ${slot}, its field is no longer in the response.`,
+    // The field picker, override with Undo, Treat as and API-change messages (Story 3.13b).
+    changeField: 'Change field',
+    cannotChange: 'This slot cannot be changed right now.',
+    changeFieldFor: (slot: string) => `Change field for ${slot}`,
+    pickerLabel: (slot: string) => `Fields for ${slot}`,
+    pickerSearch: 'Search fields',
+    pickerSearchHint: 'Search by name, type or role',
+    fieldsMatch: (n: number) =>
+        `${n} ${n === 1 ? 'field matches' : 'fields match'}`,
+    pickerLoading: 'Reading the fields…',
+    pickerFailed: "We couldn't list the fields.",
+    pickerEmpty: 'No fields match.',
+    overriddenNote: (field: string, role: string, old: string) =>
+        `${field} is now a ${role} (was ${old}).`,
+    overriddenPlain: (field: string | null, slot: string) =>
+        field === null ? `${slot} was cleared.` : `${slot} now uses ${field}.`,
+    undoFor: (slot: string) => `Undo the change to ${slot}`,
+    undoneSlot: (slot: string) => `Undone. ${slot} is back as it was.`,
+    overriddenAnnounce: (slot: string, field: string | null) =>
+        field === null ? `${slot} cleared.` : `${slot} now uses ${field}.`,
+    undoStale:
+        'That slot changed after the override, so it was not undone. The list is up to date.',
+    notPicked: "That field can't be used for this slot.",
+    typeMismatchPill: 'Type mismatch',
+    fitsHeading: 'Fields that fit:',
+    useField: (field: string) => `Use ${field}`,
+    useFieldFor: (field: string, slot: string) => `Use ${field} for ${slot}`,
+    treatAs: 'Treat as…',
+    treatAsFor: (field: string) => `Treat ${field} as…`,
+    treatAsMenu: (field: string) => `Treat ${field} as`,
+    typeNames: {
+        text: 'Text',
+        number: 'Number',
+        boolean: 'True or false',
+        date: 'Date',
+    } as Record<string, string>,
+    typeAutomatic: 'Automatic',
+    treatedAs: (field: string, type: string) =>
+        `${field} is now treated as ${type}.`,
+    treatedAuto: (field: string) =>
+        `${field} is read as its detected type again.`,
+    notTreated: "That type can't be set for this field.",
+    apiMatchFound: (field: string, value: string | null) =>
+        `Dashflow found a new field ${field} that looks like the same data${value ? ` (matching value ${value})` : ''}.`,
+    useMatchFor: (match: string, slot: string) => `Use ${match} for ${slot}`,
+    blockerShort: {
+        required_missing: 'needs a field',
+        unconfirmed_low: 'needs your confirmation',
+        type_mismatch: 'its field does not fit',
+        api_changed: 'its field is no longer in the response',
+    } as Record<string, string>,
+    // The searchable field tree (Story 3.11d).
+    treeBrowse: 'Browse all fields',
+    treeLabel: 'Fields in the sample',
+    treeSearch: 'Search fields',
+    treeSearchHint: 'Search by name, type or example',
+    treeExpandAll: 'Expand all',
+    treeCollapseAll: 'Collapse all',
+    treeEmpty: 'No fields match your search.',
+    treeBreadcrumb: 'Field path',
+    treeUseFor: 'Use for',
+    treeUse: 'Use',
+    treeUseAria: (field: string, slot: string) => `Use ${field} for ${slot}`,
+    treeItemName: (field: string, type: string) => `${field}, ${type}`,
+    treeSelected: (
+        path: string,
+        example: string | null,
+        formatted: string | null,
+    ) =>
+        `Selected: ${path}${example === null ? '' : ` · ${example}`}${formatted === null ? '' : ` → ${formatted}`}`,
+    treeFocused: (
+        path: string,
+        example: string | null,
+        formatted: string | null,
+    ) =>
+        `Focused: ${path}${example === null ? '' : ` · ${example}`}${formatted === null ? '' : ` → ${formatted}`}`,
+    treeNothingSelected: 'Selected: none yet',
+    treeStillLoading: 'Still checking which fields fit. Try again in a moment.',
+    treeBusyNow: 'A change is being saved. Try again in a moment.',
+    treeNotAField: "This can't feed a slot on its own.",
+    treeLoading: 'Checking which fields fit…',
+    treeFailed: "We couldn't check which fields fit this slot.",
+    treeChoose: 'Choose from the field tree',
+    treeChooseFor: (slot: string) => `Choose ${slot} from the field tree`,
+    // The Datasets suggestion in the record-path list.
+    datasetUsedEarlier: 'Used in an earlier block',
+    datasetNotCandidate: (path: string) =>
+        `${path} was used in an earlier block but is not in this response.`,
+} as const;
+
+// The live preview on the Map Data step (Story 3.14, UI stage 4): the preview region, its hotspots, the source legend and the notices.
+export const blockPreviewLabels = {
+    region: 'Live preview, sample data',
+    skipToChecklist: 'Skip to slot checklist',
+    sampleLabel: 'Sample data',
+    // A hotspot over a mapped region of the card.
+    hotspotName: (slot: string, field: string, value: string) =>
+        `${slot}: ${field}, ${value}. Change field`,
+    hotspotTip: (slot: string, field: string) =>
+        `Click to change field · ${slot} ← ${field}`,
+    // The hatched placeholder for a required slot with nothing mapped.
+    missingName: (slot: string) =>
+        `${slot}, required, not mapped. Choose field`,
+    missingText: (slot: string, role: string) =>
+        `${slot} required · No ${role} mapped · click to choose`,
+    // The source legend.
+    legendTitle: 'Where each part comes from',
+    legendEmpty: 'Nothing is mapped yet.',
+    noEndpoint: 'the endpoint',
+    unavailable: 'Unavailable',
+    unavailableReasons: {
+        missing: 'the field is not in the sample',
+        not_single_value: 'the field has more than one value',
+        wrong_type: 'the field is not a single value',
+    } as Record<string, string>,
+    unavailableWhy: (reason: string) => `Unavailable (${reason})`,
+    // Notices: quiet, polite, and never in the way.
+    stale: 'The mapping was made for an earlier sample. Re-run auto-map to bring it up to date.',
+    throttled: (seconds: number | null) =>
+        seconds === null
+            ? 'The preview is paused for a moment. Showing the last one.'
+            : `The preview is paused for a moment. Showing the last one; try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`,
+    guard: 'The preview stopped because the sample went over a safety limit. Showing the last one.',
+    setting: (setting: string | null) =>
+        setting === null
+            ? 'The preview is not set up on this server: a required setting has no value. Ask your operator to configure it.'
+            : `The preview is not set up on this server: the setting ${setting} has no value. Ask your operator to configure it.`,
+    noSample: 'There is no sample to preview. Go back to Data Source.',
+    failed: "We couldn't refresh the preview. Showing the last one.",
+    failedEmpty: "We couldn't build the preview.",
+    // A read-only view still shows what is mapped.
+    readOnlyRegions: 'Read-only: fields cannot be changed here.',
+} as const;
+
+// The presentation rules editor on the Map Data step (Story 3.15b): format, emphasis, direction, threshold bands, labels and the empty display.
+export const blockPresentationLabels = {
+    open: 'Format and display',
+    openFor: (slot: string) => `Format and display for ${slot}`,
+    close: 'Hide format and display',
+    heading: (slot: string) => `Format and display · ${slot}`,
+    // The three columns.
+    formatTitle: 'Format',
+    emphasisTitle: 'Emphasis',
+    directionTitle: 'Direction',
+    kind: 'Show as',
+    kinds: {
+        number: 'Number',
+        integer: 'Integer',
+        percent: 'Percent',
+        currency: 'Currency',
+        compact: 'Compact (1.2K)',
+        date: 'Date',
+        'relative-time': 'Relative time',
+        duration: 'Duration',
+    } as Record<string, string>,
+    places: 'Decimal places',
+    placesHint: 'Leave empty to keep every digit',
+    thousands: 'Thousands separator',
+    currencyCode: 'Currency code',
+    currencyCodeHint: 'Three letters, such as USD',
+    currencyDisplay: 'Show currency as',
+    currencyDisplays: { symbol: 'Symbol ($)', code: 'Code (USD)' } as Record<
+        string,
+        string
+    >,
+    datePattern: 'Date pattern',
+    datePatterns: {
+        short: 'Short',
+        medium: 'Medium',
+        long: 'Long',
+        full: 'Full',
+    } as Record<string, string>,
+    units: 'Units suffix',
+    unitsHint: 'Such as kg or items',
+    example: 'Example',
+    exampleValue: (shown: string) => `Example: ${shown}`,
+    exampleNone: 'Example: complete the format to see one',
+    noFormat: 'Text is shown as it is. There are no format options.',
+    // Emphasis.
+    role: 'Role',
+    roles: {
+        headline: 'Headline',
+        primary: 'Primary',
+        secondary: 'Secondary',
+        badge: 'Badge',
+    } as Record<string, string>,
+    size: 'Size',
+    sizes: { sm: 'Small', md: 'Medium', lg: 'Large' } as Record<string, string>,
+    weight: 'Weight',
+    weights: { regular: 'Regular', medium: 'Medium', bold: 'Bold' } as Record<
+        string,
+        string
+    >,
+    notSet: 'Card default',
+    // Direction.
+    direction: 'Direction',
+    directions: {
+        higher_is_better: 'Higher is better',
+        lower_is_better: 'Lower is better',
+    } as Record<string, string>,
+    directionNote: 'Colors the comparison: up = green',
+    directionNoteLower:
+        'Colors the comparison: down = green · better, up = red · worse',
+    better: 'better',
+    worse: 'worse',
+    directionComparisonOnly: 'Direction applies to the comparison slot only.',
+    directionNotHere: 'Direction applies to the comparison slot only.',
+    // Labels.
+    labelText: 'Label text',
+    labelHint: 'Shown with the value',
+    prefix: 'Prefix',
+    suffix: 'Suffix',
+    // Bands.
+    bandsTitle: 'Threshold bands',
+    bandsCaption:
+        'The first band that matches, from the top, colors the status badge.',
+    addBand: '+ Add band',
+    removeBand: (n: number) => `Remove band ${n}`,
+    bandName: (n: number) => `Band ${n}`,
+    bandOrder: (n: number) => `${n}`,
+    bandCondition: 'Condition',
+    bandOps: {
+        '>=': '≥ at least',
+        '<=': '≤ at most',
+        between: 'between',
+    } as Record<string, string>,
+    bandValue: 'Value',
+    bandTo: 'and',
+    bandColor: 'Color',
+    colors: {
+        success: 'Success',
+        warning: 'Warning',
+        error: 'Error',
+        info: 'Info',
+        neutral: 'Neutral',
+    } as Record<string, string>,
+    bandIcon: 'Icon',
+    bandIconNone: 'Choose an icon',
+    bandLabel: 'Label',
+    bandsNone: 'No bands yet. The status badge shows the mapped text, if any.',
+    bandIconNeeded: 'A band needs an icon.',
+    bandIconUnknown: 'Choose an icon from the list.',
+    bandLabelNeeded: 'A band needs a label.',
+    colorNeeded: 'Choose a color.',
+    decimalNeeded: 'Use a number, such as 100 or 2.5.',
+    bandsMax: (n: number) => `Use at most ${n} bands.`,
+    // The empty display.
+    emptyTitle: 'Empty display',
+    emptyHint:
+        'Shown for a mapped value that is missing. Never used for the headline.',
+    emptyForHeadline:
+        'The headline shows Unavailable when it has no value, never an empty display.',
+    // Faults and states.
+    textLimit: (max: number) =>
+        `Use 1 to ${max} characters, with no control characters.`,
+    placesRange: (max: number) => `Use a whole number from 0 to ${max}.`,
+    currencyShape: 'Use a three-letter currency code, such as USD.',
+    currencyNeeded: 'A currency format needs a currency code.',
+    unknownSlot: 'This slot is not part of the block.',
+    invalid: 'This value is not valid.',
+    errorsTitle: 'Fix the format and display settings to continue.',
+    blockedContinue:
+        'Fix the format and display settings (marked below) to continue to Preview.',
+    saved: 'Format and display saved.',
+    notSaved: 'The format and display settings were not saved.',
+    refused:
+        'The format and display settings were refused. Check the marked fields.',
+    readOnly: 'Read-only: format and display cannot be changed here.',
+} as const;
+
+// Step 4, Preview (Story 3.16): the Block on every device and state, in a sample dashboard grid, and the warnings the Admin acknowledges.
+export const blockPreviewStepLabels = {
+    title: 'Preview on every device and state',
+    caption:
+        'See the block as people will, at its configured size, and review anything worth a second look.',
+    sampleLabel: 'Sample data',
+    states: 'Preview state',
+    stateOptions: [
+        { value: 'normal', label: 'Normal' },
+        { value: 'loading', label: 'Loading' },
+        { value: 'empty', label: 'Empty' },
+        { value: 'stale', label: 'Stale' },
+        { value: 'unavailable', label: 'Unavailable' },
+        { value: 'minimized', label: 'Minimized' },
+    ] as { value: string; label: string }[],
+    fullSizeTitle: 'Full size',
+    gridTitle: 'In a sample dashboard',
+    gridCaption: (columns: number, gap: number) =>
+        `12 columns, ${gap} px gap. The block takes ${columns} ${columns === 1 ? 'column' : 'columns'}.`,
+    gridRegion: (device: string) => `Sample dashboard grid, ${device}`,
+    otherBlock: 'Other block',
+    minimizedHint: 'Minimized: only the title bar shows on a dashboard.',
+    minimizedBar: (title: string) => `${title} (minimized)`,
+    contentScrolls: 'Long content scrolls inside the block.',
+    loading: 'Building the preview.',
+    // Warnings.
+    warningsTitle: 'Warnings',
+    noWarnings: 'No warnings. The block is ready to continue.',
+    warningsCount: (open: number, total: number) =>
+        open === 0
+            ? `All ${total} ${total === 1 ? 'warning is' : 'warnings are'} acknowledged.`
+            : `${open} of ${total} ${total === 1 ? 'warning needs' : 'warnings need'} acknowledging.`,
+    acknowledge: 'Acknowledge',
+    clearedOptional: (slot: string) =>
+        `${slot} is optional and has no field mapped: a suggested field was left out. The block shows nothing for it.`,
+    nullValue: (slot: string, field: string) =>
+        `${slot} is optional and the sample has no value for ${field}. The block shows its empty display, or nothing.`,
+    unavailableValue: (slot: string, field: string, why: string) =>
+        `${slot} is mapped to ${field} but unavailable (${why}).`,
+    staleMapping:
+        'The mapping was made for an earlier sample. Re-run auto-map in Map Data to bring it up to date.',
+    // Continue.
+    blockedUnresolved: (open: number) =>
+        `Acknowledge ${open} ${open === 1 ? 'warning' : 'warnings'} to continue.`,
+    blockedNotReady: 'Wait for the preview to load before continuing.',
+    blockedNoPreview:
+        'The preview could not be built, so its warnings cannot be checked. Go back to Map Data.',
+    back: 'Back',
+    continue: 'Continue',
+    readOnly: 'Read-only: warnings cannot be acknowledged here.',
+    announceAcknowledged: (open: number) =>
+        open === 0
+            ? 'All warnings acknowledged. Continue is available.'
+            : `${open} ${open === 1 ? 'warning' : 'warnings'} left to acknowledge.`,
+} as const;
+
+// Step 5, Validate (Story 3.18): the Draft checked against the live API, the version it will create and whether Publish is allowed. The messages
+// `live-shape-unreachable` and `version-safe` come from the catalogue.
+export const blockValidateStepLabels = {
+    title: 'Validate against the real API',
+    caption:
+        'Dashflow calls your endpoint once, live, and checks that every mapped field is still there with the right type. A pasted sample is never accepted as proof.',
+    versionTitle: 'Version to create',
+    versionValue: (version: string) => `Version ${version}`,
+    validate: 'Validate',
+    validateAgain: 'Validate again',
+    running: 'Checking the live response.',
+    startedAnnounce: 'Validation started.',
+    back: 'Back',
+    saveDraft: 'Save draft',
+    publish: 'Publish',
+    // Publish readiness.
+    readyTitle: 'Ready to publish',
+    readyBody: (version: string) =>
+        `The live response matches this block. Publishing creates version ${version}.`,
+    notReadyTitle: 'Publish is blocked',
+    publishReady: 'Publish block makes it live in the Block Library.',
+    publishing: 'Publishing…',
+    publishStale:
+        'The draft changed while it was saved. Validate again, then publish.',
+    publishNotReady:
+        'The block has not passed validation for its latest changes. Validate again, then publish.',
+    publishFailed: 'The block could not be published. Try again.',
+    publishDenied: "You don't have permission to publish this block.",
+    publishNoDraft: 'Save the draft first, then publish.',
+    publishFieldsUnresolved: 'Refresh the sample, then publish again.',
+    publishTypeUnavailable:
+        'This block type is no longer available, so the block cannot be published.',
+    publishPending:
+        'Your block was saved as ready; it will go live shortly. Publish again to finish it now.',
+    blockedNoSource:
+        'Choose a real data source and endpoint in Data Source. A pasted sample is never accepted as proof.',
+    pastedOnly:
+        'This block only has a pasted sample. Choose a real data source and endpoint, then validate.',
+    blockedNotValidated: 'Validate the block against the real API to continue.',
+    blockedFailed:
+        'The live response does not match the mapping. Fix the fields listed, then validate again.',
+    blockedStrict:
+        'The draft is not complete. Fix what is listed, then validate again.',
+    blockedUnreachable: 'The live API could not be reached.',
+    blockedStale:
+        'The draft changed after it was last validated. Validate again.',
+    blockedRunning: 'Wait for the validation to finish.',
+    // Results.
+    passedTitle: 'Validated',
+    passedBody: (version: string) =>
+        `The live response matches. Version ${version} is ready to create.`,
+    failedTitle: 'The live response does not match',
+    strictTitle: 'The draft is not complete',
+    staleTitle: 'Validate again',
+    staleBody:
+        'The draft changed after the last validation, or while it ran. Validate again to check it.',
+    unreachableTitle: 'The API could not be reached',
+    unboundTitle: 'This endpoint could be published without a member',
+    unboundBody:
+        "A request without the member's attribute was not refused. Check the endpoint's user bindings.",
+    contextMissingTitle: 'The live check could not run as you',
+    contextMissingBody:
+        'This endpoint uses user context and your account lacks a value it needs, so no request was made. Ask a colleague to set it, then validate again.',
+    mismatchesTitle: 'Fields to fix',
+    mismatch: {
+        missing: (slot: string, path: string) =>
+            `${slot}: ${path} is not in the live response.`,
+        wrong_type: (slot: string, path: string, expected: string) =>
+            `${slot}: ${path} is not a ${expected} in the live response.`,
+        not_single_value: (slot: string, path: string) =>
+            `${slot}: ${path} matches more than one value in the live response.`,
+        required_slot_unmapped: (slot: string) =>
+            `${slot} is required and is not mapped. Map it in Map Data.`,
+        no_plan: 'Nothing is mapped yet. Map the fields in Map Data.',
+        invalid: (path: string) => `${path} is not valid.`,
+    },
+    // Why a validation was not started or could not finish.
+    refusedNoSource:
+        'There is no real data source and endpoint to validate against.',
+    settingNotConfigured: (setting: string | null) =>
+        setting === null
+            ? 'A setting validation needs is not configured.'
+            : `${setting} is not configured, so the block cannot be validated.`,
+    startFailed: 'Validation could not start. Try again.',
+    checkFailed:
+        'Validation could not finish. Try again, or save the draft and come back.',
+    expired: 'The validation ran out of time. Validate again.',
+    throttled: (seconds: number) =>
+        `Too many validations. Try again in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}.`,
+    loadFailed: 'The last validation could not be loaded.',
+    validatedAt: (time: string) => `Validated ${time}`,
+    unreachableReason: (reason: string | null) => {
+        const known: Record<string, string> = {
+            'host-not-allowlisted':
+                'The data source host is not on the allowlist.',
+            'blocked-address':
+                'The data source address is blocked by the network guard.',
+            'fetch-failed': 'The API did not answer successfully.',
+            'not-json': 'The API did not answer with JSON.',
+            'response-too-large': 'The response was larger than the limit.',
+            'auth-failed': 'The API refused the credentials.',
+            'too-many-pages': 'The response needs more pages than allowed.',
+            blob_unavailable: 'The response could not be kept for checking.',
+        };
+
+        return reason === null
+            ? ''
+            : (known[reason] ?? 'The API could not be checked.');
+    },
+    guardExceeded:
+        'The check passed a safety limit and was stopped. Simplify the mapping or ask an operator to review the limits.',
+    settingMissing:
+        'A setting the check needs is not configured. Ask an operator, then validate again.',
+    invalidInput:
+        'The check could not be built from this draft. Validate again.',
+    engineError: 'The check hit an unexpected error. Try again.',
+} as const;
+
+// Admin > Published blocks (Story 3.19; UX-DR-261, 263, 282): the minimal list of what is live. Publish impact, restore and unpublish are Epic 6.
+export const publishedBlockLabels = {
+    pageTitle: 'Published blocks',
+    pageSubtitle: 'Blocks that are live in the Block Library.',
+    items: 'published blocks',
+    action: 'Create a block',
+    caption:
+        'Published blocks of this workspace, with category, type, version, owner and last update',
+    tableRegion: 'Published blocks table',
+    columns: {
+        name: 'Name',
+        category: 'Category',
+        type: 'Type',
+        version: 'Version',
+        owner: 'Owner',
+        updated: 'Last updated',
+        status: 'Status',
+    },
+    status: 'Published',
+    noCategory: '—',
+    noOwner: '—',
+    types: { 'kpi-card': 'KPI card' } as Record<string, string>,
+    highlighted: (name: string) => `${name} is now published.`,
+} as const;
+
+// Fetch as user and Preview as in the Create block wizard (Story 3.17). The failure messages are the shared error card's; these are the panel's own.
+export const blockAsUserLabels = {
+    fetchTitle: 'Fetch as user',
+    fetchCaption:
+        'Sends this request once as the member you choose, using their own ID, email, group and attributes, to see the shape of what they would get. The response is kept for a few minutes, only for you, and is never saved to the draft. An audit event is recorded for each use.',
+    previewTitle: 'Preview as',
+    previewCaption:
+        'Show this block with the data a member would get. The preview is computed from a fetch made as that member, kept for a few minutes, only for you.',
+    search: 'Search members',
+    member: 'Member',
+    choose: 'Choose a member',
+    none: 'No active members match.',
+    groups: (names: string[]) => `Groups: ${names.join(', ')}`,
+    fetch: 'Fetch as user',
+    previewAs: 'Preview as',
+    refetch: 'Fetch again',
+    noPermission:
+        "You don't have permission to fetch or preview as a user. Ask an admin to grant Preview as user.",
+    memberRequired: 'Choose a member first.',
+    waitFor: (seconds: number) => `Wait ${seconds}s`,
+    running: (name: string) => `Fetching as ${name}…`,
+    failedTitle: 'Fetch as user failed',
+    startFailed: "We couldn't start the fetch. Try again.",
+    memberGone: 'This member is no longer in the workspace. Choose another.',
+    refused: "That request can't be sent. Check the parameters.",
+    membersFailed: "We couldn't load the members. Try again.",
+    sampleData: 'Sample data',
+    done: (name: string, until: string) =>
+        `Fetched as ${name}. Sample data, kept only for you until ${until}.`,
+    structureTitle: (name: string) => `Structure of ${name}'s response`,
+    structureNote:
+        'Paths and types only. The values stay on the server and are never saved.',
+    previewingAs: (name: string) => `Previewing as ${name}`,
+    earlier:
+        'This result was taken with earlier parameters. Fetch again to preview as the member.',
+    expired:
+        'The fetched user data has expired. Fetch again to preview as the member.',
+    ended: 'The fetched user data expired, so the preview shows the shared sample again.',
+    stale: 'The endpoint changed while this was fetched, so the result was dropped. Fetch again.',
+    denied: 'You no longer have permission to preview as a user, so the preview shows the shared sample.',
+    sourceOptions: [
+        { value: 'shared', label: 'Shared sample' },
+        { value: 'user', label: 'As the member' },
+    ] as { value: string; label: string }[],
+    source: 'Preview data',
+    useShared: 'Use the shared sample',
+    asLabel: (name: string) => `Sample data · previewing as ${name}`,
+    audited: 'Every use is recorded in the audit log.',
+    userUnavailable: (name: string) =>
+        `The preview as ${name} is not available right now, so the shared sample is shown.`,
+    readFailed: "We couldn't read the fetched result. Try again.",
+    mismatch:
+        "This result is for a different data source or endpoint than the draft's, so the shared sample is shown. Fetch again.",
 } as const;

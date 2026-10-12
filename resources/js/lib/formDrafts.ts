@@ -92,6 +92,11 @@ export function setDraftOwnerResolver(resolver: () => string | null): void {
 
 export { hashOwner };
 
+// The non-identifying hash of the signed-in person, for other keepers of per-person work (the wizard's pending changes).
+export function currentOwner(): string | null {
+    return ownerResolver();
+}
+
 function storage(): Storage | null {
     try {
         return typeof sessionStorage === 'undefined' ? null : sessionStorage;

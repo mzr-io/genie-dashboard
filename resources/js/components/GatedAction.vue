@@ -17,6 +17,8 @@ const props = defineProps<{
     // Overrides the inline reason (the catalogue message already translated).
     reason?: string;
     variant?: ButtonVariants['variant'];
+    // A second reason the action is blocked for now although the person may do it (offline, Story 3.5); the permission reason wins.
+    alsoBlocked?: string;
 }>();
 
 const emit = defineEmits<{ (e: 'click', event: MouseEvent): void }>();
@@ -26,7 +28,12 @@ const { can } = useShell();
 const reasonId = useId();
 
 const allowed = computed(() => can.value[props.permission] === true);
-const text = computed(() => props.reason || t('perm-denied'));
+const blocked = computed(() => !allowed.value || !!props.alsoBlocked);
+const text = computed(() =>
+    allowed.value
+        ? (props.alsoBlocked ?? '')
+        : props.reason || t('perm-denied'),
+);
 </script>
 
 <template>
@@ -34,14 +41,14 @@ const text = computed(() => props.reason || t('perm-denied'));
         <Button
             type="button"
             :variant="variant"
-            :blocked="!allowed"
+            :blocked="blocked"
             :blocked-reason="text"
-            :aria-describedby="allowed ? undefined : reasonId"
+            :aria-describedby="blocked ? reasonId : undefined"
             data-slot="gated-action"
             @click="emit('click', $event)"
         >
             <slot />
         </Button>
-        <BlockedReason v-if="!allowed" :id="reasonId">{{ text }}</BlockedReason>
+        <BlockedReason v-if="blocked" :id="reasonId">{{ text }}</BlockedReason>
     </span>
 </template>

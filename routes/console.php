@@ -1,5 +1,7 @@
 <?php
 
+use App\Modules\Blocks\Application\ActivatePreparedVersionsJob;
+use App\Modules\Blocks\Application\PurgeDiscardedDraftsJob;
 use App\Modules\Ingestion\Application\DispatchDueProbesJob;
 use App\Modules\Ingestion\Application\DispatchDueSyncsJob;
 use App\Modules\Ingestion\Application\ReemitPayloadEventsJob;
@@ -43,6 +45,12 @@ Schedule::job(new DispatchDueProbesJob, 'maintenance')->everyMinute()->onOneServ
 
 // The retention sweep (Story 2.16) runs on queue `maintenance`, so it runs on worker-compute, the only service holding the `maintenance` database credentials.
 Schedule::job(new SweepRawHistoryJob, 'maintenance')->everyFiveMinutes()->onOneServer();
+
+// Discarded Drafts (Story 3.3) are deleted by the `maintenance` role on worker-compute. A discard queues its own Workspace's run; this run, over every Workspace, repairs a lost enqueue.
+Schedule::job(new PurgeDiscardedDraftsJob, 'maintenance')->everyFiveMinutes()->onOneServer();
+
+// A version left `prepared` (Story 3.19) is activated once `precompute_timeout` has passed; with the setting unset the run does nothing.
+Schedule::job(new ActivatePreparedVersionsJob, 'maintenance')->everyMinute()->onOneServer();
 
 // The payload re-emit sweep (Story 2.20): a target whose payload sequence is ahead of what consumers applied gets its event again, once per tick.
 Schedule::job(new ReemitPayloadEventsJob, 'maintenance')->everyMinute()->onOneServer();

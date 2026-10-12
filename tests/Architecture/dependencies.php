@@ -9,8 +9,8 @@
  * 'tables': the tables each module (or the kernel) owns. A module touches only its own tables.
  * 'global_tables': tables without workspace_id. Any other table must carry workspace_id.
  * 'json_decode_banned': modules that must use the lossless JSON parser (NFR exact numbers).
- * 'json_decode_banned_paths': kernel paths (under app/) where `json_decode` is banned too: the lossless decoder itself, so it
- *          cannot quietly delegate to PHP's decoder (Story 2.6).
+ * 'json_decode_banned_paths': paths (under app/, a directory or one file) where `json_decode` is banned too: the lossless decoder itself, so it
+ *          cannot quietly delegate to PHP's decoder (Story 2.6), and the files that read or seal a pasted sample (Story 3.8).
  */
 
 return [
@@ -18,7 +18,7 @@ return [
         'Dashboards' => ['Results', 'Templates', 'Blocks', 'Access'],
         'Templates' => ['Blocks', 'Access'],
         'Results' => ['Blocks', 'Ingestion', 'RawStore', 'Mapping', 'BlockTypes', 'Access'],
-        'Blocks' => ['Mapping', 'Datasets', 'Ingestion', 'Access'],
+        'Blocks' => ['Mapping', 'Datasets', 'Ingestion', 'Access', 'BlockTypes', 'Connector'],
         'Datasets' => ['Connector'],
         'Ingestion' => ['Connector', 'RawStore'],
         'Mapping' => ['BlockTypes'],
@@ -57,7 +57,7 @@ return [
         'Datasets' => ['datasets', 'dataset_fields'],
         'Results' => ['block_results', 'block_viewers', 'mapping_health_incidents'],
         'Blocks' => [
-            'blocks', 'block_versions', 'draft_samples', 'validation_reports',
+            'blocks', 'block_versions', 'draft_samples', 'draft_ui_state', 'validation_reports',
             'block_categories', 'block_usage',
         ],
         'Templates' => ['templates', 'template_versions'],
@@ -78,5 +78,5 @@ return [
 
     'json_decode_banned' => ['Ingestion', 'RawStore', 'Mapping', 'Results'],
 
-    'json_decode_banned_paths' => ['Platform/Json'],
+    'json_decode_banned_paths' => ['Platform/Json', 'Modules/Blocks/Application/ManageDraftSamples.php', 'Modules/Blocks/Application/PreviewDraft.php', 'Modules/Blocks/Application/RunDraftValidation.php', 'Modules/Blocks/Application/StartDraftValidation.php', 'Modules/Blocks/Infrastructure/SodiumSampleVault.php'],
 ];

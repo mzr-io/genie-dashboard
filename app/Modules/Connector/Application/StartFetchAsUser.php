@@ -5,6 +5,7 @@ namespace App\Modules\Connector\Application;
 use App\Modules\Access\Contracts\UserContext;
 use App\Modules\Connector\Contracts\DataSourceActor;
 use App\Modules\Connector\Contracts\DataSources;
+use App\Modules\Connector\Contracts\Endpoint;
 use App\Modules\Connector\Contracts\Endpoints;
 use App\Modules\Connector\Contracts\FetchesAsUser;
 use App\Modules\Connector\Contracts\InvalidDataSource;
@@ -41,11 +42,26 @@ final class StartFetchAsUser implements FetchesAsUser
         private readonly Outbox $outbox,
     ) {}
 
+    public function startFromChoices(DataSourceActor $actor, string $dataSourceId, string $endpointId, string $targetMembershipId, array $bindings, ?array $range, ?array $period): Operation
+    {
+        // The Endpoint is loaded once, in the transaction that enqueues, and the values are computed from that same revision.
+        return $this->begin($actor, $dataSourceId, $endpointId, $targetMembershipId, fn (Endpoint $endpoint): array => $this->renderer->given($endpoint, $bindings, $range, $period));
+    }
+
     public function start(DataSourceActor $actor, string $dataSourceId, string $endpointId, string $targetMembershipId, array $values): Operation
     {
-        return $this->transactions->run($actor->workspaceId, function () use ($actor, $dataSourceId, $endpointId, $targetMembershipId, $values): Operation {
+        return $this->begin($actor, $dataSourceId, $endpointId, $targetMembershipId, $values);
+    }
+
+    /**
+     * @param  array<string, mixed>|\Closure(Endpoint): array<string, mixed>  $given  the non-bound values, or how to make them from the loaded Endpoint
+     */
+    private function begin(DataSourceActor $actor, string $dataSourceId, string $endpointId, string $targetMembershipId, array|\Closure $given): Operation
+    {
+        return $this->transactions->run($actor->workspaceId, function () use ($actor, $dataSourceId, $endpointId, $targetMembershipId, $given): Operation {
             $this->sources->find($actor->workspaceId, $dataSourceId);
             $endpoint = $this->endpoints->find($actor->workspaceId, $dataSourceId, $endpointId);
+            $values = $given instanceof \Closure ? $given($endpoint) : $given;
 
             // An active member of this Workspace, or MembershipNotFound (a 404). Nothing is resolved yet: no binding is asked for.
             $this->members->resolve($actor->workspaceId, $targetMembershipId, []);

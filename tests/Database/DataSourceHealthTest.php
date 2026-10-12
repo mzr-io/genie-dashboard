@@ -804,6 +804,8 @@ it('keeps a canary in a header, the health path, a response and a failure out of
             expect(array_keys($labels))->toBe(['workspace_id']);
             $this->seen[] = $name;
         }
+
+        public function record(string $name, float|int $value, array $labels = []): void {}
     });
     $source = hlSave(['health_path' => '/p-'.HL_CANARY, 'headers' => [['name' => 'X-Key', 'value' => 'h-'.HL_CANARY]]]);
     $this->curl->queue = [FakeCurl::answer(200, '{"note":"b-'.HL_CANARY.'"}'), FakeCurl::answer(500, 'e-'.HL_CANARY, ['x-secret' => [HL_CANARY], 'content-type' => ['text/plain']]), new EgressTransportFailed('timeout '.HL_CANARY, 28)];
@@ -835,7 +837,7 @@ it('adds the health table and the health path in one migration that rolls back a
     expect($columns('data_sources', 'health_path'))->toBe(1)->and($columns('data_source_health', 'status'))->toBe(1);
 
     try {
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 3, '--force' => true]))->toBe(0)
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 10, '--force' => true]))->toBe(0)
             ->and($columns('data_sources', 'health_path'))->toBe(0)->and($columns('data_source_health', 'status'))->toBe(0);
     } finally {
         Artisan::call('migrate', ['--database' => 'migrator', '--force' => true]);

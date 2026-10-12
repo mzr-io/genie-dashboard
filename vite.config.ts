@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import inertia from '@inertiajs/vite';
 import { wayfinder } from '@laravel/vite-plugin-wayfinder';
 import tailwindcss from '@tailwindcss/vite';
@@ -7,6 +8,13 @@ import { bunny } from 'laravel-vite-plugin/fonts';
 import { defineConfig, lazyPlugins } from 'vite-plus';
 
 export default defineConfig({
+    resolve: {
+        alias: {
+            '@block-types': fileURLToPath(
+                new URL('./block-types', import.meta.url),
+            ),
+        },
+    },
     plugins: lazyPlugins(() => [
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.ts'],

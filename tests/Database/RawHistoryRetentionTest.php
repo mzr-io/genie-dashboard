@@ -421,6 +421,8 @@ it('records the sweep as a metric of the Workspace and kind only, and writes no 
         {
             $this->seen[] = [$name, $labels, $by];
         }
+
+        public function record(string $name, float|int $value, array $labels = []): void {}
     });
 
     rhSweep();

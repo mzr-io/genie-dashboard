@@ -278,3 +278,189 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-2-20-fetch-comparison-data-together-as-a-sync-group.md`
   summary: Decide how compute tells a failing group (both sides failed, no generation) from a never-fetched one, add `find(generationId)`, and tie raw retention and pruning to generations.
   evidence: `comparisonUnavailable` only reads the newest generation; generations name payload ids retention may purge and have no pruning path.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-1-register-the-block-type-contract-v1-and-the-kpi-card-package.md`
+  summary: Verify each package's Shaper class autoloads under its `BlockTypes\<Key>\V<N>` namespace and exposes `shape()`.
+  evidence: The registry only checks that Shaper.php exists; a namespace mismatch passes boot and fails at shaping time. Shaper is a stub until Story 3.2.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-2-see-the-kpi-card-in-every-state-rendered-safely-and-exactly.md`
+  summary: Add a shared Shaper-output fixture asserted in Pest and mounted in Vitest, and generate payload/descriptor types from schema.json instead of hand-writing payload.ts.
+  evidence: PHP Shaper keys and payload.ts can drift with both suites green; enums are duplicated in Shaper, payload.ts and display.ts. Also the `icon` slot renders as literal text until icons are mapped.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-3-start-save-and-discard-a-draft-block.md`
+  summary: Guard Discard with the edit lock/revision (and decide owner rules) once Draft lock endpoints exist, and audit block type changes made through save.
+  evidence: DELETE draft takes no expected_revision/lock_epoch, so an Admin can discard a Draft another is editing; type_key changes through save are unaudited. Locking is Story 3.6, wizard Story 3.4.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-3-start-save-and-discard-a-draft-block.md`
+  summary: Add a deterministic test for the unique-index race in ManageDrafts::create.
+  evidence: The savepoint/23505 to DraftExists path is only reachable with concurrent writers and is untested.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-4-configure-block-step-1-with-a-live-preview.md`
+  summary: Recover the wizard from 409/423 on save (reload revision/epoch or show both versions) and read block types/heights from the registry instead of the generated constant.
+  evidence: After a 409/423 the wizard keeps the stale revision so every retry fails until reload; client hardcodes kpi-card. Recovery is Story 3.5/3.6; second block type arrives in Epic 5.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-5-autosave-continuously-and-recover-from-expiry-offline-and-save-failure.md`
+  summary: Replay that gets 401 again re-stashes with the reloaded revision as base, and a single PENDING_KEY slot lets one Draft's stash overwrite another's
+  evidence: Review edge-case hunter; wizardPending.ts uses one key, BlockWizard stash() uses draft.value.revision. Unverified severity medium.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-5-autosave-continuously-and-recover-from-expiry-offline-and-save-failure.md`
+  summary: Leave guard replays a blocked non-GET visit as a bare GET, and manual Save draft double-click can queue two saves
+  evidence: Review hunters; router.on('before') stores only the URL, save() no longer short-circuits when saving. Unverified.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-5-autosave-continuously-and-recover-from-expiry-offline-and-save-failure.md`
+  summary: Add tests for beforeunload guard and owner-mismatch drop in readPending; consider autosave retry after failure and stashing on 404 while dirty
+  evidence: Verification-gap and edge-case reviews; no test dispatches beforeunload.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-6-soft-lock-a-draft-and-take-over-editing.md`
+  summary: Idle holder suspends heartbeats so a take-over flush request never reaches it, and a slow flush holds the heartbeat guard so the lock can lapse mid-flush
+  evidence: Review edge-case and blind hunters; useEditLock activityGated/beating logic. Unverified severity medium.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-6-soft-lock-a-draft-and-take-over-editing.md`
+  summary: Lock UI polish: focus move to banner when lock is lost, form aria-label landmark, read-only for wizard steps 2-5 and stepper, ttl_seconds guard, shared limiter/route factory, DataSourceError coupling
+  evidence: Review blind hunter; steps 2-5 do not exist yet (3.7+), the rest is cosmetic or structural.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-7-choose-the-data-source-endpoint-parameters-and-refresh-step.md`
+  summary: Persist the POST read-only acknowledgement and detect pinned-revision drift (Endpoint/Data Source edited after the sample) so sample_out_of_date is also server-derived
+  evidence: Review hunters; ack is client-only and flag is only set by the client. Unverified severity medium; belongs with 3.8/3.9/3.18.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-7-choose-the-data-source-endpoint-parameters-and-refresh-step.md`
+  summary: Fixed parameters named like credentials are refused by RejectsSecretValues; default-range dates use browser clock and Monday week start; read routes lack a throttle; unused blockSourceLabels keys
+  evidence: Review hunters; verified in diff, low impact today.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-8-paste-sample-json-and-inspect-it-with-exact-numbers.md`
+  summary: Cap shape node count, show sample expiry to the Admin, treat a sample sealed under a rotated data key as ended instead of 503, and decode before taking the Draft row lock on store
+  evidence: Review hunters; verified in diff. Unverified severity medium for key rotation (stuck until TTL).
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-8-paste-sample-json-and-inspect-it-with-exact-numbers.md`
+  summary: Audit event (metadata only) for storing/erasing a personal-data sample; map 409/404 on store to dedicated client messages; ignore stale restore responses; replace Go-to-line string splitting with a structured message
+  evidence: Review hunters; spec allowed no audit, other items low impact.
+
+- source_spec: `spec-3-9-fetch-a-sample-from-the-api.md`
+  summary: Concurrent Draft fetches can overwrite each other, and `sample_revision` restarts at 1 after a purge.
+  evidence: storeFetched checks only the lock epoch; the preview cache of Story 3.10 keys on (Draft, sample_revision). Unverified.
+- source_spec: `spec-3-9-fetch-a-sample-from-the-api.md`
+  summary: Add tests for `fetchBodyOf`/`stepGate` date mapping, 401/419 `auth-error`, PollTimeout card, and a 409 for a published Draft fetch.
+  evidence: Verification-gap review found no existing coverage; paths mirror the paste flow.
+- source_spec: `spec-3-9-fetch-a-sample-from-the-api.md`
+  summary: Draft fetch writes no audit event, and `bindings.*` validation skips dotted parameter names.
+  evidence: Reviewer findings; not exercised by the current acceptance criteria.
+
+- source_spec: `spec-3-10-render-the-sample-through-the-query-plan-engine-live-preview.md`
+  summary: Bound the Query Plan guards inside `SamplePath::select`, so one huge `[*]` select cannot pass the extracted-values and wall-time guards.
+  evidence: InProcessExecutor checks them only between evaluations and after select() has finished.
+- source_spec: `spec-3-10-render-the-sample-through-the-query-plan-engine-live-preview.md`
+  summary: Purge or expire the per-process decoded-sample cache on discard or sample expiry, and add `created_at` to its key.
+  evidence: Plaintext trees (up to 8) can outlive the sample TTL in long-lived workers; sample_revision restarts after a purge.
+- source_spec: `spec-3-10-render-the-sample-through-the-query-plan-engine-live-preview.md`
+  summary: Allow a Draft save to clear `config.query_plan` and test the 409 published-Draft preview once Story 3.19 adds the state.
+  evidence: `isset()` treats null as absent; `block_versions.state` allows only draft and discarded for now.
+
+- source_spec: `spec-3-11a-infer-field-roles-and-record-path-candidates.md`
+  summary: Story 3.11b: the Map Data step UI (layout, scalar cards, role chips and menus, suggestion row, record-path radiogroup, field tree, roles summary, small-screen message).
+  evidence: Split from Story 3.11 on the scope rule; it consumes the 3.11a endpoint and config keys.
+- source_spec: `spec-3-11a-infer-field-roles-and-record-path-candidates.md`
+  summary: Story 3.11c: upsert the Dataset (workspace, endpoint, record_path) with typed fields as a suggestion for new Drafts.
+  evidence: Split from Story 3.11; needs a Datasets table that does not exist yet.
+
+- source_spec: `spec-3-11a-infer-field-roles-and-record-path-candidates.md`
+  summary: Report stale overrides and a stale `record_path` after the sample is replaced; treat an empty array of objects as a candidate; match pagination words as whole words only; give an invalid sample its own 422 message.
+  evidence: Edge-case review: dead overrides can revive on a reused path, and `$.pages[*]` or `$.next_steps[*]` are flagged pagination-like.
+
+- source_spec: `spec-3-12a-auto-map-slots-with-confidence.md`
+  summary: Story 3.12b: the slot checklist UI (groups, state matrix, confidence meters, filters, status bar, Continue gating, error summary, announcements).
+  evidence: Split from Story 3.12 on the scope rule; it consumes the 3.12a endpoints.
+
+- source_spec: `spec-3-12a-auto-map-slots-with-confidence.md`
+  summary: Wire `carryOver` to the Block Type change in Step 1; validate `slot_map` fit on the generic Draft save; widen baseline-name and text-slot matching; decide how the epic's numeric-`revenue` example should grade.
+  evidence: Review findings; none is exercised by the current acceptance criteria.
+
+- source_spec: `spec-3-13a-override-pick-field-and-fix-mismatches.md`
+  summary: Story 3.13b: the field picker popover, role-change note with Undo, Type mismatch pill, "Treat as" menu, `msg:api-changed` and `msg:api-match-found`, read-only view.
+  evidence: Split from Story 3.13 on the scope rule; it consumes the 3.13a endpoints.
+
+- source_spec: `spec-3-13a-override-pick-field-and-fix-mismatches.md`
+  summary: Tighten api-changed matching (short keys, fields already used), keep a role override while another slot still maps the field on undo, bound and prune `field_types`, and teach publish readiness the `api_changed` blocker.
+  evidence: Review findings; no UI or publish consumer exists yet.
+
+- source_spec: `spec-3-13c-harden-the-mapping-api-for-the-map-data-ui.md`
+  summary: Cross-story LATER items: one `SlotFit` shared by AutoMapper, the executor and 3.18 validation; machine `reason_code` beside every prose reason; a `ResolvesDraftActor` trait and shared error responses; throttles on the read routes; consistent empty-map encoding; shared `SamplePath::isStored` helpers.
+  evidence: Cross-story review of 3.9-3.13a; none blocks the UI.
+
+- source_spec: `spec-3-13c-harden-the-mapping-api-for-the-map-data-ui.md`
+  summary: Derive the ETag before computing the checklist and include the contract version; read draft, sample and contract in one snapshot; re-check limits on a shape-cache hit; prune orphaned overrides after a record-path change.
+  evidence: Review findings; none blocks the UI.
+
+- source_spec: `spec-3-11b-map-data-step-roles-ui.md`
+  summary: UI stages 2-4: slot checklist and Continue gating (3.12b), field picker, undo, Treat as, api-changed messages (3.13b), preview hotspots and source legend (3.14), APG field tree (3.11b remainder).
+  evidence: Stage 1 builds the step shell and Roles section only.
+
+- source_spec: `spec-3-11b-map-data-step-roles-ui.md`
+  summary: Stage-1 UI polish: a test that interleaves autosave with a mapping write, role-chip type-ahead, section headings and focus when the step opens, match table columns to fields by path not display, move glyphs and plurals into the catalogue, and check the layout and chip colours in a real browser.
+  evidence: Review findings; tests run in happy-dom, so sticky layout and colours were never seen in a browser.
+
+- source_spec: `spec-3-12b-slot-checklist-ui.md`
+  summary: Merge the two confidence meters, review row list semantics and unfilled-segment contrast, explain the Sample data badge, and add the preview client so the live preview refreshes after mapping writes.
+  evidence: Review findings; the preview client is built with the hotspots stage because nothing in the front end calls the preview endpoint yet.
+
+- source_spec: `spec-3-13b-field-picker-ui.md`
+  summary: Add a "None" entry to clear an optional slot, support static text once the backend stores it, reopen the picker after a refused pick, list all fitting fields, and fetch fitting fields lazily instead of one GET per mismatch row.
+  evidence: Review findings; the backend cannot store static text yet.
+
+- source_spec: `spec-3-14-preview-hotspots-and-source-legend.md`
+  summary: Check the Map Data step in a real browser (sticky preview, hotspot geometry, tooltip clipping, role-chip colours, focus behaviour), then add the `cannotChange` and `returnTo` tests and keep the payload icon.
+  evidence: All Map Data UI tests run in happy-dom, which has no layout; stages 1 to 4 were never seen in a browser.
+
+- source_spec: `spec-3-11c-datasets-suggestion-catalog.md`
+  summary: Story 3.11d: the searchable, collapsible APG field tree (breadcrumb, "Use" per leaf, "Selected:" footer, type chips) and showing the Datasets suggestion in the record-path list.
+  evidence: Remaining Story 3.11 UI; consumes the 3.11c `dataset_suggestion` and the 3.13b picker endpoints.
+
+- source_spec: `spec-3-11c-datasets-suggestion-catalog.md`
+  summary: Bound dataset growth per Endpoint and purge retired `dataset_fields` rows and datasets of removed Endpoints; flag a suggestion whose record path is not among the new sample's candidates; compute rollback steps in tests from a named migration.
+  evidence: `app` cannot DELETE, so rows accumulate; review findings.
+
+- source_spec: `spec-3-11d-field-tree-ui.md`
+  summary: Take the footer formatter from the slot's Block Type instead of the kpi-card, show the Datasets suggestion's typed fields and age, show the hint when the record-path list is not rendered, add `*` expand-siblings, and verify the listing path form against live server data.
+  evidence: Review findings; only kpi-card exists today.
+
+- source_spec: `spec-3-15a-presentation-rules-backend.md`
+  summary: Story 3.15b: the presentation editor UI (expandable slot rows with Format, Emphasis, Direction, band rows, label settings, live example, inline errors blocking Continue, locale preview).
+  evidence: Split from Story 3.15 on the scope rule. kpi-card v1 is amended in place because no block can be published before 3.19; after 3.19 this needs a v2.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-15a-presentation-rules-backend.md`
+  summary: Per-slot presentation settings (format/emphasis/label on non-headline slots, label.text) are validated and stored but not consumed by PresentationOptions or the Shaper.
+  evidence: PresentationOptions::options reads only headline_value and comparison; 3.15b should wire or narrow the accepted keys.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-15a-presentation-rules-backend.md`
+  summary: schema.json `presentation` vocabulary is not read by Presentation.php or the Shaper; the sets are duplicated and can drift.
+  evidence: grep finds no reader of the block; add a drift test or load from the schema.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-15a-presentation-rules-backend.md`
+  summary: Band icon is validated as a kebab-case slug, not against the block icon set; the renderer falls back silently. Also emptySlots lists slots the Renderer does not show, headlines with exponent over 1000 match no band, and clearing presentation needs a usable sample (unverified severity: low-medium).
+  evidence: matches existing config.icon validation; settle with the UI work in 3.15b.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-15b-presentation-rules-editor-ui.md`
+  summary: Presentation editor lacks band reorder (move up/down), a `between` value > to check, an unreachable-band warning, and a parity guard against the server's limits.
+  evidence: Review noted first-match-wins order cannot be changed except by remove and re-add; the server also does not reject value > to.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-15b-presentation-rules-editor-ui.md`
+  summary: Missing tests for the in-flight write race (rulesSeq) and example text for date, relative-time and duration formats.
+  evidence: The tests await settle() after each change, so only one write is ever in flight (needs a deferred-promise harness).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-16-preview-on-every-device-and-state.md`
+  summary: Step 4 detects a cleared optional slot by comparing the server reason to the English text "Cleared by an admin."; it should use a machine-readable state or code.
+  evidence: blockPreviewWarnings.ts compares slot.reason to a literal; a wording change silently drops the warning (needs a backend field).
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-16-preview-on-every-device-and-state.md`
+  summary: Mapping and preview are fetched separately in Step 4 with no draft_revision comparison; the sample-grid and full-size cards are both announced by screen readers; read-only and published (not just offline) paths have no test (unverified severity: low-medium).
+  evidence: reviewers traced these from code only.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-17-fetch-and-preview-as-a-user.md`
+  summary: Preview as a member needs a shared sample, which an endpoint with user-bound parameters cannot produce, so mapping such an endpoint still requires a pasted sample; the as-user result cannot satisfy the sample precondition.
+  evidence: PreviewDraft throws NO_SAMPLE before the as-user branch; the shared fetch refuses user-context endpoints. A product decision on mapping from a value-free as-user shape is needed.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-17-fetch-and-preview-as-a-user.md`
+  summary: Reading or previewing a member's fetched result is not audited per read (only the start is), the encrypted blob is not forgotten when the Admin switches back to the shared sample, and the picker lists members not groups first.
+  evidence: ManageUserSamples view/open log nothing; clear() only resets browser state; the spec said "pick a user or a member of a group".
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-18-validate-the-block-against-the-real-api.md`
+  summary: validation_reports history is never pruned (every run inserts a row, only discarded Drafts purge), and the client-supplied date range/period is not bounded or recomputed server-side.
+  evidence: only the latest report is read; range/period are forwarded to the live API as sent (30/min throttle limits volume).
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-18-validate-the-block-against-the-real-api.md`
+  summary: Rollback tests hard-code `migrate:rollback --step N` counts that break with each new migration; the unbound-publishable branch of RunEndpointValidation is exercised only through a fake EndpointValidations.
+  evidence: seven tests were bumped by one; RunSampleFetch always refuses unbound user-context Endpoints so the branch is unreachable end to end.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-19-publish-block-v1-0.md`
+  summary: The Published blocks list has no paging, search or throttle, and block_versions has an UPDATE guard but no DELETE guard (the maintenance purge predicate is not asserted to exclude prepared/published rows); the migration down() fails once such rows exist.
+  evidence: ManagePublishedBlocks::list has no LIMIT; only the UPDATE trigger was added. Epic 6 reworks the list.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-19-publish-block-v1-0.md`
+  summary: precompute_timeout is unset (the maintenance job activates nothing until DASHFLOW_PRECOMPUTE_TIMEOUT is set); the publish route is excluded from the request-wide WorkspaceTransaction so Tx1 and Tx2 commit separately; validation reports and ui state of a published Draft are not purged.
+  evidence: needs a product decision on the default and an architectural review of the transaction exclusion.

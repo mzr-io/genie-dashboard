@@ -23,7 +23,11 @@ vi.mock('@inertiajs/vue3', () => ({
 }));
 
 import SessionExpiryDialog from '../../resources/js/components/SessionExpiryDialog.vue';
-import { useSessionExpiry } from '../../resources/js/composables/useSessionExpiry';
+import {
+    FLUSH_LEAD_SECONDS,
+    useSessionExpiry,
+} from '../../resources/js/composables/useSessionExpiry';
+import { registerFlush } from '../../resources/js/lib/flushRegistry';
 import {
     DRAFT_STORAGE_KEY,
     clearFormDrafts,
@@ -819,5 +823,68 @@ describe('form-draft hook', () => {
             one: 'o2',
             size: 'm',
         });
+    });
+});
+
+describe('flush registry (Story 3.5)', () => {
+    it('runs every registered flush when the warning opens and again just before expiry, once each', async () => {
+        const flush = vi.fn(async () => true);
+        const stop = registerFlush(flush);
+
+        remaining = 125;
+        harness();
+        await advance(10);
+        expect(flush).not.toHaveBeenCalled();
+
+        // The warning opens at two minutes.
+        await advance(6000);
+        expect(flush).toHaveBeenCalledTimes(1);
+
+        // Not again while the warning stays open.
+        await advance(60_000);
+        expect(flush).toHaveBeenCalledTimes(1);
+
+        // The second run comes a few seconds before the end, not at the warning.
+        await advance((125 - 6 - 60 - FLUSH_LEAD_SECONDS) * 1000 + 2000);
+        expect(flush).toHaveBeenCalledTimes(2);
+        stop();
+    });
+
+    it('flushes again for the next warning after the session was extended', async () => {
+        const flush = vi.fn(async () => true);
+        const stop = registerFlush(flush);
+
+        remaining = 110;
+        const api = harness();
+
+        await advance(1500);
+        expect(flush).toHaveBeenCalledTimes(1);
+
+        await api.extend();
+        await advance(10);
+        expect(api.open.value).toBe(false);
+
+        remaining = 100;
+        await advance(61_000);
+        expect(flush).toHaveBeenCalledTimes(2);
+        stop();
+    });
+
+    it('survives a flush that throws and one that was unregistered', async () => {
+        const bad = vi.fn(async () => {
+            throw new Error('boom');
+        });
+        const gone = vi.fn(async () => true);
+        const stopBad = registerFlush(bad);
+
+        registerFlush(gone)();
+        remaining = 110;
+        const api = harness();
+
+        await advance(1500);
+        expect(bad).toHaveBeenCalledTimes(1);
+        expect(gone).not.toHaveBeenCalled();
+        expect(api.open.value).toBe(true);
+        stopBad();
     });
 });

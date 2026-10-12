@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-06-2026 11:46
-last_updated: 10-09-2026 13:30
+last_updated: 2026-10-09
 project: rmg-dashboard-platform
 project_key: NOKEY
 tracking_system: file-system
@@ -86,26 +86,26 @@ development_status:
   2-20-fetch-comparison-data-together-as-a-sync-group: review
   epic-2-retrospective: optional
 
-  epic-3: backlog
-  3-1-register-the-block-type-contract-v1-and-the-kpi-card-package: backlog
-  3-2-see-the-kpi-card-in-every-state-rendered-safely-and-exactly: backlog
-  3-3-start-save-and-discard-a-draft-block: backlog
-  3-4-configure-block-step-1-with-a-live-preview: backlog
-  3-5-autosave-continuously-and-recover-from-expiry-offline-and-sa: backlog
-  3-6-soft-lock-a-draft-and-take-over-editing: backlog
-  3-7-choose-the-data-source-endpoint-parameters-and-refresh-step: backlog
-  3-8-paste-sample-json-and-inspect-it-with-exact-numbers: backlog
-  3-9-fetch-a-sample-from-the-api: backlog
-  3-10-render-the-sample-through-the-query-plan-engine-live-preview: backlog
-  3-11-review-field-roles-and-choose-the-record-path: backlog
-  3-12-auto-map-the-kpi-slots-and-review-the-checklist: backlog
-  3-13-override-a-slot-pick-a-field-and-fix-mismatches: backlog
-  3-14-change-a-slot-from-the-preview-with-hotspots: backlog
-  3-15-set-presentation-rules-for-the-kpi-card-slots: backlog
-  3-16-preview-on-every-device-and-state-step-4: backlog
-  3-17-fetch-and-preview-as-a-user: backlog
-  3-18-validate-the-block-against-the-real-api-step-5: backlog
-  3-19-publish-block-v1-0: backlog
+  epic-3: in-progress
+  3-1-register-the-block-type-contract-v1-and-the-kpi-card-package: review
+  3-2-see-the-kpi-card-in-every-state-rendered-safely-and-exactly: review
+  3-3-start-save-and-discard-a-draft-block: review
+  3-4-configure-block-step-1-with-a-live-preview: review
+  3-5-autosave-continuously-and-recover-from-expiry-offline-and-sa: review
+  3-6-soft-lock-a-draft-and-take-over-editing: review
+  3-7-choose-the-data-source-endpoint-parameters-and-refresh-step: review
+  3-8-paste-sample-json-and-inspect-it-with-exact-numbers: review
+  3-9-fetch-a-sample-from-the-api: review
+  3-10-render-the-sample-through-the-query-plan-engine-live-preview: review
+  3-11-review-field-roles-and-choose-the-record-path: review
+  3-12-auto-map-the-kpi-slots-and-review-the-checklist: review
+  3-13-override-a-slot-pick-a-field-and-fix-mismatches: review
+  3-14-change-a-slot-from-the-preview-with-hotspots: review
+  3-15-set-presentation-rules-for-the-kpi-card-slots: review
+  3-16-preview-on-every-device-and-state-step-4: review
+  3-17-fetch-and-preview-as-a-user: review
+  3-18-validate-the-block-against-the-real-api-step-5: review
+  3-19-publish-block-v1-0: review
   epic-3-retrospective: optional
 
   epic-4: backlog

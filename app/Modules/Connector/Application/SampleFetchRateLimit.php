@@ -20,6 +20,25 @@ final class SampleFetchRateLimit
         private readonly RateLimiter $limiter,
     ) {}
 
+    /** Gives back the slot {@see self::hit()} took, when the request it counted was never queued. */
+    public function release(DataSourceActor $actor): void
+    {
+        $window = $this->limits->window();
+
+        if ($window === null) {
+            return;
+        }
+
+        foreach ([
+            [TenantKey::cache($actor->workspaceId, 'sample-fetch:membership:'.strtolower($actor->membershipId)), $this->limits->membershipLimit()],
+            [TenantKey::cache($actor->workspaceId, 'sample-fetch:workspace'), $this->limits->workspaceLimit()],
+        ] as [$key, $max]) {
+            if ($max !== null && $this->limiter->attempts($key) > 0) {
+                $this->limiter->decrement($key, $window);
+            }
+        }
+    }
+
     /**
      * Counts this request against every limit first (an atomic increment), then compares: concurrent requests cannot all pass a
      * check that none of them has counted yet. A request over a limit is refused with the wait. Same rule as Test connection.

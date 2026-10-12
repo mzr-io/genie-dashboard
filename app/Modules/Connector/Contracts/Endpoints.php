@@ -20,6 +20,15 @@ interface Endpoints
     public function find(string $workspaceId, string $dataSourceId, string $id): Endpoint;
 
     /**
+     * The Endpoint's current revision, read with a shared row lock for the rest of the caller's transaction: a save of the Endpoint waits for it. Used
+     * by Publish (Story 3.19) so the revision it pins is the one that is live when the version is frozen.
+     *
+     * @throws DataSourceNotFound
+     * @throws EndpointNotFound
+     */
+    public function lockRevision(string $workspaceId, string $dataSourceId, string $id): int;
+
+    /**
      * @throws DataSourceNotFound
      */
     public function create(DataSourceActor $actor, string $dataSourceId, EndpointInput $input): Endpoint;

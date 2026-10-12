@@ -144,6 +144,7 @@ defineExpose({ focus: () => title.value?.focus() });
             >
                 {{ technicalDetailsLabels.copy }}
             </Button>
+            <slot name="actions" />
             <span role="status" class="type-caption text-text-secondary">
                 <template v-if="copied === 'copied'">{{
                     technicalDetailsLabels.copied

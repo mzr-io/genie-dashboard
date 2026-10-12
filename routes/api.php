@@ -1,9 +1,20 @@
 <?php
 
 use App\Http\Controllers\Admin\AttributeKeyController;
+use App\Http\Controllers\Admin\BlockSourceController;
+use App\Http\Controllers\Admin\BlockTypeController;
 use App\Http\Controllers\Admin\DataSourceController;
 use App\Http\Controllers\Admin\DataSourceHealthController;
 use App\Http\Controllers\Admin\DataSourceLockController;
+use App\Http\Controllers\Admin\DraftController;
+use App\Http\Controllers\Admin\DraftLockController;
+use App\Http\Controllers\Admin\DraftPreviewController;
+use App\Http\Controllers\Admin\DraftPublishController;
+use App\Http\Controllers\Admin\DraftRolesController;
+use App\Http\Controllers\Admin\DraftSampleController;
+use App\Http\Controllers\Admin\DraftSlotsController;
+use App\Http\Controllers\Admin\DraftUserSampleController;
+use App\Http\Controllers\Admin\DraftValidationController;
 use App\Http\Controllers\Admin\EndpointController;
 use App\Http\Controllers\Admin\GroupController;
 use App\Http\Controllers\Admin\HostAllowlistController;
@@ -13,6 +24,7 @@ use App\Http\Controllers\Admin\MemberController;
 use App\Http\Controllers\OperationController;
 use App\Http\Middleware\RejectsSecretValues;
 use App\Modules\Identity\Http\SessionController;
+use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Support\Facades\Route;
 
 // Served under /api/v1 (see bootstrap/app.php). Same-origin SPA cookie auth via Sanctum.
@@ -71,6 +83,79 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // Data Source health (Story 2.18): the Admin overview's "Your data sources".
     Route::get('data-source-health', DataSourceHealthController::class)->middleware('admin')->name('api.admin.data-source-health');
 
+    // Draft blocks (Story 3.3): `blocks.edit`, mapped in ShellNavigation::ADMIN_API_ROUTES. Create and save refuse secret-valued fields (Blocks' error code).
+    // The destroy route discards: the Draft is hidden at once and the `maintenance` worker deletes its rows later.
+    Route::get('blocks/drafts', [DraftController::class, 'index'])->middleware('admin')->name('api.admin.blocks.drafts.index');
+    // Story 3.4: one Draft with its config (the wizard) and the Workspace's categories (seeds "General" on the first read).
+    Route::get('blocks/drafts/{draft}', [DraftController::class, 'show'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.show');
+    Route::get('blocks/categories', [DraftController::class, 'categories'])->middleware('admin')->name('api.admin.blocks.categories.index');
+    Route::post('blocks/drafts', [DraftController::class, 'store'])->middleware(['admin', RejectsSecretValues::class.':blocks', 'throttle:30,1,block-drafts'])->name('api.admin.blocks.drafts.store');
+    Route::put('blocks/drafts/{draft}', [DraftController::class, 'update'])->whereUuid('draft')->middleware(['admin', RejectsSecretValues::class.':blocks', 'throttle:120,1,block-drafts-save'])->name('api.admin.blocks.drafts.update');
+    Route::delete('blocks/drafts/{draft}', [DraftController::class, 'destroy'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-drafts'])->name('api.admin.blocks.drafts.destroy');
+
+    // The pasted sample of a Draft (Story 3.8): `blocks.edit`. These routes are not behind `RejectsSecretValues`: the sample's text is data a
+    // source returned, judged as JSON by the application, never as a field of the request; the text is never logged, audited or echoed.
+    Route::post('blocks/drafts/{draft}/sample/check', [DraftSampleController::class, 'check'])->whereUuid('draft')->middleware(['admin', 'throttle:60,1,block-sample-check'])->name('api.admin.blocks.drafts.sample.check');
+    Route::get('blocks/drafts/{draft}/sample', [DraftSampleController::class, 'show'])->whereUuid('draft')->middleware(['admin', 'throttle:60,1,block-sample-read'])->name('api.admin.blocks.drafts.sample.show');
+    Route::put('blocks/drafts/{draft}/sample', [DraftSampleController::class, 'store'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-sample-store'])->name('api.admin.blocks.drafts.sample.store');
+
+    // Fetch from API (Story 3.9): starts a `draft_sample_fetch` Operation (`blocks.edit`, the Draft's edit-lock claim); the result is read back with the sample route.
+    Route::post('blocks/drafts/{draft}/sample/fetch', [DraftSampleController::class, 'fetch'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-sample-fetch'])->name('api.admin.blocks.drafts.sample.fetch');
+
+    // Live preview (Story 3.10): runs the Draft's Query Plan over its sample (`blocks.edit` only, no edit-lock claim: a read-only viewer may ask; it writes nothing).
+    // The limit is the per-membership `DASHFLOW_PREVIEW_*` setting, counted by the application (429 with `retry_after`), not a fixed throttle.
+    Route::post('blocks/drafts/{draft}/preview', [DraftPreviewController::class, 'store'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.preview');
+
+    // Fetch as user from the wizard (Story 3.17): `blocks.edit` through the gate, `data.preview_as_user` in the request (403 and a security event). No edit-lock claim: the
+    // Draft is not written. The response is the Operation's own blob; the browser reads only its value-free structure. Throttled like Fetch as user.
+    Route::get('blocks/preview-as-user/members', [DraftUserSampleController::class, 'members'])->middleware('admin')->name('api.admin.blocks.preview-as-user.members');
+    Route::post('blocks/drafts/{draft}/sample/fetch-as-user', [DraftUserSampleController::class, 'fetch'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,data-source-endpoint-test'])->name('api.admin.blocks.drafts.sample.fetch-as-user');
+    Route::get('blocks/drafts/{draft}/sample/as-user/{operation}', [DraftUserSampleController::class, 'shape'])->whereUuid(['draft', 'operation'])->middleware(['admin', 'throttle:120,1,data-source-endpoint-sample'])->name('api.admin.blocks.drafts.sample.as-user');
+
+    // Validate against the real API (Story 3.18, wizard step 5): starts a `publish_validation` Operation (`blocks.edit`, the Draft's edit-lock claim; 429 with `retry_after`
+    // over the per-membership limit shared with Fetch from API) and reads the latest ValidationReport back. The Draft's own Data Source and Endpoint are validated.
+    Route::post('blocks/drafts/{draft}/validation', [DraftValidationController::class, 'store'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-validation'])->name('api.admin.blocks.drafts.validation.store');
+    Route::get('blocks/drafts/{draft}/validation', [DraftValidationController::class, 'show'])->whereUuid('draft')->middleware(['admin', 'throttle:60,1,block-validation-read'])->name('api.admin.blocks.drafts.validation.show');
+
+    // Publish v1.0 (Story 3.19): `blocks.publish` (a holder of `blocks.edit` alone is a 403 and an audited denial from the gate), the Draft's edit-lock claim. Tx1 freezes the
+    // Draft as `prepared`, Tx2 activates it. A stale or missing report is a 409 `blocks.publish_not_ready`; a published Draft a 409 `blocks.draft_published`. The Published list is `blocks.edit`.
+    // The two transactions are the publish code's own (`WorkspaceTransaction::run`), so the request's wrapping transaction (which would make them one, and roll the freeze back with a
+    // failed activation) is left out of this route.
+    Route::post('blocks/drafts/{draft}/publish', [DraftPublishController::class, 'store'])->whereUuid('draft')->withoutMiddleware([WorkspaceTransaction::class])->middleware(['admin', 'throttle:30,1,block-publish'])->name('api.admin.blocks.drafts.publish');
+    Route::get('blocks/published', [DraftPublishController::class, 'index'])->middleware('admin')->name('api.admin.blocks.published.index');
+
+    // Field roles and record-path candidates of the sample (Story 3.11a): read-only, `blocks.edit`, no edit-lock claim.
+    Route::get('blocks/drafts/{draft}/sample/roles', [DraftRolesController::class, 'show'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.sample.roles');
+
+    // Auto-map and the slot checklist (Story 3.12a): the read is `blocks.edit` only (a read-only viewer may ask); re-run, confirm and override carry the Draft's edit-lock claim.
+    Route::get('blocks/drafts/{draft}/mapping', [DraftSlotsController::class, 'show'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.mapping.show');
+    Route::post('blocks/drafts/{draft}/mapping/auto-map', [DraftSlotsController::class, 'rerun'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.rerun');
+    Route::post('blocks/drafts/{draft}/mapping/slots/{slot}/confirm', [DraftSlotsController::class, 'confirm'])->whereUuid('draft')->where('slot', '[a-z][a-z0-9_]{0,63}')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.confirm');
+    Route::put('blocks/drafts/{draft}/mapping/slots/{slot}', [DraftSlotsController::class, 'override'])->whereUuid('draft')->where('slot', '[a-z][a-z0-9_]{0,63}')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.override');
+
+    // Override a slot, pick a field and fix mismatches (Story 3.13a): the picker is read-only (`blocks.edit`); the undo of an override carries the edit-lock claim.
+    Route::get('blocks/drafts/{draft}/mapping/slots/{slot}/fields', [DraftSlotsController::class, 'fields'])->whereUuid('draft')->where('slot', '[a-z][a-z0-9_]{0,63}')->middleware('admin')->name('api.admin.blocks.drafts.mapping.fields');
+    Route::post('blocks/drafts/{draft}/mapping/undo', [DraftSlotsController::class, 'undo'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.undo');
+    // Mapping-scoped writes of the server-owned mapping keys (Story 3.13c): `record_path`, `field_roles` and `field_types` are no longer saved through the Draft's generic save.
+    Route::put('blocks/drafts/{draft}/mapping/record-path', [DraftSlotsController::class, 'recordPath'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.record_path');
+    Route::put('blocks/drafts/{draft}/mapping/field-roles', [DraftSlotsController::class, 'fieldRole'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.field_roles');
+    Route::put('blocks/drafts/{draft}/mapping/field-types', [DraftSlotsController::class, 'fieldType'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.field_types');
+    // The presentation rules (Story 3.15a): format, emphasis, direction, labels, threshold bands and the empty display; server-owned like the mapping keys.
+    Route::put('blocks/drafts/{draft}/mapping/presentation', [DraftSlotsController::class, 'presentation'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.presentation');
+
+    // What wizard Step 2 reads (Story 3.7): `blocks.edit`, so an Admin who may build blocks but not manage Data Sources can still choose one.
+    Route::get('blocks/data-sources', [BlockSourceController::class, 'dataSources'])->middleware('admin')->name('api.admin.blocks.data-sources.index');
+    Route::get('blocks/data-sources/{dataSource}/endpoints', [BlockSourceController::class, 'endpoints'])->whereUuid('dataSource')->middleware('admin')->name('api.admin.blocks.data-sources.endpoints.index');
+    Route::get('blocks/refresh-intervals', [BlockSourceController::class, 'refreshIntervals'])->middleware('admin')->name('api.admin.blocks.refresh-intervals');
+
+    // The Draft block soft lock (Story 3.6): the same protocol as the Data source one, behind `blocks.edit`; none takes a secret value.
+    Route::post('blocks/drafts/{draft}/lock', [DraftLockController::class, 'acquire'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.acquire');
+    Route::put('blocks/drafts/{draft}/lock', [DraftLockController::class, 'heartbeat'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.heartbeat');
+    Route::post('blocks/drafts/{draft}/lock/release', [DraftLockController::class, 'release'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.release');
+    Route::post('blocks/drafts/{draft}/lock/takeover', [DraftLockController::class, 'takeover'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.takeover');
+    Route::get('blocks/drafts/{draft}/lock/takeover', [DraftLockController::class, 'takeoverStatus'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.takeover.status');
+    Route::post('blocks/drafts/{draft}/lock/flush', [DraftLockController::class, 'flush'])->whereUuid('draft')->middleware(['admin', 'throttle:draft-lock'])->name('api.admin.blocks.drafts.lock.flush');
+
     // Data Sources (Story 2.3): `data_sources.manage`, mapped in ShellNavigation::ADMIN_API_ROUTES. `check-url` is the Base URL blur check.
     Route::get('data-sources', [DataSourceController::class, 'index'])->middleware('admin')->name('api.admin.data-sources.index');
     Route::post('data-sources', [DataSourceController::class, 'store'])->middleware(['admin', 'throttle:30,1'])->name('api.admin.data-sources.store');
@@ -102,6 +187,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::get('data-sources/{dataSource}/lock/takeover', [DataSourceLockController::class, 'takeoverStatus'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.takeover.status');
     Route::post('data-sources/{dataSource}/lock/flush', [DataSourceLockController::class, 'flush'])->middleware(['admin', 'throttle:data-source-lock'])->name('api.admin.data-sources.lock.flush');
 });
+
+// Block Types (Story 3.1): the registry's list, for Admins with `blocks.edit`.
+Route::middleware(['auth:sanctum', 'admin'])->get('block-types', BlockTypeController::class)->name('api.admin.block-types.index');
 
 // Operations (Story 2.5): the summary of an asynchronous Operation, for the membership that started it and nobody else.
 Route::middleware(['auth:sanctum', 'throttle:120,1,operation-status'])->get('operations/{operation}', [OperationController::class, 'show'])->name('api.operations.show');

@@ -28,12 +28,12 @@ final class ReadSample implements Samples
         private readonly SampleBlobStore $blobs,
     ) {}
 
-    public function read(string $workspaceId, string $membershipId, string $dataSourceId, string $endpointId, string $operationId, bool $mayPreviewAsUser = false): ?Sample
+    public function read(string $workspaceId, string $membershipId, string $dataSourceId, string $endpointId, string $operationId, bool $mayPreviewAsUser = false, bool $fetchAsUserOnly = false): ?Sample
     {
         $operation = $this->operations->status($workspaceId, $operationId, $membershipId);
 
         if ($operation === null
-            || ! in_array($operation->kind, [SampleFetches::KIND, FetchesAsUser::KIND], true)
+            || ! in_array($operation->kind, $fetchAsUserOnly ? [FetchesAsUser::KIND] : [SampleFetches::KIND, FetchesAsUser::KIND], true)
             || $operation->subjectType !== 'endpoint'
             || $operation->subjectId !== strtolower($endpointId)
             || $operation->subjectRevision === null
