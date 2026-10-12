@@ -93,9 +93,10 @@ final class ViewBlockResult implements ViewedResults
         $watching = $this->sources->watching($workspaceId, $config->versionId, $context);
 
         if ($watching === null) {
-            return new ViewedResult(ResultState::Pending, null, null, $hotUntil, $refusal);
+            return new ViewedResult(ResultState::Pending, null, null, $hotUntil, $refusal, $this->sources->subscribedTarget($workspaceId, $config->versionId, $context));
         }
 
+        $targetId = $watching->target->id;
         $key = ResultKey::of($workspaceId, $config->versionId, $watching->target->fetchKey, $context);
         $stored = $this->store->get($workspaceId, $key);
 
@@ -105,7 +106,7 @@ final class ViewBlockResult implements ViewedResults
                 ComputeResultsJob::dispatch($workspaceId, $watching->target->id)->afterCommit();
             }
 
-            return new ViewedResult(ResultState::Pending, null, null, $hotUntil, $refusal);
+            return new ViewedResult(ResultState::Pending, null, null, $hotUntil, $refusal, $targetId);
         }
 
         $interval = $watching->subscription->refreshIntervalSeconds;
@@ -114,7 +115,7 @@ final class ViewBlockResult implements ViewedResults
         $hot = $watching->subscription->hotUntil !== null && new DateTimeImmutable($watching->subscription->hotUntil) > $now;
         $staleAt = $lastSuccess === null || $interval < 1 ? null : Freshness::staleAt($lastSuccess, $interval)->format('Y-m-d\TH:i:s\Z');
 
-        return new ViewedResult($stored->state, $stored->withFreshness($stale, $stale && $hot), $staleAt, $hotUntil ?? $watching->subscription->hotUntil, $refusal);
+        return new ViewedResult($stored->state, $stored->withFreshness($stale, $stale && $hot), $staleAt, $hotUntil ?? $watching->subscription->hotUntil, $refusal, $targetId);
     }
 
     /** @throws InvalidPeriodInput a selection or dashboard range the Block does not offer */

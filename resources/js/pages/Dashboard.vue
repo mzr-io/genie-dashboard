@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head } from '@inertiajs/vue3';
+import { Head, usePage } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import DashboardGrid from '@/components/DashboardGrid.vue';
@@ -7,7 +7,13 @@ import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { announce, announceAggregated } from '@/lib/announce';
-import { DashboardError, fetchDashboard, fetchResults } from '@/lib/dashboards';
+import {
+    DashboardError,
+    fetchDashboard,
+    fetchResults,
+    refreshItem,
+    setMinimized,
+} from '@/lib/dashboards';
 import type { Dashboard, ItemResult } from '@/lib/dashboards';
 import { formatDateTime } from '@/lib/format';
 import { SIGN_IN_URL } from '@/lib/session';
@@ -20,8 +26,29 @@ import { dashboardLabels as labels, shellPages } from '@/locales/labels';
 const props = defineProps<{ dashboard_id: string | null; revision: number }>();
 
 const { t } = useI18n();
+const page = usePage();
+
+// Admins also see technical details in About this block; the footer's `{user.*}` tokens come from the signed-in profile.
+const admin = computed(
+    () =>
+        (page.props.shell as { role?: string | null } | null)?.role === 'admin',
+);
+const profile = computed(() => {
+    const user = (
+        page.props.auth as
+            | { user?: { name?: string; email?: string } }
+            | undefined
+    )?.user;
+
+    return { name: user?.name ?? null, email: user?.email ?? null };
+});
 
 const dashboard = ref<Dashboard | null>(null);
+// The member's own minimize choices and the revision every layout command carries (AD-14), the Blocks being refreshed and those in their window.
+const minimized = ref<Record<string, boolean>>({});
+const revision = ref(props.revision);
+const refreshing = ref<string[]>([]);
+const limited = ref<string[]>([]);
 // The latest result of each item, kept in memory by item id and replaced only when its `result_etag` changes; a pending answer never replaces data.
 const results = ref<Record<string, ItemResult>>({});
 let resultsTimer: ReturnType<typeof setTimeout> | null = null;
@@ -62,6 +89,10 @@ async function load(): Promise<void> {
         }
 
         dashboard.value = result;
+        revision.value = result.revision;
+        minimized.value = Object.fromEntries(
+            result.items.map((item) => [item.item_id, item.minimized]),
+        );
         state.value = 'ready';
     } catch (error) {
         if (mine.signal.aborted) {
@@ -194,6 +225,88 @@ async function loadResults(): Promise<void> {
     }
 }
 
+// Minimize or Expand: `SetMinimized` with the revision held. A stale revision reloads the layout and tries once more; a second refusal leaves the
+// Block as it was. The change is shown at once and undone when it fails.
+async function onMinimize(itemId: string, value: boolean): Promise<void> {
+    if (props.dashboard_id === null) {
+        return;
+    }
+
+    const before = minimized.value[itemId];
+    minimized.value = { ...minimized.value, [itemId]: value };
+
+    try {
+        let outcome = await setMinimized(
+            props.dashboard_id,
+            itemId,
+            value,
+            revision.value,
+        );
+
+        if (!outcome.ok && outcome.conflict) {
+            await load();
+
+            outcome = await setMinimized(
+                props.dashboard_id,
+                itemId,
+                value,
+                revision.value,
+            );
+        }
+
+        if (outcome.ok) {
+            revision.value = outcome.revision;
+            minimized.value = { ...minimized.value, [itemId]: value };
+
+            return;
+        }
+    } catch (error) {
+        if (
+            error instanceof DashboardError &&
+            (error.status === 401 || error.status === 419)
+        ) {
+            window.location.assign(SIGN_IN_URL);
+
+            return;
+        }
+    }
+
+    minimized.value = { ...minimized.value, [itemId]: before ?? !value };
+}
+
+// Refresh this Block only: it asks for its data to be fetched at the next tick and re-reads the results. Inside the window the control is
+// `aria-disabled` and described by `msg:refresh-limited` until it ends.
+async function onRefresh(itemId: string): Promise<void> {
+    if (props.dashboard_id === null || refreshing.value.includes(itemId)) {
+        return;
+    }
+
+    refreshing.value = [...refreshing.value, itemId];
+
+    try {
+        const outcome = await refreshItem(props.dashboard_id, itemId);
+
+        if (outcome.status === 'limited') {
+            limited.value = [...limited.value, itemId];
+            setTimeout(() => {
+                limited.value = limited.value.filter((id) => id !== itemId);
+            }, outcome.retryAfter * 1000);
+        } else if (outcome.status === 'requested') {
+            polls = 0;
+            await loadResults();
+        }
+    } catch (error) {
+        if (
+            error instanceof DashboardError &&
+            (error.status === 401 || error.status === 419)
+        ) {
+            window.location.assign(SIGN_IN_URL);
+        }
+    } finally {
+        refreshing.value = refreshing.value.filter((id) => id !== itemId);
+    }
+}
+
 onMounted(async () => {
     await load();
 
@@ -287,7 +400,14 @@ onBeforeUnmount(() => {
             v-else
             :items="items"
             :results="results"
+            :minimized="minimized"
+            :refreshing="refreshing"
+            :limited="limited"
+            :admin="admin"
+            :profile="profile"
             @retry="loadResults"
+            @refresh="onRefresh"
+            @minimize="onMinimize"
         />
     </div>
 </template>

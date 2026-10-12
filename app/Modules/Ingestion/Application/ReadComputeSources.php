@@ -48,6 +48,21 @@ final class ReadComputeSources implements ComputeSources
         return $row === null ? null : new WatchedTarget($this->targetOf($row), $this->subscriptionOf($row));
     }
 
+    public function subscribedTarget(string $workspaceId, string $blockVersionId, string $computeContext): ?string
+    {
+        if (! Str::isUuid($blockVersionId)) {
+            return null;
+        }
+
+        $row = DB::selectOne(
+            'select t.id from sync_subscriptions s join sync_targets t on t.workspace_id = s.workspace_id and t.id = s.sync_target_id '
+            ."where s.workspace_id = ? and s.block_version_id = ? and s.role = 'primary' and s.compute_context = ? and t.retired_at is null order by s.last_access_at desc limit 1",
+            [$workspaceId, strtolower($blockVersionId), $computeContext],
+        );
+
+        return $row === null ? null : strtolower((string) $row->id);
+    }
+
     public function subscriptions(string $workspaceId, string $syncTargetId): array
     {
         if (! Str::isUuid($syncTargetId)) {

@@ -9,10 +9,16 @@ use App\Modules\Dashboards\Contracts\DashboardNotFound;
 use App\Modules\Dashboards\Contracts\DashboardRef;
 use App\Modules\Dashboards\Contracts\Dashboards;
 use App\Modules\Dashboards\Contracts\DashboardView;
+use App\Modules\Dashboards\Contracts\ItemNotFound;
+use App\Modules\Dashboards\Contracts\RevisionConflict;
+use App\Modules\Results\Contracts\ManualRefresh;
+use App\Modules\Results\Contracts\RefreshOutcome;
 use App\Modules\Results\Contracts\ResultState;
 use App\Modules\Results\Contracts\ViewedResults;
 use App\Modules\Results\Contracts\ViewRequest;
+use App\Platform\Audit\AuditAction;
 use App\Platform\Layout\Grid;
+use App\Platform\Outbox\Outbox;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -27,6 +33,8 @@ final class ManageDashboards implements Dashboards
         private readonly BlockCards $cards,
         private readonly SubjectAccess $access,
         private readonly ViewedResults $results,
+        private readonly ManualRefresh $refreshes,
+        private readonly Outbox $outbox,
     ) {}
 
     public function overview(string $workspaceId, string $membershipId): DashboardRef
@@ -92,6 +100,7 @@ final class ManageDashboards implements Dashboards
                     'type' => $card->type,
                     'icon' => $card->icon,
                     'chrome' => $card->chrome,
+                    'about' => $card->about,
                 ] : null,
             ];
         }
@@ -166,5 +175,78 @@ final class ManageDashboards implements Dashboards
             'state' => $state->value, 'stale' => false, 'refreshing' => false, 'data_as_of' => null, 'last_success_at' => null, 'stale_at' => null,
             'result_etag' => null, 'slot_states' => (object) [], 'render_payload' => null,
         ];
+    }
+
+    public function setMinimized(string $workspaceId, string $membershipId, string $dashboardId, string $itemId, bool $minimized, int $expectedRevision): int
+    {
+        $dashboard = Str::isUuid($dashboardId)
+            ? DB::selectOne(
+                'select id, revision from dashboards where workspace_id = ? and membership_id = ? and id = ? for update',
+                [$workspaceId, $membershipId, strtolower($dashboardId)],
+            )
+            : null;
+
+        if ($dashboard === null) {
+            throw new DashboardNotFound;
+        }
+
+        $revision = (int) $dashboard->revision;
+
+        if ($revision !== $expectedRevision) {
+            throw new RevisionConflict($revision);
+        }
+
+        $item = Str::isUuid($itemId)
+            ? DB::selectOne('select id, minimized from dashboard_items where workspace_id = ? and dashboard_id = ? and id = ? for update', [$workspaceId, strtolower((string) $dashboard->id), strtolower($itemId)])
+            : null;
+
+        if ($item === null) {
+            throw new ItemNotFound;
+        }
+
+        if ((bool) $item->minimized === $minimized) {
+            return $revision;
+        }
+
+        DB::update('update dashboard_items set minimized = ?, updated_at = now() where workspace_id = ? and id = ?', [$minimized, $workspaceId, strtolower((string) $item->id)]);
+        DB::update('update dashboards set revision = revision + 1, updated_at = now() where workspace_id = ? and id = ?', [$workspaceId, strtolower((string) $dashboard->id)]);
+
+        $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.strtolower((string) $dashboard->id), [
+            'dashboard_id' => strtolower((string) $dashboard->id),
+            'item_id' => strtolower((string) $item->id),
+            'command' => 'set_minimized',
+            'revision' => $revision + 1,
+        ]);
+
+        return $revision + 1;
+    }
+
+    public function refresh(string $workspaceId, string $membershipId, string $dashboardId, string $itemId): RefreshOutcome
+    {
+        $dashboard = Str::isUuid($dashboardId)
+            ? DB::selectOne('select id from dashboards where workspace_id = ? and membership_id = ? and id = ?', [$workspaceId, $membershipId, strtolower($dashboardId)])
+            : null;
+
+        if ($dashboard === null) {
+            throw new DashboardNotFound;
+        }
+
+        $item = Str::isUuid($itemId)
+            ? DB::selectOne('select block_id from dashboard_items where workspace_id = ? and dashboard_id = ? and id = ?', [$workspaceId, strtolower((string) $dashboard->id), strtolower($itemId)])
+            : null;
+
+        if ($item === null) {
+            throw new ItemNotFound;
+        }
+
+        $blockId = strtolower((string) $item->block_id);
+        $card = $this->cards->forBlocks($workspaceId, [$blockId])[$blockId] ?? null;
+
+        // A Block the member can no longer see, or that is no longer published, has nothing to refresh.
+        if ($card === null || ! ($this->access->canView($workspaceId, $membershipId, RegisterAccessSubject::BLOCK, [$blockId])[$blockId] ?? false)) {
+            return RefreshOutcome::unavailable();
+        }
+
+        return $this->refreshes->refresh(new ViewRequest($workspaceId, $membershipId, $card->versionId));
     }
 }

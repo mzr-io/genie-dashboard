@@ -30,6 +30,8 @@ export enum ErrorCode {
     ConnectorSecretValuesRefused = 'connector.secret_values_refused',
     ConnectorSecretsNotConfigured = 'connector.secrets_not_configured',
     ConnectorSsrfBlocked = 'connector.ssrf_blocked',
+    DashboardsRefreshLimited = 'dashboards.refresh_limited',
+    DashboardsRevisionConflict = 'dashboards.revision_conflict',
     IdentityInvitationDeliveryFailed = 'identity.invitation_delivery_failed',
     IdentityInvitationInvalid = 'identity.invitation_invalid',
     MappingBlockTypeUnavailable = 'mapping.block_type_unavailable',

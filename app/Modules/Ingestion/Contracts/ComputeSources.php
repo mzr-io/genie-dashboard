@@ -16,6 +16,12 @@ interface ComputeSources
      */
     public function watching(string $workspaceId, string $blockVersionId, string $computeContext): ?WatchedTarget;
 
+    /**
+     * The id of the live target a Block version's primary subscription in this context points at, whether or not it holds a payload yet (a
+     * manual refresh needs it before the first fetch); null when there is none.
+     */
+    public function subscribedTarget(string $workspaceId, string $blockVersionId, string $computeContext): ?string;
+
     /** @return list<ComputeSubscription> the target's primary subscriptions, one per Block version and compute context */
     public function subscriptions(string $workspaceId, string $syncTargetId): array;
 

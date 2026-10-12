@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\User;
+use App\Modules\Connector\Infrastructure\CurlClient;
+use App\Modules\Connector\Infrastructure\CurlResult;
 use App\Modules\Results\Application\ComputeResults;
 use App\Modules\Results\Application\ComputeResultsJob;
 use App\Modules\Results\Contracts\ResultStore;
@@ -9,6 +11,7 @@ use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
+use Illuminate\Testing\TestResponse;
 use Tests\Database\Support\Cluster;
 use Tests\Database\Support\RespClient;
 
@@ -104,7 +107,7 @@ function dr5World(bool $userBound = false, bool $visible = true): array
     return ['ws' => $ws, 'membership' => $membership, 'dashboard' => $dashboard, 'block' => $block, 'version' => $version, 'item' => $item];
 }
 
-function dr5Results(array $w, string $query = ''): Illuminate\Testing\TestResponse
+function dr5Results(array $w, string $query = ''): TestResponse
 {
     return test()->getJson("/api/v1/dashboards/{$w['dashboard']}/results".$query, DR5_HEADERS);
 }
@@ -147,18 +150,18 @@ it('returns a hit immediately with its data_as_of, last_success_at, stale_at and
     dr5Results($w)->assertOk();
     dr5Hold($w, '{"data":{"revenue":1234.50}}', checkedAgo: 20);
 
-    $curl = new class implements App\Modules\Connector\Infrastructure\CurlClient
+    $curl = new class implements CurlClient
     {
         public int $calls = 0;
 
-        public function execute(array $options, ?int $maxBytes = null): App\Modules\Connector\Infrastructure\CurlResult
+        public function execute(array $options, ?int $maxBytes = null): CurlResult
         {
             $this->calls++;
 
             throw new RuntimeException('the source is down');
         }
     };
-    app()->instance(App\Modules\Connector\Infrastructure\CurlClient::class, $curl);
+    app()->instance(CurlClient::class, $curl);
 
     $item = dr5Results($w)->assertOk()->json('data.items.0');
 
@@ -224,4 +227,113 @@ it('refuses a range the Blocks do not offer, a date and a non-string with 422, a
 
     $other = Cluster::seedDashboard($w['ws']);
     $this->getJson("/api/v1/dashboards/{$other}/results", DR5_HEADERS)->assertNotFound();
+});
+
+// ---- Story 4.6: Block chrome ----------------------------------------------------------------------------------------------------------------------
+
+function dr6Url(array $w, string $tail): string
+{
+    return "/api/v1/dashboards/{$w['dashboard']}/items/{$w['item']}/{$tail}";
+}
+
+function dr6Revision(array $w): int
+{
+    return (int) Cluster::rows(Cluster::superuser(), 'select revision from dashboards where id = ?', [$w['dashboard']])[0]['revision'];
+}
+
+it('minimizes an item with expected_revision, bumps the revision once, emits the change and shows it in the layout', function () {
+    $w = dr5World();
+
+    $response = $this->putJson(dr6Url($w, 'minimized'), ['minimized' => true, 'expected_revision' => 0], DR5_HEADERS)->assertOk();
+
+    expect($response->json('data'))->toBe(['item_id' => $w['item'], 'minimized' => true, 'revision' => 1])
+        ->and(dr6Revision($w))->toBe(1);
+
+    $events = Cluster::rows(Cluster::superuser(), "select data from outbox_events where type = 'dashboards.dashboard.changed'");
+    $data = json_decode($events[0]['data'], true);
+
+    expect($events)->toHaveCount(1)
+        ->and($data)->toMatchArray(['dashboard_id' => $w['dashboard'], 'item_id' => $w['item'], 'command' => 'set_minimized', 'revision' => 1])
+        ->and($this->getJson("/api/v1/dashboards/{$w['dashboard']}", DR5_HEADERS)->json('data.items.0.minimized'))->toBeTrue()
+        ->and($this->getJson("/api/v1/dashboards/{$w['dashboard']}", DR5_HEADERS)->json('data.revision'))->toBe(1);
+
+    // The same value again changes nothing: no new revision and no event.
+    $this->putJson(dr6Url($w, 'minimized'), ['minimized' => true, 'expected_revision' => 1], DR5_HEADERS)->assertOk()->assertJsonPath('data.revision', 1);
+
+    expect(Cluster::rows(Cluster::superuser(), "select count(*) as n from outbox_events where type = 'dashboards.dashboard.changed'")[0]['n'])->toBe(1);
+
+    $this->putJson(dr6Url($w, 'minimized'), ['minimized' => false, 'expected_revision' => 1], DR5_HEADERS)->assertOk()->assertJsonPath('data.revision', 2);
+});
+
+it('refuses a stale expected_revision with 409 and the current revision, and changes nothing', function () {
+    $w = dr5World();
+    $this->putJson(dr6Url($w, 'minimized'), ['minimized' => true, 'expected_revision' => 0], DR5_HEADERS)->assertOk();
+
+    $response = $this->putJson(dr6Url($w, 'minimized'), ['minimized' => false, 'expected_revision' => 0], DR5_HEADERS)->assertStatus(409);
+
+    expect($response->json('error.code'))->toBe('dashboards.revision_conflict')
+        ->and($response->json('error.revision'))->toBe(1)
+        ->and(dr6Revision($w))->toBe(1)
+        ->and(Cluster::rows(Cluster::superuser(), 'select minimized from dashboard_items where id = ?', [$w['item']])[0]['minimized'])->toBeTrue();
+});
+
+it('validates the minimize body and answers 404 for another dashboard\'s item', function () {
+    $w = dr5World();
+    $other = Cluster::seedDashboardItem($w['ws']);
+
+    $this->putJson(dr6Url($w, 'minimized'), ['minimized' => 'maybe', 'expected_revision' => -1], DR5_HEADERS)->assertStatus(422);
+    $this->putJson("/api/v1/dashboards/{$w['dashboard']}/items/{$other}/minimized", ['minimized' => true, 'expected_revision' => 0], DR5_HEADERS)->assertNotFound();
+    expect(dr6Revision($w))->toBe(0);
+});
+
+it('brings only this Block\'s target forward on refresh, once per window, and calls no source', function () {
+    config(['dashflow.tunables.sync.manual_refresh_window.value' => '30']);
+    $w = dr5World();
+    dr5Results($w)->assertOk();
+    $target = Cluster::rows(Cluster::superuser(), 'select id from sync_targets')[0]['id'];
+    Cluster::superuser()->prepare("UPDATE sync_targets SET next_due_at = now() + interval '1 hour' WHERE id = ?")->execute([$target]);
+
+    $curl = new class implements CurlClient
+    {
+        public int $calls = 0;
+
+        public function execute(array $options, ?int $maxBytes = null): CurlResult
+        {
+            $this->calls++;
+
+            throw new RuntimeException('no source call is allowed');
+        }
+    };
+    app()->instance(CurlClient::class, $curl);
+
+    $this->postJson(dr6Url($w, 'refresh'), [], DR5_HEADERS)->assertStatus(202)->assertJsonPath('data.status', 'requested');
+
+    $due = Cluster::rows(Cluster::superuser(), 'select next_due_at from sync_targets where id = ?', [$target])[0]['next_due_at'];
+
+    expect(strtotime($due))->toBeLessThanOrEqual(time() + 1);
+
+    // Inside the window: 429 with Retry-After, and the target is not moved again.
+    Cluster::superuser()->prepare("UPDATE sync_targets SET next_due_at = now() + interval '1 hour' WHERE id = ?")->execute([$target]);
+    $limited = $this->postJson(dr6Url($w, 'refresh'), [], DR5_HEADERS)->assertStatus(429);
+
+    expect($limited->json('error.code'))->toBe('dashboards.refresh_limited')
+        ->and((int) $limited->headers->get('Retry-After'))->toBeGreaterThan(0)->toBeLessThanOrEqual(30)
+        ->and(strtotime(Cluster::rows(Cluster::superuser(), 'select next_due_at from sync_targets where id = ?', [$target])[0]['next_due_at']))->toBeGreaterThan(time() + 3000)
+        ->and($curl->calls)->toBe(0);
+});
+
+it('does not limit a manual refresh while the window is unset', function () {
+    config(['dashflow.tunables.sync.manual_refresh_window.value' => null]);
+    $w = dr5World();
+
+    $this->postJson(dr6Url($w, 'refresh'), [], DR5_HEADERS)->assertStatus(202);
+    $this->postJson(dr6Url($w, 'refresh'), [], DR5_HEADERS)->assertStatus(202);
+});
+
+it('carries the About facts in the layout: description, Data Source name, interval, version and period behaviour, and nothing technical', function () {
+    $w = dr5World();
+
+    $about = $this->getJson("/api/v1/dashboards/{$w['dashboard']}", DR5_HEADERS)->json('data.items.0.block.about');
+
+    expect($about)->toBe(['description' => null, 'source_name' => 'Sales API', 'refresh_interval' => 60, 'version' => '1.0', 'period' => 'follow_dashboard']);
 });

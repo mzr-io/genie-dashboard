@@ -141,6 +141,7 @@ use App\Modules\Identity\Contracts\SessionRevocation;
 use App\Modules\Identity\Contracts\SignInMemberships;
 use App\Modules\Identity\Infrastructure\DatabaseSessionRevocation;
 use App\Modules\Identity\Infrastructure\IdentityAuditSerializer;
+use App\Modules\Ingestion\Application\BringTargetForward;
 use App\Modules\Ingestion\Application\ReadComputeSources;
 use App\Modules\Ingestion\Application\ReadEndpointUserBindings;
 use App\Modules\Ingestion\Application\ReadSourceHealths;
@@ -155,6 +156,7 @@ use App\Modules\Ingestion\Contracts\ContextDigest;
 use App\Modules\Ingestion\Contracts\EndpointUserBindings;
 use App\Modules\Ingestion\Contracts\FetchKeyResolver;
 use App\Modules\Ingestion\Contracts\RefreshIntervals;
+use App\Modules\Ingestion\Contracts\RefreshNow;
 use App\Modules\Ingestion\Contracts\SourceHealths;
 use App\Modules\Ingestion\Contracts\Subscribe;
 use App\Modules\Ingestion\Contracts\SyncGenerations;
@@ -177,7 +179,9 @@ use App\Modules\RawStore\Contracts\RawTierSweep;
 use App\Modules\RawStore\Infrastructure\PostgresRawStore;
 use App\Modules\RawStore\Infrastructure\PostgresRawTierSweep;
 use App\Modules\Results\Application\ComputeOnPayloadChanged;
+use App\Modules\Results\Application\RefreshBlock;
 use App\Modules\Results\Application\ViewBlockResult;
+use App\Modules\Results\Contracts\ManualRefresh;
 use App\Modules\Results\Contracts\ResultStore;
 use App\Modules\Results\Contracts\ViewedResults;
 use App\Modules\Results\Infrastructure\LaravelValkeyCommands;
@@ -313,6 +317,8 @@ class AppServiceProvider extends ServiceProvider
         // Blocks and Results (Story 4.2): a version's frozen configuration for compute, and the Valkey `cache` store of Block Results.
         $this->app->bind(PublishedConfigs::class, ReadPublishedConfigs::class);
         $this->app->bind(ViewedResults::class, ViewBlockResult::class);
+        $this->app->bind(ManualRefresh::class, RefreshBlock::class);
+        $this->app->bind(RefreshNow::class, BringTargetForward::class);
         // Dashboards (Story 4.4): the member's own layout, the Blocks' User-safe cards and the per-read access check.
         $this->app->bind(Dashboards::class, ManageDashboards::class);
         $this->app->bind(BlockCards::class, ReadBlockCards::class);

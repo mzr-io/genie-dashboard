@@ -511,3 +511,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-2-compute-block-results-when-payload-changes.md`
   summary: Add the Results consumer's own audit/metrics (`dashflow.results.compute_duration`, `slot_failed` rate) once the dashboards read path exists.
   evidence: The story emits the outbox event only; no metric names for Results are registered, so slowness or sweep volume is not observable yet.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-6-use-block-chrome-refresh-minimize-about-this-block-footer.md`
+  summary: Add the "Expanded view" (paginated table of all rows) and "View as table" menu items, and the Mandatory-item lock on Remove, when their Blocks and configuration exist.
+  evidence: Story 4.6 lists them, but table and chart Blocks and the footer action's configuration are Epic 5 and Templates are Epic 7; the card renders a footer link today only if `block.footer` is present.

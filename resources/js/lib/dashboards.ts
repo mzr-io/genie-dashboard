@@ -24,6 +24,20 @@ export type DashboardBlock = {
         allow_refresh: boolean;
         show_footer_action: boolean;
     };
+    // What "About this block" says; all of it User-safe.
+    about: {
+        description: string | null;
+        source_name: string | null;
+        refresh_interval: number | 'live' | null;
+        version: string;
+        period:
+            | 'follow_dashboard'
+            | 'own_selector'
+            | 'not_date_filtered'
+            | null;
+    };
+    // The footer action, when the Block has one configured (its target is set in a later epic): a label and a URL template or in-app route.
+    footer?: { label: string; target: string } | null;
 };
 
 export type DashboardItem = {
@@ -221,4 +235,129 @@ export function kpiPayloadOf(result: ItemResult): KpiCardPayload | null {
     return result.stale && payload.state === 'normal'
         ? { ...payload, state: 'stale', staleSince: result.last_success_at }
         : payload;
+}
+
+// ---- Chrome commands (Story 4.6) ------------------------------------------------------------------------------------------------------------------
+
+async function send(
+    method: 'PUT' | 'POST',
+    url: string,
+    body: Record<string, unknown> | null,
+): Promise<{
+    status: number;
+    json: Record<string, unknown> | null;
+    headers: Headers;
+}> {
+    let response: Response;
+
+    try {
+        response = await fetch(url, {
+            method,
+            credentials: 'same-origin',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-XSRF-TOKEN': xsrfToken(),
+            },
+            body: body === null ? undefined : JSON.stringify(body),
+        });
+    } catch {
+        throw new DashboardError(0);
+    }
+
+    let json: Record<string, unknown> | null = null;
+
+    try {
+        json = (await response.json()) as Record<string, unknown>;
+    } catch {
+        json = null;
+    }
+
+    return { status: response.status, json, headers: response.headers };
+}
+
+export type MinimizeOutcome =
+    | { ok: true; revision: number }
+    // A stale `expected_revision`: the layout has moved on; `revision` is the current one.
+    | { ok: false; conflict: true; revision: number | null }
+    | { ok: false; conflict: false };
+
+// `SetMinimized` with `expected_revision` (AD-14).
+export async function setMinimized(
+    dashboardId: string,
+    itemId: string,
+    minimized: boolean,
+    expectedRevision: number,
+): Promise<MinimizeOutcome> {
+    const { status, json } = await send(
+        'PUT',
+        `${dashboardUrl(dashboardId)}/items/${encodeURIComponent(itemId)}/minimized`,
+        { minimized, expected_revision: expectedRevision },
+    );
+
+    if (status === 200) {
+        const revision = (json?.data as { revision?: number } | undefined)
+            ?.revision;
+
+        return typeof revision === 'number'
+            ? { ok: true, revision }
+            : { ok: false, conflict: false };
+    }
+
+    if (status === 409) {
+        const revision = (json?.error as { revision?: number } | undefined)
+            ?.revision;
+
+        return {
+            ok: false,
+            conflict: true,
+            revision: typeof revision === 'number' ? revision : null,
+        };
+    }
+
+    if (status === 401 || status === 419) {
+        throw new DashboardError(status);
+    }
+
+    return { ok: false, conflict: false };
+}
+
+export type RefreshResult =
+    | { status: 'requested' }
+    // Inside the manual-refresh window: the control waits `retryAfter` seconds.
+    | { status: 'limited'; retryAfter: number }
+    | { status: 'failed' };
+
+export async function refreshItem(
+    dashboardId: string,
+    itemId: string,
+): Promise<RefreshResult> {
+    const { status, json, headers } = await send(
+        'POST',
+        `${dashboardUrl(dashboardId)}/items/${encodeURIComponent(itemId)}/refresh`,
+        null,
+    );
+
+    if (status === 202) {
+        return { status: 'requested' };
+    }
+
+    if (status === 429) {
+        const body = (json?.error as { retry_after?: number } | undefined)
+            ?.retry_after;
+        const header = Number(headers.get('Retry-After'));
+
+        return {
+            status: 'limited',
+            retryAfter:
+                typeof body === 'number' ? body : header > 0 ? header : 30,
+        };
+    }
+
+    if (status === 401 || status === 419) {
+        throw new DashboardError(status);
+    }
+
+    return { status: 'failed' };
 }

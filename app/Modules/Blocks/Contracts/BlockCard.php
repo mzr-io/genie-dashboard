@@ -22,5 +22,12 @@ final readonly class BlockCard
         public array $chrome,
         public array $sizes,
         public int|string|null $refreshInterval,
+        /**
+         * What "About this block" says (Story 4.6), all of it User-safe: the description, the Data Source's name, the refresh interval, the version
+         * label and how the period is followed.
+         *
+         * @var array{description: string|null, source_name: string|null, refresh_interval: int|string|null, version: string, period: string|null}
+         */
+        public array $about,
     ) {}
 }

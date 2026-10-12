@@ -15,5 +15,7 @@ final readonly class ViewedResult
         public ?string $staleAt,
         public ?string $hotUntil,
         public ?string $hotRefusal,
+        /** The sync target the Block watches in this context, when it has one (Story 4.6 refreshes it). */
+        public ?string $syncTargetId = null,
     ) {}
 }

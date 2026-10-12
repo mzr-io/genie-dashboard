@@ -37,6 +37,13 @@ function item(overrides: Partial<DashboardItem> = {}): DashboardItem {
             subtitle: 'Net, this month',
             type: 'kpi-card',
             icon: null,
+            about: {
+                description: 'Net revenue so far',
+                source_name: 'Sales API',
+                refresh_interval: 300,
+                version: '1.0',
+                period: 'follow_dashboard',
+            },
             chrome: {
                 show_header: true,
                 show_subtitle: true,
@@ -98,6 +105,7 @@ beforeEach(() => {
             return {
                 ok: next.ok,
                 status: next.status,
+                headers: new Headers(),
                 json: async () => next.json,
             };
         }),
@@ -508,5 +516,272 @@ describe('Block results', () => {
 
         expect(urls).toEqual([]);
         expect($('[data-slot=dashboard-empty]')).not.toBeNull();
+    });
+});
+
+describe('Block chrome', () => {
+    const post = (url: string) =>
+        (
+            fetch as unknown as { mock: { calls: unknown[][] } }
+        ).mock.calls.filter((call) => call[0] === url);
+
+    it('names Refresh, Minimize and the menu by the Block and omits what the Admin turned off', async () => {
+        replies = [
+            ok(
+                dashboard([
+                    item(),
+                    item({
+                        item_id: 'i-2',
+                        block_id: 'b-2',
+                        block: {
+                            ...item().block!,
+                            name: 'Open tickets',
+                            chrome: {
+                                ...item().block!.chrome,
+                                allow_refresh: false,
+                                allow_minimize: false,
+                            },
+                        },
+                    }),
+                ]),
+            ),
+            resultsOf([]),
+        ];
+
+        await mountPage();
+
+        const [first, second] = $$('[data-slot=block-card]');
+
+        expect(
+            first
+                .querySelector('[data-slot=block-refresh]')
+                ?.getAttribute('aria-label'),
+        ).toBe('Refresh Revenue overview');
+        expect(
+            first
+                .querySelector('[data-slot=block-minimize]')
+                ?.getAttribute('aria-label'),
+        ).toBe('Minimize Revenue overview');
+        expect(
+            first
+                .querySelector('[data-slot=block-menu]')
+                ?.getAttribute('aria-label'),
+        ).toBe('More actions for Revenue overview');
+        expect(second.querySelector('[data-slot=block-refresh]')).toBeNull();
+        expect(second.querySelector('[data-slot=block-minimize]')).toBeNull();
+        expect(second.querySelector('[data-slot=block-menu]')).not.toBeNull();
+    });
+
+    it('refreshes only this Block, shows a spinner in the icon and leaves focus on the control', async () => {
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([result()]),
+            { ok: true, status: 202, json: { data: { status: 'requested' } } },
+            resultsOf([result({ result_etag: 'e-2' })]),
+        ];
+
+        await mountPage();
+
+        const button = $('[data-slot=block-refresh]') as HTMLButtonElement;
+        button.focus();
+        button.click();
+        await flushPromises();
+        await vi.dynamicImportSettled();
+        await flushPromises();
+
+        expect(post('/api/v1/dashboards/d-1/items/i-1/refresh')).toHaveLength(
+            1,
+        );
+        expect(document.activeElement).toBe(button);
+        expect(
+            $('[data-slot=block-card]')?.querySelector('.animate-spin'),
+        ).toBeNull();
+    });
+
+    it('answers 429 with aria-disabled, described by msg:refresh-limited, and makes no second request', async () => {
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([result()]),
+            {
+                ok: false,
+                status: 429,
+                json: {
+                    error: {
+                        code: 'dashboards.refresh_limited',
+                        retry_after: 20,
+                    },
+                },
+            },
+        ];
+
+        await mountPage();
+
+        const button = $('[data-slot=block-refresh]') as HTMLButtonElement;
+        button.click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(button.getAttribute('aria-disabled')).toBe('true');
+
+        const reason = document.getElementById(
+            button.getAttribute('aria-describedby') ?? 'none',
+        );
+
+        expect(reason?.textContent).toContain(en['refresh-limited']);
+
+        button.click();
+        await flushPromises();
+
+        expect(post('/api/v1/dashboards/d-1/items/i-1/refresh')).toHaveLength(
+            1,
+        );
+    });
+
+    it('minimizes with expected_revision, shows the header only and offers Expand', async () => {
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([result()]),
+            {
+                ok: true,
+                status: 200,
+                json: {
+                    data: { item_id: 'i-1', minimized: true, revision: 1 },
+                },
+            },
+        ];
+
+        await mountPage();
+        ($('[data-slot=block-minimize]') as HTMLButtonElement).click();
+        await flushPromises();
+
+        const call = post('/api/v1/dashboards/d-1/items/i-1/minimized')[0];
+
+        expect(JSON.parse((call[1] as { body: string }).body)).toEqual({
+            minimized: true,
+            expected_revision: 0,
+        });
+        expect($('[data-slot=block-body]')).toBeNull();
+        expect(
+            $('[data-slot=block-minimize]')?.getAttribute('aria-label'),
+        ).toBe('Expand Revenue overview');
+    });
+
+    it('reloads the layout and retries once on a 409, and restores the Block when it is refused again', async () => {
+        const conflict: Reply = {
+            ok: false,
+            status: 409,
+            json: {
+                error: { code: 'dashboards.revision_conflict', revision: 4 },
+            },
+        };
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([result()]),
+            conflict,
+            ok({ ...dashboard([item()]), revision: 4 }),
+            conflict,
+        ];
+
+        await mountPage();
+        ($('[data-slot=block-minimize]') as HTMLButtonElement).click();
+        await flushPromises();
+        await flushPromises();
+
+        const minimizes = post('/api/v1/dashboards/d-1/items/i-1/minimized');
+
+        expect(minimizes).toHaveLength(2);
+        expect(
+            JSON.parse((minimizes[1][1] as { body: string }).body)
+                .expected_revision,
+        ).toBe(4);
+        // Refused twice: the Block is as it was.
+        expect($('[data-slot=block-body]')).not.toBeNull();
+    });
+
+    it('opens About this block with the facts, the data-as-of with its zone, and no technical details for a User', async () => {
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([
+                result({
+                    slot_states: {
+                        kpi_label: { state: 'unavailable', reason: 'missing' },
+                    },
+                }),
+            ]),
+        ];
+
+        await mountPage();
+        ($('[data-slot=block-menu]') as HTMLButtonElement).dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+        );
+        await flushPromises();
+
+        const items = Array.from(
+            document.querySelectorAll<HTMLElement>('[role=menuitem]'),
+        );
+        const about = items.find((i) =>
+            i.textContent?.includes('About this block'),
+        );
+
+        expect(about).toBeDefined();
+        about!.click();
+        await flushPromises();
+
+        await flushPromises();
+        const dialog = $('[role=dialog]')!;
+        const text = dialog.textContent ?? '';
+
+        expect(text).toContain('Net revenue so far');
+        expect(text).toContain('Sales API');
+        expect(text).toContain('Every 5 minutes');
+        expect(text).toContain('Follows the dashboard date range');
+        expect(text).toContain('1.0');
+        expect(text).toMatch(/Data as of.{0,10}\d{1,2}.{0,15}2026/);
+        expect(dialog.querySelector('[data-slot=about-technical]')).toBeNull();
+    });
+
+    it('shows the footer link centred with an external arrow, in a new tab, and never a javascript: link', async () => {
+        const withFooter = (target: string) =>
+            item({
+                block: {
+                    ...item().block!,
+                    chrome: {
+                        ...item().block!.chrome,
+                        show_footer_action: true,
+                    },
+                    footer: { label: 'View all approvals', target },
+                },
+            });
+
+        replies = [
+            ok(
+                dashboard([
+                    withFooter(
+                        'https://erp.example.com/approvals?u={user.name}',
+                    ),
+                ]),
+            ),
+            resultsOf([result()]),
+        ];
+
+        await mountPage();
+
+        const link = $('[data-slot=block-footer] a') as HTMLAnchorElement;
+
+        expect(link.getAttribute('target')).toBe('_blank');
+        expect(link.getAttribute('rel')).toBe('noopener noreferrer');
+        expect(link.getAttribute('href')).toBe(
+            'https://erp.example.com/approvals?u=',
+        );
+
+        wrapper?.unmount();
+        document.body.innerHTML = '';
+        replies = [
+            ok(dashboard([withFooter('javascript:alert(1)')])),
+            resultsOf([result()]),
+        ];
+        await mountPage();
+
+        expect($('[data-slot=block-footer]')).toBeNull();
     });
 });

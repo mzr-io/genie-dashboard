@@ -2,6 +2,7 @@
 import BlockCard from '@/components/BlockCard.vue';
 import { HEIGHT_UNITS } from '@/lib/dashboards';
 import type { DashboardItem, ItemResult } from '@/lib/dashboards';
+import type { FooterProfile } from '@/lib/footerAction';
 import { dashboardLabels as labels } from '@/locales/labels';
 
 // The 12-column dashboard grid (Story 4.4; UX-DR-149): 14 px gaps and 60 px rows. From the `md` breakpoint each Block sits where the server clamped it
@@ -11,9 +12,20 @@ defineProps<{
     items: DashboardItem[];
     // The latest result of each item by item id; an item with none shows its skeleton.
     results?: Record<string, ItemResult>;
+    // The member's own minimize choices by item id, once made.
+    minimized?: Record<string, boolean>;
+    // Item ids with a manual refresh in flight, and those inside the manual-refresh window.
+    refreshing?: string[];
+    limited?: string[];
+    admin?: boolean;
+    profile?: FooterProfile;
 }>();
 
-defineEmits<{ retry: [itemId: string] }>();
+defineEmits<{
+    retry: [itemId: string];
+    refresh: [itemId: string];
+    minimize: [itemId: string, minimized: boolean];
+}>();
 
 const placement = (item: DashboardItem): Record<string, string> => ({
     '--col': String(item.geometry.col + 1),
@@ -40,7 +52,14 @@ const placement = (item: DashboardItem): Record<string, string> => ({
             <BlockCard
                 :item="item"
                 :result="results?.[item.item_id] ?? null"
+                :minimized="minimized?.[item.item_id] ?? null"
+                :refreshing="refreshing?.includes(item.item_id) ?? false"
+                :refresh-limited="limited?.includes(item.item_id) ?? false"
+                :admin="admin"
+                :profile="profile"
                 @retry="$emit('retry', $event)"
+                @refresh="$emit('refresh', $event)"
+                @minimize="(id, value) => $emit('minimize', id, value)"
             />
         </div>
     </div>

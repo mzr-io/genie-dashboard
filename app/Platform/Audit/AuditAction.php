@@ -72,6 +72,9 @@ enum AuditAction: string
     // Ingestion: a sync target kept a new good response (Story 2.14). An outbox event only: IDs and sequence numbers, never the body. A sync group's run (Story 2.20) adds `sync_group_id`, `generation_id`, `generation_complete` and `failed_side`.
     case IngestionPayloadChanged = 'ingestion.payload.changed';
 
+    // Dashboards: a layout command changed a member's dashboard (Story 4.6 on). An outbox event only: the dashboard and item IDs, the command and the new revision.
+    case DashboardsDashboardChanged = 'dashboards.dashboard.changed';
+
     // Results: a mapped slot of a published Block version could not be computed from the current payload (Story 4.2). An outbox event only: IDs, the slot key, the reason code and the consecutive-failure count. Epic 8 turns it into incidents and notifications.
     case ResultsMappingSlotFailed = 'results.mapping.slot_failed';
 

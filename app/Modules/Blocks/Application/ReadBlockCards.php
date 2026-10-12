@@ -4,12 +4,16 @@ namespace App\Modules\Blocks\Application;
 
 use App\Modules\Blocks\Contracts\BlockCard;
 use App\Modules\Blocks\Contracts\BlockCards;
+use App\Modules\Connector\Contracts\DataSourceNotFound;
+use App\Modules\Connector\Contracts\DataSources;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 /** {@see BlockCards}: the Block's current published version, as the frozen `chrome`, `sizes` and `refresh_interval` of its config. */
 final class ReadBlockCards implements BlockCards
 {
+    public function __construct(private readonly DataSources $sources) {}
+
     public function forBlocks(string $workspaceId, array $blockIds): array
     {
         $ids = array_values(array_unique(array_filter(array_map(strtolower(...), $blockIds), Str::isUuid(...))));
@@ -19,7 +23,7 @@ final class ReadBlockCards implements BlockCards
         }
 
         $rows = DB::select(
-            'select b.id as block_id, b.type_key, v.id as version_id, v.name, v.config::text as config from blocks b '
+            'select b.id as block_id, b.type_key, v.id as version_id, v.version, v.name, v.config::text as config from blocks b '
             ."join block_versions v on v.workspace_id = b.workspace_id and v.id = b.current_version_id and v.state = 'published' "
             .'where b.workspace_id = ? and b.id in ('.implode(', ', array_fill(0, count($ids), '?')).')',
             [$workspaceId, ...$ids],
@@ -58,9 +62,32 @@ final class ReadBlockCards implements BlockCards
                     'height' => is_string($sizes['height'] ?? null) ? $sizes['height'] : 'small',
                 ],
                 is_int($interval) || $interval === 'live' ? $interval : null,
+                [
+                    'description' => is_string($chrome['description'] ?? null) && $chrome['description'] !== '' ? $chrome['description'] : null,
+                    'source_name' => $this->dataSourceName($workspaceId, $config),
+                    'refresh_interval' => is_int($interval) || $interval === 'live' ? $interval : null,
+                    'version' => (string) $row->version,
+                    'period' => is_string($config['period'] ?? null) ? $config['period'] : null,
+                ],
             );
         }
 
         return $cards;
+    }
+
+    /** @param  array<string, mixed>  $config */
+    private function dataSourceName(string $workspaceId, array $config): ?string
+    {
+        $id = $config['source']['data_source_id'] ?? null;
+
+        if (! is_string($id) || ! Str::isUuid($id)) {
+            return null;
+        }
+
+        try {
+            return $this->sources->find($workspaceId, strtolower($id))->name;
+        } catch (DataSourceNotFound) {
+            return null;
+        }
     }
 }

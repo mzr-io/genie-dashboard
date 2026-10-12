@@ -2,6 +2,7 @@
 
 namespace App\Modules\Dashboards\Contracts;
 
+use App\Modules\Results\Contracts\RefreshOutcome;
 use App\Platform\Period\InvalidPeriodInput;
 
 /**
@@ -15,6 +16,26 @@ interface Dashboards
 
     /** @throws DashboardNotFound */
     public function find(string $workspaceId, string $membershipId, string $dashboardId): DashboardView;
+
+    /**
+     * `SetMinimized` (AD-14): holds the dashboard `FOR UPDATE`, checks `expected_revision`, sets the item's flag, bumps the revision and emits
+     * `dashboards.dashboard.changed`. Setting the value it already has still bumps nothing and succeeds (idempotent).
+     *
+     * @return int the dashboard's revision after the command
+     *
+     * @throws DashboardNotFound
+     * @throws ItemNotFound
+     * @throws RevisionConflict
+     */
+    public function setMinimized(string $workspaceId, string $membershipId, string $dashboardId, string $itemId, bool $minimized, int $expectedRevision): int;
+
+    /**
+     * A manual refresh of one item's Block (Story 4.6).
+     *
+     * @throws DashboardNotFound
+     * @throws ItemNotFound
+     */
+    public function refresh(string $workspaceId, string $membershipId, string $dashboardId, string $itemId): RefreshOutcome;
 
     /**
      * The current result of every item that can be shown (Story 4.5), read from what is stored: it never contacts a source and never waits for a

@@ -6,6 +6,10 @@ use App\Http\Controllers\Concerns\ResolvesMembership;
 use App\Modules\Access\Contracts\MembershipLookup;
 use App\Modules\Dashboards\Contracts\DashboardNotFound;
 use App\Modules\Dashboards\Contracts\Dashboards;
+use App\Modules\Dashboards\Contracts\ErrorCode;
+use App\Modules\Dashboards\Contracts\ItemNotFound;
+use App\Modules\Dashboards\Contracts\RevisionConflict;
+use App\Modules\Results\Contracts\RefreshOutcome;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
@@ -56,6 +60,63 @@ final class DashboardController extends Controller
         }
 
         return response()->json(['data' => ['items' => $items]], 200, ['Cache-Control' => 'no-store, private']);
+    }
+
+    /**
+     * `SetMinimized` (Story 4.6, AD-14): `{minimized, expected_revision}`. A stale revision is a 409 that carries the current one, so the client
+     * reloads the layout and retries once.
+     */
+    public function minimize(Request $request, string $dashboard, string $item): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+        $data = $request->validate([
+            'minimized' => ['required', 'boolean'],
+            'expected_revision' => ['required', 'integer', 'min:0'],
+        ]);
+
+        try {
+            $revision = $this->dashboards->setMinimized($workspaceId, $membershipId, $dashboard, $item, (bool) $data['minimized'], (int) $data['expected_revision']);
+        } catch (DashboardNotFound|ItemNotFound) {
+            abort(404);
+        } catch (RevisionConflict $e) {
+            return $this->error($request, ErrorCode::RevisionConflict->value, 409, 'The dashboard has changed.', ['revision' => $e->currentRevision]);
+        }
+
+        return response()->json(['data' => ['item_id' => strtolower($item), 'minimized' => (bool) $data['minimized'], 'revision' => $revision]], 200, ['Cache-Control' => 'no-store, private']);
+    }
+
+    /**
+     * A manual refresh of one Block (Story 4.6). Inside the manual-refresh window it is a 429 with `Retry-After` and nothing is requested; the
+     * User's own Block is the only one touched, and no source is called here.
+     */
+    public function refresh(Request $request, string $dashboard, string $item): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+
+        try {
+            $outcome = $this->dashboards->refresh($workspaceId, $membershipId, $dashboard, $item);
+        } catch (DashboardNotFound|ItemNotFound) {
+            abort(404);
+        }
+
+        if ($outcome->status === RefreshOutcome::LIMITED) {
+            return $this->error($request, ErrorCode::RefreshLimited->value, 429, 'Refreshed a moment ago.', ['retry_after' => $outcome->retryAfter])
+                ->header('Retry-After', (string) $outcome->retryAfter);
+        }
+
+        return response()->json(['data' => ['item_id' => strtolower($item), 'status' => $outcome->status]], 202, ['Cache-Control' => 'no-store, private']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $extra
+     */
+    private function error(Request $request, string $code, int $status, string $message, array $extra): JsonResponse
+    {
+        return response()->json(['error' => [
+            'code' => $code,
+            'message' => $message,
+            'request_id' => $request->attributes->get('request_id'),
+        ] + $extra], $status);
     }
 
     public function show(Request $request, string $dashboard): JsonResponse

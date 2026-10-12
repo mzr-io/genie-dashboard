@@ -38,6 +38,8 @@ Route::middleware('auth:sanctum')->group(function () {
 // A member's own dashboard (Story 4.4): layout, item states and User-safe Block cards. Not an Admin route: any active member of the Workspace.
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])->name('api.dashboards.show');
+    Route::put('dashboards/{dashboard}/items/{item}/minimized', [DashboardController::class, 'minimize'])->middleware('throttle:60,1')->name('api.dashboards.items.minimize');
+    Route::post('dashboards/{dashboard}/items/{item}/refresh', [DashboardController::class, 'refresh'])->middleware('throttle:60,1')->name('api.dashboards.items.refresh');
     Route::get('dashboards/{dashboard}/results', [DashboardController::class, 'results'])->middleware('throttle:120,1')->name('api.dashboards.results');
 });
 

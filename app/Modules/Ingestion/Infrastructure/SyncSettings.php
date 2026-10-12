@@ -102,6 +102,12 @@ final class SyncSettings implements RefreshIntervals
         return self::seconds($this->config->get('dashflow.tunables.sync.hot_window.value'));
     }
 
+    /** `sync.manual_refresh_window` (Story 4.6): seconds between manual refreshes of one Block by one member; null (no limit) when unset or malformed. */
+    public function manualRefreshWindowSeconds(): ?int
+    {
+        return self::seconds($this->config->get('dashflow.tunables.sync.manual_refresh_window.value'));
+    }
+
     /** `budgets.max_hot_keys_per_workspace`: the most hot targets of one Workspace kept at their own interval; null (no cap) when unset or malformed. */
     public function maxHotKeysPerWorkspace(): ?int
     {
