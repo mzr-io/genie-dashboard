@@ -13,6 +13,7 @@ use App\Modules\Blocks\Contracts\DraftPublished;
 use App\Modules\Blocks\Contracts\DraftRevisionConflict;
 use App\Modules\Blocks\Contracts\Drafts;
 use App\Modules\Blocks\Contracts\DraftSlots;
+use App\Modules\Blocks\Contracts\DraftTransforms;
 use App\Modules\Blocks\Contracts\InvalidDraft;
 use App\Modules\Blocks\Contracts\InvalidSampleShape;
 use App\Modules\Blocks\Contracts\PreviewRefused;
@@ -30,6 +31,7 @@ use App\Modules\Mapping\Contracts\FieldRoleReport;
 use App\Modules\Mapping\Contracts\FieldRoles;
 use App\Modules\Mapping\Contracts\Presentation;
 use App\Modules\Mapping\Contracts\SlotState;
+use App\Modules\Mapping\Contracts\Transforms;
 use App\Platform\Json\SamplePath;
 use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Support\Facades\DB;
@@ -72,13 +74,13 @@ final class ManageDraftSlots implements DraftSlots
 
         // No usable sample (none, it ended, or it no longer passes the limits): the stored decisions and plan are still the Admin's, and nothing is computed from it.
         if ($found === null) {
-            return new DraftMapping(null, null, self::slotMap($draft->config), $plan, $draft->revision, null, $stale, $state, $suggestion, self::presentation($draft->config));
+            return new DraftMapping(null, null, self::slotMap($draft->config), $plan, $draft->revision, null, $stale, $state, $suggestion, self::presentation($draft->config), self::transforms($draft->config));
         }
 
         $type = $this->types->resolve($draft->type, $this->contractVersion($actor->workspaceId, $draft->blockId));
         $report = $this->report($found[0], $draft->config);
 
-        return new DraftMapping($this->map($type, $report, $draft->config), $report, self::slotMap($draft->config), $plan, $draft->revision, $sampleRevision, $stale, DraftMapping::SAMPLE_OK, $suggestion, self::presentation($draft->config));
+        return new DraftMapping($this->map($type, $report, $draft->config), $report, self::slotMap($draft->config), $plan, $draft->revision, $sampleRevision, $stale, DraftMapping::SAMPLE_OK, $suggestion, self::presentation($draft->config), self::transforms($draft->config));
     }
 
     /**
@@ -400,6 +402,34 @@ final class ManageDraftSlots implements DraftSlots
         return new DraftPresentation($stored, $checklist->revision, $checklist->queryPlan);
     }
 
+    public function setTransforms(DraftActor $actor, string $draftId, ?array $steps, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftTransforms
+    {
+        $stored = [];
+        $faults = [];
+
+        $checklist = $this->write($actor, $draftId, $revision, $lockEpoch, $holdsLock, function (array $config) use ($steps, &$stored): array {
+            // Judged whole: nothing is stored when any part is faulty. The fields are judged against the sample by the mapper, as faults.
+            $stored = DraftConfig::normaliseTransforms($steps);
+
+            return self::withKey($config, Transforms::KEY, $stored);
+        });
+
+        $faults = $checklist->result->transformFaults;
+
+        return new DraftTransforms($stored, $checklist->revision, $checklist->queryPlan, $faults);
+    }
+
+    /**
+     * @param  array<string, mixed>  $config
+     * @return list<array<string, mixed>>
+     */
+    private static function transforms(array $config): array
+    {
+        $steps = $config[Transforms::KEY] ?? null;
+
+        return is_array($steps) && array_is_list($steps) ? $steps : [];
+    }
+
     /**
      * @param  array<string, mixed>  $config
      * @return array<string, mixed>
@@ -423,8 +453,8 @@ final class ManageDraftSlots implements DraftSlots
 
     /**
      * @param  array<string, mixed>  $config
-     * @param  array<string, mixed>  $value
-     * @return array<string, mixed> the config with the map set, or without the key when the map is empty
+     * @param  array<mixed>  $value
+     * @return array<string, mixed> the config with the value set, or without the key when it is empty
      */
     private static function withKey(array $config, string $key, array $value): array
     {
@@ -473,7 +503,8 @@ final class ManageDraftSlots implements DraftSlots
             // The plan follows the mapping the write leaves, whatever the write was.
             $after = $this->map($type, $this->report($shape, $config), $config);
 
-            if ($after->plan['shape'] !== []) {
+            // A plan is kept when something is mapped or the Admin has transform steps (their row counts are the plan's even before a slot reads a value).
+            if ($after->plan['shape'] !== [] || self::transforms($config) !== []) {
                 $config['query_plan'] = $after->plan;
                 $config['mapped_sample_revision'] = $sampleRevision;
             } else {
@@ -575,7 +606,7 @@ final class ManageDraftSlots implements DraftSlots
     /** @param  array<string, mixed>  $config */
     private function map(BlockType $type, FieldRoleReport $report, array $config): AutoMapResult
     {
-        return $this->mapper->map($report, $type, self::slotMap($config), self::fieldTypes($config));
+        return $this->mapper->map($report, $type, self::slotMap($config), self::fieldTypes($config), self::transforms($config));
     }
 
     /**

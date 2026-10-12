@@ -1,3 +1,4 @@
+import type { TransformFault, TransformStep } from '@/lib/blockTransforms';
 import { WizardError, wizardCall } from '@/lib/blockWizard';
 import type { SampleClaim } from '@/lib/blockSample';
 import type { SampleNode, SampleTable, SampleState } from '@/lib/blockSample';
@@ -127,6 +128,8 @@ export type Checklist = {
     blockers: Blocker[];
     baseline: { path: string; display: string }[];
     api_changed: ApiChange[];
+    // The transform steps the sample cannot satisfy (Story 5.1); each blocks Continue.
+    transform_faults?: TransformFault[];
 };
 
 // A decided slot whose field left the sample (Story 3.13a): the slot reads Required missing or Optional empty, and `match` is a candidate that is
@@ -161,6 +164,8 @@ export type MappingRead = {
     dataset_suggestion?: DatasetSuggestion | null;
     // The Draft's presentation rules (Story 3.15a): descriptors only, `{}` when there are none.
     presentation?: PresentationRules;
+    // The Draft's Filter, Sort and Top-N steps (Story 5.1) in stage order; `[]` when there are none.
+    transforms?: TransformStep[];
 };
 
 // What a mapping write answers: the checklist, the revisions it stored and the plan; a role write also says what it changed.

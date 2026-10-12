@@ -87,6 +87,7 @@ final class DraftPreviewController extends Controller
                 'draft_revision' => $preview->draftRevision,
                 'plan_stale' => $preview->planStale,
                 'period' => $preview->period,
+                'rows' => $preview->rows,
             ] + ($preview->asUserExpiresAt === null ? [] : ['as_user' => ['expires_at' => $preview->asUserExpiresAt]])],
             200,
             ['Cache-Control' => self::NO_STORE],

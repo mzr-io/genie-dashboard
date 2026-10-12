@@ -50,6 +50,11 @@ final class DraftSlotRequest extends FormRequest
             $rules['presentation'] = ['present', 'nullable', 'array'];
         }
 
+        // The transform steps (Story 5.1): a list, judged whole by Mapping's `Transforms`; null or `[]` clears them.
+        if ($this->routeIs('api.admin.blocks.drafts.mapping.transforms')) {
+            $rules['transforms'] = ['present', 'nullable', 'array', 'max:20'];
+        }
+
         if ($this->routeIs('api.admin.blocks.drafts.mapping.undo')) {
             $rules += [
                 'undo' => ['required', 'array'],
@@ -106,6 +111,14 @@ final class DraftSlotRequest extends FormRequest
         $value = $this->input('presentation');
 
         return is_array($value) ? $value : null;
+    }
+
+    /** @return list<array<string, mixed>>|null */
+    public function transforms(): ?array
+    {
+        $value = $this->input('transforms');
+
+        return is_array($value) ? array_values($value) : null;
     }
 
     public function role(): ?string

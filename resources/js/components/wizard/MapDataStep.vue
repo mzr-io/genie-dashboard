@@ -22,6 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import FieldTree from '@/components/wizard/FieldTree.vue';
 import RolesSection from '@/components/wizard/RolesSection.vue';
+import TransformsSection from '@/components/wizard/TransformsSection.vue';
 import SectionCard from '@/components/wizard/SectionCard.vue';
 import SlotChecklist from '@/components/wizard/SlotChecklist.vue';
 import { announce, announceDebounced } from '@/lib/announce';
@@ -60,11 +61,18 @@ import {
 } from '@/lib/blockPresentation';
 import type { PresentationRules } from '@/lib/blockPresentation';
 import type { SampleClaim, SampleState } from '@/lib/blockSample';
+import {
+    putTransforms,
+    judge as judgeTransforms,
+    sameSteps,
+} from '@/lib/blockTransforms';
+import type { RowCounts, TransformStep } from '@/lib/blockTransforms';
 import { WizardError } from '@/lib/blockWizard';
 import { ErrorCode } from '@/types/error-codes';
 import {
     blockMapLabels as labels,
     blockPresentationLabels as presentationLabels,
+    blockTransformLabels as transformLabels,
 } from '@/locales/labels';
 
 // Wizard step 3, Map Data (Story 3.11b, UI stage 1; UX-DR-65, 66, 123 to 129, 138, 180 to 182). The left column is the step 1 and 2 summaries, a
@@ -84,6 +92,8 @@ const props = defineProps<{
     // Why nothing can be changed now (read-only, offline, published); undefined when it can.
     blocked?: string;
     summaries: { label: string; summary: string | null }[];
+    // The live preview's row counts for the transform steps (Story 5.1), null while there are none.
+    rows?: RowCounts | null;
 }>();
 
 const emit = defineEmits<{
@@ -306,6 +316,10 @@ const continueBlocked = computed<string | undefined>(() => {
 
     if (Object.keys(presentationErrors.value).length > 0) {
         return presentationLabels.blockedContinue;
+    }
+
+    if (Object.keys(transformFaults.value).length > 0) {
+        return transformLabels.blockedContinue;
     }
 
     return checklist.blockers.length > 0 ? blockerReason.value : props.blocked;
@@ -797,6 +811,99 @@ function clearNote(): void {
     lastNote.value = null;
 }
 
+// ---- Transforms (Story 5.1) -------------------------------------------------------------------------------------------------
+
+const transformsRef = ref<InstanceType<typeof TransformsSection> | null>(null);
+// The steps as the Admin has them (an invalid edit stays here, shown and not sent) and what the sample can use.
+const steps = ref<TransformStep[]>([]);
+const transformFields = computed(() => {
+    const fields = read.value?.roles?.fields ?? [];
+    const rows = fields.filter((f) => f.in_records);
+
+    return (rows.length > 0 ? rows : fields).map((f) => ({
+        path: f.path,
+        display: f.display,
+    }));
+});
+// Faults by the step's position: what the client can tell, and what the sample says of the steps that are stored.
+const transformFaults = computed(() => {
+    const out: Record<number, { reason: string; field: string | null }> = {};
+    const stored = read.value?.transforms ?? [];
+
+    if (sameSteps(steps.value, stored)) {
+        for (const fault of read.value?.checklist?.transform_faults ?? []) {
+            out[fault.index] = { reason: fault.reason, field: fault.field };
+        }
+    }
+
+    for (const [index, reason] of Object.entries(
+        judgeTransforms(steps.value),
+    )) {
+        out[Number(index)] = { reason, field: null };
+    }
+
+    return out;
+});
+
+function transformsRefused(error: WizardError): boolean {
+    if (error.status !== 422) {
+        return false;
+    }
+
+    notSaved.value = transformLabels.notSaved;
+    announce(transformLabels.notSaved, 'assertive');
+
+    return true;
+}
+
+async function saveTransforms(next: TransformStep[]): Promise<void> {
+    steps.value = next;
+
+    // An invalid value is shown on its step, blocks Continue and is never sent.
+    if (Object.keys(judgeTransforms(next)).length > 0) {
+        return;
+    }
+
+    if (sameSteps(next, read.value?.transforms ?? [])) {
+        return;
+    }
+
+    const done = await submit(
+        (id, revision, claim) => putTransforms(id, next, revision, claim),
+        transformsRefused,
+    );
+
+    if (done === null || read.value === null) {
+        return;
+    }
+
+    read.value = {
+        ...read.value,
+        draft_revision: done.draft_revision,
+        query_plan: done.query_plan,
+        transforms: done.transforms,
+        checklist:
+            read.value.checklist === null
+                ? null
+                : {
+                      ...read.value.checklist,
+                      transform_faults: done.transform_faults,
+                  },
+    };
+    steps.value = done.transforms;
+}
+
+watch(
+    () => read.value?.transforms,
+    (stored) => {
+        // An invalid edit stays as typed until it is fixed or removed.
+        if (Object.keys(judgeTransforms(steps.value)).length === 0) {
+            steps.value = stored ?? [];
+        }
+    },
+    { immediate: true },
+);
+
 // ---- Presentation rules (Story 3.15b) ----------------------------------------------------------------------------------------
 
 // The server refused the rules (422 with `config.presentation.<path>` errors): each fault is shown on its field, nothing was stored and the
@@ -1154,6 +1261,14 @@ function onContinueBlocked(): HTMLElement | null {
             });
         }
 
+        return null;
+    }
+
+    // A transform step the sample cannot satisfy: its row opens and takes focus.
+    if (
+        first === undefined &&
+        transformsRef.value?.focusFirstFault() === true
+    ) {
         return null;
     }
 
@@ -1619,23 +1734,15 @@ onBeforeUnmount(() => {
                 </div>
             </SectionCard>
 
-            <details
-                class="rounded-lg border border-border-default bg-surface-card p-4"
-                data-test="transforms-placeholder"
-            >
-                <summary
-                    class="type-title-sm flex cursor-pointer items-center gap-3 text-text-primary"
-                >
-                    <SlidersHorizontal class="size-4" aria-hidden="true" />
-                    {{ labels.transformsTitle }}
-                </summary>
-                <p class="type-caption mt-2 text-text-muted">
-                    {{ labels.transformsCaption }}
-                </p>
-                <p class="type-body-sm mt-2 text-text-secondary">
-                    {{ labels.transformsPlaceholder }}
-                </p>
-            </details>
+            <TransformsSection
+                ref="transformsRef"
+                :steps="steps"
+                :fields="transformFields"
+                :faults="transformFaults"
+                :counts="rows ?? null"
+                :blocked="blocked"
+                @change="saveTransforms"
+            />
         </template>
     </div>
 </template>

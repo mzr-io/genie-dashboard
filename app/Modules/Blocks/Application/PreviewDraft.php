@@ -131,7 +131,7 @@ final class PreviewDraft implements DraftPreviews
             );
         }
 
-        return new DraftPreview($result->payload, $result->unavailable, $revision, $draft->revision, $this->slotValues($plan, $result->slots, $result->unavailable), ManageDraftSlots::planStale($draft->config, $revision), $user['expires_at'] ?? null, DraftPeriod::resolve($draft->config, $this->settings->timezone(), now())?->toArray());
+        return new DraftPreview($result->payload, $result->unavailable, $revision, $draft->revision, $this->slotValues($plan, $result->slots, $result->unavailable), ManageDraftSlots::planStale($draft->config, $revision), $user['expires_at'] ?? null, DraftPeriod::resolve($draft->config, $this->settings->timezone(), now())?->toArray(), $result->rows);
     }
 
     /**

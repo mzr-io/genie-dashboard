@@ -23,6 +23,8 @@ export type PreviewResult = {
     sample_revision: number | null;
     draft_revision: number | null;
     plan_stale: boolean;
+    // Story 5.1: the rows before the transform steps and after each of them; null while the Draft has none.
+    rows?: { input: number; steps: number[] } | null;
     // Story 3.17: set when it was computed from a Fetch as user result: when that result ends.
     as_user_expires_at?: string | null;
 };

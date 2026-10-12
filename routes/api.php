@@ -167,6 +167,8 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     Route::put('blocks/drafts/{draft}/mapping/field-types', [DraftSlotsController::class, 'fieldType'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.field_types');
     // The presentation rules (Story 3.15a): format, emphasis, direction, labels, threshold bands and the empty display; server-owned like the mapping keys.
     Route::put('blocks/drafts/{draft}/mapping/presentation', [DraftSlotsController::class, 'presentation'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.presentation');
+    // The Filter, Sort and Top-N steps (Story 5.1): server-owned like the mapping keys; the stage order is fixed by the server.
+    Route::put('blocks/drafts/{draft}/mapping/transforms', [DraftSlotsController::class, 'transforms'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-mapping-write'])->name('api.admin.blocks.drafts.mapping.transforms');
 
     // What wizard Step 2 reads (Story 3.7): `blocks.edit`, so an Admin who may build blocks but not manage Data Sources can still choose one.
     Route::get('blocks/data-sources', [BlockSourceController::class, 'dataSources'])->middleware('admin')->name('api.admin.blocks.data-sources.index');

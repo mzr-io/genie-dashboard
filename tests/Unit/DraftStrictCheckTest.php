@@ -52,3 +52,30 @@ it('reports an invalid presentation', function () {
 it('reports an invalid configuration', function () {
     expect(strictTypes(['query_plan' => strictPlan(), 'icon' => 'Not An Icon', 'display' => 'wide']))->toBe(['invalid_config']);
 });
+
+it('reports a transform step that cannot run: a numeric comparison with no number, or a field read as text', function () {
+    $plan = strictPlan() + [
+        'filter' => [['field' => '$.data[*].revenue', 'operator' => 'gt', 'value' => 'abc']],
+    ];
+    $faults = DraftStrictCheck::check([
+        'query_plan' => $plan,
+        'transforms' => [
+            ['type' => 'filter', 'field' => '$.data[*].revenue', 'operator' => 'gt', 'value' => 'abc'],
+            ['type' => 'filter', 'field' => '$.data[*].status', 'operator' => 'lt', 'value' => '3'],
+            ['type' => 'filter', 'field' => '$.data[*].revenue', 'operator' => 'gte', 'value' => '3'],
+        ],
+        'field_types' => ['$.data[*].status' => 'text'],
+    ], strictType());
+
+    expect(array_column($faults, 'type'))->toBe(['invalid_transform', 'invalid_transform'])
+        ->and(array_column($faults, 'path'))->toBe(['config.transforms.0.value', 'config.transforms.1.value']);
+});
+
+it('accepts transform steps that can run', function () {
+    $faults = DraftStrictCheck::check([
+        'query_plan' => strictPlan() + ['top_n' => ['count' => 3]],
+        'transforms' => [['type' => 'top_n', 'count' => 3]],
+    ], strictType());
+
+    expect($faults)->toBe([]);
+});

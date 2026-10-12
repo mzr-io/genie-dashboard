@@ -12,6 +12,7 @@ use App\Modules\Mapping\Contracts\FieldRole;
 use App\Modules\Mapping\Contracts\FieldRoleReport;
 use App\Modules\Mapping\Contracts\QueryPlan;
 use App\Modules\Mapping\Contracts\SlotState;
+use App\Modules\Mapping\Contracts\Transforms;
 use App\Platform\Json\SamplePath;
 
 /**
@@ -63,7 +64,7 @@ final class AutoMapper implements AutoMapping
 
     private const BASELINE_WORDS = ['previous', 'prior', 'prev', 'last', 'baseline'];
 
-    public function map(FieldRoleReport $report, BlockType $type, array $slotMap, array $fieldTypes = []): AutoMapResult
+    public function map(FieldRoleReport $report, BlockType $type, array $slotMap, array $fieldTypes = [], array $transforms = []): AutoMapResult
     {
         $fields = $this->enrich($report, $fieldTypes);
 
@@ -115,7 +116,7 @@ final class AutoMapper implements AutoMapping
             $groups[] = ['group' => $name, 'slots' => $slots];
         }
 
-        return new AutoMapResult($groups, $this->counts($rows), $this->blockers($rows, $apiChanged), $baseline, $this->plan($rows), $apiChanged);
+        return new AutoMapResult($groups, $this->counts($rows), $this->blockers($rows, $apiChanged), $baseline, Transforms::apply($this->plan($rows), $transforms), $apiChanged, $this->transformFaults($transforms, $fields));
     }
 
     public function fieldsFor(FieldRoleReport $report, BlockType $type, string $slot, array $fieldTypes = []): ?array
@@ -537,6 +538,48 @@ final class AutoMapper implements AutoMapping
         foreach ($apiChanged as $change) {
             if ($change['state'] === SlotState::OptionalEmpty->value) {
                 $out[] = ['slot' => (string) $change['slot'], 'reason' => 'api_changed'];
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * The transform steps the sample cannot satisfy (Story 5.1): a field that is not in the response, a numeric comparison on a field that is not a number
+     * (or with a value that is not one) and a Sort on a field that cannot be ordered (a true or false field).
+     *
+     * @param  list<array<string, mixed>>  $steps
+     * @param  list<array<string, mixed>>  $fields  the enriched fields of the sample
+     * @return list<array{index: int, type: string, field: string|null, reason: string}>
+     */
+    private function transformFaults(array $steps, array $fields): array
+    {
+        $byPath = array_column($fields, null, 'path');
+        $out = [];
+
+        foreach ($steps as $index => $step) {
+            $type = (string) $step['type'];
+
+            if ($type === Transforms::TOP_N) {
+                continue;
+            }
+
+            $path = (string) $step['field'];
+            $field = $byPath[$path] ?? null;
+            $reason = null;
+
+            if ($field === null) {
+                $reason = 'field_missing';
+            } elseif ($type === Transforms::FILTER && in_array($step['operator'], Transforms::NUMERIC_OPERATORS, true)) {
+                $numericValue = preg_match(ExecutionResult::DECIMAL, trim((string) $step['value'])) === 1;
+
+                $reason = $field['effective'] !== 'number' || ! $numericValue ? 'not_numeric' : null;
+            } elseif ($type === Transforms::SORT && $field['effective'] === 'boolean') {
+                $reason = 'unsortable';
+            }
+
+            if ($reason !== null) {
+                $out[] = ['index' => $index, 'type' => $type, 'field' => $path, 'reason' => $reason];
             }
         }
 

@@ -1873,6 +1873,63 @@ export const blockSampleLabels = {
 
 // Map Data (Story 3.11b, stage 1: the shell and the Roles section; UX-DR-65, 66, 123, 125 to 129, 180 to 182). `map-small-screen` is a catalogue message;
 // the rest is control vocabulary. Nothing here ever quotes the sample.
+// The Transforms section of Map Data (Story 5.1; UX-DR-131, 198, 205): Filter, Sort and Top-N steps, in the fixed stage order.
+export const blockTransformLabels = {
+    stage: { filter: 'FILTER', sort: 'SORT', top_n: 'TOP N' },
+    addStep: '+ Add step',
+    addFilter: 'Filter',
+    addSort: 'Sort',
+    addTopN: 'Top N',
+    addDisabledNoField: 'The sample has no row fields to use yet.',
+    addDisabledLimit: 'This kind of step is at its limit.',
+    fieldName: { filter: 'Filter field', sort: 'Sort field' },
+    operatorName: 'Filter operator',
+    valueName: 'Filter value',
+    directionName: 'Sort direction',
+    countName: 'Top-N count',
+    fieldHelp: 'The field of each row this step looks at.',
+    operatorHelp: 'How each row’s value is compared with the filter value.',
+    valueHelp: 'The value to compare with. Numbers are compared as numbers.',
+    directionHelp: 'Ascending is smallest first. Ties keep their order.',
+    countHelp: 'How many rows to keep, from the top, after sorting.',
+    operators: {
+        is: 'is',
+        is_not: 'isn’t',
+        contains: 'contains',
+        gt: 'is greater than',
+        gte: 'is at least',
+        lt: 'is less than',
+        lte: 'is at most',
+    },
+    directions: { asc: 'ascending', desc: 'descending' },
+    filterSentence: (field: string, operator: string, value: string) =>
+        `Keep rows where ${field} ${operator} ${value === '' ? '(empty)' : value}`,
+    sortSentence: (field: string, direction: string) =>
+        `Sort by ${field} ${direction}`,
+    topNSentence: (count: number) =>
+        `Keep the top ${count} ${count === 1 ? 'row' : 'rows'}`,
+    counts: (from: number, to: number) => `${from} → ${to} rows`,
+    removeName: (sentence: string) => `Remove step: ${sentence}`,
+    remove: 'Remove',
+    rowsOfSample: (count: number) =>
+        `${count} ${count === 1 ? 'row' : 'rows'} in the sample`,
+    faults: {
+        field_missing: (field: string) =>
+            `${field} isn’t in the response. Choose another field.`,
+        not_numeric: (field: string) =>
+            `${field} isn’t a number field, or the value isn’t a number.`,
+        unsortable: (field: string) =>
+            `${field} can’t be sorted. Choose a text, number or date field.`,
+        not_numeric_value: 'Enter a number to compare with.',
+        value_long: 'Use 200 characters or fewer.',
+        count: 'Enter a whole number from 1 to 1000.',
+    },
+    blockedContinue: 'Fix the highlighted transform step to continue.',
+    notSaved: 'The transform steps weren’t saved. Try again.',
+    stepRemoved: (sentence: string) => `Removed: ${sentence}.`,
+    stepAdded: (sentence: string) => `Added: ${sentence}.`,
+} as const;
+
 export const blockMapLabels = {
     region: 'Map Data',
     loading: 'Reading the field roles…',
@@ -1907,8 +1964,7 @@ export const blockMapLabels = {
     slotsCaption: 'Which field fills each part of the block.',
     transformsTitle: '3 · Transforms',
     transformsCaption: 'Optional steps that reshape the rows.',
-    transformsPlaceholder:
-        'Transforms arrive in a later update. There is nothing to set here yet.',
+    transformsEmpty: 'No steps yet. The block uses the rows as they are.',
     // Roles.
     roleNames: {
         label: 'Label',

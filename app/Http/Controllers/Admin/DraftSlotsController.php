@@ -18,6 +18,7 @@ use App\Modules\Blocks\Contracts\DraftPublished;
 use App\Modules\Blocks\Contracts\DraftRevisionConflict;
 use App\Modules\Blocks\Contracts\Drafts;
 use App\Modules\Blocks\Contracts\DraftSlots;
+use App\Modules\Blocks\Contracts\DraftTransforms;
 use App\Modules\Blocks\Contracts\ErrorCode as BlocksErrorCode;
 use App\Modules\Blocks\Contracts\InvalidDraft;
 use App\Modules\Blocks\Contracts\PreviewRefused;
@@ -73,6 +74,7 @@ final class DraftSlotsController extends Controller
                     'sample' => $mapping->sample,
                     'dataset_suggestion' => $mapping->datasetSuggestion,
                     'presentation' => (object) $mapping->presentation,
+                    'transforms' => $mapping->transforms,
                 ]], 200, $headers);
             },
         );
@@ -134,6 +136,20 @@ final class DraftSlotsController extends Controller
                 return $this->slots->setPresentation($actor, $draft, $request->presentation(), $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
             },
             fn (DraftPresentation $saved): array => ['presentation' => (object) $saved->presentation, 'draft_revision' => $saved->revision, 'query_plan' => $saved->queryPlan],
+        );
+    }
+
+    /** The Filter, Sort and Top-N steps (Story 5.1): the validated steps in stage order, the Draft's new revision, the plan it stores and the steps the sample cannot satisfy. */
+    public function transforms(DraftSlotRequest $request, string $draft): Response
+    {
+        return $this->respond(
+            $request,
+            function () use ($request, $draft): DraftTransforms {
+                $actor = $this->actor($request);
+
+                return $this->slots->setTransforms($actor, $draft, $request->transforms(), $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
+            },
+            fn (DraftTransforms $saved): array => ['transforms' => $saved->steps, 'draft_revision' => $saved->revision, 'query_plan' => $saved->queryPlan, 'transform_faults' => $saved->faults],
         );
     }
 

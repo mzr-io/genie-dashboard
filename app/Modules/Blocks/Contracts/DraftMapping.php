@@ -36,6 +36,8 @@ final readonly class DraftMapping
         public ?array $datasetSuggestion = null,
         /** @var array<string, mixed> the stored presentation rules (Story 3.15a); empty when none */
         public array $presentation = [],
+        /** @var list<array<string, mixed>> the stored transform steps (Story 5.1), in stage order; empty when none */
+        public array $transforms = [],
     ) {}
 
     /** The validator of a conditional GET: both revisions name the content. */

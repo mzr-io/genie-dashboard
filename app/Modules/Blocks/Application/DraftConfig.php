@@ -7,6 +7,7 @@ use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\Mapping\Contracts\FieldRole;
 use App\Modules\Mapping\Contracts\Presentation;
 use App\Modules\Mapping\Contracts\QueryPlan;
+use App\Modules\Mapping\Contracts\Transforms;
 use App\Platform\Json\DecimalLiteral;
 use App\Platform\Json\JsonObject;
 use App\Platform\Json\LosslessJson;
@@ -31,7 +32,7 @@ final class DraftConfig
     public const FIELD_TYPES = ['text', 'number', 'boolean', 'date'];
 
     /** Written only through the mapping endpoints. */
-    public const MAPPING_KEYS = ['record_path', 'field_roles', 'field_types', 'slot_map', Presentation::KEY];
+    public const MAPPING_KEYS = ['record_path', 'field_roles', 'field_types', 'slot_map', Presentation::KEY, Transforms::KEY];
 
     private const FLAGS = ['show_header', 'show_subtitle', 'allow_resize', 'allow_minimize', 'allow_refresh', 'show_footer_action'];
 
@@ -233,6 +234,24 @@ final class DraftConfig
         }
 
         return $out;
+    }
+
+    /**
+     * The transform steps (Story 5.1), judged whole and returned in the fixed stage order.
+     *
+     * @return list<array<string, mixed>>
+     *
+     * @throws InvalidDraft
+     */
+    public static function normaliseTransforms(mixed $input): array
+    {
+        [$steps, $errors] = Transforms::check($input);
+
+        if ($errors !== []) {
+            throw new InvalidDraft($errors, 'blocks.invalid_config');
+        }
+
+        return $steps;
     }
 
     /** A stored path in its canonical spelling, naming at least one segment. */

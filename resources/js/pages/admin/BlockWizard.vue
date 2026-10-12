@@ -180,6 +180,8 @@ type MapView = {
 };
 const mapView = ref<MapView | null>(null);
 const mapRef = ref<InstanceType<typeof MapDataStep> | null>(null);
+// The live preview's row counts for the transform steps (Story 5.1).
+const previewRows = ref<{ input: number; steps: number[] } | null>(null);
 const previewKey = ref(0);
 const previewSlots = computed(
     () => mapView.value?.checklist.groups.flatMap((g) => g.slots) ?? [],
@@ -1721,6 +1723,7 @@ onBeforeUnmount(() => {
                             :run="runInChain"
                             :blocked="mapBlocked"
                             :summaries="steps.slice(0, 2)"
+                            :rows="previewRows"
                             @revision="adoptRevision"
                             @mapped="previewKey += 1"
                             @view="(view) => (mapView = view)"
@@ -1815,6 +1818,7 @@ onBeforeUnmount(() => {
                             (slot, opener) => mapRef?.openSlot(slot, opener)
                         "
                         @skip="skipToChecklist"
+                        @rows="(rows) => (previewRows = rows)"
                         @auth-error="sessionEnded"
                     />
                 </div>

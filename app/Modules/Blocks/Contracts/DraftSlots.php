@@ -143,4 +143,15 @@ interface DraftSlots
      * @throws InvalidDraft
      */
     public function setPresentation(DraftActor $actor, string $draftId, ?array $presentation, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftPresentation;
+
+    /**
+     * `SetTransforms` (Story 5.1): the Filter, Sort and Top-N steps of the Draft, judged whole (nothing is stored when any part is faulty) and kept in
+     * the fixed stage order; null or `[]` clears them. The plan is recomputed with the steps as its stages and the Draft's revision moves, like any
+     * mapping write. The steps the sample cannot satisfy come back as `faults`.
+     *
+     * @param  list<array<string, mixed>>|null  $steps
+     *
+     * @throws InvalidDraft
+     */
+    public function setTransforms(DraftActor $actor, string $draftId, ?array $steps, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftTransforms;
 }

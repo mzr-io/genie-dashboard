@@ -768,7 +768,7 @@ it('reads the mapping in one pass with an ETag of both revisions and a 304 for a
     $etag = '"d'.dslRev().'-s1"';
 
     expect($res->headers->get('ETag'))->toBe($etag)
-        ->and(array_keys($data))->toEqualCanonicalizing(['checklist', 'roles', 'slot_map', 'query_plan', 'draft_revision', 'sample_revision', 'plan_stale', 'sample', 'dataset_suggestion', 'presentation'])
+        ->and(array_keys($data))->toEqualCanonicalizing(['checklist', 'roles', 'slot_map', 'query_plan', 'draft_revision', 'sample_revision', 'plan_stale', 'sample', 'dataset_suggestion', 'presentation', 'transforms'])
         ->and($data['sample'])->toBe('ok')->and($data['plan_stale'])->toBeFalse()
         ->and($data['draft_revision'])->toBe(dslRev())->and($data['sample_revision'])->toBe(1)
         ->and($data['query_plan'])->toEqual(dslConfig()['query_plan'])
@@ -1142,4 +1142,109 @@ it('stores lexeme band limits as given and compares by value: a headline of 1E2 
 
     expect(dslConfig()['presentation']['bands'][0]['to'])->toBe('1.5E2')
         ->and(dslPreview($id)->json('data.payload.statusBadge.text'))->toBe('Middle');
+});
+
+// Story 5.1: the Filter, Sort and Top-N steps (`config.transforms`), written through PUT .../mapping/transforms and carried into the plan.
+function dslRows(int $count = 36): string
+{
+    $rows = [];
+
+    for ($i = 1; $i <= $count; $i++) {
+        $rows[] = ['status' => $i % 3 === 0 ? 'Rejected' : 'Approved', 'revenue' => $i * 10, 'region' => 'EU'];
+    }
+
+    return json_encode(['data' => $rows]);
+}
+
+/** A Draft over `dslRows()` with the record path chosen, so the row fields are mapped. */
+function dslRowsDraft(): string
+{
+    $id = dslDraft(dslRows());
+    dslWrite($id, 'record-path', ['record_path' => '$.data[*]'])->assertOk();
+
+    return $id;
+}
+
+function dslTransforms(string $id, ?array $steps, array $extra = [])
+{
+    return test()->putJson(BD_URL."/{$id}/mapping/transforms", $extra + ['transforms' => $steps, 'draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS);
+}
+
+it('stores the steps in the fixed stage order, carries them into the plan and counts the rows in the preview', function () {
+    $id = dslRowsDraft();
+    $revision = dslRev();
+
+    $saved = dslTransforms($id, [
+        ['type' => 'top_n', 'count' => 5],
+        ['type' => 'sort', 'field' => '$.data[*].revenue', 'direction' => 'desc'],
+        ['type' => 'filter', 'field' => '$.data[*].status', 'operator' => 'is', 'value' => 'Approved'],
+    ])->assertOk()->assertHeader('Cache-Control', 'no-store, private')->json('data');
+
+    expect(array_column($saved['transforms'], 'type'))->toBe(['filter', 'sort', 'top_n'])
+        ->and($saved['draft_revision'])->toBe($revision + 1)
+        ->and($saved['query_plan']['filter'])->toBe([['field' => '$.data[*].status', 'operator' => 'is', 'value' => 'Approved']])
+        ->and($saved['query_plan']['sort'])->toBe([['field' => '$.data[*].revenue', 'direction' => 'desc']])
+        ->and($saved['query_plan']['top_n'])->toBe(['count' => 5])
+        ->and($saved['transform_faults'])->toBe([])
+        ->and(dslConfig()['transforms'])->toEqual($saved['transforms'])
+        ->and(dslGet($id)->assertOk()->json('data.transforms'))->toEqual($saved['transforms']);
+
+    $rows = dslPreview($id)->assertOk()->json('data.rows');
+
+    // 36 rows, 24 Approved, sorted by revenue, 5 kept.
+    expect($rows)->toBe(['input' => 36, 'steps' => [24, 24, 5]]);
+});
+
+it('clears the steps and takes the stages out of the plan', function () {
+    $id = dslRowsDraft();
+    dslTransforms($id, [['type' => 'top_n', 'count' => 3]])->assertOk();
+
+    $cleared = dslTransforms($id, [])->assertOk()->json('data');
+
+    expect($cleared['transforms'])->toBe([])
+        ->and($cleared['query_plan'])->not->toHaveKey('top_n')
+        ->and(dslConfig())->not->toHaveKey('transforms');
+});
+
+it('refuses a malformed step naming each path, and stores nothing', function () {
+    $id = dslRowsDraft();
+    $revision = dslRev();
+
+    $errors = dslTransforms($id, [
+        ['type' => 'filter', 'field' => '$.data[*].status', 'operator' => 'matches', 'value' => 'x'],
+        ['type' => 'top_n', 'count' => 0],
+        ['type' => 'script', 'code' => 'x'],
+    ])->assertStatus(422)->json('errors');
+
+    expect(dslRev())->toBe($revision)
+        ->and(dslConfig())->not->toHaveKey('transforms');
+
+    $text = json_encode(array_keys($errors));
+
+    expect($text)->toContain('config.transforms.0.operator')->toContain('config.transforms.1.count')->toContain('config.transforms.2');
+});
+
+it('reports a step the sample cannot satisfy as a fault and keeps it', function () {
+    $id = dslRowsDraft();
+
+    $saved = dslTransforms($id, [
+        ['type' => 'filter', 'field' => '$.data[*].gone', 'operator' => 'is', 'value' => 'x'],
+        ['type' => 'filter', 'field' => '$.data[*].status', 'operator' => 'gt', 'value' => '3'],
+        ['type' => 'filter', 'field' => '$.data[*].revenue', 'operator' => 'gt', 'value' => 'abc'],
+    ])->assertOk()->json('data');
+
+    expect(array_column($saved['transform_faults'], 'reason'))->toBe(['field_missing', 'not_numeric', 'not_numeric'])
+        ->and(array_column($saved['transform_faults'], 'index'))->toBe([0, 1, 2])
+        ->and(dslGet($id)->json('data.checklist.transform_faults'))->toEqual($saved['transform_faults']);
+});
+
+it('refuses a stale revision and a Draft save that carries the steps', function () {
+    $id = dslRowsDraft();
+    $revision = dslRev();
+
+    dslTransforms($id, [['type' => 'top_n', 'count' => 3]], ['draft_revision' => $revision + 7])->assertStatus(409);
+    expect(dslConfig())->not->toHaveKey('transforms');
+
+    test()->putJson(BD_URL."/{$id}", ['config' => ['transforms' => [['type' => 'top_n', 'count' => 3]]], 'draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS)
+        ->assertStatus(422);
 });

@@ -10,6 +10,7 @@ final readonly class DraftPreview
      * @param  array<string, string>  $unavailable  slot key => `missing`, `not_single_value` or `wrong_type`
      * @param  array<string, array<string, mixed>>  $slots
      * @param  array<string, mixed>|null  $period
+     * @param  array{input: int, steps: list<int>}|null  $rows  the rows before the transforms and after each of them in stage order (Story 5.1); null while the Draft has none
      */
-    public function __construct(public array $payload, public array $unavailable, public int $sampleRevision, public int $draftRevision = 0, public array $slots = [], public bool $planStale = false, public ?string $asUserExpiresAt = null, public ?array $period = null) {}
+    public function __construct(public array $payload, public array $unavailable, public int $sampleRevision, public int $draftRevision = 0, public array $slots = [], public bool $planStale = false, public ?string $asUserExpiresAt = null, public ?array $period = null, public ?array $rows = null) {}
 }

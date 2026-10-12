@@ -45,6 +45,6 @@ final class QueryPlanEngine implements QueryPlans
         $mapped = array_map('strval', array_keys(is_array($plan['shape'] ?? null) ? $plan['shape'] : []));
         $options = $this->presentation->options($presentation, $result->slots, $mapped);
 
-        return new PlanResult($this->shapers->shape($type, $result->slots, $options), $result->unavailable, $result->slots);
+        return new PlanResult($this->shapers->shape($type, $result->slots, $options), $result->unavailable, $result->slots, $result->rows, $result->columns);
     }
 }

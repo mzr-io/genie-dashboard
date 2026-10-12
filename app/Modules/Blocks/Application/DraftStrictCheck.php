@@ -4,8 +4,10 @@ namespace App\Modules\Blocks\Application;
 
 use App\Modules\Blocks\Contracts\InvalidDraft;
 use App\Modules\BlockTypes\Contracts\BlockType;
+use App\Modules\Mapping\Contracts\ExecutionResult;
 use App\Modules\Mapping\Contracts\Presentation;
 use App\Modules\Mapping\Contracts\QueryPlan;
+use App\Modules\Mapping\Contracts\Transforms;
 
 /**
  * The strict-schema check of a Draft before it is validated against the real API (Story 3.18). The Draft saves leniently; this is the check that
@@ -48,6 +50,28 @@ final class DraftStrictCheck
 
             foreach (array_keys($errors) as $path) {
                 $faults[] = self::fault((string) $path, null, 'invalid_presentation');
+            }
+        }
+
+        // Transform steps (Story 5.1): a numeric comparison needs a number to compare with, and a field the Admin has told the platform to read as text or a
+        // true or false value cannot be compared as a number or sorted. The sample is not read here; the run against the API finds a field that is gone.
+        $steps = $config[Transforms::KEY] ?? null;
+        $types = is_array($config['field_types'] ?? null) ? $config['field_types'] : [];
+
+        foreach (is_array($steps) ? $steps : [] as $index => $step) {
+            if (! is_array($step)) {
+                continue;
+            }
+
+            $forced = is_string($step['field'] ?? null) ? ($types[$step['field']] ?? null) : null;
+
+            if (($step['type'] ?? null) === Transforms::FILTER && in_array($step['operator'] ?? null, Transforms::NUMERIC_OPERATORS, true)
+                && (preg_match(ExecutionResult::DECIMAL, trim((string) ($step['value'] ?? ''))) !== 1 || ($forced !== null && $forced !== 'number'))) {
+                $faults[] = self::fault("config.transforms.{$index}.value", null, 'invalid_transform');
+            }
+
+            if (($step['type'] ?? null) === Transforms::SORT && $forced === 'boolean') {
+                $faults[] = self::fault("config.transforms.{$index}.field", null, 'invalid_transform');
             }
         }
 

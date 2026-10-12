@@ -68,6 +68,8 @@ const emit = defineEmits<{
     (e: 'skip'): void;
     // The session ended under a preview request: the page handles it like any other step's.
     (e: 'auth-error', error: unknown): void;
+    // The rows before the transform steps and after each of them (Story 5.1), or null while there are none.
+    (e: 'rows', rows: { input: number; steps: number[] } | null): void;
 }>();
 
 const { t } = useI18n();
@@ -120,6 +122,11 @@ function clearRetry(): void {
         retryTimer = null;
     }
 }
+
+watch(
+    () => result.value?.rows ?? null,
+    (rows) => emit('rows', rows),
+);
 
 const runner = createPreviewRunner({
     load: (signal) =>

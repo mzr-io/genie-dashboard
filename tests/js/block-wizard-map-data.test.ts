@@ -538,9 +538,9 @@ describe('Map Data: the step opens', () => {
         expect($$('[data-test=status-meter] span')).toHaveLength(3);
         expect(text('[data-slot=section-card]')).toContain(labels.rolesTitle);
         expect($('[data-test=slot-checklist]')).not.toBeNull();
-        expect(
-            $('[data-test=transforms-placeholder]')?.hasAttribute('open'),
-        ).toBe(false);
+        expect($('[data-test=transforms-section]')?.hasAttribute('open')).toBe(
+            false,
+        );
         // The sticky live preview stays on the right.
         expect($('[data-test=preview-column]')).not.toBeNull();
         expect($('[data-test=later-step]')).toBeNull();

@@ -12,6 +12,8 @@ final readonly class PlanResult
      * @param  array<string, mixed>  $payload
      * @param  array<string, string>  $unavailable  slot key => `missing`, `not_single_value` or `wrong_type`
      * @param  array<string, string|bool|null>  $slots
+     * @param  array{input: int, steps: list<int>}|null  $rows  the row counts of the transforms (Story 5.1), null while the plan has none
+     * @param  array<string, list<string|bool|null>>  $columns  the rows the transforms left, by alias
      */
-    public function __construct(public array $payload, public array $unavailable, public array $slots = []) {}
+    public function __construct(public array $payload, public array $unavailable, public array $slots = [], public ?array $rows = null, public array $columns = []) {}
 }

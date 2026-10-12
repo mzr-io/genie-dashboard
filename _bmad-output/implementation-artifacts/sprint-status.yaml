@@ -128,8 +128,8 @@ development_status:
   4-17-use-the-dashboard-on-any-screen-size: review
   epic-4-retrospective: optional
 
-  epic-5: backlog
-  5-1-filter-sort-and-top-n-transforms-in-the-map-data-step: backlog
+  epic-5: in-progress
+  5-1-filter-sort-and-top-n-transforms-in-the-map-data-step: review
   5-2-group-and-aggregate-transforms-and-aggregate-rows-by-flatten: backlog
   5-3-calculated-fields-and-ratio-safe-aggregation: backlog
   5-4-text-templates-tokens-and-footer-action-target: backlog
