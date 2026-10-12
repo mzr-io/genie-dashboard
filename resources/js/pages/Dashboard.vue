@@ -25,6 +25,7 @@ import {
     refreshItem,
     removeBlock,
     restoreBlock,
+    saveLayout,
     setMinimized,
 } from '@/lib/dashboards';
 import type {
@@ -34,6 +35,8 @@ import type {
     ItemResult,
 } from '@/lib/dashboards';
 import { formatDateTime } from '@/lib/format';
+import { NO_LIMITS, place, sameLayout } from '@/lib/layout';
+import type { Geometry, Layout } from '@/lib/layout';
 import { SIGN_IN_URL } from '@/lib/session';
 import { useToasts } from '@/stores/toasts';
 import {
@@ -124,6 +127,18 @@ type Entry = {
 const history = ref<Entry[]>([]);
 let entryId = 0;
 
+// Edit Layout Mode (Story 4.11): drag and resize act on a working copy of the layout, with its own Undo and Redo, and nothing is saved until Done.
+// A pointer gesture previews from the layout as it stood when the gesture began, so a drag never compounds.
+const editing = ref(false);
+const working = ref<Layout>({});
+const committed = ref<Layout>({});
+const past = ref<Layout[]>([]);
+const future = ref<Layout[]>([]);
+const saving = ref(false);
+const saveError = ref<'failed' | 'conflict' | null>(null);
+const focusEditButton = (): void =>
+    document.querySelector<HTMLElement>('[data-slot=edit-layout]')?.focus();
+
 // The member's own minimize choices and the revision every layout command carries (AD-14), the Blocks being refreshed and those in their window.
 const minimized = ref<Record<string, boolean>>({});
 const revision = ref(props.revision);
@@ -145,7 +160,20 @@ let controller: AbortController | null = null;
 const title = computed(
     () => dashboard.value?.name ?? shellPages.overview.title,
 );
-const items = computed(() => dashboard.value?.items ?? []);
+const layoutOf = (list: DashboardItem[]): Layout =>
+    Object.fromEntries(
+        list.map((item) => [item.item_id, { ...item.geometry }]),
+    );
+// What the grid draws: the saved geometry, or the working copy while the layout is being edited.
+const items = computed(() =>
+    (dashboard.value?.items ?? []).map((item) =>
+        editing.value && working.value[item.item_id] !== undefined
+            ? { ...item, geometry: working.value[item.item_id] }
+            : item,
+    ),
+);
+const canUndoLayout = computed(() => past.value.length > 0);
+const canRedoLayout = computed(() => future.value.length > 0);
 
 async function load(): Promise<void> {
     controller?.abort();
@@ -503,6 +531,14 @@ async function onAdd(block: CatalogueBlock): Promise<void> {
                 allow_minimize: false,
                 allow_refresh: false,
                 show_footer_action: false,
+            },
+            sizes: {
+                min_width: 3,
+                max_width: 12,
+                width: block.default_size.width,
+                min_height: 'small',
+                max_height: 'large',
+                height: block.default_size.height,
             },
             about: {
                 description: block.description,
@@ -896,10 +932,36 @@ async function undoEntry(entry: Entry): Promise<void> {
 function onUndoKey(event: KeyboardEvent): void {
     if (
         !(event.ctrlKey || event.metaKey) ||
-        event.shiftKey ||
         event.altKey ||
         event.key.toLowerCase() !== 'z'
     ) {
+        return;
+    }
+
+    // In Edit Layout Mode the keys step through the layout's own history: Ctrl+Z undoes, Ctrl+Shift+Z redoes.
+    if (editing.value) {
+        const t = event.target;
+
+        if (
+            t instanceof HTMLElement &&
+            (t.isContentEditable ||
+                ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName))
+        ) {
+            return;
+        }
+
+        event.preventDefault();
+
+        if (event.shiftKey) {
+            redoLayout();
+        } else {
+            undoLayout();
+        }
+
+        return;
+    }
+
+    if (event.shiftKey) {
         return;
     }
 
@@ -923,6 +985,151 @@ function onUndoKey(event: KeyboardEvent): void {
 
     event.preventDefault();
     void undoEntry(entry);
+}
+
+function startEditing(): void {
+    if (dashboard.value === null) {
+        return;
+    }
+
+    working.value = layoutOf(dashboard.value.items);
+    committed.value = { ...working.value };
+    past.value = [];
+    future.value = [];
+    saveError.value = null;
+    editing.value = true;
+}
+
+function limitsOf(itemId: string) {
+    const sizes = dashboard.value?.items.find((i) => i.item_id === itemId)
+        ?.block?.sizes;
+
+    return sizes
+        ? {
+              minWidth: sizes.min_width,
+              maxWidth: sizes.max_width,
+              minHeight: sizes.min_height,
+              maxHeight: sizes.max_height,
+          }
+        : NO_LIMITS;
+}
+
+// A drag or resize: the preview is the layout at the gesture's start with this one item placed and the rest settled around it; the gesture's end
+// becomes one history step.
+function onGeometry(itemId: string, geometry: Geometry, commit: boolean): void {
+    const next = place(committed.value, itemId, geometry, limitsOf(itemId));
+
+    working.value = next;
+
+    if (!commit) {
+        return;
+    }
+
+    if (!sameLayout(next, committed.value)) {
+        past.value.push(committed.value);
+        future.value = [];
+        committed.value = next;
+    }
+}
+
+function undoLayout(): void {
+    const previous = past.value.pop();
+
+    if (previous === undefined) {
+        return;
+    }
+
+    future.value.push(committed.value);
+    committed.value = previous;
+    working.value = { ...previous };
+}
+
+function redoLayout(): void {
+    const next = future.value.pop();
+
+    if (next === undefined) {
+        return;
+    }
+
+    past.value.push(committed.value);
+    committed.value = next;
+    working.value = { ...next };
+}
+
+// Done: the changed items go in one `MoveResizeItems` with the revision held. On success the server's settled layout replaces ours and the mode
+// ends with focus back on Edit layout; on failure the mode stays open with `msg:layout-save-failed` and the local arrangement kept (a stale revision
+// offers a reload instead of an overwrite).
+async function finishEditing(): Promise<void> {
+    const current = dashboard.value;
+
+    if (props.dashboard_id === null || current === null || saving.value) {
+        return;
+    }
+
+    const saved = layoutOf(current.items);
+    const changed = Object.entries(committed.value)
+        .filter(
+            ([id, g]) =>
+                saved[id] === undefined ||
+                !sameLayout({ [id]: g }, { [id]: saved[id] }),
+        )
+        .map(([id, g]) => ({ item_id: id, ...g }));
+
+    if (changed.length === 0) {
+        editing.value = false;
+        await nextTick();
+        focusEditButton();
+
+        return;
+    }
+
+    saving.value = true;
+    saveError.value = null;
+
+    try {
+        const outcome = await saveLayout(
+            props.dashboard_id,
+            changed,
+            revision.value,
+        );
+
+        if (outcome.ok) {
+            dashboard.value = outcome.dashboard;
+            revision.value = outcome.dashboard.revision;
+            minimized.value = Object.fromEntries(
+                outcome.dashboard.items.map((i) => [i.item_id, i.minimized]),
+            );
+            editing.value = false;
+            announce(labels.layoutSaved);
+            await nextTick();
+            focusEditButton();
+
+            return;
+        }
+
+        saveError.value = outcome.reason === 'conflict' ? 'conflict' : 'failed';
+    } catch (error) {
+        if (
+            error instanceof DashboardError &&
+            (error.status === 401 || error.status === 419)
+        ) {
+            window.location.assign(SIGN_IN_URL);
+
+            return;
+        }
+
+        saveError.value = 'failed';
+    } finally {
+        saving.value = false;
+    }
+}
+
+// Leave the mode on the server's layout, dropping the local arrangement.
+async function reloadLayout(): Promise<void> {
+    editing.value = false;
+    saveError.value = null;
+    await load();
+    void loadResults();
 }
 
 // The free-space hint: where the next Block of that size would go, from the layout's own `next_free_slot`.
@@ -965,17 +1172,55 @@ onBeforeUnmount(() => {
     <div class="flex min-h-0 flex-1">
         <div class="flex min-w-0 flex-1 flex-col gap-6 px-4 py-6 sm:px-7">
             <PageHeader :title="title">
-                <div class="flex items-center gap-2">
+                <div
+                    v-if="editing"
+                    class="flex flex-wrap items-center gap-2"
+                    role="toolbar"
+                    :aria-label="labels.editToolbar"
+                    data-slot="edit-layout-toolbar"
+                >
+                    <span
+                        class="type-caption hidden text-text-secondary lg:inline"
+                        data-slot="edit-hint"
+                        >{{ labels.editHint }}</span
+                    >
                     <Button
                         type="button"
-                        data-slot="add-block"
-                        :aria-expanded="panelOpen"
-                        @click="showPanel"
+                        variant="secondary"
+                        :aria-disabled="canUndoLayout ? undefined : 'true'"
+                        data-slot="edit-undo"
+                        @click="undoLayout"
                     >
-                        {{ labels.addBlock }}
+                        {{ labels.editUndo }}
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        :aria-disabled="canRedoLayout ? undefined : 'true'"
+                        data-slot="edit-redo"
+                        @click="redoLayout"
+                    >
+                        {{ labels.editRedo }}
+                    </Button>
+                    <Button
+                        type="button"
+                        :aria-busy="saving ? 'true' : undefined"
+                        data-slot="edit-done"
+                        @click="finishEditing"
+                    >
+                        {{ labels.editDone }}
                     </Button>
                 </div>
-                <div class="hidden items-center gap-2 md:flex">
+                <Button
+                    v-else
+                    type="button"
+                    data-slot="add-block"
+                    :aria-expanded="panelOpen"
+                    @click="showPanel"
+                >
+                    {{ labels.addBlock }}
+                </Button>
+                <div v-if="!editing" class="hidden items-center gap-2 md:flex">
                     <Button
                         type="button"
                         variant="secondary"
@@ -995,13 +1240,42 @@ onBeforeUnmount(() => {
                     <Button
                         type="button"
                         variant="secondary"
-                        aria-disabled="true"
+                        :aria-disabled="items.length === 0 ? 'true' : undefined"
                         data-slot="edit-layout"
+                        @click="items.length > 0 && startEditing()"
                     >
                         {{ labels.editLayout }}
                     </Button>
                 </div>
             </PageHeader>
+
+            <div
+                v-if="saveError !== null"
+                role="alert"
+                class="flex flex-wrap items-center gap-3 rounded-lg border border-error bg-error-soft p-3 text-error-text"
+                data-slot="layout-save-failed"
+            >
+                <p class="type-body-sm">{{ t('layout-save-failed') }}</p>
+                <Button
+                    v-if="saveError === 'conflict'"
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    data-slot="layout-reload"
+                    @click="reloadLayout"
+                >
+                    {{ labels.reloadLayout }}
+                </Button>
+                <Button
+                    v-else
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    @click="finishEditing"
+                >
+                    {{ labels.retry }}
+                </Button>
+            </div>
 
             <div
                 v-if="state === 'loading'"
@@ -1061,6 +1335,8 @@ onBeforeUnmount(() => {
                 :profile="profile"
                 :just-added="justAdded"
                 :hint="hint"
+                :editing="editing"
+                @geometry="onGeometry"
                 @retry="loadResults"
                 @refresh="onRefresh"
                 @minimize="onMinimize"

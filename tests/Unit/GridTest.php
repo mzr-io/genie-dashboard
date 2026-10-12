@@ -71,3 +71,32 @@ it('says whether a rectangle fits inside the grid without touching another', fun
         ->and(Grid::fits($items, -1, 0, 3, 'small'))->toBeFalse()
         ->and(Grid::fits([], 0, 0, 12, 'large'))->toBeTrue();
 });
+
+// Story 4.11: settling a layout after a move or resize. The same cases run in the browser (tests/js/layout.test.ts), so the preview a person drags
+// and the layout the server saves cannot drift apart.
+it('settles a moved layout: moved items keep their places, what they overlap is pushed down, nothing moves up', function (array $case) {
+    expect(Grid::resolve($case['moved'], $case['others']))->toBe($case['expected']);
+})->with(fn () => array_map(fn (array $case): array => [$case], json_decode((string) file_get_contents(__DIR__.'/../Fixtures/layout-resolve.json'), true, 512, JSON_THROW_ON_ERROR)));
+
+it('keeps every id and never overlaps after settling a crowded layout', function () {
+    $others = [];
+
+    for ($i = 0; $i < 12; $i++) {
+        $others["o{$i}"] = ['col' => ($i * 3) % 12, 'row' => intdiv($i, 4) * 2, 'width' => 3, 'height' => 'small'];
+    }
+
+    $moved = ['m' => ['col' => 3, 'row' => 0, 'width' => 8, 'height' => 'medium']];
+    $out = Grid::resolve($moved, $others);
+
+    expect(array_keys($out))->toHaveCount(13);
+
+    $list = array_values($out);
+
+    foreach ($list as $i => $a) {
+        foreach ($list as $j => $b) {
+            if ($i < $j) {
+                expect(Grid::fits([$a], $b['col'], $b['row'], $b['width'], $b['height']))->toBeTrue();
+            }
+        }
+    }
+});

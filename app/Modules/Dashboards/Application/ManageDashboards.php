@@ -10,6 +10,7 @@ use App\Modules\Dashboards\Contracts\DashboardNotFound;
 use App\Modules\Dashboards\Contracts\DashboardRef;
 use App\Modules\Dashboards\Contracts\Dashboards;
 use App\Modules\Dashboards\Contracts\DashboardView;
+use App\Modules\Dashboards\Contracts\InvalidLayout;
 use App\Modules\Dashboards\Contracts\ItemChange;
 use App\Modules\Dashboards\Contracts\ItemLocked;
 use App\Modules\Dashboards\Contracts\ItemNotFound;
@@ -104,6 +105,7 @@ final class ManageDashboards implements Dashboards
                     'icon' => $card->icon,
                     'chrome' => $card->chrome,
                     'about' => $card->about,
+                    'sizes' => $card->sizes,
                 ] : null,
             ];
         }
@@ -390,5 +392,73 @@ final class ManageDashboards implements Dashboards
         }
 
         return new ItemChange($revision, $changed, $item, $view->nextFreeSlot);
+    }
+
+    public function moveResizeItems(string $workspaceId, string $membershipId, string $dashboardId, array $items, int $expectedRevision): DashboardView
+    {
+        $dashboard = $this->lock($workspaceId, $membershipId, $dashboardId);
+        $id = strtolower((string) $dashboard->id);
+        $revision = (int) $dashboard->revision;
+
+        if ($revision !== $expectedRevision) {
+            throw new RevisionConflict($revision);
+        }
+
+        /** @var list<\stdClass> $rows */
+        $rows = DB::select('select id, block_id, col, row, width, height from dashboard_items where workspace_id = ? and dashboard_id = ? for update', [$workspaceId, $id]);
+        $known = [];
+
+        foreach ($rows as $row) {
+            $known[strtolower((string) $row->id)] = $row;
+        }
+
+        $blockIds = array_map(fn (\stdClass $r): string => strtolower((string) $r->block_id), $rows);
+        $cards = $this->cards->forBlocks($workspaceId, $blockIds);
+        $moved = [];
+        $others = [];
+
+        foreach ($items as $request) {
+            $itemId = strtolower($request['item_id']);
+
+            if (! isset($known[$itemId]) || isset($moved[$itemId])) {
+                throw new InvalidLayout;
+            }
+
+            $row = $known[$itemId];
+            $card = $cards[strtolower((string) $row->block_id)] ?? null;
+            $limits = $card === null ? ['min_width' => 3, 'max_width' => 12, 'min_height' => 'small', 'max_height' => 'large'] : $card->sizes;
+            $resizable = $card === null || $card->chrome['allow_resize'];
+            $width = $resizable ? $request['width'] : (int) $row->width;
+            $height = $resizable ? $request['height'] : (string) $row->height;
+
+            $moved[$itemId] = Grid::clamp($request['col'], $request['row'], $width, $height, $limits['min_width'], $limits['max_width'], $limits['min_height'], $limits['max_height']);
+        }
+
+        foreach ($known as $itemId => $row) {
+            if (! isset($moved[$itemId])) {
+                $others[$itemId] = ['col' => (int) $row->col, 'row' => (int) $row->row, 'width' => (int) $row->width, 'height' => (string) $row->height];
+            }
+        }
+
+        $settled = Grid::resolve($moved, $others);
+
+        foreach ($settled as $itemId => $geometry) {
+            $row = $known[$itemId];
+
+            if ((int) $row->col !== $geometry['col'] || (int) $row->row !== $geometry['row'] || (int) $row->width !== $geometry['width'] || (string) $row->height !== $geometry['height']) {
+                DB::update(
+                    'update dashboard_items set col = ?, row = ?, width = ?, height = ?, updated_at = now() where workspace_id = ? and dashboard_id = ? and id = ?',
+                    [$geometry['col'], $geometry['row'], $geometry['width'], $geometry['height'], $workspaceId, $id, $itemId],
+                );
+            }
+        }
+
+        DB::update('update dashboards set revision = revision + 1, updated_at = now() where workspace_id = ? and id = ?', [$workspaceId, $id]);
+
+        $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
+            'dashboard_id' => $id, 'command' => 'move_resize_items', 'revision' => $revision + 1, 'items' => count($moved),
+        ]);
+
+        return $this->find($workspaceId, $membershipId, $id);
     }
 }

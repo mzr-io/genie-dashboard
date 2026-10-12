@@ -52,6 +52,8 @@ const props = withDefaults(
         admin?: boolean;
         // Just added to the dashboard: outlined, with "Just added", for a few seconds.
         justAdded?: boolean;
+        // Edit Layout Mode (Story 4.11): the whole header is a move handle and a Block that allows resize shows a 24 x 24 handle at its corner.
+        editing?: boolean;
         // The profile `{user.*}` footer tokens are filled from.
         profile?: FooterProfile;
     }>(),
@@ -62,6 +64,7 @@ const props = withDefaults(
         refreshLimited: false,
         admin: false,
         justAdded: false,
+        editing: false,
         profile: () => ({}),
     },
 );
@@ -71,6 +74,8 @@ const emit = defineEmits<{
     refresh: [itemId: string];
     minimize: [itemId: string, minimized: boolean];
     remove: [blockId: string, from: 'menu' | 'card'];
+    // A pointer went down on the move handle or the resize handle.
+    drag: [itemId: string, kind: 'move' | 'resize', event: PointerEvent];
 }>();
 
 const { t } = useI18n();
@@ -206,6 +211,25 @@ const technical = computed(() =>
         : [],
 );
 
+const canResize = computed(
+    () => !unavailable.value && chrome.value?.allow_resize === true,
+);
+
+// A drag starts anywhere on the header except its controls.
+function onHeaderDown(event: PointerEvent): void {
+    if (
+        !props.editing ||
+        event.button !== 0 ||
+        (event.target instanceof Element &&
+            event.target.closest('button, a, [role=menuitem]') !== null)
+    ) {
+        return;
+    }
+
+    event.preventDefault();
+    emit('drag', props.item.item_id, 'move', event);
+}
+
 function refresh(): void {
     if (props.refreshLimited || props.refreshing) {
         return;
@@ -222,7 +246,7 @@ function refresh(): void {
         :data-minimized="isMinimized ? 'true' : undefined"
         :data-just-added="justAdded ? 'true' : undefined"
         :aria-labelledby="headingId"
-        class="flex min-h-0 flex-col overflow-hidden rounded-lg border bg-surface-card"
+        class="relative flex min-h-0 flex-col overflow-hidden rounded-lg border bg-surface-card"
         :class="
             justAdded
                 ? 'border-accent bg-success-soft outline outline-2 outline-accent'
@@ -231,7 +255,12 @@ function refresh(): void {
     >
         <header
             class="flex items-start justify-between gap-2 px-4 py-3"
-            :class="showHeader ? '' : 'sr-only'"
+            :class="[
+                showHeader || editing ? '' : 'sr-only',
+                editing ? 'cursor-move touch-none select-none' : '',
+            ]"
+            :data-slot="editing ? 'move-handle' : undefined"
+            @pointerdown="onHeaderDown"
         >
             <div class="flex min-w-0 items-start gap-2">
                 <span
@@ -392,6 +421,22 @@ function refresh(): void {
                 </Button>
             </div>
         </div>
+
+        <button
+            v-if="editing && canResize"
+            type="button"
+            class="absolute right-0 bottom-0 flex size-6 cursor-nwse-resize touch-none items-end justify-end rounded-br-lg text-text-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+            :aria-label="labels.resize(title)"
+            data-slot="resize-handle"
+            @pointerdown.stop.prevent="
+                emit('drag', item.item_id, 'resize', $event)
+            "
+        >
+            <span
+                class="m-1 block size-2.5 border-r-2 border-b-2 border-current"
+                aria-hidden="true"
+            />
+        </button>
 
         <footer
             v-if="footer && !isMinimized"

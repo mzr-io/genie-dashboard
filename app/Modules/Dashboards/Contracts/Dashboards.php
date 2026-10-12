@@ -42,6 +42,21 @@ interface Dashboards
     public function restoreItem(string $workspaceId, string $membershipId, string $dashboardId, string $blockId, ?array $geometry, bool $minimized, int $expectedRevision): ItemChange;
 
     /**
+     * `MoveResizeItems` (AD-14, Story 4.11): `items` names existing items with the geometry they should have. The dashboard is held `FOR UPDATE`, the
+     * revision checked, each geometry clamped to its Block's own limits (an item whose Block does not allow resize keeps its size), the layout settled
+     * by the Layout kernel (moved items keep their places, what they overlap is pushed down, nothing compacts upward), the revision bumped once and
+     * `dashboards.dashboard.changed` emitted. It never creates or deletes an item.
+     *
+     * @param  list<array{item_id: string, col: int, row: int, width: int, height: string}>  $items
+     * @return DashboardView the saved layout
+     *
+     * @throws DashboardNotFound
+     * @throws InvalidLayout an item that is not on the dashboard, or named twice
+     * @throws RevisionConflict
+     */
+    public function moveResizeItems(string $workspaceId, string $membershipId, string $dashboardId, array $items, int $expectedRevision): DashboardView;
+
+    /**
      * `RemoveItem` (AD-14, Story 4.9): by Block. A Block that is not on the dashboard is a no-op (`changed` false). A Mandatory item is refused.
      *
      * @throws DashboardNotFound

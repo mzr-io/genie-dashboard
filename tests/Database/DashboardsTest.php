@@ -600,3 +600,101 @@ it('is idempotent: restoring a Block that is already back returns it', function 
     expect($again->json('data.item.item_id'))->toBe($first)
         ->and(Cluster::rows(Cluster::superuser(), 'select count(*) as n from dashboard_items')[0]['n'])->toBe(1);
 });
+
+// ---- Story 4.11: MoveResizeItems -----------------------------------------------------------------------------------------------------------------
+
+function db11Put(string $dashboard, array $items, int $revision)
+{
+    return test()->putJson("/api/v1/dashboards/{$dashboard}/layout", ['items' => $items, 'expected_revision' => $revision], DB4_HEADERS);
+}
+
+function db11Geometry(string $item): array
+{
+    return Cluster::rows(Cluster::superuser(), 'select col, row, width, height from dashboard_items where id = ?', [$item])[0];
+}
+
+it('moves and resizes items, pushes what they overlap down, bumps the revision once and returns the saved layout', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $a = dbItem($workspace, $dashboard, dbBlock($workspace, 'A'), ['col' => 0, 'row' => 0, 'width' => 3]);
+    $b = dbItem($workspace, $dashboard, dbBlock($workspace, 'B'), ['col' => 6, 'row' => 0, 'width' => 3]);
+    $c = dbItem($workspace, $dashboard, dbBlock($workspace, 'C'), ['col' => 0, 'row' => 6, 'width' => 3]);
+
+    $response = db11Put($dashboard, [['item_id' => $a, 'col' => 6, 'row' => 0, 'width' => 4, 'height' => 'medium']], 0)->assertOk();
+
+    expect($response->json('data.revision'))->toBe(1)
+        ->and(db11Geometry($a))->toBe(['col' => 6, 'row' => 0, 'width' => 4, 'height' => 'medium'])
+        // B sat under A's new place: pushed below A's six rows, and C, untouched, stays.
+        ->and(db11Geometry($b))->toBe(['col' => 6, 'row' => 6, 'width' => 3, 'height' => 'small'])
+        ->and(db11Geometry($c))->toBe(['col' => 0, 'row' => 6, 'width' => 3, 'height' => 'small'])
+        ->and(db9Revision($dashboard))->toBe(1)
+        ->and(array_column($response->json('data.items'), 'item_id'))->toContain($a, $b, $c);
+
+    $event = json_decode(Cluster::rows(Cluster::superuser(), "select data from outbox_events where type = 'dashboards.dashboard.changed'")[0]['data'], true);
+
+    expect($event)->toMatchArray(['command' => 'move_resize_items', 'revision' => 1, 'items' => 1]);
+});
+
+it('clamps a size to the Block\'s limits and keeps the size of a Block that does not allow resize', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $wide = dbItem($workspace, $dashboard, dbBlock($workspace, 'Wide'), ['col' => 0, 'row' => 0, 'width' => 3]);
+    $fixed = dbItem($workspace, $dashboard, dbBlock($workspace, 'Fixed', ['chrome' => ['allow_resize' => false]]), ['col' => 6, 'row' => 0, 'width' => 3]);
+
+    db11Put($dashboard, [
+        ['item_id' => $wide, 'col' => 0, 'row' => 0, 'width' => 12, 'height' => 'large'],
+        ['item_id' => $fixed, 'col' => 6, 'row' => 4, 'width' => 8, 'height' => 'large'],
+    ], 0)->assertOk();
+
+    // dbBlock allows 3 to 6 columns and small to medium.
+    expect(db11Geometry($wide))->toBe(['col' => 0, 'row' => 0, 'width' => 6, 'height' => 'medium'])
+        ->and(db11Geometry($fixed))->toBe(['col' => 6, 'row' => 4, 'width' => 3, 'height' => 'small']);
+});
+
+it('refuses an unknown or repeated item with 422 and a stale revision with 409, changing nothing', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $a = dbItem($workspace, $dashboard, dbBlock($workspace, 'A'));
+    $foreign = Cluster::seedDashboardItem($workspace);
+
+    $unknown = db11Put($dashboard, [['item_id' => $foreign, 'col' => 0, 'row' => 0, 'width' => 3, 'height' => 'small']], 0)->assertStatus(422);
+
+    expect($unknown->json('error.code'))->toBe('dashboards.invalid_layout');
+
+    db11Put($dashboard, [['item_id' => (string) Str::uuid7(), 'col' => 0, 'row' => 0, 'width' => 3, 'height' => 'small']], 0)->assertStatus(422);
+    db11Put($dashboard, [
+        ['item_id' => $a, 'col' => 3, 'row' => 0, 'width' => 3, 'height' => 'small'],
+        ['item_id' => $a, 'col' => 6, 'row' => 0, 'width' => 3, 'height' => 'small'],
+    ], 0)->assertStatus(422);
+
+    $stale = db11Put($dashboard, [['item_id' => $a, 'col' => 6, 'row' => 0, 'width' => 3, 'height' => 'small']], 7)->assertStatus(409);
+
+    expect($stale->json('error.revision'))->toBe(0)
+        ->and(db11Geometry($a))->toBe(['col' => 0, 'row' => 0, 'width' => 3, 'height' => 'small'])
+        ->and(db9Revision($dashboard))->toBe(0)
+        ->and(Cluster::rows(Cluster::superuser(), 'select count(*) as n from dashboard_items')[0]['n'])->toBe(2);
+});
+
+it('validates the geometry shape and keeps another member\'s dashboard out of reach', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $a = dbItem($workspace, $dashboard, dbBlock($workspace, 'A'));
+
+    foreach ([
+        ['col' => 12, 'row' => 0, 'width' => 3, 'height' => 'small'],
+        ['col' => 0, 'row' => -1, 'width' => 3, 'height' => 'small'],
+        ['col' => 0, 'row' => 0, 'width' => 5, 'height' => 'small'],
+        ['col' => 0, 'row' => 0, 'width' => 3, 'height' => 'huge'],
+    ] as $geometry) {
+        db11Put($dashboard, [['item_id' => $a] + $geometry], 0)->assertStatus(422);
+    }
+
+    $theirs = Cluster::seedDashboard($workspace);
+
+    db11Put($theirs, [['item_id' => $a, 'col' => 0, 'row' => 0, 'width' => 3, 'height' => 'small']], 0)->assertNotFound();
+});
+
+it('lets a Mandatory item move and resize', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $locked = dbItem($workspace, $dashboard, dbBlock($workspace, 'Locked'), ['mandatory' => 'true']);
+
+    db11Put($dashboard, [['item_id' => $locked, 'col' => 3, 'row' => 2, 'width' => 4, 'height' => 'medium']], 0)->assertOk();
+
+    expect(db11Geometry($locked))->toBe(['col' => 3, 'row' => 2, 'width' => 4, 'height' => 'medium']);
+});

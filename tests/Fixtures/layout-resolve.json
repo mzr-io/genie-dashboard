@@ -1,0 +1,77 @@
+[
+    {
+        "name": "a moved item pushes the one it lands on down, just far enough",
+        "moved": { "a": { "col": 6, "row": 0, "width": 6, "height": "small" } },
+        "others": {
+            "b": { "col": 6, "row": 0, "width": 6, "height": "small" }
+        },
+        "expected": {
+            "a": { "col": 6, "row": 0, "width": 6, "height": "small" },
+            "b": { "col": 6, "row": 2, "width": 6, "height": "small" }
+        }
+    },
+    {
+        "name": "nothing overlaps: everything stays",
+        "moved": { "a": { "col": 0, "row": 0, "width": 3, "height": "small" } },
+        "others": {
+            "b": { "col": 3, "row": 0, "width": 3, "height": "small" },
+            "c": { "col": 0, "row": 4, "width": 6, "height": "medium" }
+        },
+        "expected": {
+            "a": { "col": 0, "row": 0, "width": 3, "height": "small" },
+            "b": { "col": 3, "row": 0, "width": 3, "height": "small" },
+            "c": { "col": 0, "row": 4, "width": 6, "height": "medium" }
+        }
+    },
+    {
+        "name": "a push cascades down a column of full-width items",
+        "moved": {
+            "x": { "col": 0, "row": 0, "width": 12, "height": "small" }
+        },
+        "others": {
+            "a": { "col": 0, "row": 0, "width": 12, "height": "small" },
+            "b": { "col": 0, "row": 2, "width": 12, "height": "small" },
+            "c": { "col": 0, "row": 4, "width": 12, "height": "small" }
+        },
+        "expected": {
+            "x": { "col": 0, "row": 0, "width": 12, "height": "small" },
+            "a": { "col": 0, "row": 2, "width": 12, "height": "small" },
+            "b": { "col": 0, "row": 4, "width": 12, "height": "small" },
+            "c": { "col": 0, "row": 6, "width": 12, "height": "small" }
+        }
+    },
+    {
+        "name": "nothing compacts upward",
+        "moved": { "m": { "col": 0, "row": 0, "width": 3, "height": "small" } },
+        "others": {
+            "a": { "col": 6, "row": 10, "width": 3, "height": "small" }
+        },
+        "expected": {
+            "m": { "col": 0, "row": 0, "width": 3, "height": "small" },
+            "a": { "col": 6, "row": 10, "width": 3, "height": "small" }
+        }
+    },
+    {
+        "name": "two moved items on one spot: the later one is pushed",
+        "moved": {
+            "m1": { "col": 0, "row": 0, "width": 6, "height": "small" },
+            "m2": { "col": 0, "row": 0, "width": 6, "height": "small" }
+        },
+        "others": {},
+        "expected": {
+            "m1": { "col": 0, "row": 0, "width": 6, "height": "small" },
+            "m2": { "col": 0, "row": 2, "width": 6, "height": "small" }
+        }
+    },
+    {
+        "name": "a taller item clears a shorter one by its height",
+        "moved": { "m": { "col": 0, "row": 0, "width": 6, "height": "large" } },
+        "others": {
+            "a": { "col": 0, "row": 5, "width": 6, "height": "small" }
+        },
+        "expected": {
+            "m": { "col": 0, "row": 0, "width": 6, "height": "large" },
+            "a": { "col": 0, "row": 9, "width": 6, "height": "small" }
+        }
+    }
+]

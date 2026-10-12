@@ -16,4 +16,6 @@ enum ErrorCode: string
     case BlockUnavailable = 'dashboards.block_unavailable';
     /** `RemoveItem` of a Mandatory item (Story 4.9): HTTP 403, with `msg:locked`. */
     case ItemLocked = 'dashboards.item_locked';
+    /** A layout command named an item that is not on the dashboard, or one twice (Story 4.11): HTTP 422, nothing changed. */
+    case InvalidLayout = 'dashboards.invalid_layout';
 }

@@ -39,6 +39,14 @@ function item(overrides: Partial<DashboardItem> = {}): DashboardItem {
             subtitle: 'Net, this month',
             type: 'kpi-card',
             icon: null,
+            sizes: {
+                min_width: 3,
+                max_width: 12,
+                width: 3,
+                min_height: 'small',
+                max_height: 'large',
+                height: 'small',
+            },
             about: {
                 description: 'Net revenue so far',
                 source_name: 'Sales API',
@@ -1359,5 +1367,276 @@ describe('Adding and removing Blocks', () => {
         expect(JSON.parse(restores[1][1].body!).expected_revision).toBe(4);
         expect(useToasts().items.at(-1)!.kind).toBe('rollback');
         expect($('[data-slot=block-card]')).toBeNull();
+    });
+});
+
+describe('Edit Layout Mode', () => {
+    const layoutItems = () => [
+        item({
+            item_id: 'i-1',
+            block_id: 'b-1',
+            geometry: { col: 0, row: 0, width: 3, height: 'small' },
+        }),
+        item({
+            item_id: 'i-2',
+            block_id: 'b-2',
+            geometry: { col: 6, row: 0, width: 3, height: 'small' },
+            block: {
+                ...item().block!,
+                name: 'Open tickets',
+                chrome: { ...item().block!.chrome, allow_resize: false },
+            },
+        }),
+    ];
+
+    const calls = (method: string) =>
+        (
+            fetch as unknown as {
+                mock: {
+                    calls: Array<[string, { method?: string; body?: string }]>;
+                };
+            }
+        ).mock.calls.filter((call) => (call[1]?.method ?? 'GET') === method);
+
+    // happy-dom has no layout: the grid measures 0 px, so a column pitch is (0 + 14) / 12 px and a row pitch is 74 px.
+    const COL = 14 / 12;
+    const pointer = (
+        type: string,
+        target: EventTarget,
+        x: number,
+        y: number,
+    ) => {
+        const event = new MouseEvent(type, {
+            clientX: x,
+            clientY: y,
+            button: 0,
+            bubbles: true,
+            cancelable: true,
+        });
+        target.dispatchEvent(event);
+    };
+
+    async function edit(): Promise<void> {
+        ($('[data-slot=edit-layout]') as HTMLButtonElement).click();
+        await flushPromises();
+    }
+
+    it('turns Edit layout into Undo, Redo and Done with the hint, and gives each Block a move handle and a resize handle only when allowed', async () => {
+        replies = [ok(dashboard(layoutItems())), resultsOf([])];
+
+        await mountPage();
+        await edit();
+
+        const toolbar = $('[data-slot=edit-layout-toolbar]')!;
+
+        expect(toolbar.textContent).toContain(
+            'Drag to move · corner to resize · M to move with the keyboard',
+        );
+        expect(
+            Array.from(toolbar.querySelectorAll('button')).map((b) =>
+                b.textContent?.trim(),
+            ),
+        ).toEqual(['Undo', 'Redo', 'Done']);
+        expect($('[data-slot=edit-layout]')).toBeNull();
+        expect($$('[data-slot=move-handle]')).toHaveLength(2);
+        expect($$('[data-slot=resize-handle]')).toHaveLength(1);
+        expect(
+            $('[data-item=i-1] [data-slot=resize-handle]')?.getAttribute(
+                'aria-label',
+            ),
+        ).toBe('Resize Revenue overview');
+    });
+
+    it('previews a drag with the neighbour pushed down and saves only on Done, with the revision, returning focus to Edit layout', async () => {
+        const saved = dashboard(layoutItems());
+        saved.items[0].geometry = { col: 6, row: 0, width: 3, height: 'small' };
+        saved.items[1].geometry = { col: 6, row: 2, width: 3, height: 'small' };
+        saved.revision = 1;
+        replies = [
+            ok(dashboard(layoutItems())),
+            resultsOf([]),
+            { ok: true, status: 200, json: { data: saved } },
+        ];
+
+        await mountPage();
+        await edit();
+
+        const header = $('[data-item=i-1] [data-slot=move-handle]')!;
+        pointer('pointerdown', header, 100, 100);
+        pointer('pointermove', window, 100 + 6 * COL, 100);
+        await flushPromises();
+
+        // Previewed: the Block sits at column 6 (CSS column 7) and the one it landed on is pushed below it.
+        expect($('[data-item=i-1]')!.getAttribute('style')).toContain(
+            '--col: 7',
+        );
+        expect($('[data-item=i-2]')!.getAttribute('style')).toContain(
+            '--row: 3',
+        );
+        expect(calls('PUT')).toHaveLength(0);
+
+        pointer('pointerup', window, 100 + 6 * COL, 100);
+        await flushPromises();
+        ($('[data-slot=edit-done]') as HTMLButtonElement).click();
+        await flushPromises();
+        await flushPromises();
+
+        const put = calls('PUT')[0];
+        const body = JSON.parse(put[1].body!);
+
+        expect(put[0]).toBe('/api/v1/dashboards/d-1/layout');
+        expect(body.expected_revision).toBe(0);
+        expect(body.items).toEqual([
+            { item_id: 'i-1', col: 6, row: 0, width: 3, height: 'small' },
+            { item_id: 'i-2', col: 6, row: 2, width: 3, height: 'small' },
+        ]);
+        expect($('[data-slot=edit-layout-toolbar]')).toBeNull();
+        expect(document.activeElement).toBe($('[data-slot=edit-layout]'));
+    });
+
+    it('resizes by the corner, snapping to the width presets', async () => {
+        replies = [ok(dashboard(layoutItems())), resultsOf([])];
+
+        await mountPage();
+        await edit();
+
+        const handle = $('[data-item=i-1] [data-slot=resize-handle]')!;
+        pointer('pointerdown', handle, 0, 0);
+        // 3 columns plus about 2.6 columns of pitch: the nearest preset is 6.
+        pointer('pointermove', window, 3 * COL, 0);
+        pointer('pointerup', window, 3 * COL, 0);
+        await flushPromises();
+
+        expect($('[data-item=i-1]')!.getAttribute('style')).toContain(
+            '--width: 6',
+        );
+    });
+
+    it('steps through its own history with Undo, Redo, Ctrl+Z and Ctrl+Shift+Z', async () => {
+        replies = [ok(dashboard(layoutItems())), resultsOf([])];
+
+        await mountPage();
+        await edit();
+
+        const header = $('[data-item=i-1] [data-slot=move-handle]')!;
+        pointer('pointerdown', header, 0, 0);
+        pointer('pointermove', window, 3 * COL, 0);
+        pointer('pointerup', window, 3 * COL, 0);
+        await flushPromises();
+
+        expect($('[data-item=i-1]')!.getAttribute('style')).toContain(
+            '--col: 4',
+        );
+
+        ($('[data-slot=edit-undo]') as HTMLButtonElement).click();
+        await flushPromises();
+
+        expect($('[data-item=i-1]')!.getAttribute('style')).toContain(
+            '--col: 1',
+        );
+
+        document.body.dispatchEvent(
+            new KeyboardEvent('keydown', {
+                key: 'z',
+                ctrlKey: true,
+                shiftKey: true,
+                bubbles: true,
+                cancelable: true,
+            }),
+        );
+        await flushPromises();
+
+        expect($('[data-item=i-1]')!.getAttribute('style')).toContain(
+            '--col: 4',
+        );
+
+        document.body.dispatchEvent(
+            new KeyboardEvent('keydown', {
+                key: 'z',
+                ctrlKey: true,
+                bubbles: true,
+                cancelable: true,
+            }),
+        );
+        await flushPromises();
+
+        expect($('[data-item=i-1]')!.getAttribute('style')).toContain(
+            '--col: 1',
+        );
+        // Nothing was saved and the add/remove history was not touched.
+        expect(calls('PUT')).toHaveLength(0);
+        expect(calls('DELETE')).toHaveLength(0);
+    });
+
+    it('stays in the mode with msg:layout-save-failed and the arrangement kept when the save fails, and offers a reload on a stale revision', async () => {
+        replies = [
+            ok(dashboard(layoutItems())),
+            resultsOf([]),
+            { ok: false, status: 500, json: {} },
+            {
+                ok: false,
+                status: 409,
+                json: {
+                    error: {
+                        code: 'dashboards.revision_conflict',
+                        revision: 5,
+                    },
+                },
+            },
+            ok({ ...dashboard(layoutItems()), revision: 5 }),
+            resultsOf([]),
+        ];
+
+        await mountPage();
+        await edit();
+
+        pointer(
+            'pointerdown',
+            $('[data-item=i-1] [data-slot=move-handle]')!,
+            0,
+            0,
+        );
+        pointer('pointermove', window, 3 * COL, 0);
+        pointer('pointerup', window, 3 * COL, 0);
+        await flushPromises();
+        ($('[data-slot=edit-done]') as HTMLButtonElement).click();
+        await flushPromises();
+        await flushPromises();
+
+        expect($('[data-slot=layout-save-failed]')?.textContent).toContain(
+            en['layout-save-failed'],
+        );
+        expect($('[data-slot=edit-layout-toolbar]')).not.toBeNull();
+        expect($('[data-item=i-1]')!.getAttribute('style')).toContain(
+            '--col: 4',
+        );
+
+        (
+            $('[data-slot=layout-save-failed] button') as HTMLButtonElement
+        ).click();
+        await flushPromises();
+        await flushPromises();
+
+        const reload = $('[data-slot=layout-reload]') as HTMLButtonElement;
+
+        expect(reload).not.toBeNull();
+
+        reload.click();
+        await flushPromises();
+        await flushPromises();
+
+        expect($('[data-slot=edit-layout-toolbar]')).toBeNull();
+        expect($('[data-item=i-1]')!.getAttribute('style')).toContain(
+            '--col: 1',
+        );
+    });
+
+    it('offers no drag from the Add-blocks Panel', async () => {
+        replies = [ok(dashboard(layoutItems())), resultsOf([])];
+
+        await mountPage();
+        await edit();
+
+        expect($('[draggable=true]')).toBeNull();
     });
 });

@@ -73,6 +73,51 @@ final class Grid
     }
 
     /**
+     * Settles a layout after a move or resize: the moved items keep their requested places (in the order given: one that lands on an earlier moved
+     * item is pushed down), then every other item, in reading order, stays where it is unless something placed before it is in the way, in which case
+     * it is pushed down just far enough. Nothing moves up and nothing is created or dropped, so the result has the same ids as the input.
+     *
+     * @param  array<string, array{col: int, row: int, width: int, height: string}>  $moved  item id => requested geometry, already clamped
+     * @param  array<string, array{col: int, row: int, width: int, height: string}>  $others  item id => current geometry
+     * @return array<string, array{col: int, row: int, width: int, height: string}> every item, by id
+     */
+    public static function resolve(array $moved, array $others): array
+    {
+        $rest = $others;
+        uasort($rest, fn (array $a, array $b): int => [$a['row'], $a['col']] <=> [$b['row'], $b['col']]);
+
+        $queue = [];
+
+        foreach ($moved as $id => $geometry) {
+            $queue[] = [(string) $id, $geometry];
+        }
+
+        foreach ($rest as $id => $geometry) {
+            $queue[] = [(string) $id, $geometry];
+        }
+
+        /** @var list<array{col: int, row: int, width: int, height: string}> $placed */
+        $placed = [];
+        /** @var array<string, array{col: int, row: int, width: int, height: string}> $out */
+        $out = [];
+
+        foreach ($queue as [$id, $geometry]) {
+            $row = $geometry['row'];
+            $units = self::HEIGHTS[$geometry['height']] ?? self::HEIGHTS['small'];
+
+            while (self::overlaps($placed, $geometry['col'], $row, $geometry['width'], $units)) {
+                $row++;
+            }
+
+            $geometry['row'] = $row;
+            $placed[] = $geometry;
+            $out[$id] = $geometry;
+        }
+
+        return $out;
+    }
+
+    /**
      * Whether a rectangle lies inside the grid and overlaps none of the occupied ones.
      *
      * @param  list<array{col: int, row: int, width: int, height: string}>  $occupied

@@ -8,6 +8,7 @@ use App\Modules\Dashboards\Contracts\BlockNotAvailable;
 use App\Modules\Dashboards\Contracts\DashboardNotFound;
 use App\Modules\Dashboards\Contracts\Dashboards;
 use App\Modules\Dashboards\Contracts\ErrorCode;
+use App\Modules\Dashboards\Contracts\InvalidLayout;
 use App\Modules\Dashboards\Contracts\ItemLocked;
 use App\Modules\Dashboards\Contracts\ItemNotFound;
 use App\Modules\Dashboards\Contracts\RevisionConflict;
@@ -95,6 +96,47 @@ final class DashboardController extends Controller
             $change->changed ? 201 : 200,
             ['Cache-Control' => 'no-store, private'],
         );
+    }
+
+    /**
+     * `MoveResizeItems` (Story 4.11, AD-14): `{items: [{item_id, col, row, width, height}], expected_revision}`. The geometry is clamped and the layout
+     * settled by the Layout kernel on the server; the saved layout comes back. An item that is not on the dashboard is a 422 and a stale revision a 409.
+     */
+    public function layout(Request $request, string $dashboard): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+        $data = $request->validate([
+            'expected_revision' => ['required', 'integer', 'min:0'],
+            'items' => ['required', 'array', 'min:1', 'max:200'],
+            'items.*.item_id' => ['required', 'string', 'uuid', 'distinct:strict'],
+            'items.*.col' => ['required', 'integer', 'min:0', 'max:11'],
+            'items.*.row' => ['required', 'integer', 'min:0', 'max:100000'],
+            'items.*.width' => ['required', 'integer', 'in:3,4,6,8,12'],
+            'items.*.height' => ['required', 'string', 'in:small,medium,large'],
+        ]);
+
+        $items = array_map(fn (array $i): array => [
+            'item_id' => (string) $i['item_id'], 'col' => (int) $i['col'], 'row' => (int) $i['row'], 'width' => (int) $i['width'], 'height' => (string) $i['height'],
+        ], array_values($data['items']));
+
+        try {
+            $view = $this->dashboards->moveResizeItems($workspaceId, $membershipId, $dashboard, $items, (int) $data['expected_revision']);
+        } catch (DashboardNotFound) {
+            abort(404);
+        } catch (InvalidLayout) {
+            return $this->error($request, ErrorCode::InvalidLayout->value, 422, 'The layout names a block that is not on this dashboard.', []);
+        } catch (RevisionConflict $e) {
+            return $this->error($request, ErrorCode::RevisionConflict->value, 409, 'The dashboard has changed.', ['revision' => $e->currentRevision]);
+        }
+
+        return response()->json(['data' => [
+            'dashboard_id' => $view->dashboardId,
+            'name' => $view->name,
+            'is_overview' => $view->isOverview,
+            'revision' => $view->revision,
+            'items' => $view->items,
+            'next_free_slot' => $view->nextFreeSlot,
+        ]], 200, ['Cache-Control' => 'no-store, private']);
     }
 
     /**

@@ -36,6 +36,15 @@ export type DashboardBlock = {
             | 'not_date_filtered'
             | null;
     };
+    // How far the Block may be resized (Story 4.11): the Block Type's limits narrowed by the Admin's.
+    sizes: {
+        min_width: number;
+        max_width: number;
+        width: number;
+        min_height: HeightPreset;
+        max_height: HeightPreset;
+        height: HeightPreset;
+    };
     // The footer action, when the Block has one configured (its target is set in a later epic): a label and a URL template or in-app route.
     footer?: { label: string; target: string } | null;
 };
@@ -489,4 +498,62 @@ export async function restoreBlock(
     );
 
     return outcomeOf(status, json);
+}
+
+// ---- Move and resize (Story 4.11) -----------------------------------------------------------------------------------------------------------------
+
+export type SaveLayoutOutcome =
+    | { ok: true; dashboard: Dashboard }
+    // A stale `expected_revision`: the layout has moved on and the person is offered a reload, never an overwrite.
+    | { ok: false; reason: 'conflict'; revision: number | null }
+    // The layout named an item that is not on the dashboard.
+    | { ok: false; reason: 'invalid' }
+    | { ok: false; reason: 'failed' };
+
+// `MoveResizeItems{items[], expected_revision}`: the server clamps, settles and saves, and returns the layout it kept.
+export async function saveLayout(
+    dashboardId: string,
+    items: Array<{
+        item_id: string;
+        col: number;
+        row: number;
+        width: number;
+        height: HeightPreset;
+    }>,
+    expectedRevision: number,
+): Promise<SaveLayoutOutcome> {
+    const { status, json } = await send(
+        'PUT',
+        `${dashboardUrl(dashboardId)}/layout`,
+        { items, expected_revision: expectedRevision },
+    );
+
+    if (status === 200) {
+        const data = json?.data as Dashboard | undefined;
+
+        return data && Array.isArray(data.items)
+            ? { ok: true, dashboard: data }
+            : { ok: false, reason: 'failed' };
+    }
+
+    if (status === 409) {
+        const revision = (json?.error as { revision?: number } | undefined)
+            ?.revision;
+
+        return {
+            ok: false,
+            reason: 'conflict',
+            revision: typeof revision === 'number' ? revision : null,
+        };
+    }
+
+    if (status === 422) {
+        return { ok: false, reason: 'invalid' };
+    }
+
+    if (status === 401 || status === 419) {
+        throw new DashboardError(status);
+    }
+
+    return { ok: false, reason: 'failed' };
 }

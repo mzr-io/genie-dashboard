@@ -31,6 +31,7 @@ export enum ErrorCode {
     ConnectorSecretsNotConfigured = 'connector.secrets_not_configured',
     ConnectorSsrfBlocked = 'connector.ssrf_blocked',
     DashboardsBlockUnavailable = 'dashboards.block_unavailable',
+    DashboardsInvalidLayout = 'dashboards.invalid_layout',
     DashboardsItemLocked = 'dashboards.item_locked',
     DashboardsRefreshLimited = 'dashboards.refresh_limited',
     DashboardsRevisionConflict = 'dashboards.revision_conflict',
