@@ -81,6 +81,14 @@ final class WorkspaceSettings
         return is_string($zone) && in_array($zone, \DateTimeZone::listIdentifiers(), true) ? $zone : 'UTC';
     }
 
+    /** The settings row's `revision` (1 when there is no row): part of a Block Result's compute context, so a settings change recomputes. */
+    public function revision(): int
+    {
+        $revision = $this->row()['revision'] ?? null;
+
+        return is_numeric($revision) ? max(1, (int) $revision) : 1;
+    }
+
     /** @var array<string, mixed>|null|false The row, read once per instance; false until read. */
     private array|null|false $loaded = false;
 
@@ -97,7 +105,7 @@ final class WorkspaceSettings
         }
 
         try {
-            $row = DB::transaction(fn () => DB::table('workspace_settings')->select(['help_links', 'contact_href', 'timezone'])->first());
+            $row = DB::transaction(fn () => DB::table('workspace_settings')->select(['help_links', 'contact_href', 'timezone', 'revision'])->first());
 
             return $this->loaded = $row === null ? null : (array) $row;
         } catch (Throwable $e) {

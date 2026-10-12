@@ -79,8 +79,10 @@ it('keeps every sample path away from the raw tier', function () {
             $violations[] = "{$path} names a raw table outside RawStore";
         }
 
-        // The contract is called only by Ingestion (and bound in the provider).
-        if (! $inRawStore && ! $inIngestion && ! $inProvider && str_contains($code, 'App\Modules\RawStore')) {
+        // The contract is called only by Ingestion and by Results' compute, which reads the current payload of a target (and bound in the provider).
+        $inCompute = str_ends_with($path, 'Modules/Results/Application/ComputeResults.php');
+
+        if (! $inRawStore && ! $inIngestion && ! $inCompute && ! $inProvider && str_contains($code, 'App\Modules\RawStore')) {
             $violations[] = "{$path} uses RawStore";
         }
     }

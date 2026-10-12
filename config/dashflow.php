@@ -159,6 +159,13 @@ return [
         'workspace_fair_share' => $tunable('DASHFLOW_FETCH_WORKSPACE_FAIR_SHARE'),
     ],
 
+    // Block Results (Story 4.2), kept outside `tunables` like `egress`. `ttl` is `pending_input` with no default: how long a computed result
+    // lives in the Valkey `cache` store, in whole seconds. Every key carries an expiry; a result past it is computed again by the next payload
+    // change or the sweep. Unset: nothing is stored and the compute job fails naming `DASHFLOW_RESULT_TTL`.
+    'results' => [
+        'ttl' => $tunable('DASHFLOW_RESULT_TTL'),
+    ],
+
     // Raw history retention (Story 2.16), kept outside `tunables` like `egress`. `max_window_days` is `pending_input` with no
     // default: the longest `window(N days)` an Admin may choose. Unset or malformed: a window is refused (422
     // `retention-window-unavailable`) and the form shows the option disabled; `latest` always works. The sweep's two timings are

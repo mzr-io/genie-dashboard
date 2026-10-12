@@ -49,3 +49,15 @@ services:
             interval: 2s
             timeout: 3s
             retries: 30
+
+    # A plain Valkey for the Block Result store's Lua compare-and-set (Story 4.2): no TLS, no ACL, no persistence, loopback only.
+    valkey:
+        image: valkey/valkey:9-alpine
+        command: ['valkey-server', '--save', '', '--appendonly', 'no']
+        ports:
+            - '127.0.0.1:${DASHFLOW_TEST_VALKEY_PORT:-56379}:6379'
+        healthcheck:
+            test: ['CMD', 'valkey-cli', 'ping']
+            interval: 2s
+            timeout: 3s
+            retries: 30

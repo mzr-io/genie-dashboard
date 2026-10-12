@@ -7,6 +7,7 @@ use App\Modules\Ingestion\Application\DispatchDueSyncsJob;
 use App\Modules\Ingestion\Application\ReemitPayloadEventsJob;
 use App\Modules\Ingestion\Application\SweepRawHistoryJob;
 use App\Modules\Ingestion\Infrastructure\SyncSettings;
+use App\Modules\Results\Application\SweepStaleResultsJob;
 use App\Platform\Outbox\RelayOutboxJob;
 use Illuminate\Foundation\Inspiring;
 use Illuminate\Support\Facades\Artisan;
@@ -54,6 +55,9 @@ Schedule::job(new ActivatePreparedVersionsJob, 'maintenance')->everyMinute()->on
 
 // The payload re-emit sweep (Story 2.20): a target whose payload sequence is ahead of what consumers applied gets its event again, once per tick.
 Schedule::job(new ReemitPayloadEventsJob, 'maintenance')->everyMinute()->onOneServer();
+
+// The results sweep (Story 4.2): a watched target whose stored result is missing or behind its payload gets one compute job, so results converge on their own.
+Schedule::job(new SweepStaleResultsJob, 'maintenance')->everyMinute()->onOneServer();
 
 // Schedule mutexes are locks: with Valkey they live on the noeviction `queue` store, not the LRU cache.
 Schedule::useCache(config('cache.schedule_store'));

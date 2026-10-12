@@ -44,6 +44,7 @@ use App\Modules\Blocks\Application\ManageUserSamples;
 use App\Modules\Blocks\Application\PreviewDraft;
 use App\Modules\Blocks\Application\PublishDraft;
 use App\Modules\Blocks\Application\ReadDraftFieldRoles;
+use App\Modules\Blocks\Application\ReadPublishedConfigs;
 use App\Modules\Blocks\Application\RunDraftValidation;
 use App\Modules\Blocks\Application\StartDraftSampleFetch;
 use App\Modules\Blocks\Application\StartDraftValidation;
@@ -58,6 +59,7 @@ use App\Modules\Blocks\Contracts\DraftSlots;
 use App\Modules\Blocks\Contracts\DraftUserSamples;
 use App\Modules\Blocks\Contracts\DraftValidations;
 use App\Modules\Blocks\Contracts\PublishedBlocks;
+use App\Modules\Blocks\Contracts\PublishedConfigs;
 use App\Modules\Blocks\Contracts\SampleVault;
 use App\Modules\Blocks\Infrastructure\BlocksAuditSerializer;
 use App\Modules\Blocks\Infrastructure\DraftLockEpochs;
@@ -133,6 +135,7 @@ use App\Modules\Identity\Contracts\SessionRevocation;
 use App\Modules\Identity\Contracts\SignInMemberships;
 use App\Modules\Identity\Infrastructure\DatabaseSessionRevocation;
 use App\Modules\Identity\Infrastructure\IdentityAuditSerializer;
+use App\Modules\Ingestion\Application\ReadComputeSources;
 use App\Modules\Ingestion\Application\ReadSourceHealths;
 use App\Modules\Ingestion\Application\ReadSyncGenerations;
 use App\Modules\Ingestion\Application\ReadSyncStatuses;
@@ -140,6 +143,7 @@ use App\Modules\Ingestion\Application\RegisterSourceHealth;
 use App\Modules\Ingestion\Application\RegisterSubscription;
 use App\Modules\Ingestion\Application\RegisterSyncTargets;
 use App\Modules\Ingestion\Application\ResolveFetchKey;
+use App\Modules\Ingestion\Contracts\ComputeSources;
 use App\Modules\Ingestion\Contracts\ContextDigest;
 use App\Modules\Ingestion\Contracts\FetchKeyResolver;
 use App\Modules\Ingestion\Contracts\RefreshIntervals;
@@ -164,10 +168,16 @@ use App\Modules\RawStore\Contracts\RawStore;
 use App\Modules\RawStore\Contracts\RawTierSweep;
 use App\Modules\RawStore\Infrastructure\PostgresRawStore;
 use App\Modules\RawStore\Infrastructure\PostgresRawTierSweep;
+use App\Modules\Results\Application\ComputeOnPayloadChanged;
+use App\Modules\Results\Contracts\ResultStore;
+use App\Modules\Results\Infrastructure\LaravelValkeyCommands;
+use App\Modules\Results\Infrastructure\ValkeyCommands;
+use App\Modules\Results\Infrastructure\ValkeyResultStore;
 use App\Platform\Audit\AuditHasher;
 use App\Platform\Audit\AuditSerializers;
 use App\Platform\Audit\PlatformAuditSerializer;
 use App\Platform\EditLock\EditLockResources;
+use App\Platform\Json\LimitSetting;
 use App\Platform\Operations\OperationKind;
 use App\Platform\Operations\OperationKinds;
 use App\Platform\Outbox\OutboxConsumers;
@@ -288,6 +298,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(SyncStatuses::class, ReadSyncStatuses::class);
         $this->app->bind(SyncGenerations::class, ReadSyncGenerations::class);
         $this->app->bind(Subscribe::class, RegisterSubscription::class);
+        $this->app->bind(ComputeSources::class, ReadComputeSources::class);
+        // Blocks and Results (Story 4.2): a version's frozen configuration for compute, and the Valkey `cache` store of Block Results.
+        $this->app->bind(PublishedConfigs::class, ReadPublishedConfigs::class);
+        $this->app->bind(ValkeyCommands::class, fn ($app) => new LaravelValkeyCommands($app['redis']->connection('cache')));
+        $this->app->bind(ResultStore::class, fn ($app) => new ValkeyResultStore(
+            $app->make(ValkeyCommands::class),
+            fn (): ?int => LimitSetting::positive('results.ttl', $app['config']->get('dashflow.results.ttl.value')),
+        ));
         $this->app->bind(SourceHealths::class, ReadSourceHealths::class);
         $this->app->bind(RefreshIntervals::class, SyncSettings::class);
         $this->app->bind(SourceProbe::class, ProbeDataSource::class);
@@ -338,6 +356,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->make(OutboxConsumers::class)->register(new AttributesOnMembershipRemoved);
         $this->app->make(OutboxConsumers::class)->register(new RegisterSyncTargets);
         $this->app->make(OutboxConsumers::class)->register(new RegisterSourceHealth);
+        $this->app->make(OutboxConsumers::class)->register(new ComputeOnPayloadChanged);
 
         // Each module registers the lockable resources it owns with the kernel's edit lock (the kernel calls no module).
         $this->app->make(EditLockResources::class)->register(DataSourceLockEpochs::TYPE, new DataSourceLockEpochs);

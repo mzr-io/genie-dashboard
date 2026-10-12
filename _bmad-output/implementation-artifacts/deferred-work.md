@@ -504,3 +504,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-1-resolve-every-blocks-period-in-one-place.md`
   summary: Replace the wizard's client-side `resolveRange` (display labels of date-bound parameter rows, browser time zone) with values resolved by the server's PeriodResolver in the Workspace time zone.
   evidence: Story 4.1 made the server the only source of the dates a fetch or validation sends; the browser still shows its own computation, which can differ near a boundary when the Workspace and browser time zones differ.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-2-compute-block-results-when-payload-changes.md`
+  summary: Compute from complete `sync_generations` for comparison Blocks, and run a Results precompute for a version at publish (before it goes live).
+  evidence: Compute reads the primary target's current payload only, and publish still activates without precompute; kpi-card has no comparison query yet, so nothing mixes generations today, but Epic 5 comparisons must use `SyncGenerations::latestComplete`.
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-2-compute-block-results-when-payload-changes.md`
+  summary: Add the Results consumer's own audit/metrics (`dashflow.results.compute_duration`, `slot_failed` rate) once the dashboards read path exists.
+  evidence: The story emits the outbox event only; no metric names for Results are registered, so slowness or sweep volume is not observable yet.
