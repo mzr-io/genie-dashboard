@@ -273,6 +273,7 @@ final class Cluster
             'datasets' => self::seedDataset($workspaceId),
             'dataset_fields' => self::seedDatasetField($workspaceId),
             'access_subjects' => self::seedAccessSubject($workspaceId),
+            'block_viewers' => self::seedBlockViewer($workspaceId),
             'dashboards' => self::seedDashboard($workspaceId),
             'dashboard_items' => self::seedDashboardItem($workspaceId),
             default => null,
@@ -363,6 +364,16 @@ final class Cluster
     }
 
     /** A block category (Story 3.4) of the Workspace. */
+    /** A viewer row (Story 4.13): a new member and a new Block id. */
+    public static function seedBlockViewer(string $workspaceId): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO block_viewers (id, workspace_id, membership_id, block_id, items, created_at, updated_at) VALUES (?, ?, ?, ?, 1, now(), now())')
+            ->execute([$id, $workspaceId, (string) Str::uuid7(), (string) Str::uuid7()]);
+
+        return $id;
+    }
+
     /** A dashboard of a new member (Story 4.4): the Overview. */
     public static function seedDashboard(string $workspaceId, ?string $membershipId = null): string
     {

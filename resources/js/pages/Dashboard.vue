@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import { Head, usePage } from '@inertiajs/vue3';
 import { useMediaQuery } from '@vueuse/core';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
+import {
+    computed,
+    nextTick,
+    onBeforeUnmount,
+    onMounted,
+    ref,
+    watch,
+} from 'vue';
 import { useI18n } from 'vue-i18n';
 import AddBlocksPanel from '@/components/AddBlocksPanel.vue';
 import DashboardGrid from '@/components/DashboardGrid.vue';
@@ -15,6 +22,8 @@ import {
 } from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAddBlocksPanel } from '@/composables/useAddBlocksPanel';
+import { setRealtimeDown, useConnection } from '@/composables/useConnection';
+import { useShell } from '@/composables/useShell';
 import { announce, announceAggregated } from '@/lib/announce';
 import type { CatalogueBlock } from '@/lib/blockCatalogue';
 import {
@@ -45,6 +54,8 @@ import {
     step,
 } from '@/lib/layout';
 import type { Geometry, Layout } from '@/lib/layout';
+import { Realtime } from '@/lib/realtime';
+import type { RealtimeState } from '@/lib/realtime';
 import { SIGN_IN_URL } from '@/lib/session';
 import { registerShortcut } from '@/lib/shortcuts';
 import { useToasts } from '@/stores/toasts';
@@ -304,7 +315,9 @@ function announceStale(): void {
     announcedStale = stale.length;
 }
 
-async function loadResults(): Promise<void> {
+async function loadResults(
+    options: { items?: string[]; background?: boolean } = {},
+): Promise<void> {
     if (props.dashboard_id === null) {
         return;
     }
@@ -319,7 +332,18 @@ async function loadResults(): Promise<void> {
     }
 
     try {
-        const items = await fetchResults(props.dashboard_id, null, mine.signal);
+        const items = await fetchResults(
+            props.dashboard_id,
+            null,
+            mine.signal,
+            {
+                items: options.items,
+                // Polls and event-driven refetches are not the person using the app: they must not extend the idle session.
+                background:
+                    options.background ??
+                    (options.items !== undefined || polls > 0),
+            },
+        );
 
         if (mine.signal.aborted) {
             return;
@@ -330,7 +354,10 @@ async function loadResults(): Promise<void> {
         polls = pending ? polls + 1 : 0;
 
         if (pending && polls < MAX_POLLS) {
-            resultsTimer = setTimeout(loadResults, POLL_MS);
+            resultsTimer = setTimeout(
+                () => void loadResults({ background: true }),
+                POLL_MS,
+            );
         }
     } catch (error) {
         if (mine.signal.aborted) {
@@ -351,6 +378,10 @@ async function loadResults(): Promise<void> {
 // Minimize or Expand: `SetMinimized` with the revision held. A stale revision reloads the layout and tries once more; a second refusal leaves the
 // Block as it was. The change is shown at once and undone when it fails.
 async function onMinimize(itemId: string, value: boolean): Promise<void> {
+    if (offlineBlocked()) {
+        return;
+    }
+
     if (props.dashboard_id === null) {
         return;
     }
@@ -509,6 +540,10 @@ function rollback(name: string): void {
 // Add a Block: it appears at once where the layout's next free slot is, and the server's answer replaces it (or it is taken away again with
 // `msg:toast-rollback`). A repeated add is the same item. Existing Blocks never move.
 async function onAdd(block: CatalogueBlock): Promise<void> {
+    if (offlineBlocked()) {
+        return;
+    }
+
     const current = dashboard.value;
 
     if (
@@ -704,6 +739,10 @@ async function onRemove(
     from: 'menu' | 'card' | 'panel' | 'toast',
     record = true,
 ): Promise<void> {
+    if (offlineBlocked()) {
+        return;
+    }
+
     const current = dashboard.value;
 
     if (
@@ -1003,6 +1042,10 @@ function onUndoKey(event: KeyboardEvent): void {
 }
 
 function startEditing(): void {
+    if (offlineBlocked()) {
+        return;
+    }
+
     if (dashboard.value === null) {
         return;
     }
@@ -1223,6 +1266,10 @@ async function onStep(
     itemId: string,
     action: 'up' | 'down' | 'wider' | 'narrower',
 ): Promise<void> {
+    if (offlineBlocked()) {
+        return;
+    }
+
     const current = dashboard.value;
 
     if (props.dashboard_id === null || current === null || saving.value) {
@@ -1369,6 +1416,10 @@ async function persist(layout: Layout, spoken: string): Promise<void> {
 // ends with focus back on Edit layout; on failure the mode stays open with `msg:layout-save-failed` and the local arrangement kept (a stale revision
 // offers a reload instead of an overwrite).
 async function finishEditing(): Promise<void> {
+    if (offlineBlocked()) {
+        return;
+    }
+
     const current = dashboard.value;
 
     if (props.dashboard_id === null || current === null || saving.value) {
@@ -1441,6 +1492,145 @@ async function reloadLayout(): Promise<void> {
     void loadResults();
 }
 
+// Layout commands need the connection: while it is down they are disabled with the reason (`msg:offline-editing`) and nothing is queued.
+function offlineBlocked(): boolean {
+    if (!offline.value) {
+        return false;
+    }
+
+    announce(t('offline-editing'), 'polite');
+
+    return true;
+}
+
+// ---- Live updates (Story 4.13) ---------------------------------------------------------------------------------------------------------------
+// The Reverb socket tells the page that a Block's result changed (its id and the new ETag, never a value); the page refetches only what changed over
+// `/api/v1`. With no socket the page polls at the `pending_input` interval with the same semantics. Either way it keeps the last values and lets
+// Freshness mark them Stale; a connection that is down says so once and says once when it is back.
+const { offline } = useConnection();
+const { membershipId } = useShell();
+let realtime: Realtime | null = null;
+let pollTimer: ReturnType<typeof setInterval> | null = null;
+let everConnected = false;
+const channels = new Set<string>();
+
+function stopPolling(): void {
+    if (pollTimer !== null) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+    }
+}
+
+function startPolling(): void {
+    const seconds = dashboard.value?.live?.poll_interval_seconds ?? null;
+
+    if (pollTimer !== null || seconds === null || props.dashboard_id === null) {
+        return;
+    }
+
+    pollTimer = setInterval(() => {
+        if (!offline.value) {
+            void loadResults({ background: true });
+        }
+    }, seconds * 1000);
+}
+
+function onSocketState(state: RealtimeState): void {
+    if (state === 'connected') {
+        everConnected = true;
+        setRealtimeDown(false);
+        stopPolling();
+        // What changed while the socket was away is fetched once.
+        void loadResults({ background: true });
+
+        return;
+    }
+
+    if (state === 'disconnected') {
+        // A socket that was up and is not says so; one that never came up just falls back to polling quietly.
+        setRealtimeDown(everConnected);
+        startPolling();
+    }
+}
+
+function onLiveEvent(_event: string, data: unknown): void {
+    const payload = data as { block_id?: string; result_etag?: string };
+
+    if (
+        typeof payload.block_id !== 'string' ||
+        typeof payload.result_etag !== 'string'
+    ) {
+        return;
+    }
+
+    const changed = (dashboard.value?.items ?? [])
+        .filter((item) => item.block_id === payload.block_id)
+        .filter(
+            (item) =>
+                results.value[item.item_id]?.result_etag !==
+                payload.result_etag,
+        )
+        .map((item) => item.item_id);
+
+    if (changed.length > 0) {
+        void loadResults({ items: changed, background: true });
+    }
+}
+
+function connectLive(): void {
+    const config = dashboard.value?.live?.realtime ?? null;
+
+    if (
+        config === null ||
+        realtime !== null ||
+        props.dashboard_id === null ||
+        dashboard.value === null
+    ) {
+        startPolling();
+
+        return;
+    }
+
+    const workspace = (
+        page.props.shell as { workspace?: { id?: string } | null } | null
+    )?.workspace?.id;
+
+    if (typeof workspace !== 'string') {
+        startPolling();
+
+        return;
+    }
+
+    realtime = new Realtime(config, onSocketState, () => startPolling());
+
+    for (const id of new Set(
+        dashboard.value.items
+            .filter((i) => i.state === 'ok')
+            .map((i) => i.block_id),
+    )) {
+        const name = `workspace.${workspace}.block.${id}`;
+
+        channels.add(name);
+        realtime.subscribe(name, onLiveEvent);
+    }
+
+    if (membershipId.value !== null) {
+        const name = `workspace.${workspace}.membership.${membershipId.value}`;
+
+        channels.add(name);
+        realtime.subscribe(name, onLiveEvent);
+    }
+
+    realtime.connect();
+}
+
+// The connection came back: what changed meanwhile is fetched once, in place.
+watch(offline, (isOffline, wasOffline) => {
+    if (wasOffline && !isOffline) {
+        void loadResults({ background: true });
+    }
+});
+
 // The free-space hint: where the next Block of that size would go, from the layout's own `next_free_slot`.
 function showHint(block: CatalogueBlock | null): void {
     const current = dashboard.value;
@@ -1507,6 +1697,7 @@ onMounted(async () => {
 
     if (state.value === 'ready' && items.value.length > 0) {
         await loadResults();
+        connectLive();
     }
 });
 
@@ -1514,6 +1705,9 @@ onBeforeUnmount(() => {
     document.removeEventListener('keydown', onUndoKey);
     document.removeEventListener('keydown', onEscape);
     stops.forEach((stop) => stop());
+    realtime?.close();
+    stopPolling();
+    setRealtimeDown(false);
     controller?.abort();
     resultsController?.abort();
 
@@ -1597,7 +1791,9 @@ onBeforeUnmount(() => {
                     <Button
                         type="button"
                         variant="secondary"
-                        :aria-disabled="items.length === 0 ? 'true' : undefined"
+                        :aria-disabled="
+                            items.length === 0 || offline ? 'true' : undefined
+                        "
                         data-slot="edit-layout"
                         @click="items.length > 0 && startEditing()"
                     >
@@ -1699,7 +1895,7 @@ onBeforeUnmount(() => {
                 @movekey="onMoveKey"
                 @step="onStep"
                 @geometry="onGeometry"
-                @retry="loadResults"
+                @retry="() => loadResults()"
                 @refresh="onRefresh"
                 @minimize="onMinimize"
                 @remove="(blockId, from) => onRemove(blockId, from)"
@@ -1725,7 +1921,9 @@ onBeforeUnmount(() => {
             <AddBlocksPanel
                 :added-ids="addedIds"
                 :busy-ids="busy"
-                :can-add="dashboard_id !== null && state === 'ready'"
+                :can-add="
+                    dashboard_id !== null && state === 'ready' && !offline
+                "
                 @close="hidePanel"
                 @skip="skipToDashboard"
                 @add="onAdd"
@@ -1753,7 +1951,9 @@ onBeforeUnmount(() => {
                 <AddBlocksPanel
                     :added-ids="addedIds"
                     :busy-ids="busy"
-                    :can-add="dashboard_id !== null && state === 'ready'"
+                    :can-add="
+                        dashboard_id !== null && state === 'ready' && !offline
+                    "
                     @close="hidePanel"
                     @skip="skipToDashboard"
                     @add="onAdd"

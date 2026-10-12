@@ -106,10 +106,11 @@ interface Dashboards
      * `ok`, `empty`, `unavailable` or `error` carries no data. Access is re-checked per item here, not taken from an earlier layout read.
      *
      * @param  string|null  $range  a preset token for the dashboard Date Range; never a date
+     * @param  list<string>|null  $items  only these item ids (a client refetching what changed); null for every item
      * @return list<array<string, mixed>>
      *
      * @throws DashboardNotFound
      * @throws InvalidPeriodInput a range the Blocks do not offer (422)
      */
-    public function results(string $workspaceId, string $membershipId, string $dashboardId, ?string $range): array;
+    public function results(string $workspaceId, string $membershipId, string $dashboardId, ?string $range, ?array $items = null): array;
 }

@@ -75,6 +75,10 @@ enum AuditAction: string
     // Dashboards: a layout command changed a member's dashboard (Story 4.6 on). An outbox event only: the dashboard and item IDs, the command and the new revision.
     case DashboardsDashboardChanged = 'dashboards.dashboard.changed';
 
+    // Results: a Block's result was written with a new `result_etag` (Story 4.13). An outbox event only: the Block id and the etag, and for a member's
+    // own data the membership; never a value. It is relayed to the Block's or the member's realtime channel.
+    case ResultsResultUpdated = 'results.result.updated';
+
     // Results: a mapped slot of a published Block version could not be computed from the current payload (Story 4.2). An outbox event only: IDs, the slot key, the reason code and the consecutive-failure count. Epic 8 turns it into incidents and notifications.
     case ResultsMappingSlotFailed = 'results.mapping.slot_failed';
 

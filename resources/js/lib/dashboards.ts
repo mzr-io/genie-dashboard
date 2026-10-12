@@ -70,6 +70,16 @@ export type Dashboard = {
     next_free_slot: { col: number; row: number };
     // The stacking order of item ids on a single-column layout; null until somebody reorders.
     compact_order?: string[] | null;
+    // How to stay current (Story 4.13): the realtime socket's public details, and the seconds between polls when it is not connected.
+    live?: {
+        poll_interval_seconds: number | null;
+        realtime: {
+            key: string;
+            host: string;
+            port: number;
+            scheme: string;
+        } | null;
+    };
 };
 
 // A request the server refused (or that never arrived: status 0): 401 or 419 the session ended, 404 not this member's dashboard.
@@ -171,11 +181,19 @@ export async function fetchResults(
     id: string,
     range: string | null,
     signal?: AbortSignal,
+    // Only these items (a refetch of what an event named), and whether this is a background call that must not extend the idle session.
+    options: { items?: string[]; background?: boolean } = {},
 ): Promise<ItemResult[]> {
     let response: Response;
 
     try {
-        response = await fetch(resultsUrl(id, range), {
+        const url = new URL(resultsUrl(id, range), window.location.origin);
+
+        for (const item of options.items ?? []) {
+            url.searchParams.append('items[]', item);
+        }
+
+        response = await fetch(url.pathname + url.search, {
             method: 'GET',
             credentials: 'same-origin',
             signal,
@@ -183,6 +201,7 @@ export async function fetchResults(
                 Accept: 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
                 'X-XSRF-TOKEN': xsrfToken(),
+                ...(options.background ? { 'X-Background': '1' } : {}),
             },
         });
     } catch (error) {

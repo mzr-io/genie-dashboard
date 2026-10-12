@@ -18,5 +18,7 @@ final readonly class ComputeTarget
         public ?string $lastSuccessAt,
         /** ISO 8601, UTC: when the current payload was first observed ("Data as of"). */
         public ?string $payloadChangedAt,
+        /** The member whose own data a user-bound target holds (Story 4.13), null for shared data. */
+        public ?string $ownerMembershipId = null,
     ) {}
 }

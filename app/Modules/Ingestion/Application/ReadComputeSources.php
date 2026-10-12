@@ -13,7 +13,7 @@ use Illuminate\Support\Str;
 /** {@see ComputeSources}: reads `sync_targets` and `sync_subscriptions` under the caller's Workspace transaction. */
 final class ReadComputeSources implements ComputeSources
 {
-    private const COLUMNS = 't.id, t.fetch_key, t.endpoint_id, t.current_payload_id, t.payload_seq, t.last_success_at, t.payload_changed_at';
+    private const COLUMNS = 't.id, t.fetch_key, t.endpoint_id, t.current_payload_id, t.payload_seq, t.last_success_at, t.payload_changed_at, case when t.user_scoped then t.created_by_membership_id end as owner_membership_id';
 
     public function target(string $workspaceId, string $syncTargetId): ?ComputeTarget
     {
@@ -105,6 +105,7 @@ final class ReadComputeSources implements ComputeSources
         return new ComputeTarget(
             strtolower((string) $row->id), (string) $row->fetch_key, strtolower((string) $row->endpoint_id), strtolower((string) $row->current_payload_id),
             (int) $row->payload_seq, $iso($row->last_success_at), $iso($row->payload_changed_at),
+            $row->owner_membership_id === null ? null : strtolower((string) $row->owner_membership_id),
         );
     }
 }

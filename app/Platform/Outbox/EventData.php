@@ -36,7 +36,10 @@ final class EventData
                 throw new InvalidArgumentException('Event data keys must be lowercase snake_case names.');
             }
 
-            if (! self::isAllowedValue($value)) {
+            // A result ETag is a SHA-256 digest of IDs and a sequence, never a value: the one 64-character hexadecimal an event may carry.
+            $digest = $key === 'result_etag' && is_string($value) && preg_match('/\A[0-9a-f]{64}\z/D', $value) === 1;
+
+            if (! $digest && ! self::isAllowedValue($value)) {
                 throw new InvalidArgumentException("Event data field {$key} must be an integer, boolean, null, UUID or short slug.");
             }
 

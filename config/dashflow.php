@@ -159,6 +159,13 @@ return [
         'workspace_fair_share' => $tunable('DASHFLOW_FETCH_WORKSPACE_FAIR_SHARE'),
     ],
 
+    // Live updates (Story 4.13), kept outside `tunables` like `egress`. `poll_interval` is `pending_input` with no default: the seconds between polls of
+    // `/api/v1/dashboards/{id}/results` when the realtime socket is not connected. Unset or malformed: the page does not poll and shows the
+    // reconnecting banner until the socket returns.
+    'live' => [
+        'poll_interval' => $tunable('DASHFLOW_LIVE_POLL_INTERVAL'),
+    ],
+
     // The Add-blocks Panel (Story 4.7), kept outside `tunables` like `egress`. `new_window` is `pending_input` with no default: how many seconds after its
     // publish a Block carries the "New" badge. Unset or malformed: no Block is new.
     'drawer' => [

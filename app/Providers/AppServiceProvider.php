@@ -182,8 +182,10 @@ use App\Modules\RawStore\Contracts\RawStore;
 use App\Modules\RawStore\Contracts\RawTierSweep;
 use App\Modules\RawStore\Infrastructure\PostgresRawStore;
 use App\Modules\RawStore\Infrastructure\PostgresRawTierSweep;
+use App\Modules\Results\Application\BroadcastResultUpdated;
 use App\Modules\Results\Application\ComputeOnPayloadChanged;
 use App\Modules\Results\Application\RefreshBlock;
+use App\Modules\Results\Application\TrackBlockViewers;
 use App\Modules\Results\Application\ViewBlockResult;
 use App\Modules\Results\Contracts\ManualRefresh;
 use App\Modules\Results\Contracts\ResultStore;
@@ -385,6 +387,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->make(OutboxConsumers::class)->register(new RegisterSyncTargets);
         $this->app->make(OutboxConsumers::class)->register(new RegisterSourceHealth);
         $this->app->make(OutboxConsumers::class)->register(new ComputeOnPayloadChanged);
+        $this->app->make(OutboxConsumers::class)->register(new TrackBlockViewers);
+        $this->app->make(OutboxConsumers::class)->register(new BroadcastResultUpdated);
 
         // Each module registers the lockable resources it owns with the kernel's edit lock (the kernel calls no module).
         $this->app->make(EditLockResources::class)->register(DataSourceLockEpochs::TYPE, new DataSourceLockEpochs);

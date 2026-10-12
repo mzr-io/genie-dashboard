@@ -15,6 +15,7 @@ use App\Modules\Dashboards\Contracts\RevisionConflict;
 use App\Modules\Results\Contracts\RefreshOutcome;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -51,13 +52,18 @@ final class DashboardController extends Controller
     {
         [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
         $range = $request->query('range');
+        $only = $request->query('items');
 
         if ($range !== null && ! is_string($range)) {
             abort(422, 'Choose one of the periods this block offers.');
         }
 
+        if ($only !== null && (! is_array($only) || count($only) > 200 || array_filter($only, fn ($id): bool => ! is_string($id) || ! Str::isUuid($id)) !== [])) {
+            abort(422, 'Name items by their id.');
+        }
+
         try {
-            $items = $this->dashboards->results($workspaceId, $membershipId, $dashboard, $range === '' ? null : $range);
+            $items = $this->dashboards->results($workspaceId, $membershipId, $dashboard, $range === '' ? null : $range, $only === null ? null : array_values(array_map('strtolower', $only)));
         } catch (DashboardNotFound) {
             abort(404);
         }
@@ -313,6 +319,33 @@ final class DashboardController extends Controller
             'items' => $view->items,
             'next_free_slot' => $view->nextFreeSlot,
             'compact_order' => $view->compactOrder,
+            'live' => $this->live(),
         ]], 200, ['Cache-Control' => 'no-store, private']);
+    }
+
+    /**
+     * How the browser stays up to date (Story 4.13): the public realtime connection details (the Reverb app key and where the socket is) and the
+     * polling interval used when the socket is not connected. Null parts mean "not available": the page then polls or waits.
+     *
+     * @return array{poll_interval_seconds: int|null, realtime: array{key: string, host: string, port: int, scheme: string}|null}
+     */
+    private function live(): array
+    {
+        $poll = config('dashflow.live.poll_interval.value');
+        $interval = is_int($poll) ? $poll : (is_string($poll) && preg_match('/\A[1-9][0-9]{0,5}\z/D', trim($poll)) === 1 ? (int) trim($poll) : null);
+        $connection = (array) config('broadcasting.connections.reverb', []);
+        $key = $connection['key'] ?? null;
+        $host = $connection['options']['host'] ?? null;
+        $enabled = config('broadcasting.default') === 'reverb' && is_string($key) && $key !== '' && is_string($host) && $host !== '';
+
+        return [
+            'poll_interval_seconds' => $interval,
+            'realtime' => $enabled ? [
+                'key' => $key,
+                'host' => $host,
+                'port' => (int) ($connection['options']['port'] ?? 443),
+                'scheme' => (string) ($connection['options']['scheme'] ?? 'https'),
+            ] : null,
+        ];
     }
 }

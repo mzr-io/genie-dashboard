@@ -5,6 +5,10 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAddBlocksPanel } from '../../resources/js/composables/useAddBlocksPanel';
 import {
+    setConnectionForTest,
+    useConnection,
+} from '../../resources/js/composables/useConnection';
+import {
     clearShortcuts,
     installShortcuts,
     setSingleKeyShortcuts,
@@ -24,7 +28,18 @@ import en from '../../resources/js/locales/en';
 vi.mock('@inertiajs/vue3', () => ({
     Head: { render: () => null },
     Link: { render: () => null },
-    usePage: () => ({ url: '/dashboard', props: {} }),
+    usePage: () => ({
+        url: '/dashboard',
+        props: {
+            shell: {
+                role: 'user',
+                workspace: { id: 'w-1' },
+                membership_id: 'm-1',
+                items: [],
+                can: {},
+            },
+        },
+    }),
 }));
 
 const { default: DashboardPage } =
@@ -2018,5 +2033,195 @@ describe('Keyboard and menu layout paths', () => {
         await flushPromises();
 
         expect(button.getAttribute('aria-pressed')).toBe('true');
+    });
+});
+
+describe('Live updates', () => {
+    class FakeSocket {
+        static all: FakeSocket[] = [];
+        readyState = 1;
+        sent: Array<{ event: string; data: Record<string, unknown> }> = [];
+        onmessage: ((m: { data: string }) => void) | null = null;
+        onclose: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+
+        constructor(public url: string) {
+            FakeSocket.all.push(this);
+        }
+
+        send(raw: string): void {
+            this.sent.push(JSON.parse(raw));
+        }
+
+        close(): void {
+            this.onclose?.();
+        }
+
+        emit(frame: Record<string, unknown>): void {
+            this.onmessage?.({ data: JSON.stringify(frame) });
+        }
+    }
+
+    const live = (poll: number | null, realtime = true): Dashboard =>
+        ({
+            ...dashboard([item()]),
+            live: {
+                poll_interval_seconds: poll,
+                realtime: realtime
+                    ? { key: 'k', host: 'rt.test', port: 8443, scheme: 'https' }
+                    : null,
+            },
+        }) as Dashboard;
+
+    const resultCalls = () =>
+        (
+            fetch as unknown as {
+                mock: {
+                    calls: Array<
+                        [string, { headers?: Record<string, string> }]
+                    >;
+                };
+            }
+        ).mock.calls.filter((call) => call[0].includes('/results'));
+
+    beforeEach(() => {
+        FakeSocket.all = [];
+        vi.stubGlobal('WebSocket', FakeSocket);
+        setConnectionForTest(true);
+    });
+
+    afterEach(() => {
+        setConnectionForTest(true);
+        vi.useRealTimers();
+        vi.unstubAllGlobals();
+    });
+
+    const connected = async () => {
+        const socket = FakeSocket.all[0];
+
+        socket.emit({
+            event: 'pusher:connection_established',
+            data: JSON.stringify({ socket_id: '1.2' }),
+        });
+        await flushPromises();
+
+        return socket;
+    };
+
+    it('connects to the socket, subscribes to the Block and member channels, and refetches only a changed item with a background call', async () => {
+        const auth: Reply = { ok: true, status: 200, json: { auth: 'k:sig' } };
+        replies = [
+            ok(live(null)),
+            resultsOf([result()]),
+            // after connect: one background refresh, then two channel authorisations (the Block's; the member's is absent without a membership id)
+            resultsOf([result()]),
+            auth,
+            resultsOf([result({ result_etag: 'e-2' })]),
+        ];
+
+        await mountPage();
+
+        const socket = await connected();
+
+        expect(socket.url).toContain('wss://rt.test:8443/app/k');
+        expect(resultCalls()).toHaveLength(2);
+        expect(resultCalls()[1][1].headers?.['X-Background']).toBe('1');
+
+        // The same ETag as the one held: nothing is fetched.
+        socket.emit({
+            event: 'result.updated',
+            channel: 'private-workspace.w-1.block.b-1',
+            data: JSON.stringify({ block_id: 'b-1', result_etag: 'e-1' }),
+        });
+        await flushPromises();
+
+        expect(resultCalls()).toHaveLength(2);
+    });
+
+    it('polls at the configured interval with a background call when there is no socket, and not at all while the interval is unset', async () => {
+        vi.useFakeTimers({
+            toFake: [
+                'setTimeout',
+                'clearTimeout',
+                'setInterval',
+                'clearInterval',
+            ],
+        });
+        replies = [
+            ok(live(30, false)),
+            resultsOf([result()]),
+            resultsOf([result()]),
+            resultsOf([result()]),
+        ];
+
+        await mountPage();
+
+        expect(FakeSocket.all).toHaveLength(0);
+        expect(resultCalls()).toHaveLength(1);
+
+        await vi.advanceTimersByTimeAsync(30_000);
+        await flushPromises();
+
+        expect(resultCalls()).toHaveLength(2);
+        expect(resultCalls()[1][1].headers?.['X-Background']).toBe('1');
+
+        wrapper?.unmount();
+        wrapper = null;
+        document.body.innerHTML = '';
+        replies = [ok(live(null, false)), resultsOf([result()])];
+        await mountPage();
+        const before = resultCalls().length;
+
+        await vi.advanceTimersByTimeAsync(300_000);
+
+        expect(resultCalls()).toHaveLength(before);
+    });
+
+    it('says it is reconnecting when a socket that was up goes down, disables layout commands with the reason, and refreshes in place when it returns', async () => {
+        replies = [
+            ok(live(null)),
+            resultsOf([result()]),
+            resultsOf([result()]),
+            resultsOf([result()]),
+            resultsOf([result()]),
+        ];
+
+        await mountPage();
+
+        const socket = await connected();
+        const { offline } = useConnection();
+
+        expect(offline.value).toBe(false);
+
+        socket.close();
+        await flushPromises();
+
+        expect(offline.value).toBe(true);
+
+        // A layout command is refused while the connection is down, with msg:offline-editing, and nothing is sent.
+        ($('[data-slot=add-block]') as HTMLButtonElement).click();
+        await flushPromises();
+
+        expect(
+            (
+                fetch as unknown as {
+                    mock: { calls: Array<[string, { method?: string }]> };
+                }
+            ).mock.calls.filter(
+                (c) => c[1]?.method === 'POST' && c[0].includes('/dashboards/'),
+            ),
+        ).toHaveLength(0);
+
+        // The socket reconnects (the client waits one second first) and the page refreshes.
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        await vi.advanceTimersByTimeAsync(1000);
+        const next = FakeSocket.all.at(-1)!;
+        next.emit({
+            event: 'pusher:connection_established',
+            data: JSON.stringify({ socket_id: '3.4' }),
+        });
+        await flushPromises();
+
+        expect(offline.value).toBe(false);
     });
 });

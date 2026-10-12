@@ -3,12 +3,18 @@
 use App\Models\User;
 use App\Modules\Connector\Infrastructure\CurlClient;
 use App\Modules\Connector\Infrastructure\CurlResult;
+use App\Modules\Results\Application\BroadcastResultUpdated;
 use App\Modules\Results\Application\ComputeResults;
 use App\Modules\Results\Application\ComputeResultsJob;
 use App\Modules\Results\Contracts\ResultStore;
+use App\Modules\Results\Contracts\ResultUpdated;
 use App\Modules\Results\Infrastructure\ValkeyResultStore;
+use App\Platform\Outbox\OutboxEnvelope;
+use App\Platform\Outbox\OutboxRelay;
 use App\Platform\Tenancy\WorkspaceTransaction;
+use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Str;
 use Illuminate\Testing\TestResponse;
@@ -336,4 +342,140 @@ it('carries the About facts in the layout: description, Data Source name, interv
     $about = $this->getJson("/api/v1/dashboards/{$w['dashboard']}", DR5_HEADERS)->json('data.items.0.block.about');
 
     expect($about)->toBe(['description' => null, 'source_name' => 'Sales API', 'refresh_interval' => 60, 'version' => '1.0', 'period' => 'follow_dashboard']);
+});
+
+// ---- Story 4.13: live updates ----------------------------------------------------------------------------------------------------------------------
+
+function dr13Viewers(): array
+{
+    return Cluster::rows(Cluster::superuser(), 'select membership_id, block_id, items from block_viewers order by block_id');
+}
+
+it('keeps who has which Block on a dashboard from the change events, counting items and releasing at zero', function () {
+    $w = dr5World();
+    $block = $w['block'];
+
+    // The seeded item has no event; the first add on a second dashboard is the first count.
+    $second = (string) Str::uuid7();
+    Cluster::superuser()->prepare("INSERT INTO dashboards (id, workspace_id, membership_id, name, is_overview, revision) VALUES (?, ?, ?, 'Second', false, 0)")->execute([$second, $w['ws'], $w['membership']]);
+    $blockB = Cluster::seedBlock($w['ws']);
+    Cluster::seedAccessSubject($w['ws'], $blockB);
+    $version = Cluster::seedBlockVersion($w['ws'], [
+        'block_id' => $blockB, 'state' => 'published', 'name' => 'B', 'prepared_at' => '2026-10-12 09:00:00+00', 'published_at' => '2026-10-12 09:00:01+00',
+        'config' => json_encode(['schema_version' => 1, 'type_key' => 'kpi-card', 'contract_version' => 1, 'sizes' => ['min_width' => 3, 'max_width' => 12, 'width' => 3, 'min_height' => 'small', 'max_height' => 'large', 'height' => 'small']]),
+    ]);
+    Cluster::superuser()->prepare('UPDATE blocks SET current_version_id = ? WHERE id = ?')->execute([$version, $blockB]);
+
+    $this->postJson("/api/v1/dashboards/{$w['dashboard']}/blocks", ['block_id' => $blockB, 'expected_revision' => 0], DR5_HEADERS)->assertCreated();
+    $this->postJson("/api/v1/dashboards/{$second}/blocks", ['block_id' => $blockB, 'expected_revision' => 0], DR5_HEADERS)->assertCreated();
+
+    app(OutboxRelay::class)->relay();
+
+    expect(dr13Viewers())->toHaveCount(1)
+        ->and(dr13Viewers()[0])->toMatchArray(['membership_id' => $w['membership'], 'block_id' => $blockB, 'items' => 2]);
+
+    $this->deleteJson("/api/v1/dashboards/{$w['dashboard']}/blocks/{$blockB}", ['expected_revision' => 1], DR5_HEADERS)->assertOk();
+    app(OutboxRelay::class)->relay();
+
+    expect(dr13Viewers()[0]['items'])->toBe(1);
+
+    $this->deleteJson("/api/v1/dashboards/{$second}/blocks/{$blockB}", ['expected_revision' => 1], DR5_HEADERS)->assertOk();
+    app(OutboxRelay::class)->relay();
+
+    expect(dr13Viewers())->toBe([])->and($block)->not->toBe($blockB);
+});
+
+it('announces a new result with only the Block and its ETag, to the Block channel for shared data, and only while somebody views it', function () {
+    Event::fake([ResultUpdated::class]);
+    $w = dr5World();
+    dr5Results($w)->assertOk();
+    dr5Hold($w, '{"data":{"revenue":5}}');
+
+    $events = Cluster::rows(Cluster::superuser(), "select data from outbox_events where type = 'results.result.updated'");
+    $data = json_decode($events[0]['data'], true);
+
+    expect($events)->toHaveCount(1)
+        ->and($data)->toMatchArray(['block_id' => $w['block'], 'scope' => 'shared'])
+        ->and($data['result_etag'])->toMatch('/\A[0-9a-f]{64}\z/')
+        ->and($data)->not->toHaveKey('membership_id')
+        ->and(json_encode($data))->not->toContain('revenue');
+
+    $envelope = OutboxEnvelope::fromRow(Cluster::rows(Cluster::superuser(), "select * from outbox_events where type = 'results.result.updated'")[0]);
+    $relay = fn () => app(WorkspaceTransaction::class)->run($w['ws'], fn () => (new BroadcastResultUpdated)->handle($envelope));
+
+    // Nobody views the Block yet: relaying the event broadcasts nothing.
+    $relay();
+    Event::assertNotDispatched(ResultUpdated::class);
+
+    Cluster::superuser()->prepare('INSERT INTO block_viewers (workspace_id, membership_id, block_id, items) VALUES (?, ?, ?, 1)')->execute([$w['ws'], $w['membership'], $w['block']]);
+    $relay();
+
+    Event::assertDispatched(ResultUpdated::class, function ($event) use ($w, $data) {
+        $channel = $event->broadcastOn()[0]->name;
+
+        return $channel === 'private-workspace.'.$w['ws'].'.block.'.$w['block']
+            && $event->broadcastWith() === ['block_id' => $w['block'], 'result_etag' => $data['result_etag']]
+            && $event->broadcastAs() === 'result.updated';
+    });
+});
+
+it('authorises a Block channel only for a member who can see the Block, in the session\'s Workspace', function () {
+    config([
+        'broadcasting.default' => 'reverb',
+        'broadcasting.connections.reverb.key' => 'test-key',
+        'broadcasting.connections.reverb.secret' => 'test-secret',
+        'broadcasting.connections.reverb.app_id' => '1',
+    ]);
+    // The channels are registered on the driver that is the default at boot; this test switches the default, so it registers them again.
+    Broadcast::purge();
+    require base_path('routes/channels.php');
+    $w = dr5World();
+    $auth = fn (string $channel) => $this->postJson('/broadcasting/auth', ['socket_id' => '1234.5678', 'channel_name' => 'private-'.$channel], DR5_HEADERS);
+
+    $auth("workspace.{$w['ws']}.block.{$w['block']}")->assertOk()->assertJsonStructure(['auth']);
+    $auth("workspace.{$w['ws']}.membership.{$w['membership']}")->assertOk();
+
+    // Another member's channel, another Workspace's channel and a hidden Block are refused.
+    $auth("workspace.{$w['ws']}.membership.".(string) Str::uuid7())->assertForbidden();
+    $auth('workspace.'.(string) Str::uuid7().".block.{$w['block']}")->assertForbidden();
+
+    Cluster::superuser()->prepare('UPDATE access_subjects SET visible = false WHERE subject_id = ?')->execute([$w['block']]);
+
+    $auth("workspace.{$w['ws']}.block.{$w['block']}")->assertForbidden();
+});
+
+it('refetches only the items asked for', function () {
+    $w = dr5World();
+    dr5Results($w)->assertOk();
+    $other = Cluster::seedBlock($w['ws']);
+    Cluster::seedAccessSubject($w['ws'], $other);
+    Cluster::superuser()->prepare("INSERT INTO dashboard_items (id, workspace_id, dashboard_id, block_id, col, row, width, height) VALUES (?, ?, ?, ?, 3, 0, 3, 'small')")
+        ->execute([(string) Str::uuid7(), $w['ws'], $w['dashboard'], $other]);
+
+    $all = dr5Results($w)->assertOk()->json('data.items');
+    $one = test()->getJson("/api/v1/dashboards/{$w['dashboard']}/results?items[]={$w['item']}", DR5_HEADERS)->assertOk()->json('data.items');
+
+    expect($all)->toHaveCount(2)->and($one)->toHaveCount(1)->and($one[0]['item_id'])->toBe($w['item']);
+
+    test()->getJson("/api/v1/dashboards/{$w['dashboard']}/results?items[]=nope", DR5_HEADERS)->assertStatus(422);
+});
+
+it('tells the browser how to stay current: the socket details and the poll interval, null while unset', function () {
+    config([
+        'broadcasting.default' => 'reverb',
+        'broadcasting.connections.reverb.key' => 'pub-key',
+        'broadcasting.connections.reverb.options.host' => 'rt.example.test',
+        'broadcasting.connections.reverb.options.port' => 8443,
+        'broadcasting.connections.reverb.options.scheme' => 'https',
+        'dashflow.live.poll_interval.value' => '45',
+    ]);
+    $w = dr5World();
+
+    $live = test()->getJson("/api/v1/dashboards/{$w['dashboard']}", DR5_HEADERS)->assertOk()->json('data.live');
+
+    expect($live)->toBe(['poll_interval_seconds' => 45, 'realtime' => ['key' => 'pub-key', 'host' => 'rt.example.test', 'port' => 8443, 'scheme' => 'https']]);
+
+    config(['dashflow.live.poll_interval.value' => null, 'broadcasting.default' => 'null']);
+
+    expect(test()->getJson("/api/v1/dashboards/{$w['dashboard']}", DR5_HEADERS)->json('data.live'))->toBe(['poll_interval_seconds' => null, 'realtime' => null]);
 });

@@ -9,6 +9,7 @@ use App\Modules\BlockTypes\Contracts\UnknownBlockType;
 use App\Modules\Ingestion\Contracts\ComputeSources;
 use App\Modules\Ingestion\Contracts\ComputeSubscription;
 use App\Modules\Ingestion\Contracts\ComputeTarget;
+use App\Modules\Ingestion\Contracts\EndpointUserBindings;
 use App\Modules\Mapping\Contracts\GuardExceeded;
 use App\Modules\Mapping\Contracts\InvalidPlan;
 use App\Modules\Mapping\Contracts\PlanGuards;
@@ -56,6 +57,7 @@ final class ComputeResults
         private readonly Outbox $outbox,
         private readonly WorkspaceSettings $settings,
         private readonly TenantCache $cache,
+        private readonly EndpointUserBindings $bindings,
     ) {}
 
     /** @return int how many results were written (a kept newer result is not counted) */
@@ -135,6 +137,7 @@ final class ComputeResults
         // A duplicate delivery or a sweep re-run of a sequence already stored is not a new failure.
         if ($applied && $previous !== $target->payloadSeq) {
             $this->trackSlots($workspaceId, $config, $target, $slots, $failed);
+            $this->announce($workspaceId, $config, $target, $built->resultEtag);
         }
 
         return $applied;
@@ -250,5 +253,22 @@ final class ComputeResults
                 'payload_seq' => $target->payloadSeq,
             ]);
         }
+    }
+
+    /**
+     * `results.result.updated` (Story 4.13): the Block and the new ETag, and for a member's own data the member, so the relay can tell the right
+     * people. No value is in it.
+     */
+    private function announce(string $workspaceId, PublishedConfig $config, ComputeTarget $target, string $etag): void
+    {
+        $own = $config->dataSourceId !== null && $config->endpointId !== null
+            && $this->bindings->forEndpoint($workspaceId, $config->dataSourceId, $config->endpointId) !== [];
+
+        $this->outbox->emit(AuditAction::ResultsResultUpdated, 'block:'.$config->blockId, [
+            'block_id' => $config->blockId,
+            'block_version_id' => $config->versionId,
+            'result_etag' => $etag,
+            'scope' => $own && $target->ownerMembershipId !== null ? 'member' : 'shared',
+        ] + ($own && $target->ownerMembershipId !== null ? ['membership_id' => $target->ownerMembershipId] : []));
     }
 }

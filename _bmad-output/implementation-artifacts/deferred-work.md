@@ -515,3 +515,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-6-use-block-chrome-refresh-minimize-about-this-block-footer.md`
   summary: Add the "Expanded view" (paginated table of all rows) and "View as table" menu items, and the Mandatory-item lock on Remove, when their Blocks and configuration exist.
   evidence: Story 4.6 lists them, but table and chart Blocks and the footer action's configuration are Epic 5 and Templates are Epic 7; the card renders a footer link today only if `block.footer` is present.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-4-13-receive-live-updates-through-reverb-with-a-polling-fallback.md`
+  summary: Add an end-to-end socket test (Reverb in `compose.test.yaml`) and a Database test for the member-scope `results.result.updated` path.
+  evidence: The relay and the browser client are tested apart; nothing exercises a real Reverb server, and the bound-data event needs a user-attribute fixture.

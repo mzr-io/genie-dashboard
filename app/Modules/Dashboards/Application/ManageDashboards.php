@@ -121,7 +121,7 @@ final class ManageDashboards implements Dashboards
         );
     }
 
-    public function results(string $workspaceId, string $membershipId, string $dashboardId, ?string $range): array
+    public function results(string $workspaceId, string $membershipId, string $dashboardId, ?string $range, ?array $items = null): array
     {
         $dashboard = Str::isUuid($dashboardId)
             ? DB::selectOne('select id from dashboards where workspace_id = ? and membership_id = ? and id = ?', [$workspaceId, $membershipId, strtolower($dashboardId)])
@@ -139,6 +139,10 @@ final class ManageDashboards implements Dashboards
         $out = [];
 
         foreach ($rows as $row) {
+            if ($items !== null && ! in_array(strtolower((string) $row->id), $items, true)) {
+                continue;
+            }
+
             $blockId = strtolower((string) $row->block_id);
             $base = ['item_id' => strtolower((string) $row->id), 'block_id' => $blockId];
             $card = $cards[$blockId] ?? null;
@@ -327,7 +331,7 @@ final class ManageDashboards implements Dashboards
         );
 
         $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
-            'dashboard_id' => $id, 'item_id' => $itemId, 'command' => $command, 'revision' => $revision + 1,
+            'dashboard_id' => $id, 'item_id' => $itemId, 'block_id' => $blockId, 'membership_id' => strtolower($membershipId), 'command' => $command, 'revision' => $revision + 1,
         ]);
 
         return $this->changeOf($workspaceId, $membershipId, $id, $itemId, true, $revision + 1);
@@ -370,7 +374,7 @@ final class ManageDashboards implements Dashboards
         );
 
         $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
-            'dashboard_id' => $id, 'item_id' => strtolower((string) $item->id), 'command' => 'remove_item', 'revision' => $revision + 1,
+            'dashboard_id' => $id, 'item_id' => strtolower((string) $item->id), 'block_id' => $blockId, 'membership_id' => strtolower($membershipId), 'command' => 'remove_item', 'revision' => $revision + 1,
         ]);
 
         return new ItemChange($revision + 1, true);

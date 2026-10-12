@@ -3,6 +3,9 @@ import { announce, DEBOUNCE_AGGREGATE_MS, resetOnce } from '@/lib/announce';
 
 // One shared view of the browser connection (UX-DR-251, 252).
 const online = ref(typeof navigator === 'undefined' ? true : navigator.onLine);
+// The realtime socket (Story 4.13) counts as the connection too: while it is down after having been up, the dashboard says it is reconnecting.
+const socketDown = ref(false);
+const reachable = computed(() => online.value && !socketDown.value);
 let listeners = 0;
 
 function goOffline(): void {
@@ -33,7 +36,12 @@ export function useConnection() {
         });
     }
 
-    return { online, offline: computed(() => !online.value) };
+    return { online: reachable, offline: computed(() => !reachable.value) };
+}
+
+// Called by the dashboard's realtime client: true while a socket that was connected is not.
+export function setRealtimeDown(down: boolean): void {
+    socketDown.value = down;
 }
 
 // Dashboard shell (UX-DR-252): transitions settle for ~2 s before anything is spoken, so a flap
@@ -77,4 +85,5 @@ export function useConnectionAnnouncements(messages: {
 // Test hook: put the shared state back to a known value.
 export function setConnectionForTest(value: boolean): void {
     online.value = value;
+    socketDown.value = false;
 }
