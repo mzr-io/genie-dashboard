@@ -10,6 +10,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import FetchAsUserPanel from '@/components/wizard/FetchAsUserPanel.vue';
 import SampleSection from '@/components/wizard/SampleSection.vue';
 import SectionCard from '@/components/wizard/SectionCard.vue';
 import { useShell } from '@/composables/useShell';
@@ -26,6 +27,7 @@ import {
 } from '@/lib/blockSource';
 import type { DatePreset, Gate, SourceCatalog } from '@/lib/blockSource';
 import type { SampleClaim, SampleState } from '@/lib/blockSample';
+import type { AsUserState } from '@/lib/blockUserSample';
 import type { StepForm } from '@/lib/blockWizard';
 import { dataSourceLabels, endpointLabels } from '@/locales/labels';
 import { blockSourceLabels as labels } from '@/locales/labels';
@@ -49,6 +51,8 @@ const props = defineProps<{
     draftId: string | null;
     claim: () => SampleClaim | null;
     readOnly: boolean;
+    // Fetch as user (Story 3.17): the page's state, shared with Step 4's "Preview as".
+    asUser: AsUserState;
 }>();
 
 const emit = defineEmits<{
@@ -752,6 +756,17 @@ const sourceLabel = (s: { name: string; health: string }) =>
             :source-name="sourceName"
             @accepted="sampleAccepted"
             @fetched="sampleFetched"
+            @auth-error="(error) => emit('auth-error', error)"
+        />
+
+        <FetchAsUserPanel
+            mode="fetch"
+            :as-user="asUser"
+            :draft-id="draftId"
+            :fetch-body="fetchBody"
+            :request-key="currentKey"
+            :source-name="sourceName"
+            :fetch-reason="fetchReason"
             @auth-error="(error) => emit('auth-error', error)"
         />
     </div>

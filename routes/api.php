@@ -12,6 +12,7 @@ use App\Http\Controllers\Admin\DraftPreviewController;
 use App\Http\Controllers\Admin\DraftRolesController;
 use App\Http\Controllers\Admin\DraftSampleController;
 use App\Http\Controllers\Admin\DraftSlotsController;
+use App\Http\Controllers\Admin\DraftUserSampleController;
 use App\Http\Controllers\Admin\EndpointController;
 use App\Http\Controllers\Admin\GroupController;
 use App\Http\Controllers\Admin\HostAllowlistController;
@@ -101,6 +102,12 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // Live preview (Story 3.10): runs the Draft's Query Plan over its sample (`blocks.edit` only, no edit-lock claim: a read-only viewer may ask; it writes nothing).
     // The limit is the per-membership `DASHFLOW_PREVIEW_*` setting, counted by the application (429 with `retry_after`), not a fixed throttle.
     Route::post('blocks/drafts/{draft}/preview', [DraftPreviewController::class, 'store'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.preview');
+
+    // Fetch as user from the wizard (Story 3.17): `blocks.edit` through the gate, `data.preview_as_user` in the request (403 and a security event). No edit-lock claim: the
+    // Draft is not written. The response is the Operation's own blob; the browser reads only its value-free structure. Throttled like Fetch as user.
+    Route::get('blocks/preview-as-user/members', [DraftUserSampleController::class, 'members'])->middleware('admin')->name('api.admin.blocks.preview-as-user.members');
+    Route::post('blocks/drafts/{draft}/sample/fetch-as-user', [DraftUserSampleController::class, 'fetch'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,data-source-endpoint-test'])->name('api.admin.blocks.drafts.sample.fetch-as-user');
+    Route::get('blocks/drafts/{draft}/sample/as-user/{operation}', [DraftUserSampleController::class, 'shape'])->whereUuid(['draft', 'operation'])->middleware(['admin', 'throttle:120,1,data-source-endpoint-sample'])->name('api.admin.blocks.drafts.sample.as-user');
 
     // Field roles and record-path candidates of the sample (Story 3.11a): read-only, `blocks.edit`, no edit-lock claim.
     Route::get('blocks/drafts/{draft}/sample/roles', [DraftRolesController::class, 'show'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.sample.roles');

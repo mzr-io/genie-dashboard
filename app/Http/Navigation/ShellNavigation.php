@@ -120,6 +120,10 @@ final class ShellNavigation
         'api.admin.blocks.drafts.mapping.field_roles' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.mapping.field_types' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.mapping.presentation' => Permission::BlocksEdit,
+        // Fetch as user from the wizard (Story 3.17) also needs `data.preview_as_user`, which the request checks and records as a security event when missing.
+        'api.admin.blocks.preview-as-user.members' => Permission::BlocksEdit,
+        'api.admin.blocks.drafts.sample.fetch-as-user' => Permission::BlocksEdit,
+        'api.admin.blocks.drafts.sample.as-user' => Permission::BlocksEdit,
         'api.admin.blocks.data-sources.index' => Permission::BlocksEdit,
         'api.admin.blocks.data-sources.endpoints.index' => Permission::BlocksEdit,
         'api.admin.blocks.refresh-intervals' => Permission::BlocksEdit,

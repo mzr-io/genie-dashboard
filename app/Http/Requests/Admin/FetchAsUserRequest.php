@@ -2,18 +2,8 @@
 
 namespace App\Http\Requests\Admin;
 
-use App\Http\Responses\AdminApiError;
-use App\Models\User;
-use App\Modules\Access\Contracts\ErrorCode;
-use App\Modules\Access\Contracts\MembershipLookup;
-use App\Modules\Access\Contracts\MembershipPermissions;
-use App\Modules\Access\Contracts\Permission;
-use App\Platform\Audit\Audit;
-use App\Platform\Audit\AuditAction;
-use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Contracts\Validation\Validator;
 use Illuminate\Foundation\Http\FormRequest;
-use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Str;
 
 /**
@@ -24,50 +14,11 @@ use Illuminate\Support\Str;
  */
 final class FetchAsUserRequest extends FormRequest
 {
+    use ChecksPreviewAsUser;
+
     public function authorize(): bool
     {
-        $user = $this->user();
-        $workspaceId = $this->session()->get(WorkspaceTransaction::SESSION_KEY);
-
-        if (! $user instanceof User || ! is_string($workspaceId)) {
-            return false;
-        }
-
-        $workspaceId = strtolower($workspaceId);
-
-        if (in_array(Permission::DataPreviewAsUser, app(MembershipPermissions::class)->forUser($user->id, $workspaceId), true)) {
-            return true;
-        }
-
-        $membershipId = null;
-
-        foreach (app(MembershipLookup::class)->forUser($user->id) as $membership) {
-            if ($membership->workspaceId === $workspaceId) {
-                $membershipId = $membership->membershipId;
-            }
-        }
-
-        app(Audit::class)->recordSecurityEvent(
-            AuditAction::AccessAdminDenied,
-            [
-                'user_id' => $user->id,
-                'membership_id' => $membershipId,
-                'area' => 'admin',
-                'route' => $this->route()?->getName() ?? 'unnamed',
-                'permission' => Permission::DataPreviewAsUser->value,
-                'reason' => 'permission',
-            ],
-            $workspaceId,
-            subject: $membershipId === null ? null : 'membership:'.$membershipId,
-            actor: $membershipId,
-        );
-
-        return false;
-    }
-
-    protected function failedAuthorization(): void
-    {
-        throw new HttpResponseException(AdminApiError::json($this, ErrorCode::NotAuthorized->value, 403, 'Forbidden'));
+        return $this->mayPreviewAsUser();
     }
 
     /**

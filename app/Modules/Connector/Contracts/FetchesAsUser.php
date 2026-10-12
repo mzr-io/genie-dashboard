@@ -35,4 +35,21 @@ interface FetchesAsUser
      * @throws SampleFetchThrottled
      */
     public function start(DataSourceActor $actor, string $dataSourceId, string $endpointId, string $targetMembershipId, array $values): Operation;
+
+    /**
+     * The same start, for a caller that has the Admin's parameter choices rather than a ready list of values (Story 3.17, the Create block
+     * wizard): the Fixed parameters' own values, the dates of the default range and the Block's period are turned into the non-bound values
+     * exactly as a Draft's Fetch from API turns them, and a user-bound row is never given one.
+     *
+     * @param  array<string, string|null>  $bindings  the Fixed parameters' own values
+     * @param  array{from: string, to: string}|null  $range
+     * @param  array{start: string, end: string}|null  $period
+     *
+     * @throws DataSourceNotFound
+     * @throws EndpointNotFound
+     * @throws MembershipNotFound the target is not an active member of this Workspace (404)
+     * @throws InvalidDataSource 422, `values.{name}`
+     * @throws SampleFetchThrottled
+     */
+    public function startFromChoices(DataSourceActor $actor, string $dataSourceId, string $endpointId, string $targetMembershipId, array $bindings, ?array $range, ?array $period): Operation;
 }

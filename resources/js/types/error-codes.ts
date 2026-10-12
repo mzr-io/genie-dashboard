@@ -13,6 +13,8 @@ export enum ErrorCode {
     BlocksDraftExists = 'blocks.draft_exists',
     BlocksDraftPublished = 'blocks.draft_published',
     BlocksInvalidConfig = 'blocks.invalid_config',
+    BlocksPreviewAsUserEnded = 'blocks.preview_as_user_ended',
+    BlocksPreviewAsUserMismatch = 'blocks.preview_as_user_mismatch',
     BlocksRevisionConflict = 'blocks.revision_conflict',
     BlocksSampleInvalid = 'blocks.sample_invalid',
     BlocksSampleUnavailable = 'blocks.sample_unavailable',

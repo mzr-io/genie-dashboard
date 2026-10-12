@@ -24,4 +24,8 @@ enum ErrorCode: string
     case SampleUnavailable = 'blocks.sample_unavailable';
     /** An undo of a slot that was changed after the override (Story 3.13c): HTTP 409, nothing written. */
     case SlotChanged = 'blocks.slot_changed';
+    /** A preview as a user (Story 3.17) was asked for a Fetch as user result that is gone: HTTP 422; the wizard shows the shared sample again. */
+    case PreviewAsUserEnded = 'blocks.preview_as_user_ended';
+    /** A preview as a user named a Data Source or Endpoint that is not the Draft's (Story 3.17): HTTP 422, nothing run. */
+    case PreviewAsUserMismatch = 'blocks.preview_as_user_mismatch';
 }

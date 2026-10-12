@@ -37,10 +37,12 @@ import {
     emptySource,
     endpointOf,
     endpointText,
+    fetchBodyOf,
     fetchEndpointOptions,
     fetchIntervals,
     fetchSources,
     paramRows,
+    requestKey as sourceRequestKey,
     sourceConfigOf,
     sourceFormOf,
     sourceIsSet,
@@ -85,8 +87,10 @@ import {
     sampleBlock,
 } from '@/lib/blockSample';
 import type { SampleClaim } from '@/lib/blockSample';
+import { emptyAsUser, endAsUser } from '@/lib/blockUserSample';
 import type { MappingRead } from '@/lib/blockMapping';
 import {
+    blockAsUserLabels,
     blockSampleLabels,
     blockWizardLabels as labels,
     draftLockLabels,
@@ -154,6 +158,9 @@ const form = reactive<StepForm>({
 const catalog = reactive(emptyCatalog());
 // The Sample Response (Story 3.8): the pasted text, what the server found, and the accepted sample it restores when the Draft reopens.
 const sample = reactive(emptySample());
+// Fetch as user and Preview as (Story 3.17): who was chosen, when the result ends and its value-free structure. The response itself stays on the
+// server, in the Operation's blob, for this Admin only; nothing here is stored or autosaved.
+const asUser = reactive(emptyAsUser());
 
 const blockType = computed(() => blockTypeFor(form.type) ?? type);
 const categoryName = computed(
@@ -422,11 +429,12 @@ async function syncEndpoints(): Promise<void> {
     await loadEndpoints(id);
 }
 
-// Step 2 reads its lists when it is first shown, and the Endpoints again whenever another Data Source is chosen (or loaded with a Draft).
+// Step 2 reads its lists when it is first shown, and the Endpoints again whenever another Data Source is chosen (or loaded with a Draft). Step 4
+// reads them too (Story 3.17): "Preview as" sends the request's choices, so it needs the Endpoint's parameters like Step 2's Fetch does.
 watch(
     () => [current.value, state.value, form.source.dataSourceId] as const,
     ([step, status]) => {
-        if (step === 2 && status === 'ready') {
+        if ((step === 2 || step === 4) && status === 'ready') {
             if (catalog.sources === null) {
                 void loadCatalog();
             } else {
@@ -448,6 +456,48 @@ const gate = computed(() => {
         t('datasource-none.message'),
     );
 });
+// What the request is now, for Fetch as user in Steps 2 and 4: its key (a result taken with other parameters is not previewed), the body, the Data
+// Source's name for the error card and why a fetch cannot run (the form's own reason, then offline).
+const requestKeyNow = computed(() => sourceRequestKey(form.source));
+const fetchBodyNow = () => fetchBodyOf(form.source, form.display.period);
+const sourceNameNow = computed(
+    () =>
+        catalog.sources?.find(
+            (s) => s.data_source_id === form.source.dataSourceId,
+        )?.name ?? '',
+);
+const fetchReasonNow = computed<string | undefined>(
+    () => gate.value.fetch ?? (offline.value ? offlineReason.value : undefined),
+);
+
+// A Fetch as user result is short-lived: when it ends the preview goes back to the shared sample, and Step 4 says so.
+let asUserTimer: ReturnType<typeof setTimeout> | null = null;
+
+watch(
+    () => asUser.expiresAt,
+    (at) => {
+        if (asUserTimer !== null) {
+            clearTimeout(asUserTimer);
+            asUserTimer = null;
+        }
+
+        if (at === null) {
+            return;
+        }
+
+        asUserTimer = setTimeout(
+            () => {
+                if (asUser.operationId !== null) {
+                    endAsUser(asUser, true);
+                    announce(blockAsUserLabels.ended, 'polite');
+                }
+            },
+            Math.max(0, Date.parse(at) - Date.now()),
+        );
+    },
+    { immediate: true },
+);
+
 // Why Continue cannot leave Step 2 yet: a POST not marked read-only, or no Data Source to read.
 // Step 4 (Story 3.16) says why itself: warnings still to acknowledge, or a preview not ready.
 const previewGate = ref<string | undefined>(undefined);
@@ -1314,6 +1364,10 @@ onBeforeUnmount(() => {
     stopBefore();
     stopRegistry();
     stopFlush();
+
+    if (asUserTimer !== null) {
+        clearTimeout(asUserTimer);
+    }
 });
 </script>
 
@@ -1569,6 +1623,7 @@ onBeforeUnmount(() => {
                                 :draft-id="draft?.draft_id ?? null"
                                 :claim="sampleClaim"
                                 :read-only="readOnly"
+                                :as-user="asUser"
                                 @change="onChange"
                                 @retry="loadCatalog"
                                 @auth-error="sessionEnded"
@@ -1664,6 +1719,11 @@ onBeforeUnmount(() => {
                             :display="form.display"
                             :acknowledged="uiState.acknowledged_warnings ?? []"
                             :blocked="mapBlocked"
+                            :as-user="asUser"
+                            :request-key="requestKeyNow"
+                            :fetch-body="fetchBodyNow"
+                            :source-name="sourceNameNow"
+                            :fetch-reason="fetchReasonNow"
                             @update:acknowledged="setAcknowledged"
                             @gate="(reason) => (previewGate = reason)"
                             @live="(ids) => (liveWarnings = ids)"

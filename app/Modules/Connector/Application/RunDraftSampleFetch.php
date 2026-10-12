@@ -4,8 +4,6 @@ namespace App\Modules\Connector\Application;
 
 use App\Modules\Connector\Contracts\DataSourceActor;
 use App\Modules\Connector\Contracts\DataSources;
-use App\Modules\Connector\Contracts\Endpoint;
-use App\Modules\Connector\Contracts\EndpointInput;
 use App\Modules\Connector\Contracts\Endpoints;
 use App\Modules\Connector\Contracts\InvalidDataSource;
 use App\Modules\Connector\Contracts\PreparedSampleFetch;
@@ -49,7 +47,7 @@ final class RunDraftSampleFetch implements SampleRuns
             throw new InvalidDataSource(['endpoint' => ['This endpoint uses user context. Use Fetch as user to see what a member would get.']], ['endpoint' => 'requires-user-context']);
         }
 
-        $values = $this->renderer->values($endpoint, $this->given($endpoint, $bindings, $range, $period));
+        $values = $this->renderer->values($endpoint, $this->renderer->given($endpoint, $bindings, $range, $period));
         $missing = $this->settings->missingForDraftFetch();
 
         if ($missing !== null) {
@@ -85,44 +83,5 @@ final class RunDraftSampleFetch implements SampleRuns
     public function discard(Operation $operation): void
     {
         $this->blobs->forget($operation->workspaceId, $operation->id);
-    }
-
-    /**
-     * What the Admin's choices give each parameter and header: a Fixed one its own value when the block has one (else the Endpoint's), a date-range
-     * one its date, a period one its date when the block has a period. A user-bound row is never given a value.
-     *
-     * @param  array<string, string|null>  $bindings
-     * @param  array{from: string, to: string}|null  $range
-     * @param  array{start: string, end: string}|null  $period
-     * @return array<string, string>
-     */
-    private function given(Endpoint $endpoint, array $bindings, ?array $range, ?array $period): array
-    {
-        $given = [];
-        $date = fn (string $binding): ?string => match ($binding) {
-            'date_range_from' => $range['from'] ?? null,
-            'date_range_to' => $range['to'] ?? null,
-            'period_start' => $period['start'] ?? null,
-            'period_end' => $period['end'] ?? null,
-            default => null,
-        };
-
-        foreach ($endpoint->params as $param) {
-            $value = $param['binding'] === 'fixed' ? ($bindings[$param['name']] ?? null) : (in_array($param['binding'], EndpointInput::DATE_BINDINGS, true) ? $date($param['binding']) : null);
-
-            if (is_string($value) && $value !== '') {
-                $given[$param['name']] = $value;
-            }
-        }
-
-        foreach ($endpoint->headers as $header) {
-            $value = in_array($header['binding'], EndpointInput::DATE_BINDINGS, true) ? $date($header['binding']) : null;
-
-            if (is_string($value) && $value !== '') {
-                $given['header:'.$header['name']] = $value;
-            }
-        }
-
-        return $given;
     }
 }

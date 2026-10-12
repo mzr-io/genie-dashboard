@@ -7,15 +7,20 @@ import BlockedReason from '@/components/BlockedReason.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import FetchAsUserPanel from '@/components/wizard/FetchAsUserPanel.vue';
 import { announce } from '@/lib/announce';
 import { fetchMapping } from '@/lib/blockMapping';
 import type { ChecklistSlot } from '@/lib/blockMapping';
 import { createPreviewRunner, fetchPreview } from '@/lib/blockPreview';
 import type { PreviewProblem, PreviewResult } from '@/lib/blockPreview';
 import { previewWarnings } from '@/lib/blockPreviewWarnings';
+import type { FetchBody } from '@/lib/blockSample';
+import { asUserRef, asUserUsable, endAsUser } from '@/lib/blockUserSample';
+import type { AsUserState } from '@/lib/blockUserSample';
 import { WizardError } from '@/lib/blockWizard';
 import type { DisplayConfig } from '@/lib/blockWizard';
 import {
+    blockAsUserLabels,
     blockPreviewLabels,
     blockPreviewStepLabels as labels,
     blockWizardLabels,
@@ -35,8 +40,15 @@ const props = withDefaults(
         acknowledged: string[];
         // Why nothing can be changed (read-only, offline, published).
         blocked?: string;
+        // Preview as (Story 3.17): the page's Fetch as user state, what the request is now and its key, for the control and for telling that a
+        // result was taken with other parameters.
+        asUser: AsUserState;
+        requestKey: string;
+        fetchBody: () => FetchBody;
+        sourceName: string;
+        fetchReason?: string;
     }>(),
-    { blocked: undefined },
+    { blocked: undefined, fetchReason: undefined },
 );
 
 const emit = defineEmits<{
@@ -166,7 +178,81 @@ watch(
 onBeforeUnmount(() => {
     mappingSeq += 1;
     runner.cancel();
+    userRunner.cancel();
 });
+
+// ---- Preview as (Story 3.17) --------------------------------------------------------------------------------------
+
+// The warnings and Continue's gate always come from the shared sample (their acknowledgements are keyed to it); a Fetch as user result only
+// changes what the Block shows. It is computed by the same preview endpoint, from the Operation's ephemeral blob.
+const userResult = ref<PreviewResult | null>(null);
+const usingUser = computed(() => asUserUsable(props.asUser, props.requestKey));
+// The as-user result is what is displayed only once it has arrived; until then (or if it failed) the shared data shows, labelled as shared.
+const displayingUser = computed(
+    () => usingUser.value && userResult.value !== null,
+);
+const userPending = ref(false);
+const shown = computed<PreviewResult | null>(() =>
+    displayingUser.value ? userResult.value : result.value,
+);
+
+const userRunner = createPreviewRunner({
+    load: (signal) => {
+        const ref = asUserUsable(props.asUser, props.requestKey)
+            ? asUserRef(props.asUser)
+            : null;
+
+        return props.draftId === null || ref === null
+            ? Promise.reject(new WizardError(0))
+            : fetchPreview(props.draftId, signal, ref);
+    },
+    onStart() {
+        userPending.value = true;
+    },
+    onResult(next) {
+        userResult.value = next;
+        userPending.value = false;
+    },
+    onProblem(next) {
+        userResult.value = null;
+        userPending.value = false;
+
+        // Gone (expired, or not this Admin's any more): the shared sample is shown again, and the Admin is told.
+        if (next.kind === 'as_user_ended') {
+            endAsUser(props.asUser, true);
+            announce(blockAsUserLabels.ended, 'polite');
+        } else if (next.kind === 'as_user_mismatch') {
+            endAsUser(props.asUser, false);
+            props.asUser.refusal = blockAsUserLabels.mismatch;
+        } else if (next.kind === 'as_user_denied') {
+            props.asUser.using = false;
+            props.asUser.refusal = blockAsUserLabels.denied;
+        } else if (next.kind === 'session') {
+            emit('auth-error', new WizardError(next.status ?? 401));
+        }
+    },
+});
+
+watch(
+    () =>
+        [
+            props.asUser.operationId,
+            props.asUser.using,
+            props.asUser.ended,
+            props.asUser.expiresAt,
+            props.requestKey,
+        ] as const,
+    () => {
+        if (usingUser.value) {
+            userRunner.request(true);
+        } else {
+            userRunner.cancel();
+            userPending.value = false;
+            userResult.value = null;
+        }
+    },
+    { immediate: true },
+);
 
 // ---- Warnings -----------------------------------------------------------------------------------------------------
 
@@ -250,8 +336,8 @@ const blank: Omit<KpiCardPayload, 'state' | 'title' | 'subtitle' | 'icon'> = {
 // skeleton, Empty its message, Stale its note, Unavailable the catalogue message for a User (never a number).
 const payload = computed<KpiCardPayload>(() => {
     const base: KpiCardPayload =
-        result.value !== null
-            ? { ...result.value.payload, ...frame.value }
+        shown.value !== null
+            ? { ...shown.value.payload, ...frame.value }
             : { ...blank, state: 'loading', ...frame.value };
 
     switch (state.value) {
@@ -275,7 +361,7 @@ const payload = computed<KpiCardPayload>(() => {
             };
         default:
             // Normal, and Minimized when it is expanded again.
-            return result.value === null
+            return shown.value === null
                 ? base
                 : { ...base, state: 'normal', staleSince: null };
     }
@@ -353,7 +439,11 @@ const notice = computed<string | null>(() => {
             <span
                 class="type-caption mt-1 inline-block w-fit rounded-sm bg-info-soft px-2 text-info-strong"
                 data-test="preview-sample-label"
-                >{{ labels.sampleLabel }}</span
+                >{{
+                    displayingUser
+                        ? blockAsUserLabels.asLabel(asUser.name)
+                        : labels.sampleLabel
+                }}</span
             >
         </header>
 
@@ -370,11 +460,36 @@ const notice = computed<string | null>(() => {
             />
         </div>
 
+        <FetchAsUserPanel
+            mode="preview"
+            :as-user="asUser"
+            :draft-id="draftId"
+            :fetch-body="fetchBody"
+            :request-key="requestKey"
+            :source-name="sourceName"
+            :fetch-reason="fetchReason"
+            @auth-error="(error) => emit('auth-error', error)"
+        />
+
         <div
             role="status"
             class="flex flex-col gap-1 empty:hidden"
             data-test="preview-notices"
         >
+            <p
+                v-if="usingUser && !displayingUser && !userPending"
+                class="type-caption text-text-secondary"
+                data-test="preview-as-unavailable"
+            >
+                {{ blockAsUserLabels.userUnavailable(asUser.name) }}
+            </p>
+            <p
+                v-if="asUser.ended && asUser.operationId === null"
+                class="type-caption text-warning-text"
+                data-test="preview-as-ended"
+            >
+                {{ blockAsUserLabels.ended }}
+            </p>
             <p
                 v-if="loading && !ready"
                 class="type-caption text-text-secondary"

@@ -10,6 +10,7 @@ use App\Modules\Blocks\Contracts\DraftPublished;
 use App\Modules\Blocks\Contracts\Drafts;
 use App\Modules\Blocks\Contracts\DraftSamples;
 use App\Modules\Blocks\Contracts\PreviewRefused;
+use App\Modules\Blocks\Contracts\UserSampleRef;
 use App\Modules\BlockTypes\Contracts\BlockTypeRegistry;
 use App\Modules\Mapping\Contracts\GuardExceeded;
 use App\Modules\Mapping\Contracts\InvalidPlan;
@@ -54,6 +55,7 @@ final class PreviewDraft implements DraftPreviews
         private readonly QueryPlans $plans,
         private readonly PreviewThrottle $throttle,
         private readonly MetricEmitter $metrics,
+        private readonly ManageUserSamples $userSamples,
     ) {}
 
     /** Forgets every decoded sample held by this process. */
@@ -63,7 +65,7 @@ final class PreviewDraft implements DraftPreviews
         SampleShapes::forget();
     }
 
-    public function preview(DraftActor $actor, string $draftId): DraftPreview
+    public function preview(DraftActor $actor, string $draftId, ?UserSampleRef $asUser = null): DraftPreview
     {
         try {
             $draft = $this->drafts->find($actor->workspaceId, $draftId);
@@ -85,6 +87,15 @@ final class PreviewDraft implements DraftPreviews
             throw new PreviewRefused(PreviewRefused::NO_SAMPLE);
         }
 
+        // A preview as a user runs over the Admin's own ephemeral Fetch as user result: gone is a refusal that spends nothing.
+        $source = is_array($draft->config['source'] ?? null) ? $draft->config['source'] : [];
+
+        if ($asUser !== null && (strtolower((string) ($source['data_source_id'] ?? '')) !== strtolower($asUser->dataSourceId) || strtolower((string) ($source['endpoint_id'] ?? '')) !== strtolower($asUser->endpointId))) {
+            throw new PreviewRefused(PreviewRefused::AS_USER_MISMATCH);
+        }
+
+        $user = $asUser === null ? null : $this->userSamples->open($actor, $asUser) ?? throw new PreviewRefused(PreviewRefused::AS_USER_ENDED);
+
         // Settings before the limit, so a refusal for an unset setting spends nothing.
         $guards = $this->plans->guards();
         $this->throttle->hit($actor->workspaceId, $actor->membershipId);
@@ -94,7 +105,9 @@ final class PreviewDraft implements DraftPreviews
 
         try {
             $type = $this->types->resolve($draft->type, $this->contractVersion($actor->workspaceId, $draft->blockId));
-            [$document, $revision] = $this->document($actor->workspaceId, $draft->id, $revision);
+            [$document, $revision] = $user === null
+                ? $this->document($actor->workspaceId, $draft->id, $revision)
+                : [$user['tree'], $revision];
             $result = $this->plans->run($type, $plan, $document, $guards, is_array($draft->config[Presentation::KEY] ?? null) ? $draft->config[Presentation::KEY] : []);
         } catch (GuardExceeded $e) {
             $outcome = 'guard_exceeded';
@@ -116,7 +129,7 @@ final class PreviewDraft implements DraftPreviews
             );
         }
 
-        return new DraftPreview($result->payload, $result->unavailable, $revision, $draft->revision, $this->slotValues($plan, $result->slots, $result->unavailable), ManageDraftSlots::planStale($draft->config, $revision));
+        return new DraftPreview($result->payload, $result->unavailable, $revision, $draft->revision, $this->slotValues($plan, $result->slots, $result->unavailable), ManageDraftSlots::planStale($draft->config, $revision), $user['expires_at'] ?? null);
     }
 
     /**

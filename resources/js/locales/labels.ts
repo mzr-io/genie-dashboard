@@ -2347,3 +2347,58 @@ export const blockPreviewStepLabels = {
             ? 'All warnings acknowledged. Continue is available.'
             : `${open} ${open === 1 ? 'warning' : 'warnings'} left to acknowledge.`,
 } as const;
+
+// Fetch as user and Preview as in the Create block wizard (Story 3.17). The failure messages are the shared error card's; these are the panel's own.
+export const blockAsUserLabels = {
+    fetchTitle: 'Fetch as user',
+    fetchCaption:
+        'Sends this request once as the member you choose, using their own ID, email, group and attributes, to see the shape of what they would get. The response is kept for a few minutes, only for you, and is never saved to the draft. An audit event is recorded for each use.',
+    previewTitle: 'Preview as',
+    previewCaption:
+        'Show this block with the data a member would get. The preview is computed from a fetch made as that member, kept for a few minutes, only for you.',
+    search: 'Search members',
+    member: 'Member',
+    choose: 'Choose a member',
+    none: 'No active members match.',
+    groups: (names: string[]) => `Groups: ${names.join(', ')}`,
+    fetch: 'Fetch as user',
+    previewAs: 'Preview as',
+    refetch: 'Fetch again',
+    noPermission:
+        "You don't have permission to fetch or preview as a user. Ask an admin to grant Preview as user.",
+    memberRequired: 'Choose a member first.',
+    waitFor: (seconds: number) => `Wait ${seconds}s`,
+    running: (name: string) => `Fetching as ${name}…`,
+    failedTitle: 'Fetch as user failed',
+    startFailed: "We couldn't start the fetch. Try again.",
+    memberGone: 'This member is no longer in the workspace. Choose another.',
+    refused: "That request can't be sent. Check the parameters.",
+    membersFailed: "We couldn't load the members. Try again.",
+    sampleData: 'Sample data',
+    done: (name: string, until: string) =>
+        `Fetched as ${name}. Sample data, kept only for you until ${until}.`,
+    structureTitle: (name: string) => `Structure of ${name}'s response`,
+    structureNote:
+        'Paths and types only. The values stay on the server and are never saved.',
+    previewingAs: (name: string) => `Previewing as ${name}`,
+    earlier:
+        'This result was taken with earlier parameters. Fetch again to preview as the member.',
+    expired:
+        'The fetched user data has expired. Fetch again to preview as the member.',
+    ended: 'The fetched user data expired, so the preview shows the shared sample again.',
+    stale: 'The endpoint changed while this was fetched, so the result was dropped. Fetch again.',
+    denied: 'You no longer have permission to preview as a user, so the preview shows the shared sample.',
+    sourceOptions: [
+        { value: 'shared', label: 'Shared sample' },
+        { value: 'user', label: 'As the member' },
+    ] as { value: string; label: string }[],
+    source: 'Preview data',
+    useShared: 'Use the shared sample',
+    asLabel: (name: string) => `Sample data · previewing as ${name}`,
+    audited: 'Every use is recorded in the audit log.',
+    userUnavailable: (name: string) =>
+        `The preview as ${name} is not available right now, so the shared sample is shown.`,
+    readFailed: "We couldn't read the fetched result. Try again.",
+    mismatch:
+        "This result is for a different data source or endpoint than the draft's, so the shared sample is shown. Fetch again.",
+} as const;

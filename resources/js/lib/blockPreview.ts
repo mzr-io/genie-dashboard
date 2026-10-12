@@ -1,4 +1,5 @@
 import type { KpiCardPayload } from '@block-types/kpi-card/v1/payload';
+import type { AsUserRef } from '@/lib/blockUserSample';
 import { WizardError, wizardCall } from '@/lib/blockWizard';
 import { DRAFT_BLOCKS_URL } from '@/lib/draftBlocks';
 
@@ -22,6 +23,8 @@ export type PreviewResult = {
     sample_revision: number | null;
     draft_revision: number | null;
     plan_stale: boolean;
+    // Story 3.17: set when it was computed from a Fetch as user result: when that result ends.
+    as_user_expires_at?: string | null;
 };
 
 export type PreviewProblemKind =
@@ -38,6 +41,12 @@ export type PreviewProblemKind =
     | 'unavailable'
     // The session ended (401, 419): the page handles it like any other step.
     | 'session'
+    // Story 3.17: the Fetch as user result is gone (expired, or not this Admin's): the shared sample is shown again.
+    | 'as_user_ended'
+    // Story 3.17: the Admin no longer holds `data.preview_as_user`.
+    | 'as_user_denied'
+    // Story 3.17: the result is for another Data Source or Endpoint than the Draft's.
+    | 'as_user_mismatch'
     | 'failed';
 
 export type PreviewProblem = {
@@ -46,6 +55,8 @@ export type PreviewProblem = {
     retryAfter?: number | null;
     status?: number;
 };
+
+const AS_USER_DENIED = 'blocks.preview_as_user_denied';
 
 const previewUrl = (draftId: string): string =>
     `${DRAFT_BLOCKS_URL}/${encodeURIComponent(draftId)}/preview`;
@@ -74,20 +85,39 @@ function asResult(data: unknown): PreviewResult {
         sample_revision: (body.sample_revision as number | null) ?? null,
         draft_revision: (body.draft_revision as number | null) ?? null,
         plan_stale: body.plan_stale === true,
+        as_user_expires_at: plain(body.as_user)
+            ? ((body.as_user.expires_at as string | null | undefined) ?? null)
+            : null,
     };
 }
 
+// With `asUser` (Story 3.17) the same plan runs over the Admin's own Fetch as user result instead of the shared sample.
 export async function fetchPreview(
     draftId: string,
     signal?: AbortSignal,
+    asUser: AsUserRef | null = null,
 ): Promise<PreviewResult> {
-    const answer = await wizardCall(
-        'POST',
-        previewUrl(draftId),
-        undefined,
-        signal,
-        true,
-    );
+    let answer;
+
+    try {
+        answer = await wizardCall(
+            'POST',
+            previewUrl(draftId),
+            asUser ?? undefined,
+            signal,
+            true,
+        );
+    } catch (error) {
+        if (
+            asUser !== null &&
+            error instanceof WizardError &&
+            error.status === 403
+        ) {
+            throw new WizardError(403, AS_USER_DENIED);
+        }
+
+        throw error;
+    }
 
     return asResult(answer.data);
 }
@@ -100,6 +130,11 @@ export function previewProblem(error: unknown): PreviewProblem {
 
     if (error.status === 401 || error.status === 419) {
         return { kind: 'session', status: error.status };
+    }
+
+    // Only a 403 on a preview that asked for a Fetch as user result (marked by `fetchPreview`) is the permission going away.
+    if (error.status === 403 && error.code === AS_USER_DENIED) {
+        return { kind: 'as_user_denied', status: 403 };
     }
 
     if (error.status === 429) {
@@ -118,6 +153,14 @@ export function previewProblem(error: unknown): PreviewProblem {
 
         if (error.code === 'mapping.no_sample') {
             return { kind: 'no_sample' };
+        }
+
+        if (error.code === 'blocks.preview_as_user_mismatch') {
+            return { kind: 'as_user_mismatch' };
+        }
+
+        if (error.code === 'blocks.preview_as_user_ended') {
+            return { kind: 'as_user_ended' };
         }
 
         if (error.code === 'mapping.guard_exceeded') {

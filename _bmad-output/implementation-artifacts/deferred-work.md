@@ -443,3 +443,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-16-preview-on-every-device-and-state.md`
   summary: Mapping and preview are fetched separately in Step 4 with no draft_revision comparison; the sample-grid and full-size cards are both announced by screen readers; read-only and published (not just offline) paths have no test (unverified severity: low-medium).
   evidence: reviewers traced these from code only.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-17-fetch-and-preview-as-a-user.md`
+  summary: Preview as a member needs a shared sample, which an endpoint with user-bound parameters cannot produce, so mapping such an endpoint still requires a pasted sample; the as-user result cannot satisfy the sample precondition.
+  evidence: PreviewDraft throws NO_SAMPLE before the as-user branch; the shared fetch refuses user-context endpoints. A product decision on mapping from a value-free as-user shape is needed.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-17-fetch-and-preview-as-a-user.md`
+  summary: Reading or previewing a member's fetched result is not audited per read (only the start is), the encrypted blob is not forgotten when the Admin switches back to the shared sample, and the picker lists members not groups first.
+  evidence: ManageUserSamples view/open log nothing; clear() only resets browser state; the spec said "pick a user or a member of a group".
