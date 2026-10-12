@@ -82,6 +82,11 @@ enum AuditAction: string
     // Blocks: a Draft passed validation against the real API (Story 3.18). Only a pass is audited; the Draft and Block IDs, the revision it was bound to and the report ID.
     case BlocksDraftValidated = 'blocks.draft.validated';
 
+    // Blocks: a Draft was frozen as an immutable version (Story 3.19, an outbox event only) and the version went live (audit event and outbox event). IDs, the Block
+    // Type key, the revision, the version number and the pinned Endpoint revision only.
+    case BlocksVersionPrepared = 'blocks.version.prepared';
+    case BlocksVersionPublished = 'blocks.version.published';
+
     // Platform: operator actions mirrored into the Workspace audit log.
     case PlatformWorkspaceCreated = 'platform.workspace.created';
 

@@ -101,6 +101,44 @@ export async function startValidation(
     return data as StartedValidation;
 }
 
+// The version Publish created (Story 3.19): what the success toast and the Published blocks list need. Never a config.
+export type PublishedVersion = {
+    draft_id: string;
+    block_id: string;
+    version_id: string;
+    name: string;
+    type: string;
+    category: string | null;
+    version: string;
+    state: 'published';
+    published_at: string;
+};
+
+// Publishes the Draft as the version the report was made for (`POST .../publish`, `blocks.publish`). The server names the config, version and report
+// itself; only the lock claim travels. Throws the 403 (no permission), the 409 `blocks.draft_published` or `blocks.publish_not_ready` (with
+// `reason` in its body), the 423 and the 429.
+export async function publishDraft(
+    draftId: string,
+    claim: SampleClaim,
+): Promise<PublishedVersion> {
+    const answer = await wizardCall(
+        'POST',
+        `${DRAFT_BLOCKS_URL}/${encodeURIComponent(draftId)}/publish`,
+        claim,
+    );
+    const data = answer.data as Partial<PublishedVersion> | undefined;
+
+    if (
+        !data ||
+        typeof data.block_id !== 'string' ||
+        typeof data.name !== 'string'
+    ) {
+        throw new WizardError(500);
+    }
+
+    return data as PublishedVersion;
+}
+
 // Whether the report is for the revision the Draft is at now: any later autosave moves the Draft on and the report reads stale.
 export function effectiveStatus(
     report: ValidationReport | null,

@@ -79,6 +79,7 @@ import type {
     WizardDraft,
     WizardUiState,
 } from '@/lib/blockWizard';
+import type { PublishedVersion } from '@/lib/blockValidation';
 import { DataSourceError } from '@/lib/dataSources';
 import { SIGN_IN_URL } from '@/lib/session';
 import {
@@ -1247,6 +1248,32 @@ function onPreview(): void {
     goTo(4);
 }
 
+// The version is live (Story 3.19): the toast `publish-success`, then Admin > Published blocks with the new row highlighted and focused. Nothing is
+// left to save or to ask about: the Draft is the published version now.
+function onPublished(version: PublishedVersion): void {
+    stopped.value = true;
+    leaving = true;
+    dirty.value = false;
+    cancelAutosave();
+    clearPending();
+
+    toasts.add({
+        kind: 'success',
+        message:
+            version.category === null || version.category === ''
+                ? labels.publishedNoCategory(version.name, version.version)
+                : t('publish-success', {
+                      block: version.name,
+                      version: version.version,
+                      category: version.category,
+                  }),
+    });
+
+    router.visit(
+        `${PUBLISHED_BLOCKS_URL}?published=${encodeURIComponent(version.block_id)}`,
+    );
+}
+
 function onPublish(): void {
     // Publishing is the last step's work (Story 3.19); until the earlier steps exist this only points the way.
     goTo(5);
@@ -1762,6 +1789,7 @@ onBeforeUnmount(() => {
                             @error="onMappingError"
                             @back="goTo(4)"
                             @save-draft="saveDraft"
+                            @published="onPublished"
                         />
                     </div>
                 </div>

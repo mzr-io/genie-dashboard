@@ -272,6 +272,7 @@ final class Cluster
             'validation_reports' => self::seedValidationReport($workspaceId),
             'datasets' => self::seedDataset($workspaceId),
             'dataset_fields' => self::seedDatasetField($workspaceId),
+            'access_subjects' => self::seedAccessSubject($workspaceId),
             default => null,
         };
     }
@@ -429,6 +430,17 @@ final class Cluster
         $versionId ??= self::seedBlockVersion($workspaceId);
         self::superuser()->prepare('INSERT INTO validation_reports (id, workspace_id, block_version_id, operation_id, subject_revision, status, created_by_membership_id) VALUES (?, ?, ?, ?, ?, ?, ?)')
             ->execute([$id, $workspaceId, $versionId, (string) Str::uuid7(), $revision, $status, (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /** An Access subject (Story 3.19): a Block of the Workspace (a new one unless given), "All users" and visible. */
+    public static function seedAccessSubject(string $workspaceId, ?string $blockId = null): string
+    {
+        $id = (string) Str::uuid7();
+        $blockId ??= self::seedBlock($workspaceId);
+        self::superuser()->prepare("INSERT INTO access_subjects (id, workspace_id, subject_type, subject_id) VALUES (?, ?, 'block', ?)")
+            ->execute([$id, $workspaceId, $blockId]);
 
         return $id;
     }

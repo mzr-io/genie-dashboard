@@ -1,5 +1,6 @@
 <?php
 
+use App\Modules\Blocks\Application\ActivatePreparedVersionsJob;
 use App\Modules\Blocks\Application\PurgeDiscardedDraftsJob;
 use App\Modules\Ingestion\Application\DispatchDueProbesJob;
 use App\Modules\Ingestion\Application\DispatchDueSyncsJob;
@@ -92,6 +93,17 @@ it('schedules the discarded draft purge every five minutes on queue maintenance 
     Queue::fake();
     $event->run(app());
     Queue::assertPushedOn('maintenance', PurgeDiscardedDraftsJob::class, fn (PurgeDiscardedDraftsJob $job): bool => $job->workspaceId === null);
+});
+
+// Story 3.19: a version left prepared is activated by the maintenance job every minute, on queue `maintenance`, onOneServer.
+it('schedules the prepared version activation every minute on queue maintenance with onOneServer', function () {
+    $event = collect(app(Schedule::class)->events())->first(fn ($e) => ($e->description ?? null) === ActivatePreparedVersionsJob::class);
+
+    expect($event)->not->toBeNull()->and($event->onOneServer)->toBeTrue()->and($event->expression)->toBe('* * * * *');
+
+    Queue::fake();
+    $event->run(app());
+    Queue::assertPushedOn('maintenance', ActivatePreparedVersionsJob::class, fn (ActivatePreparedVersionsJob $job): bool => $job->workspaceId === null);
 });
 
 // Story 2.18: the periodic health probe tick runs every minute on queue `maintenance` (worker-compute holds the `system` credentials), onOneServer.

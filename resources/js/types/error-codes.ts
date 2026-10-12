@@ -15,6 +15,8 @@ export enum ErrorCode {
     BlocksInvalidConfig = 'blocks.invalid_config',
     BlocksPreviewAsUserEnded = 'blocks.preview_as_user_ended',
     BlocksPreviewAsUserMismatch = 'blocks.preview_as_user_mismatch',
+    BlocksPublishNotReady = 'blocks.publish_not_ready',
+    BlocksPublishPending = 'blocks.publish_pending',
     BlocksRevisionConflict = 'blocks.revision_conflict',
     BlocksSampleInvalid = 'blocks.sample_invalid',
     BlocksSampleUnavailable = 'blocks.sample_unavailable',

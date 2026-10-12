@@ -126,6 +126,9 @@ final class ShellNavigation
         'api.admin.blocks.drafts.sample.as-user' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.validation.store' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.validation.show' => Permission::BlocksEdit,
+        // Publish v1.0 (Story 3.19) needs `blocks.publish`: a holder of `blocks.edit` alone is a 403 and an audited denial. The Published list needs `blocks.edit`.
+        'api.admin.blocks.drafts.publish' => Permission::BlocksPublish,
+        'api.admin.blocks.published.index' => Permission::BlocksEdit,
         'api.admin.blocks.data-sources.index' => Permission::BlocksEdit,
         'api.admin.blocks.data-sources.endpoints.index' => Permission::BlocksEdit,
         'api.admin.blocks.refresh-intervals' => Permission::BlocksEdit,

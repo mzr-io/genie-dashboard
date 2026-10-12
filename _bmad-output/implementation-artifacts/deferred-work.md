@@ -457,3 +457,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-18-validate-the-block-against-the-real-api.md`
   summary: Rollback tests hard-code `migrate:rollback --step N` counts that break with each new migration; the unbound-publishable branch of RunEndpointValidation is exercised only through a fake EndpointValidations.
   evidence: seven tests were bumped by one; RunSampleFetch always refuses unbound user-context Endpoints so the branch is unreachable end to end.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-19-publish-block-v1-0.md`
+  summary: The Published blocks list has no paging, search or throttle, and block_versions has an UPDATE guard but no DELETE guard (the maintenance purge predicate is not asserted to exclude prepared/published rows); the migration down() fails once such rows exist.
+  evidence: ManagePublishedBlocks::list has no LIMIT; only the UPDATE trigger was added. Epic 6 reworks the list.
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-19-publish-block-v1-0.md`
+  summary: precompute_timeout is unset (the maintenance job activates nothing until DASHFLOW_PRECOMPUTE_TIMEOUT is set); the publish route is excluded from the request-wide WorkspaceTransaction so Tx1 and Tx2 commit separately; validation reports and ui state of a published Draft are not purged.
+  evidence: needs a product decision on the default and an architectural review of the transaction exclusion.

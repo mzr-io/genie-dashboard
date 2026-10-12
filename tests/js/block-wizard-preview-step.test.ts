@@ -20,6 +20,8 @@ const page = reactive<{ url: string; props: Record<string, unknown> }>({
     props: {},
 });
 
+const visit = vi.fn();
+
 vi.mock('@inertiajs/vue3', () => ({
     usePage: () => page,
     Head: defineComponent({ setup: () => () => null }),
@@ -30,7 +32,10 @@ vi.mock('@inertiajs/vue3', () => ({
             () =>
                 h('a', { ...attrs, href: props.href }, slots.default?.()),
     }),
-    router: { visit: vi.fn(), on: () => () => {} },
+    router: {
+        visit: (...args: unknown[]) => visit(...args),
+        on: () => () => {},
+    },
 }));
 
 const { default: BlockWizard } =
@@ -169,6 +174,9 @@ let writeReply: ((call: Call) => Reply) | null = null;
 let rerunSlots: (() => ChecklistSlot[]) | null = null;
 let wrapper: VueWrapper | null = null;
 let previewReply: () => Reply;
+let validationReport: (() => unknown) | null = null;
+let savedRevision = 1;
+let publishReply: () => Reply;
 
 const $ = (selector: string) => document.querySelector<HTMLElement>(selector);
 const $$ = (selector: string) =>
@@ -229,6 +237,24 @@ beforeEach(() => {
     checklistNull = false;
     rerunSlots = null;
     previewReply = () => ({ status: 200, json: { data: preview() } });
+    validationReport = null;
+    savedRevision = 1;
+    publishReply = () => ({
+        status: 200,
+        json: {
+            data: {
+                draft_id: 'd-1',
+                block_id: 'b-1',
+                version_id: 'd-1',
+                name: 'Revenue today',
+                type: 'kpi-card',
+                category: 'Finance',
+                version: '1.0',
+                state: 'published',
+                published_at: '2026-10-12T09:20:00Z',
+            },
+        },
+    });
     storedAck = [];
     stepNow = 4;
     sourceNow = undefined;
@@ -362,8 +388,17 @@ beforeEach(() => {
                                 },
                             },
                         };
+                    } else if (url === `${BASE}/publish` && method === 'POST') {
+                        reply = publishReply();
                     } else if (url === `${BASE}/validation`) {
-                        reply = { status: 200, json: { data: null } };
+                        reply = {
+                            status: 200,
+                            json: {
+                                data: validationReport
+                                    ? validationReport()
+                                    : null,
+                            },
+                        };
                     } else if (url.startsWith('/api/v1/operations/')) {
                         reply = {
                             status: 200,
@@ -385,7 +420,7 @@ beforeEach(() => {
                             json: {
                                 data: {
                                     ...draft(),
-                                    revision: 9,
+                                    revision: (savedRevision = 9),
                                     step: 4,
                                     config: JSON.parse(init!.body!).config,
                                     ui_state: JSON.parse(init!.body!).ui_state,
@@ -819,5 +854,113 @@ describe('Step 5: Validate in the wizard', () => {
             'could not finish',
         );
         expect($('[data-test=result-title]')).toBeNull();
+    });
+});
+
+describe('Step 5: Publish in the wizard', () => {
+    async function atStep5(): Promise<void> {
+        stepNow = 5;
+        sourceNow = { data_source_id: 's-1', endpoint_id: 'e-1' };
+        await open([headline({ state: 'confirmed' }), kpiLabel(), cleared()]);
+        await click($('[data-test=warning-ack]'));
+        // Saved, so the report below is for the revision the Draft is at.
+        await click($('[data-test=save-draft]'));
+        await click($('[data-step="5"] [data-test=step-button]'));
+    }
+
+    // A report that passed for the revision the Draft is at (the wizard saves first, which moves it to 9).
+    const passed = (revision: number) => ({
+        id: 'r-1',
+        status: 'passed',
+        stored_status: 'passed',
+        reason: null,
+        subject_revision: revision,
+        draft_revision: revision,
+        mismatches: [],
+        version: '1.0',
+        endpoint_id: 'e-1',
+        endpoint_revision: 1,
+        validated_at: '2026-10-12T09:14:00Z',
+        can_publish: true,
+    });
+
+    it('publishes, shows msg:publish-success and opens Published blocks with the new row named', async () => {
+        validationReport = () => passed(savedRevision);
+        await atStep5();
+
+        expect(
+            $('[data-test=publish-step]')!.getAttribute('aria-disabled'),
+        ).toBeNull();
+
+        calls.length = 0;
+        await click($('[data-test=publish-step]'));
+
+        const post = calls.find((c) => c.url === `${BASE}/publish`)!;
+        const { useToasts } = await import('../../resources/js/stores/toasts');
+
+        expect(post.method).toBe('POST');
+        expect(post.body).toEqual({ lock_epoch: 1 });
+        expect(visit).toHaveBeenCalledWith(
+            '/admin/blocks/published?published=b-1',
+        );
+        expect(useToasts().items.map((t) => t.message)).toContain(
+            'Revenue today v1.0 is live in the Block Library under Finance.',
+        );
+    });
+
+    it('words the success toast without a category when the block has none', async () => {
+        validationReport = () => passed(savedRevision);
+        publishReply = () => ({
+            status: 200,
+            json: {
+                data: {
+                    draft_id: 'd-1',
+                    block_id: 'b-1',
+                    version_id: 'd-1',
+                    name: 'Revenue today',
+                    type: 'kpi-card',
+                    category: null,
+                    version: '1.0',
+                    state: 'published',
+                    published_at: '2026-10-12T09:20:00Z',
+                },
+            },
+        });
+        await atStep5();
+        await click($('[data-test=publish-step]'));
+
+        const { useToasts } = await import('../../resources/js/stores/toasts');
+
+        expect(useToasts().items.map((t) => t.message)).toContain(
+            'Revenue today v1.0 is live in the Block Library.',
+        );
+    });
+
+    it('is blocked with perm-publish for a member without blocks.publish, and Save draft still works', async () => {
+        page.props = {
+            autosave: { debounce_ms: null },
+            shell: {
+                area: 'admin',
+                items: [],
+                can: { 'blocks.edit': true, 'blocks.publish': false },
+            },
+        };
+        validationReport = () => passed(savedRevision);
+        await atStep5();
+
+        expect(
+            $('[data-test=publish-step]')!.getAttribute('aria-disabled'),
+        ).toBe('true');
+        expect(text('[data-test=publish-denied]')).toBe(
+            "You don't have permission to publish this block.",
+        );
+
+        calls.length = 0;
+        await click($('[data-test=publish-step]'));
+
+        expect(calls.some((c) => c.url === `${BASE}/publish`)).toBe(false);
+        expect(
+            $('[data-test=save-draft-step]')!.getAttribute('aria-disabled'),
+        ).toBeNull();
     });
 });

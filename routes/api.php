@@ -9,6 +9,7 @@ use App\Http\Controllers\Admin\DataSourceLockController;
 use App\Http\Controllers\Admin\DraftController;
 use App\Http\Controllers\Admin\DraftLockController;
 use App\Http\Controllers\Admin\DraftPreviewController;
+use App\Http\Controllers\Admin\DraftPublishController;
 use App\Http\Controllers\Admin\DraftRolesController;
 use App\Http\Controllers\Admin\DraftSampleController;
 use App\Http\Controllers\Admin\DraftSlotsController;
@@ -23,6 +24,7 @@ use App\Http\Controllers\Admin\MemberController;
 use App\Http\Controllers\OperationController;
 use App\Http\Middleware\RejectsSecretValues;
 use App\Modules\Identity\Http\SessionController;
+use App\Platform\Tenancy\WorkspaceTransaction;
 use Illuminate\Support\Facades\Route;
 
 // Served under /api/v1 (see bootstrap/app.php). Same-origin SPA cookie auth via Sanctum.
@@ -114,6 +116,13 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // over the per-membership limit shared with Fetch from API) and reads the latest ValidationReport back. The Draft's own Data Source and Endpoint are validated.
     Route::post('blocks/drafts/{draft}/validation', [DraftValidationController::class, 'store'])->whereUuid('draft')->middleware(['admin', 'throttle:30,1,block-validation'])->name('api.admin.blocks.drafts.validation.store');
     Route::get('blocks/drafts/{draft}/validation', [DraftValidationController::class, 'show'])->whereUuid('draft')->middleware(['admin', 'throttle:60,1,block-validation-read'])->name('api.admin.blocks.drafts.validation.show');
+
+    // Publish v1.0 (Story 3.19): `blocks.publish` (a holder of `blocks.edit` alone is a 403 and an audited denial from the gate), the Draft's edit-lock claim. Tx1 freezes the
+    // Draft as `prepared`, Tx2 activates it. A stale or missing report is a 409 `blocks.publish_not_ready`; a published Draft a 409 `blocks.draft_published`. The Published list is `blocks.edit`.
+    // The two transactions are the publish code's own (`WorkspaceTransaction::run`), so the request's wrapping transaction (which would make them one, and roll the freeze back with a
+    // failed activation) is left out of this route.
+    Route::post('blocks/drafts/{draft}/publish', [DraftPublishController::class, 'store'])->whereUuid('draft')->withoutMiddleware([WorkspaceTransaction::class])->middleware(['admin', 'throttle:30,1,block-publish'])->name('api.admin.blocks.drafts.publish');
+    Route::get('blocks/published', [DraftPublishController::class, 'index'])->middleware('admin')->name('api.admin.blocks.published.index');
 
     // Field roles and record-path candidates of the sample (Story 3.11a): read-only, `blocks.edit`, no edit-lock claim.
     Route::get('blocks/drafts/{draft}/sample/roles', [DraftRolesController::class, 'show'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.sample.roles');

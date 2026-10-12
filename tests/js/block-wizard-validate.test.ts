@@ -2,6 +2,16 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import type { VueWrapper } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { reactive } from 'vue';
+
+// Step 5 reads the shared `shell.can` (Publish needs `blocks.publish`, Story 3.19).
+const page = reactive<{ url: string; props: Record<string, unknown> }>({
+    url: '/admin/blocks/create',
+    props: {},
+});
+
+vi.mock('@inertiajs/vue3', () => ({ usePage: () => page }));
+
 import ValidateStep from '../../resources/js/components/wizard/ValidateStep.vue';
 import { resetAnnouncer } from '../../resources/js/lib/announce';
 import {
@@ -91,6 +101,9 @@ async function validate(): Promise<void> {
 }
 
 beforeEach(() => {
+    page.props = {
+        shell: { area: 'admin', items: [], can: { 'blocks.publish': true } },
+    };
     calls = [];
     saved = false;
     start = () => ({

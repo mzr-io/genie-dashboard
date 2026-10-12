@@ -654,18 +654,18 @@ it('answers 409 for a published Draft and 404 for a discarded one, on GET and PO
     pvReport($other)->assertNotFound();
     pvStart($other)->assertNotFound();
 
-    // No path publishes a Draft yet (Story 3.19): the state is set directly, with the check that forbids it lifted for the test.
+    // A Draft that was frozen meanwhile (Story 3.19): the guard trigger is lifted for the test so the same row can be put back afterwards.
     $superuser = Cluster::superuser();
-    $superuser->exec('ALTER TABLE block_versions DROP CONSTRAINT block_versions_state_check');
+    $superuser->exec('ALTER TABLE block_versions DISABLE TRIGGER block_versions_guard');
 
     try {
-        $superuser->prepare("UPDATE block_versions SET state = 'published' WHERE id = ?")->execute([$draft]);
+        $superuser->prepare("UPDATE block_versions SET state = 'prepared', prepared_at = now() WHERE id = ?")->execute([$draft]);
 
         pvReport($draft)->assertStatus(409)->assertJsonPath('error.code', 'blocks.draft_published');
         pvStart($draft)->assertStatus(409)->assertJsonPath('error.code', 'blocks.draft_published');
     } finally {
-        $superuser->prepare("UPDATE block_versions SET state = 'draft' WHERE id = ?")->execute([$draft]);
-        $superuser->exec("ALTER TABLE block_versions ADD CONSTRAINT block_versions_state_check CHECK (state IN ('draft', 'discarded'))");
+        $superuser->prepare("UPDATE block_versions SET state = 'draft', prepared_at = NULL WHERE id = ?")->execute([$draft]);
+        $superuser->exec('ALTER TABLE block_versions ENABLE TRIGGER block_versions_guard');
     }
 });
 

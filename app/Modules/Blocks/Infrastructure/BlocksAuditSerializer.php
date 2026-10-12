@@ -22,6 +22,11 @@ final class BlocksAuditSerializer implements AuditSerializer
             'name' => AuditField::Hashed,
             'revision' => AuditField::Count,
             'report_id' => AuditField::Id,
+            'version_id' => AuditField::Id,
+            'version_major' => AuditField::Count,
+            'version_minor' => AuditField::Count,
+            'endpoint_id' => AuditField::Id,
+            'endpoint_revision' => AuditField::Count,
         ];
     }
 }

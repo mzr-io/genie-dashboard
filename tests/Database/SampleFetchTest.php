@@ -801,6 +801,11 @@ it('drops the blob when the revision moves between the check and the store, and 
             return $this->real->find($workspaceId, $dataSourceId, $id);
         }
 
+        public function lockRevision(string $workspaceId, string $dataSourceId, string $id): int
+        {
+            return $this->real->lockRevision($workspaceId, $dataSourceId, $id);
+        }
+
         public function create(DataSourceActor $actor, string $dataSourceId, EndpointInput $input): Endpoint
         {
             return $this->real->create($actor, $dataSourceId, $input);

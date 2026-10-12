@@ -882,6 +882,9 @@ export const blockWizardLabels = {
     // Autosave and recovery (Story 3.5). `offline-editing`, `save-failed.draft`, `unsaved-changes` and `session-expired` come from the catalogue.
     retrySave: 'Retry',
     publishedTitle: 'This draft was published',
+    // `publish-success` names the category; a block with none says it without.
+    publishedNoCategory: (block: string, version: string) =>
+        `${block} v${version} is live in the Block Library.`,
     publishedBody:
         'Someone published this draft, so it can no longer be edited here and nothing more will be saved.',
     publishedLink: 'Go to Published blocks',
@@ -2368,7 +2371,20 @@ export const blockValidateStepLabels = {
     readyBody: (version: string) =>
         `The live response matches this block. Publishing creates version ${version}.`,
     notReadyTitle: 'Publish is blocked',
-    publishLater: 'Publishing is added in a later update.',
+    publishReady: 'Publish block makes it live in the Block Library.',
+    publishing: 'Publishing…',
+    publishStale:
+        'The draft changed while it was saved. Validate again, then publish.',
+    publishNotReady:
+        'The block has not passed validation for its latest changes. Validate again, then publish.',
+    publishFailed: 'The block could not be published. Try again.',
+    publishDenied: "You don't have permission to publish this block.",
+    publishNoDraft: 'Save the draft first, then publish.',
+    publishFieldsUnresolved: 'Refresh the sample, then publish again.',
+    publishTypeUnavailable:
+        'This block type is no longer available, so the block cannot be published.',
+    publishPending:
+        'Your block was saved as ready; it will go live shortly. Publish again to finish it now.',
     blockedNoSource:
         'Choose a real data source and endpoint in Data Source. A pasted sample is never accepted as proof.',
     pastedOnly:
@@ -2451,6 +2467,31 @@ export const blockValidateStepLabels = {
     invalidInput:
         'The check could not be built from this draft. Validate again.',
     engineError: 'The check hit an unexpected error. Try again.',
+} as const;
+
+// Admin > Published blocks (Story 3.19; UX-DR-261, 263, 282): the minimal list of what is live. Publish impact, restore and unpublish are Epic 6.
+export const publishedBlockLabels = {
+    pageTitle: 'Published blocks',
+    pageSubtitle: 'Blocks that are live in the Block Library.',
+    items: 'published blocks',
+    action: 'Create a block',
+    caption:
+        'Published blocks of this workspace, with category, type, version, owner and last update',
+    tableRegion: 'Published blocks table',
+    columns: {
+        name: 'Name',
+        category: 'Category',
+        type: 'Type',
+        version: 'Version',
+        owner: 'Owner',
+        updated: 'Last updated',
+        status: 'Status',
+    },
+    status: 'Published',
+    noCategory: '—',
+    noOwner: '—',
+    types: { 'kpi-card': 'KPI card' } as Record<string, string>,
+    highlighted: (name: string) => `${name} is now published.`,
 } as const;
 
 // Fetch as user and Preview as in the Create block wizard (Story 3.17). The failure messages are the shared error card's; these are the panel's own.

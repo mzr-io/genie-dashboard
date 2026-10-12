@@ -11,28 +11,35 @@ import {
 import { useI18n } from 'vue-i18n';
 import BlockedReason from '@/components/BlockedReason.vue';
 import { Button } from '@/components/ui/button';
+import { useShell } from '@/composables/useShell';
 import { announce } from '@/lib/announce';
 import { clockText } from '@/lib/blockSample';
 import type { FetchBody, SampleClaim } from '@/lib/blockSample';
 import {
     effectiveStatus,
     fetchValidationReport,
+    publishDraft,
     publishReason,
     startValidation,
 } from '@/lib/blockValidation';
 import type {
     PublishReason,
+    PublishedVersion,
     ValidationMismatch,
     ValidationReport,
 } from '@/lib/blockValidation';
 import { WizardError, blockTypeFor } from '@/lib/blockWizard';
+import { ErrorCode } from '@/types/error-codes';
 import { DataSourceError, PollTimeout, pollOperation } from '@/lib/dataSources';
 import { blockValidateStepLabels as labels } from '@/locales/labels';
 
 // Step 5, Validate (Story 3.18): the server fetches the Draft's real Endpoint live, runs the Draft's plan over the answer and stores a report
 // bound to the Draft's revision. This step starts it, shows the version Publish will create (`version-safe`), the result (passed, failed with the
 // mismatching paths, unreachable with `live-shape-unreachable`, or stale), and says whether Publish is allowed and, if not, why. A pasted
-// sample is never proof; Save draft stays available whenever Publish is blocked. Publishing itself is Story 3.19.
+// sample is never proof; Save draft stays available whenever Publish is blocked. Publish needs `blocks.publish` (otherwise it stays rendered,
+// `aria-disabled`, with `perm-publish`) and a passed report for the revision the Draft is at; it asks the server, which freezes and activates the
+// version, and reports the published version to the page, which shows the toast and opens Published blocks. After a success Publish stays busy
+// until the page has left, so a second click cannot ask for a version that is already live.
 const props = defineProps<{
     draftId: string | null;
     typeKey: string;
@@ -58,19 +65,24 @@ const emit = defineEmits<{
     (e: 'error', error: unknown): void;
     (e: 'back'): void;
     (e: 'save-draft'): void;
+    // The version is live: the page shows `publish-success` and opens Published blocks.
+    (e: 'published', version: PublishedVersion): void;
 }>();
 
 const { t } = useI18n();
+const { can } = useShell();
 
 const report = ref<ValidationReport | null>(null);
 const loading = ref(true);
 const loadFailed = ref(false);
 const running = ref(false);
+const publishing = ref(false);
 const problem = ref<string | null>(null);
 const resultRef = ref<HTMLElement | null>(null);
 const resultId = useId();
 const reasonId = useId();
 const validateReasonId = useId();
+const publishReasonId = useId();
 let controller: AbortController | null = null;
 let seq = 0;
 
@@ -90,14 +102,36 @@ const blockedText: Record<PublishReason, string> = {
     stale: labels.blockedStale,
 };
 
-// The reason Publish is blocked, in words; undefined once the report allows it. A passed report still waits for Story 3.19's action.
+// Why the report does or does not allow Publish, in words (the readiness card).
 const publishBlocked = computed<string>(() =>
     reason.value === undefined
-        ? labels.publishLater
+        ? labels.publishReady
         : reason.value === 'unreachable'
           ? t('live-shape-unreachable')
           : blockedText[reason.value],
 );
+
+// Why the Publish action itself cannot be used now: the permission first (`perm-publish`), then the report, then what blocks every change here
+// (read-only, offline, published); undefined when it can run.
+const mayPublish = computed(() => can.value['blocks.publish'] === true);
+const publishActionBlocked = computed<string | undefined>(() => {
+    if (!mayPublish.value) {
+        return t('perm-publish');
+    }
+
+    if (publishing.value) {
+        return labels.publishing;
+    }
+
+    if (reason.value !== undefined) {
+        return publishBlocked.value;
+    }
+
+    return (
+        props.blocked ??
+        (props.draftId === null ? labels.publishNoDraft : undefined)
+    );
+});
 
 // Why Validate cannot run: no real source, or nothing can be changed here right now.
 const validateBlocked = computed<string | undefined>(() =>
@@ -389,6 +423,103 @@ async function run(): Promise<void> {
     }
 }
 
+async function publish(): Promise<void> {
+    const id = props.draftId;
+
+    if (
+        publishing.value ||
+        publishActionBlocked.value !== undefined ||
+        id === null
+    ) {
+        return;
+    }
+
+    controller?.abort();
+    controller = new AbortController();
+    const mine = controller;
+
+    problem.value = null;
+    publishing.value = true;
+    let done = false;
+    announce(labels.publishing, 'polite');
+
+    try {
+        // What is published is the Draft as stored: pending changes are saved first. A save moves the revision, so the report is judged again.
+        if (!(await props.save())) {
+            return;
+        }
+
+        await nextTick();
+
+        if (!ready.value) {
+            problem.value = labels.publishStale;
+
+            return;
+        }
+
+        const claim = props.claim();
+
+        if (claim === null) {
+            problem.value = props.blocked ?? labels.publishFailed;
+
+            return;
+        }
+
+        const version = await publishDraft(id, claim);
+
+        done = true;
+        emit('published', version);
+    } catch (error) {
+        if (ended(error)) {
+            emit('auth-error', error);
+
+            return;
+        }
+
+        if (error instanceof WizardError) {
+            if (error.status === 403) {
+                problem.value = labels.publishDenied;
+            } else if (
+                error.status === 409 &&
+                error.code === ErrorCode.BlocksPublishNotReady
+            ) {
+                // The report no longer allows it, or the block cannot be frozen as it is: say which, and show the report as the server has it.
+                const why = error.body.reason;
+
+                problem.value =
+                    why === 'fields_unresolved'
+                        ? labels.publishFieldsUnresolved
+                        : why === 'block_type_unavailable'
+                          ? labels.publishTypeUnavailable
+                          : labels.publishNotReady;
+                await load();
+            } else if (error.code === ErrorCode.BlocksPublishPending) {
+                // Frozen and valid, only its activation is outstanding: not a save failure, and publishing again completes it.
+                problem.value = labels.publishPending;
+            } else if (error.status === 429) {
+                const after = error.body.retry_after;
+
+                problem.value = labels.throttled(
+                    typeof after === 'number' ? after : 5,
+                );
+            } else if (error.status !== 0 && error.status < 500) {
+                // A lost lock, a published or missing Draft: the page handles it like any save failure.
+                emit('error', error);
+            } else {
+                problem.value = labels.publishFailed;
+            }
+
+            return;
+        }
+
+        problem.value = labels.publishFailed;
+    } finally {
+        if (controller === mine && !done) {
+            publishing.value = false;
+        }
+    }
+}
+
 onMounted(() => void load());
 watch(
     () => props.draftId,
@@ -609,15 +740,30 @@ const validatedAt = computed(() =>
             >
                 {{ labels.saveDraft }}
             </Button>
-            <Button
-                type="button"
-                :blocked="true"
-                :blocked-reason="publishBlocked"
-                :aria-describedby="reasonId"
-                data-test="publish-step"
-            >
-                {{ labels.publish }}
-            </Button>
+            <span class="inline-flex flex-col items-start gap-1">
+                <Button
+                    type="button"
+                    :blocked="publishActionBlocked !== undefined"
+                    :blocked-reason="publishActionBlocked"
+                    :aria-describedby="
+                        publishActionBlocked === undefined
+                            ? undefined
+                            : mayPublish
+                              ? reasonId
+                              : publishReasonId
+                    "
+                    data-test="publish-step"
+                    @click="publish"
+                >
+                    {{ publishing ? labels.publishing : labels.publish }}
+                </Button>
+                <BlockedReason
+                    v-if="!mayPublish"
+                    :id="publishReasonId"
+                    data-test="publish-denied"
+                    >{{ t('perm-publish') }}</BlockedReason
+                >
+            </span>
         </div>
     </section>
 </template>

@@ -313,20 +313,20 @@ it('is a 409 blocks.draft_published for a version past Draft, writing nothing, a
     dslRerun($gone)->assertNotFound();
     dslGet($gone)->assertNotFound();
 
-    // The published state arrives with Story 3.19; until then the version is moved past Draft by hand, and the constraint put back.
+    // A version that was published meanwhile (Story 3.19): the guard trigger is lifted for the test so the same row can be put back afterwards.
     $db = Cluster::superuser();
-    $db->exec('ALTER TABLE block_versions DROP CONSTRAINT block_versions_state_check');
+    $db->exec('ALTER TABLE block_versions DISABLE TRIGGER block_versions_guard');
 
     try {
-        $db->prepare("UPDATE block_versions SET state = 'published' WHERE id = ?")->execute([$id]);
+        $db->prepare("UPDATE block_versions SET state = 'published', prepared_at = now(), published_at = now() WHERE id = ?")->execute([$id]);
         $before = Cluster::rows($db, 'select config, revision from block_versions where id = ?', [$id]);
 
         dslRerun($id)->assertStatus(409)->assertJsonPath('error.code', 'blocks.draft_published');
         dslConfirm($id, 'headline_value')->assertStatus(409);
         expect(Cluster::rows($db, 'select config, revision from block_versions where id = ?', [$id]))->toBe($before);
     } finally {
-        $db->prepare("UPDATE block_versions SET state = 'draft' WHERE id = ?")->execute([$id]);
-        $db->exec("ALTER TABLE block_versions ADD CONSTRAINT block_versions_state_check CHECK (state IN ('draft', 'discarded'))");
+        $db->prepare("UPDATE block_versions SET state = 'draft', prepared_at = NULL, published_at = NULL WHERE id = ?")->execute([$id]);
+        $db->exec('ALTER TABLE block_versions ENABLE TRIGGER block_versions_guard');
     }
 });
 

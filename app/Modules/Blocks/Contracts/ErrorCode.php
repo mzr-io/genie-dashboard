@@ -30,4 +30,8 @@ enum ErrorCode: string
     case PreviewAsUserMismatch = 'blocks.preview_as_user_mismatch';
     /** A validation against the real API (Story 3.18) was not started: no real Endpoint (a pasted sample is never proof) or a setting unset. HTTP 422 with `reason`. */
     case ValidationRefused = 'blocks.validation_refused';
+    /** Publish (Story 3.19) found no passed ValidationReport for the Draft's current revision: HTTP 409 with `reason`, nothing changed. */
+    case PublishNotReady = 'blocks.publish_not_ready';
+    /** Publish (Story 3.19) froze the version but could not activate it yet: HTTP 503. A retry completes it; otherwise the maintenance job does. */
+    case PublishPending = 'blocks.publish_pending';
 }
