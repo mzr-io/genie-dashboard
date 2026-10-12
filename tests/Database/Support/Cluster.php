@@ -273,6 +273,8 @@ final class Cluster
             'datasets' => self::seedDataset($workspaceId),
             'dataset_fields' => self::seedDatasetField($workspaceId),
             'access_subjects' => self::seedAccessSubject($workspaceId),
+            'dashboards' => self::seedDashboard($workspaceId),
+            'dashboard_items' => self::seedDashboardItem($workspaceId),
             default => null,
         };
     }
@@ -361,6 +363,26 @@ final class Cluster
     }
 
     /** A block category (Story 3.4) of the Workspace. */
+    /** A dashboard of a new member (Story 4.4): the Overview. */
+    public static function seedDashboard(string $workspaceId, ?string $membershipId = null): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO dashboards (id, workspace_id, membership_id, name, is_overview, revision, created_at, updated_at) VALUES (?, ?, ?, 'Overview', true, 0, now(), now())")
+            ->execute([$id, $workspaceId, $membershipId ?? (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /** An item of a new dashboard (Story 4.4): a Block at the top left, three columns wide. */
+    public static function seedDashboardItem(string $workspaceId, ?string $dashboardId = null): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO dashboard_items (id, workspace_id, dashboard_id, block_id, col, row, width, height, created_at, updated_at) VALUES (?, ?, ?, ?, 0, 0, 3, 'small', now(), now())")
+            ->execute([$id, $workspaceId, $dashboardId ?? self::seedDashboard($workspaceId), (string) Str::uuid7()]);
+
+        return $id;
+    }
+
     public static function seedBlockCategory(string $workspaceId, ?string $name = null): string
     {
         $id = (string) Str::uuid7();

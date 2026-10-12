@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\HelpController;
 use App\Modules\Connector\Contracts\DataSources;
 use App\Modules\Identity\Http\InvitationController;
@@ -51,7 +52,8 @@ Route::middleware(['auth'])->group(function () {
 
     // The User Overview (Story 1.13). The old route name `dashboard` is kept as an alias that sends visitors
     // to it (a route name cannot point at the same URI twice).
-    Route::inertia('dashboard', 'Placeholder', ['page' => 'overview'])->name('overview');
+    // The page of Story 4.4: the shell and `{dashboard_id, revision}`; its layout comes from `GET /api/v1/dashboards/{id}`.
+    Route::get('dashboard', [DashboardController::class, 'overview'])->name('overview');
     Route::redirect('overview', '/dashboard')->name('dashboard');
     Route::inertia('dashboards', 'Placeholder', ['page' => 'my-dashboards'])->name('dashboards.index');
     Route::inertia('templates', 'Placeholder', ['page' => 'templates'])->name('templates.index');

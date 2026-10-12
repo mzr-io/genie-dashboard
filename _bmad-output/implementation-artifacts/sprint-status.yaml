@@ -112,7 +112,7 @@ development_status:
   4-1-resolve-every-block-s-period-in-one-place: review
   4-2-compute-block-results-when-payload-changes: review
   4-3-judge-freshness-and-keep-viewed-data-hot: review
-  4-4-open-my-overview-and-see-my-blocks-frames: backlog
+  4-4-open-my-overview-and-see-my-blocks-frames: review
   4-5-see-live-block-values-without-waiting-on-the-source: backlog
   4-6-use-block-chrome-refresh-minimize-about-this-block-footer: backlog
   4-7-browse-the-add-blocks-panel: backlog

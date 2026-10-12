@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\HostAllowlistController;
 use App\Http\Controllers\Admin\InvitationController;
 use App\Http\Controllers\Admin\MemberAttributeController;
 use App\Http\Controllers\Admin\MemberController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\OperationController;
 use App\Http\Middleware\RejectsSecretValues;
 use App\Modules\Identity\Http\SessionController;
@@ -32,6 +33,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('ping', fn () => response()->json(['status' => 'ok']))->name('api.ping');
     // State-changing probe so the CSRF contract (X-XSRF-TOKEN) is testable.
     Route::post('ping', fn () => response()->json(['status' => 'ok']))->name('api.ping.store');
+});
+
+// A member's own dashboard (Story 4.4): layout, item states and User-safe Block cards. Not an Admin route: any active member of the Workspace.
+Route::middleware('auth:sanctum')->group(function () {
+    Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])->name('api.dashboards.show');
 });
 
 // The session's idle clock (Story 1.15). Status never extends; extend is user-initiated and CSRF-protected.

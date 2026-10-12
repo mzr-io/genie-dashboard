@@ -77,7 +77,13 @@ it('registers a named placeholder route for every navigation target, all behind 
 it('renders the placeholder page of every navigation target for a signed-in person', function () {
     $this->actingAs(User::factory()->create());
 
-    $pages = ['overview' => 'overview', 'dashboards.index' => 'my-dashboards', 'templates.index' => 'templates'];
+    // The Overview is the dashboard page (Story 4.4): a person with no membership gets it empty, without a dashboard to load.
+    $this->get(route('overview'))->assertOk()->assertInertia(fn (AssertableInertia $inertia) => $inertia
+        ->component('Dashboard')
+        ->where('dashboard_id', null)
+        ->where('shell.area', 'user'));
+
+    $pages = ['dashboards.index' => 'my-dashboards', 'templates.index' => 'templates'];
 
     foreach ($pages as $name => $page) {
         $this->get(route($name))->assertOk()->assertInertia(fn (AssertableInertia $inertia) => $inertia

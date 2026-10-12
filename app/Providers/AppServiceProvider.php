@@ -9,6 +9,7 @@ use App\Modules\Access\Application\InviteMembers;
 use App\Modules\Access\Application\ManageAttributeKeys;
 use App\Modules\Access\Application\ManageGroups;
 use App\Modules\Access\Application\ManageMemberAttributes;
+use App\Modules\Access\Application\ReadSubjectAccess;
 use App\Modules\Access\Application\RegisterAccessSubjectRow;
 use App\Modules\Access\Application\ResolveUserContext;
 use App\Modules\Access\Contracts\AttributeKeys;
@@ -24,6 +25,7 @@ use App\Modules\Access\Contracts\MemberNames;
 use App\Modules\Access\Contracts\MembershipLookup;
 use App\Modules\Access\Contracts\MembershipPermissions;
 use App\Modules\Access\Contracts\RegisterAccessSubject;
+use App\Modules\Access\Contracts\SubjectAccess;
 use App\Modules\Access\Contracts\UserContext;
 use App\Modules\Access\Infrastructure\AccessAuditSerializer;
 use App\Modules\Access\Infrastructure\AdminMembershipGranter;
@@ -43,11 +45,13 @@ use App\Modules\Blocks\Application\ManagePublishedBlocks;
 use App\Modules\Blocks\Application\ManageUserSamples;
 use App\Modules\Blocks\Application\PreviewDraft;
 use App\Modules\Blocks\Application\PublishDraft;
+use App\Modules\Blocks\Application\ReadBlockCards;
 use App\Modules\Blocks\Application\ReadDraftFieldRoles;
 use App\Modules\Blocks\Application\ReadPublishedConfigs;
 use App\Modules\Blocks\Application\RunDraftValidation;
 use App\Modules\Blocks\Application\StartDraftSampleFetch;
 use App\Modules\Blocks\Application\StartDraftValidation;
+use App\Modules\Blocks\Contracts\BlockCards;
 use App\Modules\Blocks\Contracts\BlockCategories;
 use App\Modules\Blocks\Contracts\BlockPublishing;
 use App\Modules\Blocks\Contracts\DraftFieldRoles;
@@ -124,6 +128,8 @@ use App\Modules\Connector\Infrastructure\RandomJitter;
 use App\Modules\Connector\Infrastructure\SqlHostAllowlistDependents;
 use App\Modules\Connector\Infrastructure\SyncRunTokenLog;
 use App\Modules\Connector\Infrastructure\ValkeySourceGovernor;
+use App\Modules\Dashboards\Application\ManageDashboards;
+use App\Modules\Dashboards\Contracts\Dashboards;
 use App\Modules\Datasets\Application\ManageDatasets;
 use App\Modules\Datasets\Contracts\DatasetSuggestions;
 use App\Modules\Identity\Application\IssueInvitation;
@@ -304,6 +310,10 @@ class AppServiceProvider extends ServiceProvider
         // Blocks and Results (Story 4.2): a version's frozen configuration for compute, and the Valkey `cache` store of Block Results.
         $this->app->bind(PublishedConfigs::class, ReadPublishedConfigs::class);
         $this->app->bind(ViewedResults::class, ViewBlockResult::class);
+        // Dashboards (Story 4.4): the member's own layout, the Blocks' User-safe cards and the per-read access check.
+        $this->app->bind(Dashboards::class, ManageDashboards::class);
+        $this->app->bind(BlockCards::class, ReadBlockCards::class);
+        $this->app->bind(SubjectAccess::class, ReadSubjectAccess::class);
         $this->app->bind(ValkeyCommands::class, fn ($app) => new LaravelValkeyCommands($app['redis']->connection('cache')));
         $this->app->bind(ResultStore::class, fn ($app) => new ValkeyResultStore(
             $app->make(ValkeyCommands::class),

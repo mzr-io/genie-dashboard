@@ -2548,3 +2548,22 @@ export const blockAsUserLabels = {
     mismatch:
         "This result is for a different data source or endpoint than the draft's, so the shared sample is shown. Fetch again.",
 } as const;
+
+// The User dashboard page (Story 4.4; UX-DR-50, 86, 149, 236, 237). The page title is the shell's "Overview"; the states' messages are
+// `msg:dashboard-empty`, `msg:dashboard-load-failed`, `msg:block-unpublished` and `msg:block-access-removed`.
+export const dashboardLabels = {
+    addBlock: '+ Add block',
+    editLayout: '✎ Edit layout',
+    switcher: 'Dashboard',
+    dateRange: 'Date range',
+    retry: 'Retry',
+    remove: 'Remove',
+    loading: 'Loading your dashboard',
+    grid: 'Blocks',
+    unavailableBlock: 'Unavailable block',
+    bodyRegion: (title: string): string => `${title} content`,
+    removeBlock: (title: string): string => `Remove ${title}`,
+    minimized: 'Minimized',
+    live: 'Live',
+    laterStory: 'Available in a later update',
+} as const;
