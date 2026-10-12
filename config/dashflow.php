@@ -159,6 +159,12 @@ return [
         'workspace_fair_share' => $tunable('DASHFLOW_FETCH_WORKSPACE_FAIR_SHARE'),
     ],
 
+    // The Add-blocks Panel (Story 4.7), kept outside `tunables` like `egress`. `new_window` is `pending_input` with no default: how many seconds after its
+    // publish a Block carries the "New" badge. Unset or malformed: no Block is new.
+    'drawer' => [
+        'new_window' => $tunable('DASHFLOW_DRAWER_NEW_WINDOW'),
+    ],
+
     // Block Results (Story 4.2), kept outside `tunables` like `egress`. `ttl` is `pending_input` with no default: how long a computed result
     // lives in the Valkey `cache` store, in whole seconds. Every key carries an expiry; a result past it is computed again by the next payload
     // change or the sweep. Unset: nothing is stored and the compute job fails naming `DASHFLOW_RESULT_TTL`.

@@ -2551,6 +2551,45 @@ export const blockAsUserLabels = {
 
 // The User dashboard page (Story 4.4; UX-DR-50, 86, 149, 236, 237). The page title is the shell's "Overview"; the states' messages are
 // `msg:dashboard-empty`, `msg:dashboard-load-failed`, `msg:block-unpublished` and `msg:block-access-removed`.
+export const addBlocksLabels = {
+    title: 'Add blocks',
+    subtitle: 'Build a dashboard that works for you',
+    panelName: 'Add blocks',
+    skipLink: 'Back to dashboard',
+    search: 'Search blocks',
+    searchPlaceholder: 'Search blocks…',
+    clearSearch: 'Clear search',
+    allCategories: 'All',
+    categories: 'Categories',
+    filterType: 'Type',
+    filterSource: 'Data source',
+    anyType: 'Any type',
+    anySource: 'Any data source',
+    add: 'Add',
+    addTo: (name: string): string => `Add ${name} to dashboard`,
+    added: '✓ Added',
+    removeFromDashboard: '× Remove',
+    removeNamed: (name: string): string => `Remove ${name} from dashboard`,
+    addingNotEnabled: 'Adding is not enabled yet',
+    previewRegion: (name: string): string =>
+        `Preview of ${name} with sample data`,
+    closePreview: 'Close preview',
+    addToDashboard: '+ Add to dashboard',
+    previewLoading: 'Preparing the preview',
+    placeholderTitle: 'Sample preview',
+    placeholderValue: 'Sample value',
+    new: 'New',
+    done: 'Done',
+    retry: 'Retry',
+    loading: 'Loading blocks',
+    unavailableReason: 'Blocks could not be loaded',
+    countAll: (n: number): string =>
+        `${n} available ${n === 1 ? 'block' : 'blocks'}`,
+    countFiltered: (shown: number, total: number): string =>
+        `${shown} of ${total} blocks`,
+    types: { 'kpi-card': 'KPI card' } as Record<string, string>,
+} as const;
+
 export const dashboardLabels = {
     addBlock: '+ Add block',
     editLayout: '✎ Edit layout',

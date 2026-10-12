@@ -3,6 +3,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import type { VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useAddBlocksPanel } from '../../resources/js/composables/useAddBlocksPanel';
 import { resetAnnouncer } from '../../resources/js/lib/announce';
 import type {
     Dashboard,
@@ -783,5 +784,96 @@ describe('Block chrome', () => {
         await mountPage();
 
         expect($('[data-slot=block-footer]')).toBeNull();
+    });
+});
+
+describe('Add-blocks Panel on the dashboard', () => {
+    const catalogue = (): Reply => ({
+        ok: true,
+        status: 200,
+        json: {
+            data: [
+                {
+                    block_id: 'b-9',
+                    name: 'Open tickets',
+                    description: 'Support queue',
+                    category: null,
+                    type: 'kpi-card',
+                    data_source: null,
+                    refresh_interval: 60,
+                    version: '1.0',
+                    is_new: false,
+                    default_size: { width: 3, height: 'small' },
+                },
+            ],
+            meta: { total: 1 },
+        },
+    });
+
+    // The panel's open state is shared with the shell, so a test must leave it closed.
+    afterEach(() => {
+        useAddBlocksPanel().hide();
+        vi.unstubAllGlobals();
+    });
+
+    it('opens a non-modal complementary region beside the dashboard on a wide screen', async () => {
+        vi.stubGlobal('matchMedia', (query: string) => ({
+            matches: query.includes('min-width'),
+            media: query,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+        }));
+        replies = [ok(dashboard([item()])), resultsOf([result()]), catalogue()];
+
+        await mountPage();
+        ($('[data-slot=add-block]') as HTMLButtonElement).click();
+        await flushPromises();
+        await flushPromises();
+
+        const drawer = $('[data-slot=add-blocks-drawer]')!;
+
+        expect(drawer.tagName).toBe('ASIDE');
+        expect(drawer.getAttribute('aria-label')).toBe('Add blocks');
+        expect(drawer.textContent).toContain('Open tickets');
+        expect($('[data-slot=block-card]')).not.toBeNull();
+        expect($('[data-slot=add-blocks-search]')).toBe(document.activeElement);
+    });
+
+    it('marks a Block already on the dashboard as Added and closes with Done', async () => {
+        vi.stubGlobal('matchMedia', (query: string) => ({
+            matches: query.includes('min-width'),
+            media: query,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+        }));
+        const onDashboard = catalogue();
+        (
+            onDashboard.json as { data: Array<{ block_id: string }> }
+        ).data[0].block_id = 'b-1';
+        replies = [ok(dashboard([item()])), resultsOf([result()]), onDashboard];
+
+        await mountPage();
+        ($('[data-slot=add-block-empty]') ??
+            $('[data-slot=add-block]'))!.click();
+        await flushPromises();
+        await flushPromises();
+        await flushPromises();
+        await vi.dynamicImportSettled();
+        await flushPromises();
+
+        expect($('[data-slot=row-added]')?.textContent).toBe('✓ Added');
+
+        (
+            $$(
+                '[data-slot=add-blocks-drawer] footer button',
+            )[0] as HTMLButtonElement
+        ).click();
+        await flushPromises();
+
+        expect($('[data-slot=add-blocks-drawer]')).toBeNull();
     });
 });

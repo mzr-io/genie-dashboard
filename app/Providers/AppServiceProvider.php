@@ -37,6 +37,7 @@ use App\Modules\Access\Infrastructure\SqlGroupDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberDirectory;
 use App\Modules\Access\Infrastructure\SqlMemberNames;
 use App\Modules\Blocks\Application\FetchDraftSample;
+use App\Modules\Blocks\Application\GenerateBlockSample;
 use App\Modules\Blocks\Application\ManageBlockCategories;
 use App\Modules\Blocks\Application\ManageDrafts;
 use App\Modules\Blocks\Application\ManageDraftSamples;
@@ -46,14 +47,17 @@ use App\Modules\Blocks\Application\ManageUserSamples;
 use App\Modules\Blocks\Application\PreviewDraft;
 use App\Modules\Blocks\Application\PublishDraft;
 use App\Modules\Blocks\Application\ReadBlockCards;
+use App\Modules\Blocks\Application\ReadBlockCatalogue;
 use App\Modules\Blocks\Application\ReadDraftFieldRoles;
 use App\Modules\Blocks\Application\ReadPublishedConfigs;
 use App\Modules\Blocks\Application\RunDraftValidation;
 use App\Modules\Blocks\Application\StartDraftSampleFetch;
 use App\Modules\Blocks\Application\StartDraftValidation;
 use App\Modules\Blocks\Contracts\BlockCards;
+use App\Modules\Blocks\Contracts\BlockCatalogue;
 use App\Modules\Blocks\Contracts\BlockCategories;
 use App\Modules\Blocks\Contracts\BlockPublishing;
+use App\Modules\Blocks\Contracts\BlockSamples;
 use App\Modules\Blocks\Contracts\DraftFieldRoles;
 use App\Modules\Blocks\Contracts\DraftPreviews;
 use App\Modules\Blocks\Contracts\Drafts;
@@ -322,6 +326,8 @@ class AppServiceProvider extends ServiceProvider
         // Dashboards (Story 4.4): the member's own layout, the Blocks' User-safe cards and the per-read access check.
         $this->app->bind(Dashboards::class, ManageDashboards::class);
         $this->app->bind(BlockCards::class, ReadBlockCards::class);
+        $this->app->bind(BlockCatalogue::class, ReadBlockCatalogue::class);
+        $this->app->bind(BlockSamples::class, GenerateBlockSample::class);
         $this->app->bind(SubjectAccess::class, ReadSubjectAccess::class);
         $this->app->bind(ValkeyCommands::class, fn ($app) => new LaravelValkeyCommands(fn () => $app['redis']->connection('cache')));
         $this->app->bind(ResultStore::class, fn ($app) => new ValkeyResultStore(

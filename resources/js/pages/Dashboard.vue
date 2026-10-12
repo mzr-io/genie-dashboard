@@ -1,11 +1,20 @@
 <script setup lang="ts">
 import { Head, usePage } from '@inertiajs/vue3';
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { useMediaQuery } from '@vueuse/core';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import AddBlocksPanel from '@/components/AddBlocksPanel.vue';
 import DashboardGrid from '@/components/DashboardGrid.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
+import {
+    Sheet,
+    SheetContent,
+    SheetDescription,
+    SheetTitle,
+} from '@/components/ui/sheet';
 import { Skeleton } from '@/components/ui/skeleton';
+import { useAddBlocksPanel } from '@/composables/useAddBlocksPanel';
 import { announce, announceAggregated } from '@/lib/announce';
 import {
     DashboardError,
@@ -17,7 +26,11 @@ import {
 import type { Dashboard, ItemResult } from '@/lib/dashboards';
 import { formatDateTime } from '@/lib/format';
 import { SIGN_IN_URL } from '@/lib/session';
-import { dashboardLabels as labels, shellPages } from '@/locales/labels';
+import {
+    addBlocksLabels,
+    dashboardLabels as labels,
+    shellPages,
+} from '@/locales/labels';
 
 // A member's dashboard (Story 4.4; UX-DR-236, 237): the shell appears at once with `{dashboard_id, revision}` and the layout is fetched from
 // `GET /api/v1/dashboards/{id}`. A failed load shows `msg:dashboard-load-failed` with Retry and no partial or default layout, and saves nothing.
@@ -27,6 +40,36 @@ const props = defineProps<{ dashboard_id: string | null; revision: number }>();
 
 const { t } = useI18n();
 const page = usePage();
+
+// The Add-blocks Panel (Story 4.7): at 1024 px and wider a non-modal complementary region that pushes the dashboard; below it a modal sheet.
+const {
+    open: panelOpen,
+    show: showPanel,
+    hide: hidePanel,
+} = useAddBlocksPanel();
+const wide = useMediaQuery('(min-width: 1024px)');
+const addedIds = computed(
+    () => dashboard.value?.items.map((item) => item.block_id) ?? [],
+);
+
+async function skipToDashboard(): Promise<void> {
+    if (!wide.value) {
+        hidePanel();
+    }
+
+    await nextTick();
+
+    const first = document.querySelector<HTMLElement>(
+        '[data-slot=block-card] h2',
+    );
+
+    if (first !== null) {
+        first.setAttribute('tabindex', '-1');
+        first.focus();
+    } else {
+        document.querySelector<HTMLElement>('[data-slot=add-block]')?.focus();
+    }
+}
 
 // Admins also see technical details in About this block; the footer's `{user.*}` tokens come from the signed-in profile.
 const admin = computed(
@@ -328,86 +371,144 @@ onBeforeUnmount(() => {
 <template>
     <Head :title="title" />
 
-    <div class="flex flex-col gap-6 px-4 py-6 sm:px-7">
-        <PageHeader :title="title">
-            <div class="hidden items-center gap-2 md:flex">
-                <Button
-                    type="button"
-                    variant="secondary"
-                    aria-disabled="true"
-                    data-slot="dashboard-switcher"
-                >
-                    {{ labels.switcher }}
-                </Button>
-                <Button
-                    type="button"
-                    variant="secondary"
-                    aria-disabled="true"
-                    data-slot="date-range"
-                >
-                    {{ labels.dateRange }}
-                </Button>
-                <Button
-                    type="button"
-                    variant="secondary"
-                    aria-disabled="true"
-                    data-slot="edit-layout"
-                >
-                    {{ labels.editLayout }}
+    <div class="flex min-h-0 flex-1">
+        <div class="flex min-w-0 flex-1 flex-col gap-6 px-4 py-6 sm:px-7">
+            <PageHeader :title="title">
+                <div class="flex items-center gap-2">
+                    <Button
+                        type="button"
+                        data-slot="add-block"
+                        :aria-expanded="panelOpen"
+                        @click="showPanel"
+                    >
+                        {{ labels.addBlock }}
+                    </Button>
+                </div>
+                <div class="hidden items-center gap-2 md:flex">
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        aria-disabled="true"
+                        data-slot="dashboard-switcher"
+                    >
+                        {{ labels.switcher }}
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        aria-disabled="true"
+                        data-slot="date-range"
+                    >
+                        {{ labels.dateRange }}
+                    </Button>
+                    <Button
+                        type="button"
+                        variant="secondary"
+                        aria-disabled="true"
+                        data-slot="edit-layout"
+                    >
+                        {{ labels.editLayout }}
+                    </Button>
+                </div>
+            </PageHeader>
+
+            <div
+                v-if="state === 'loading'"
+                role="status"
+                aria-busy="true"
+                class="grid gap-[14px] md:grid-cols-4"
+                data-slot="dashboard-loading"
+            >
+                <span class="sr-only">{{ labels.loading }}</span>
+                <Skeleton
+                    v-for="n in 4"
+                    :key="n"
+                    class="h-[134px] rounded-lg"
+                />
+            </div>
+
+            <div
+                v-else-if="state === 'error'"
+                role="alert"
+                class="flex flex-col items-start gap-3 rounded-lg border border-border-default bg-surface-card p-4"
+                data-slot="dashboard-error"
+            >
+                <p class="type-body text-text-primary">
+                    {{ t('dashboard-load-failed') }}
+                </p>
+                <Button type="button" variant="secondary" @click="load">
+                    {{ labels.retry }}
                 </Button>
             </div>
-        </PageHeader>
 
-        <div
-            v-if="state === 'loading'"
-            role="status"
-            aria-busy="true"
-            class="grid gap-[14px] md:grid-cols-4"
-            data-slot="dashboard-loading"
-        >
-            <span class="sr-only">{{ labels.loading }}</span>
-            <Skeleton v-for="n in 4" :key="n" class="h-[134px] rounded-lg" />
+            <div
+                v-else-if="items.length === 0"
+                class="flex flex-col items-start gap-3 rounded-lg border border-border-default bg-surface-card p-6"
+                data-slot="dashboard-empty"
+            >
+                <p class="type-body text-text-primary">
+                    {{ t('dashboard-empty') }}
+                </p>
+                <Button
+                    type="button"
+                    variant="secondary"
+                    data-slot="add-block-empty"
+                    @click="showPanel"
+                >
+                    {{ labels.addBlock }}
+                </Button>
+            </div>
+
+            <DashboardGrid
+                v-else
+                :items="items"
+                :results="results"
+                :minimized="minimized"
+                :refreshing="refreshing"
+                :limited="limited"
+                :admin="admin"
+                :profile="profile"
+                @retry="loadResults"
+                @refresh="onRefresh"
+                @minimize="onMinimize"
+            />
         </div>
 
-        <div
-            v-else-if="state === 'error'"
-            role="alert"
-            class="flex flex-col items-start gap-3 rounded-lg border border-border-default bg-surface-card p-4"
-            data-slot="dashboard-error"
+        <aside
+            v-if="panelOpen && wide"
+            :aria-label="addBlocksLabels.panelName"
+            class="sticky top-0 hidden h-screen w-[392px] shrink-0 border-l border-border-default lg:block"
+            data-slot="add-blocks-drawer"
         >
-            <p class="type-body text-text-primary">
-                {{ t('dashboard-load-failed') }}
-            </p>
-            <Button type="button" variant="secondary" @click="load">
-                {{ labels.retry }}
-            </Button>
-        </div>
+            <AddBlocksPanel
+                :added-ids="addedIds"
+                @close="hidePanel"
+                @skip="skipToDashboard"
+            />
+        </aside>
 
-        <div
-            v-else-if="items.length === 0"
-            class="flex flex-col items-start gap-3 rounded-lg border border-border-default bg-surface-card p-6"
-            data-slot="dashboard-empty"
+        <Sheet
+            v-if="!wide"
+            :open="panelOpen"
+            @update:open="(v) => (v ? showPanel() : hidePanel())"
         >
-            <p class="type-body text-text-primary">
-                {{ t('dashboard-empty') }}
-            </p>
-            <Button type="button" aria-disabled="true">
-                {{ labels.addBlock }}
-            </Button>
-        </div>
-
-        <DashboardGrid
-            v-else
-            :items="items"
-            :results="results"
-            :minimized="minimized"
-            :refreshing="refreshing"
-            :limited="limited"
-            :admin="admin"
-            :profile="profile"
-            @retry="loadResults"
-            @refresh="onRefresh"
-            @minimize="onMinimize"
-        />
+            <SheetContent
+                side="right"
+                class="w-full max-w-[392px] p-0"
+                data-slot="add-blocks-sheet"
+            >
+                <SheetTitle class="sr-only">{{
+                    addBlocksLabels.title
+                }}</SheetTitle>
+                <SheetDescription class="sr-only">{{
+                    addBlocksLabels.subtitle
+                }}</SheetDescription>
+                <AddBlocksPanel
+                    :added-ids="addedIds"
+                    @close="hidePanel"
+                    @skip="skipToDashboard"
+                />
+            </SheetContent>
+        </Sheet>
     </div>
 </template>

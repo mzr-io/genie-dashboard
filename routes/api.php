@@ -21,6 +21,7 @@ use App\Http\Controllers\Admin\HostAllowlistController;
 use App\Http\Controllers\Admin\InvitationController;
 use App\Http\Controllers\Admin\MemberAttributeController;
 use App\Http\Controllers\Admin\MemberController;
+use App\Http\Controllers\BlockCatalogueController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\OperationController;
 use App\Http\Middleware\RejectsSecretValues;
@@ -37,6 +38,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
 // A member's own dashboard (Story 4.4): layout, item states and User-safe Block cards. Not an Admin route: any active member of the Workspace.
 Route::middleware('auth:sanctum')->group(function () {
+    // The Add-blocks Panel's list (Story 4.7): every published Block the member can see.
+    Route::get('blocks/available', [BlockCatalogueController::class, 'index'])->middleware('throttle:120,1')->name('api.blocks.available');
+    Route::get('blocks/{block}/sample', [BlockCatalogueController::class, 'sample'])->middleware('throttle:120,1')->name('api.blocks.sample');
     Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])->name('api.dashboards.show');
     Route::put('dashboards/{dashboard}/items/{item}/minimized', [DashboardController::class, 'minimize'])->middleware('throttle:60,1')->name('api.dashboards.items.minimize');
     Route::post('dashboards/{dashboard}/items/{item}/refresh', [DashboardController::class, 'refresh'])->middleware('throttle:60,1')->name('api.dashboards.items.refresh');
