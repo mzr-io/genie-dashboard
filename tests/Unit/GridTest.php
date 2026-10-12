@@ -60,3 +60,14 @@ it('is deterministic and leaves the input alone', function () {
         ->and($items)->toBe($copy)
         ->and(Grid::clamp(11, 3, 12, 'large', 3, 6, 'small', 'medium'))->toBe(Grid::clamp(11, 3, 12, 'large', 3, 6, 'small', 'medium'));
 });
+
+it('says whether a rectangle fits inside the grid without touching another', function () {
+    $items = [['col' => 0, 'row' => 0, 'width' => 6, 'height' => 'medium']];
+
+    expect(Grid::fits($items, 6, 0, 6, 'small'))->toBeTrue()
+        ->and(Grid::fits($items, 5, 0, 3, 'small'))->toBeFalse()
+        ->and(Grid::fits($items, 0, 6, 3, 'small'))->toBeTrue()
+        ->and(Grid::fits($items, 10, 0, 3, 'small'))->toBeFalse()
+        ->and(Grid::fits($items, -1, 0, 3, 'small'))->toBeFalse()
+        ->and(Grid::fits([], 0, 0, 12, 'large'))->toBeTrue();
+});

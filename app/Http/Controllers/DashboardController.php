@@ -98,6 +98,48 @@ final class DashboardController extends Controller
     }
 
     /**
+     * `RestoreItem` (Story 4.10, AD-14): `{geometry?: {col, row, width, height}, minimized?, expected_revision}`. The same answers as `AddItem`; the item
+     * goes back to its remembered spot when free, else the first free one.
+     */
+    public function restoreBlock(Request $request, string $dashboard, string $block): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+        $data = $request->validate([
+            'expected_revision' => ['required', 'integer', 'min:0'],
+            'minimized' => ['sometimes', 'boolean'],
+            'geometry' => ['sometimes', 'nullable', 'array'],
+            'geometry.col' => ['required_with:geometry', 'integer', 'min:0', 'max:11'],
+            'geometry.row' => ['required_with:geometry', 'integer', 'min:0', 'max:100000'],
+            'geometry.width' => ['required_with:geometry', 'integer', 'in:3,4,6,8,12'],
+            'geometry.height' => ['required_with:geometry', 'string', 'in:small,medium,large'],
+        ]);
+
+        $geometry = is_array($data['geometry'] ?? null)
+            ? ['col' => (int) $data['geometry']['col'], 'row' => (int) $data['geometry']['row'], 'width' => (int) $data['geometry']['width'], 'height' => (string) $data['geometry']['height']]
+            : null;
+
+        try {
+            $change = $this->dashboards->restoreItem($workspaceId, $membershipId, $dashboard, $block, $geometry, (bool) ($data['minimized'] ?? false), (int) $data['expected_revision']);
+        } catch (DashboardNotFound) {
+            abort(404);
+        } catch (BlockNotAvailable $e) {
+            if ($e->reason === BlockNotAvailable::NOT_FOUND) {
+                abort(404);
+            }
+
+            return $this->error($request, ErrorCode::BlockUnavailable->value, 422, 'This block is no longer available.', []);
+        } catch (RevisionConflict $e) {
+            return $this->error($request, ErrorCode::RevisionConflict->value, 409, 'The dashboard has changed.', ['revision' => $e->currentRevision]);
+        }
+
+        return response()->json(
+            ['data' => ['item' => $change->item, 'revision' => $change->revision, 'next_free_slot' => $change->nextFreeSlot]],
+            $change->changed ? 201 : 200,
+            ['Cache-Control' => 'no-store, private'],
+        );
+    }
+
+    /**
      * `RemoveItem` (Story 4.9, AD-14): by Block, `{expected_revision}`. A Mandatory item is a 403, a stale revision a 409, and a Block that is not on
      * the dashboard a no-op 200.
      */

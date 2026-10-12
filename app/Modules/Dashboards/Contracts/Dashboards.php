@@ -29,6 +29,19 @@ interface Dashboards
     public function addItem(string $workspaceId, string $membershipId, string $dashboardId, string $blockId, int $expectedRevision): ItemChange;
 
     /**
+     * `RestoreItem` (AD-14, Story 4.10): puts a removed Block back with its remembered geometry and minimized state. The same checks as
+     * {@see self::addItem()}; the item goes to its remembered spot when that is free (clamped to the Block's limits) and otherwise to the first
+     * free position at that size, and no other item moves.
+     *
+     * @param  array{col: int, row: int, width: int, height: string}|null  $geometry
+     *
+     * @throws DashboardNotFound
+     * @throws BlockNotAvailable
+     * @throws RevisionConflict
+     */
+    public function restoreItem(string $workspaceId, string $membershipId, string $dashboardId, string $blockId, ?array $geometry, bool $minimized, int $expectedRevision): ItemChange;
+
+    /**
      * `RemoveItem` (AD-14, Story 4.9): by Block. A Block that is not on the dashboard is a no-op (`changed` false). A Mandatory item is refused.
      *
      * @throws DashboardNotFound

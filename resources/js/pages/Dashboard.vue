@@ -24,6 +24,7 @@ import {
     fetchResults,
     refreshItem,
     removeBlock,
+    restoreBlock,
     setMinimized,
 } from '@/lib/dashboards';
 import type {
@@ -108,6 +109,20 @@ const hint = ref<{
     height: HeightPreset;
 } | null>(null);
 const below = ref<{ itemId: string; count: number } | null>(null);
+
+// The history of this dashboard's adds and removes while it is open (Story 4.10): Ctrl+Z walks back through it with no time limit, and the toast's
+// Undo reverses its own entry. An entry whose Block can no longer be put back is marked and skipped.
+type Entry = {
+    id: number;
+    kind: 'add' | 'remove';
+    blockId: string;
+    name: string;
+    geometry: DashboardItem['geometry'];
+    minimized: boolean;
+    unavailable: boolean;
+};
+const history = ref<Entry[]>([]);
+let entryId = 0;
 
 // The member's own minimize choices and the revision every layout command carries (AD-14), the Blocks being refreshed and those in their window.
 const minimized = ref<Record<string, boolean>>({});
@@ -549,6 +564,17 @@ async function onAdd(block: CatalogueBlock): Promise<void> {
             );
         }, JUST_ADDED_MS);
 
+        const entry: Entry = {
+            id: ++entryId,
+            kind: 'add',
+            blockId: block.block_id,
+            name: block.name,
+            geometry: item.geometry,
+            minimized: item.minimized,
+            unavailable: false,
+        };
+        history.value.push(entry);
+
         await nextTick();
         void loadResults();
 
@@ -595,7 +621,7 @@ async function onAdd(block: CatalogueBlock): Promise<void> {
                 },
                 {
                     label: addBlocksLabels.undo,
-                    run: () => void onRemove(block.block_id, 'toast'),
+                    run: () => void undoEntry(entry),
                 },
             ],
         });
@@ -625,6 +651,7 @@ async function onAdd(block: CatalogueBlock): Promise<void> {
 async function onRemove(
     blockId: string,
     from: 'menu' | 'card' | 'panel' | 'toast',
+    record = true,
 ): Promise<void> {
     const current = dashboard.value;
 
@@ -677,10 +704,45 @@ async function onRemove(
         current.revision = outcome.revision;
         below.value = below.value?.itemId === item.item_id ? null : below.value;
 
+        // The remove is remembered with where the Block was and whether it was minimized, so Undo can put it back exactly.
+        const entry: Entry | null = record
+            ? {
+                  id: ++entryId,
+                  kind: 'remove',
+                  blockId,
+                  name,
+                  geometry: item.geometry,
+                  minimized: minimized.value[item.item_id] ?? item.minimized,
+                  unavailable: false,
+              }
+            : null;
+
+        if (entry !== null) {
+            history.value.push(entry);
+        }
+
         toasts.add({
-            kind: 'info',
-            message: addBlocksLabels.removed(name),
-            announce: addBlocksLabels.announceRemoved(name),
+            kind: entry === null ? 'info' : 'action',
+            message:
+                entry === null
+                    ? addBlocksLabels.removed(name)
+                    : t('toast-remove.visible', { block: name }),
+            announce:
+                entry === null
+                    ? addBlocksLabels.announceRemoved(name)
+                    : t('toast-remove.announce', {
+                          block: name,
+                          shortcut: 'Ctrl+Z',
+                      }),
+            actions:
+                entry === null
+                    ? []
+                    : [
+                          {
+                              label: addBlocksLabels.undo,
+                              run: () => void undoEntry(entry),
+                          },
+                      ],
         });
 
         await nextTick();
@@ -723,6 +785,146 @@ async function onRemove(
     }
 }
 
+// Put a removed Block back: RestoreItem with its remembered geometry and minimized state. A stale revision reloads the layout and retries once; a
+// refusal marks the entry unavailable and says so with `msg:toast-rollback`. Focus goes to the restored Block's title.
+async function restoreEntry(entry: Entry): Promise<boolean> {
+    const current = dashboard.value;
+
+    if (
+        props.dashboard_id === null ||
+        current === null ||
+        busy.value.includes(entry.blockId)
+    ) {
+        return false;
+    }
+
+    busy.value = [...busy.value, entry.blockId];
+
+    try {
+        const body = { geometry: entry.geometry, minimized: entry.minimized };
+        let outcome = await restoreBlock(
+            props.dashboard_id,
+            entry.blockId,
+            body,
+            revision.value,
+        );
+
+        if (!outcome.ok && outcome.reason === 'conflict') {
+            await load();
+            outcome = await restoreBlock(
+                props.dashboard_id,
+                entry.blockId,
+                body,
+                revision.value,
+            );
+        }
+
+        if (!outcome.ok || outcome.item === null) {
+            entry.unavailable = true;
+            rollback(entry.name);
+
+            return false;
+        }
+
+        const restored = outcome.item;
+
+        revision.value = outcome.revision;
+        current.revision = outcome.revision;
+
+        if (outcome.nextFreeSlot !== null) {
+            current.next_free_slot = outcome.nextFreeSlot;
+        }
+
+        if (
+            !current.items.some(
+                (existing) => existing.item_id === restored.item_id,
+            )
+        ) {
+            current.items.push(restored);
+        }
+
+        minimized.value = {
+            ...minimized.value,
+            [restored.item_id]: restored.minimized,
+        };
+
+        await nextTick();
+        void loadResults();
+
+        const title = titleOf(restored.item_id);
+
+        if (title !== null) {
+            title.setAttribute('tabindex', '-1');
+            title.focus();
+        }
+
+        return true;
+    } catch (error) {
+        if (
+            error instanceof DashboardError &&
+            (error.status === 401 || error.status === 419)
+        ) {
+            window.location.assign(SIGN_IN_URL);
+
+            return false;
+        }
+
+        entry.unavailable = true;
+        rollback(entry.name);
+
+        return false;
+    } finally {
+        busy.value = busy.value.filter((id) => id !== entry.blockId);
+    }
+}
+
+// Reverse one entry: an add is removed again, a remove is restored. The reversal itself is not a new history entry.
+async function undoEntry(entry: Entry): Promise<void> {
+    history.value = history.value.filter(
+        (candidate) => candidate.id !== entry.id,
+    );
+
+    if (entry.kind === 'add') {
+        await onRemove(entry.blockId, 'toast', false);
+    } else {
+        await restoreEntry(entry);
+    }
+}
+
+// Ctrl+Z (⌘Z) anywhere on the dashboard outside a text field: the last add or remove is reversed, again and again while the page is open. A text
+// field keeps its own undo. It is a modified key, so it works with the single-key shortcuts turned off.
+function onUndoKey(event: KeyboardEvent): void {
+    if (
+        !(event.ctrlKey || event.metaKey) ||
+        event.shiftKey ||
+        event.altKey ||
+        event.key.toLowerCase() !== 'z'
+    ) {
+        return;
+    }
+
+    const target = event.target;
+
+    if (
+        target instanceof HTMLElement &&
+        (target.isContentEditable ||
+            ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName))
+    ) {
+        return;
+    }
+
+    const entry = [...history.value]
+        .reverse()
+        .find((candidate) => !candidate.unavailable);
+
+    if (entry === undefined) {
+        return;
+    }
+
+    event.preventDefault();
+    void undoEntry(entry);
+}
+
 // The free-space hint: where the next Block of that size would go, from the layout's own `next_free_slot`.
 function showHint(block: CatalogueBlock | null): void {
     const current = dashboard.value;
@@ -738,6 +940,7 @@ function showHint(block: CatalogueBlock | null): void {
 }
 
 onMounted(async () => {
+    document.addEventListener('keydown', onUndoKey);
     await load();
 
     if (state.value === 'ready' && items.value.length > 0) {
@@ -746,6 +949,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+    document.removeEventListener('keydown', onUndoKey);
     controller?.abort();
     resultsController?.abort();
 

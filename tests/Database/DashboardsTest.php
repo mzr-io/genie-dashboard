@@ -532,3 +532,71 @@ it('answers 404 for another member\'s dashboard on add and remove', function () 
     $this->postJson(db9Url($theirs), ['block_id' => $block, 'expected_revision' => 0], DB4_HEADERS)->assertNotFound();
     $this->deleteJson(db9Url($theirs, "blocks/{$block}"), ['expected_revision' => 0], DB4_HEADERS)->assertNotFound();
 });
+
+// ---- Story 4.10: RestoreItem ---------------------------------------------------------------------------------------------------------------------
+
+function db10Restore(string $dashboard, string $block, array $body)
+{
+    return test()->postJson("/api/v1/dashboards/{$dashboard}/blocks/{$block}/restore", $body, DB4_HEADERS);
+}
+
+it('puts a removed Block back at its remembered spot when it is free, with its minimized state, moving nothing', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $block = dbBlock($workspace);
+    $other = dbBlock($workspace, 'Other');
+    $kept = dbItem($workspace, $dashboard, $other, ['col' => 0, 'row' => 0, 'width' => 3]);
+
+    $response = db10Restore($dashboard, $block, ['geometry' => ['col' => 6, 'row' => 2, 'width' => 4, 'height' => 'medium'], 'minimized' => true, 'expected_revision' => 0])->assertCreated();
+
+    expect($response->json('data.item.geometry'))->toBe(['col' => 6, 'row' => 2, 'width' => 4, 'height' => 'medium'])
+        ->and($response->json('data.item.minimized'))->toBeTrue()
+        ->and($response->json('data.revision'))->toBe(1)
+        ->and(Cluster::rows(Cluster::superuser(), 'select col, row from dashboard_items where id = ?', [$kept])[0])->toBe(['col' => 0, 'row' => 0]);
+
+    $event = json_decode(Cluster::rows(Cluster::superuser(), "select data from outbox_events where type = 'dashboards.dashboard.changed'")[0]['data'], true);
+
+    expect($event['command'])->toBe('restore_item');
+});
+
+it('uses the first free spot at the remembered size when the original is taken, and the default size when nothing was remembered', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $taken = dbBlock($workspace, 'Taken');
+    dbItem($workspace, $dashboard, $taken, ['col' => 0, 'row' => 0, 'width' => 6]);
+    $block = dbBlock($workspace);
+    $plain = dbBlock($workspace, 'Plain');
+
+    $moved = db10Restore($dashboard, $block, ['geometry' => ['col' => 0, 'row' => 0, 'width' => 6, 'height' => 'small'], 'expected_revision' => 0])->assertCreated();
+
+    expect($moved->json('data.item.geometry'))->toBe(['col' => 6, 'row' => 0, 'width' => 6, 'height' => 'small']);
+
+    $default = db10Restore($dashboard, $plain, ['expected_revision' => 1])->assertCreated();
+
+    expect($default->json('data.item.geometry.width'))->toBe(3)->and($default->json('data.item.minimized'))->toBeFalse();
+});
+
+it('clamps a remembered size to the Block\'s own limits and refuses what cannot be restored', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $narrow = dbBlock($workspace, 'Narrow');
+    $gone = dbBlock($workspace, 'Gone', published: false);
+
+    $clamped = db10Restore($dashboard, $narrow, ['geometry' => ['col' => 0, 'row' => 0, 'width' => 12, 'height' => 'large'], 'expected_revision' => 0])->assertCreated();
+
+    // dbBlock allows 3 to 6 columns and small to medium.
+    expect($clamped->json('data.item.geometry'))->toBe(['col' => 0, 'row' => 0, 'width' => 6, 'height' => 'medium']);
+
+    db10Restore($dashboard, $gone, ['expected_revision' => 1])->assertStatus(422)->assertJsonPath('error.code', 'dashboards.block_unavailable');
+    db10Restore($dashboard, (string) Str::uuid7(), ['expected_revision' => 1])->assertNotFound();
+    db10Restore($dashboard, dbBlock($workspace, 'Late'), ['expected_revision' => 0])->assertStatus(409)->assertJsonPath('error.revision', 1);
+    db10Restore($dashboard, dbBlock($workspace, 'Bad'), ['geometry' => ['col' => 11, 'row' => 0, 'width' => 5, 'height' => 'small'], 'expected_revision' => 1])->assertStatus(422);
+});
+
+it('is idempotent: restoring a Block that is already back returns it', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $block = dbBlock($workspace);
+
+    $first = db10Restore($dashboard, $block, ['expected_revision' => 0])->assertCreated()->json('data.item.item_id');
+    $again = db10Restore($dashboard, $block, ['expected_revision' => 0])->assertOk();
+
+    expect($again->json('data.item.item_id'))->toBe($first)
+        ->and(Cluster::rows(Cluster::superuser(), 'select count(*) as n from dashboard_items')[0]['n'])->toBe(1);
+});

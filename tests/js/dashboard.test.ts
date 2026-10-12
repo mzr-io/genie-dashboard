@@ -1061,7 +1061,12 @@ describe('Adding and removing Blocks', () => {
         expect($('[data-block=b-1] [data-slot=row-add]')).toBe(
             document.activeElement,
         );
-        expect(useToasts().items[0].message).toBe('Revenue overview removed');
+        expect(useToasts().items[0].message).toBe(
+            'Revenue overview removed · Undo',
+        );
+        expect(useToasts().items[0].actions.map((a) => a.label)).toEqual([
+            'Undo',
+        ]);
     });
 
     it('puts the Block back with msg:toast-rollback when the server refuses a remove, and shows msg:locked for a Mandatory item', async () => {
@@ -1166,5 +1171,193 @@ describe('Adding and removing Blocks', () => {
         await flushPromises();
 
         expect($('[data-slot=free-space-hint]')).toBeNull();
+    });
+
+    it('puts a removed Block back with Undo, at its remembered geometry and minimized state, and moves focus to its title', async () => {
+        wide();
+        const restored = item({
+            item_id: 'i-new',
+            geometry: { col: 3, row: 2, width: 6, height: 'medium' },
+            minimized: true,
+        });
+        replies = [
+            ok(
+                dashboard([
+                    item({
+                        geometry: {
+                            col: 3,
+                            row: 2,
+                            width: 6,
+                            height: 'medium',
+                        },
+                        minimized: true,
+                    }),
+                ]),
+            ),
+            resultsOf([result()]),
+            catalogue(entry('b-1', 'Revenue overview')),
+            {
+                ok: true,
+                status: 200,
+                json: { data: { block_id: 'b-1', removed: true, revision: 1 } },
+            },
+            {
+                ok: true,
+                status: 201,
+                json: {
+                    data: {
+                        item: restored,
+                        revision: 2,
+                        next_free_slot: { col: 0, row: 0 },
+                    },
+                },
+            },
+            resultsOf([result({ item_id: 'i-new' })]),
+        ];
+
+        await mountPage();
+        await openPanel();
+        (
+            $('[data-block=b-1] [data-slot=row-remove]') as HTMLButtonElement
+        ).click();
+        await flushPromises();
+        await flushPromises();
+
+        useToasts().items[0].actions[0].run();
+        await flushPromises();
+        await flushPromises();
+        await flushPromises();
+
+        const call = calls('POST').find((c) => c[0].endsWith('/restore'))!;
+
+        expect(JSON.parse(call[1].body!)).toEqual({
+            geometry: { col: 3, row: 2, width: 6, height: 'medium' },
+            minimized: true,
+            expected_revision: 1,
+        });
+        expect($('[data-item=i-new]')).not.toBeNull();
+        expect(
+            document.activeElement?.closest('[data-item=i-new]'),
+        ).not.toBeNull();
+    });
+
+    it('walks back through the history with Ctrl+Z, ignores it inside a text field and reverses an add by removing it', async () => {
+        wide();
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([result()]),
+            catalogue(entry('b-9', 'Open tickets')),
+            served('b-9', 'i-9'),
+            resultsOf([result()]),
+            {
+                ok: true,
+                status: 200,
+                json: { data: { block_id: 'b-9', removed: true, revision: 2 } },
+            },
+        ];
+
+        await mountPage();
+        await openPanel();
+        (
+            $('[data-block=b-9] [data-slot=row-add]') as HTMLButtonElement
+        ).click();
+        await flushPromises();
+        await flushPromises();
+
+        expect($('[data-item=i-9]')).not.toBeNull();
+
+        const search = $('[data-slot=add-blocks-search]') as HTMLInputElement;
+        search.dispatchEvent(
+            new KeyboardEvent('keydown', {
+                key: 'z',
+                ctrlKey: true,
+                bubbles: true,
+                cancelable: true,
+            }),
+        );
+        await flushPromises();
+
+        expect(calls('DELETE')).toHaveLength(0);
+
+        document.body.dispatchEvent(
+            new KeyboardEvent('keydown', {
+                key: 'z',
+                ctrlKey: true,
+                bubbles: true,
+                cancelable: true,
+            }),
+        );
+        await flushPromises();
+        await flushPromises();
+
+        expect(calls('DELETE')).toHaveLength(1);
+        expect($('[data-item=i-9]')).toBeNull();
+
+        // Nothing left to undo: the key does nothing.
+        document.body.dispatchEvent(
+            new KeyboardEvent('keydown', {
+                key: 'z',
+                metaKey: true,
+                bubbles: true,
+                cancelable: true,
+            }),
+        );
+        await flushPromises();
+
+        expect(calls('DELETE')).toHaveLength(1);
+    });
+
+    it('retries a restore once after a 409 and marks the entry unavailable with msg:toast-rollback when it is refused', async () => {
+        wide();
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([result()]),
+            {
+                ok: true,
+                status: 200,
+                json: { data: { block_id: 'b-1', removed: true, revision: 1 } },
+            },
+            {
+                ok: false,
+                status: 409,
+                json: {
+                    error: {
+                        code: 'dashboards.revision_conflict',
+                        revision: 4,
+                    },
+                },
+            },
+            ok({ ...dashboard([]), revision: 4 }),
+            {
+                ok: false,
+                status: 422,
+                json: { error: { code: 'dashboards.block_unavailable' } },
+            },
+        ];
+
+        await mountPage();
+
+        const menus = $$('[data-slot=block-menu]');
+        menus[0].dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+        );
+        await flushPromises();
+        Array.from(document.querySelectorAll<HTMLElement>('[role=menuitem]'))
+            .find((i) => i.textContent?.includes('Remove from dashboard'))!
+            .click();
+        await flushPromises();
+        await flushPromises();
+
+        useToasts().items[0].actions[0].run();
+        await flushPromises();
+        await flushPromises();
+        await flushPromises();
+
+        const restores = calls('POST').filter((c) => c[0].endsWith('/restore'));
+
+        expect(restores).toHaveLength(2);
+        expect(JSON.parse(restores[1][1].body!).expected_revision).toBe(4);
+        expect(useToasts().items.at(-1)!.kind).toBe('rollback');
+        expect($('[data-slot=block-card]')).toBeNull();
     });
 });

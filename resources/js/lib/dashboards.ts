@@ -460,3 +460,33 @@ export async function removeBlock(
 
     return outcomeOf(status, json);
 }
+
+export type RestoreBody = {
+    geometry: {
+        col: number;
+        row: number;
+        width: number;
+        height: HeightPreset;
+    } | null;
+    minimized: boolean;
+};
+
+// `RestoreItem{block_id, geometry, minimized, expected_revision}`: the remembered spot when it is free, else the first free one.
+export async function restoreBlock(
+    dashboardId: string,
+    blockId: string,
+    body: RestoreBody,
+    expectedRevision: number,
+): Promise<ItemOutcome> {
+    const { status, json } = await send(
+        'POST',
+        `${dashboardUrl(dashboardId)}/blocks/${encodeURIComponent(blockId)}/restore`,
+        {
+            geometry: body.geometry,
+            minimized: body.minimized,
+            expected_revision: expectedRevision,
+        },
+    );
+
+    return outcomeOf(status, json);
+}

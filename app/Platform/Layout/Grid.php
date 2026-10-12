@@ -72,6 +72,18 @@ final class Grid
         return ['col' => 0, 'row' => $bottom];
     }
 
+    /**
+     * Whether a rectangle lies inside the grid and overlaps none of the occupied ones.
+     *
+     * @param  list<array{col: int, row: int, width: int, height: string}>  $occupied
+     */
+    public static function fits(array $occupied, int $col, int $row, int $width, string $height): bool
+    {
+        $units = self::HEIGHTS[$height] ?? self::HEIGHTS['small'];
+
+        return $col >= 0 && $row >= 0 && $width >= 1 && $col + $width <= self::COLUMNS && ! self::overlaps($occupied, $col, $row, $width, $units);
+    }
+
     /** @param  list<array{col: int, row: int, width: int, height: string}>  $occupied */
     private static function overlaps(array $occupied, int $col, int $row, int $width, int $units): bool
     {

@@ -255,6 +255,23 @@ final class ManageDashboards implements Dashboards
 
     public function addItem(string $workspaceId, string $membershipId, string $dashboardId, string $blockId, int $expectedRevision): ItemChange
     {
+        return $this->place($workspaceId, $membershipId, $dashboardId, $blockId, $expectedRevision, null, false, 'add_item');
+    }
+
+    public function restoreItem(string $workspaceId, string $membershipId, string $dashboardId, string $blockId, ?array $geometry, bool $minimized, int $expectedRevision): ItemChange
+    {
+        return $this->place($workspaceId, $membershipId, $dashboardId, $blockId, $expectedRevision, $geometry, $minimized, 'restore_item');
+    }
+
+    /**
+     * The shared body of `AddItem` and `RestoreItem`: the dashboard is held, an existing item answers as it is, the Block must be visible and published,
+     * the revision must match, and the item goes to its remembered spot when that is free (clamped to the Block's limits) and otherwise to the first
+     * free position at that size. No other item moves.
+     *
+     * @param  array{col: int, row: int, width: int, height: string}|null  $geometry
+     */
+    private function place(string $workspaceId, string $membershipId, string $dashboardId, string $blockId, int $expectedRevision, ?array $geometry, bool $minimized, string $command): ItemChange
+    {
         $dashboard = $this->lock($workspaceId, $membershipId, $dashboardId);
         $blockId = strtolower($blockId);
         $id = strtolower((string) $dashboard->id);
@@ -288,19 +305,22 @@ final class ManageDashboards implements Dashboards
         $placed = array_map(fn (\stdClass $r): array => ['col' => (int) $r->col, 'row' => (int) $r->row, 'width' => (int) $r->width, 'height' => (string) $r->height], $rows);
 
         $size = $card->sizes;
-        $fit = Grid::clamp(0, 0, $size['width'], $size['height'], $size['min_width'], $size['max_width'], $size['min_height'], $size['max_height']);
-        $slot = Grid::nextFreeSlot($placed, $fit['width'], $fit['height']);
+        $want = $geometry ?? ['col' => 0, 'row' => 0, 'width' => $size['width'], 'height' => $size['height']];
+        $fit = Grid::clamp($want['col'], $want['row'], $want['width'], $want['height'], $size['min_width'], $size['max_width'], $size['min_height'], $size['max_height']);
+        $spot = $geometry !== null && Grid::fits($placed, $fit['col'], $fit['row'], $fit['width'], $fit['height'])
+            ? ['col' => $fit['col'], 'row' => $fit['row']]
+            : Grid::nextFreeSlot($placed, $fit['width'], $fit['height']);
         $itemId = (string) Str::uuid7();
 
         DB::insert(
             'insert into dashboard_items (id, workspace_id, dashboard_id, block_id, col, row, width, height, minimized, mandatory, created_at, updated_at) '
-            .'values (?, ?, ?, ?, ?, ?, ?, ?, false, false, now(), now())',
-            [$itemId, $workspaceId, $id, $blockId, $slot['col'], $slot['row'], $fit['width'], $fit['height']],
+            .'values (?, ?, ?, ?, ?, ?, ?, ?, ?, false, now(), now())',
+            [$itemId, $workspaceId, $id, $blockId, $spot['col'], $spot['row'], $fit['width'], $fit['height'], $minimized],
         );
         DB::update('update dashboards set revision = revision + 1, updated_at = now() where workspace_id = ? and id = ?', [$workspaceId, $id]);
 
         $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
-            'dashboard_id' => $id, 'item_id' => $itemId, 'command' => 'add_item', 'revision' => $revision + 1,
+            'dashboard_id' => $id, 'item_id' => $itemId, 'command' => $command, 'revision' => $revision + 1,
         ]);
 
         return $this->changeOf($workspaceId, $membershipId, $id, $itemId, true, $revision + 1);
