@@ -756,3 +756,95 @@ it('appends a new item to an existing order and drops a removed one from it', fu
 
     expect($this->getJson("/api/v1/dashboards/{$dashboard}", DB4_HEADERS)->json('data.compact_order'))->toBe([$b, $added]);
 });
+
+// ---- Story 4.15: SetDateRange and SetPeriodSelection -------------------------------------------------------------------------------------------
+
+function db15Range(string $dashboard, array $body, int $revision)
+{
+    return test()->putJson("/api/v1/dashboards/{$dashboard}/date-range", $body + ['expected_revision' => $revision], DB4_HEADERS);
+}
+
+function db15Select(string $dashboard, string $block, ?string $selection, int $revision)
+{
+    return test()->putJson("/api/v1/dashboards/{$dashboard}/blocks/{$block}/period", ['selection' => $selection, 'expected_revision' => $revision], DB4_HEADERS);
+}
+
+it('stores a preset Date Range per dashboard, bumps the revision, emits the change and restores it on the next read', function () {
+    [, , $dashboard] = db9Setup();
+
+    expect($this->getJson("/api/v1/dashboards/{$dashboard}", DB4_HEADERS)->json('data.date_range'))->toBeNull();
+
+    $response = db15Range($dashboard, ['range' => 'this_month'], 0)->assertOk();
+
+    expect($response->json('data.revision'))->toBe(1)
+        ->and($response->json('data.date_range'))->toBe(['range' => 'this_month', 'from' => null, 'to' => null])
+        ->and($this->getJson("/api/v1/dashboards/{$dashboard}", DB4_HEADERS)->json('data.date_range.range'))->toBe('this_month');
+
+    $event = json_decode(Cluster::rows(Cluster::superuser(), "select data from outbox_events where type = 'dashboards.dashboard.changed'")[0]['data'], true);
+
+    expect($event['command'])->toBe('set_date_range');
+
+    db15Range($dashboard, ['range' => null], 1)->assertOk();
+
+    expect($this->getJson("/api/v1/dashboards/{$dashboard}", DB4_HEADERS)->json('data.date_range'))->toBeNull();
+});
+
+it('stores a Custom range with its dates and refuses a preset with dates, a bad or reversed custom range and an unknown token, storing nothing', function () {
+    [, , $dashboard] = db9Setup();
+
+    db15Range($dashboard, ['range' => 'custom', 'from' => '2026-05-01', 'to' => '2026-05-31'], 0)->assertOk()
+        ->assertJsonPath('data.date_range', ['range' => 'custom', 'from' => '2026-05-01', 'to' => '2026-05-31']);
+
+    foreach ([
+        ['range' => 'this_month', 'from' => '2026-05-01', 'to' => '2026-05-31'],
+        ['range' => 'custom', 'from' => '2026-05-31', 'to' => '2026-05-01'],
+        ['range' => 'custom', 'from' => '2026-02-30', 'to' => '2026-03-01'],
+        ['range' => 'custom', 'from' => '2026-05-01'],
+        ['range' => 'next_decade'],
+        ['range' => '2026-05-01'],
+    ] as $body) {
+        db15Range($dashboard, $body, 1)->assertStatus(422)->assertJsonPath('error.code', 'dashboards.invalid_period');
+    }
+
+    $row = Cluster::rows(Cluster::superuser(), 'select date_range, revision from dashboards where id = ?', [$dashboard])[0];
+
+    expect($row['date_range'])->toBe('custom')->and((int) $row['revision'])->toBe(1);
+    db15Range($dashboard, ['range' => 'today'], 0)->assertStatus(409)->assertJsonPath('error.revision', 1);
+});
+
+it('stores an Own-selector Block\'s period for the member, keeps it across a Date Range change and refuses any other Block or an unknown preset', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $own = dbBlock($workspace, 'Own', ['period' => 'own_selector', 'source' => ['data_source_id' => (string) Str::uuid7(), 'endpoint_id' => (string) Str::uuid7(), 'bindings' => [], 'default_date_range' => ['preset' => 'current_year']]]);
+    $follow = dbBlock($workspace, 'Follow', ['period' => 'follow_dashboard']);
+    dbItem($workspace, $dashboard, $own);
+    dbItem($workspace, $dashboard, $follow, ['col' => 3]);
+
+    $period = fn () => collect($this->getJson("/api/v1/dashboards/{$dashboard}", DB4_HEADERS)->json('data.items'))->firstWhere('block_id', $own)['period'];
+
+    expect($period())->toBe(['behaviour' => 'own_selector', 'selection' => null, 'default' => 'current_year']);
+
+    db15Select($dashboard, $own, 'last_quarter', 0)->assertOk()->assertJsonPath('data.revision', 1);
+    db15Range($dashboard, ['range' => 'today'], 1)->assertOk();
+
+    expect($period()['selection'])->toBe('last_quarter');
+
+    db15Select($dashboard, $own, 'next_decade', 2)->assertStatus(422)->assertJsonPath('error.code', 'dashboards.invalid_period');
+    db15Select($dashboard, $follow, 'today', 2)->assertStatus(422);
+    db15Select($dashboard, (string) Str::uuid7(), 'today', 2)->assertNotFound();
+
+    expect($period()['selection'])->toBe('last_quarter');
+
+    db15Select($dashboard, $own, null, 2)->assertOk();
+
+    expect($period()['selection'])->toBeNull()
+        ->and(collect($this->getJson("/api/v1/dashboards/{$dashboard}", DB4_HEADERS)->json('data.items'))->firstWhere('block_id', $follow)['period']['behaviour'])->toBe('follow_dashboard');
+});
+
+it('keeps another member\'s dashboard out of reach of both commands', function () {
+    [$workspace] = db9Setup();
+    [, $other] = dbMember($workspace, 'bob@example.test');
+    $theirs = Cluster::seedDashboard($workspace, $other);
+
+    db15Range($theirs, ['range' => 'today'], 0)->assertNotFound();
+    db15Select($theirs, (string) Str::uuid7(), 'today', 0)->assertNotFound();
+});

@@ -12,6 +12,7 @@ import {
 import { useI18n } from 'vue-i18n';
 import AddBlocksPanel from '@/components/AddBlocksPanel.vue';
 import DashboardGrid from '@/components/DashboardGrid.vue';
+import DateRangePopover from '@/components/DateRangePopover.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
 import {
@@ -36,13 +37,16 @@ import {
     restoreBlock,
     saveCompactOrder,
     saveLayout,
+    setDateRange,
     setMinimized,
+    setPeriodSelection,
 } from '@/lib/dashboards';
 import type {
     Dashboard,
     DashboardItem,
     HeightPreset,
     ItemResult,
+    PeriodOutcome,
 } from '@/lib/dashboards';
 import { formatDateTime } from '@/lib/format';
 import {
@@ -53,6 +57,7 @@ import {
     sameLayout,
     step,
 } from '@/lib/layout';
+import type { DateRangeValue } from '@/lib/dateRange';
 import type { Geometry, Layout } from '@/lib/layout';
 import { Realtime } from '@/lib/realtime';
 import type { RealtimeState } from '@/lib/realtime';
@@ -171,6 +176,9 @@ const refreshing = ref<string[]>([]);
 const limited = ref<string[]>([]);
 // The latest result of each item, kept in memory by item id and replaced only when its `result_etag` changes; a pending answer never replaces data.
 const results = ref<Record<string, ItemResult>>({});
+// The dashboard Date Range (Story 4.15), as saved on the server, and whether a change of it is being applied.
+const dateRange = ref<DateRangeValue | null>(null);
+const rangeBusy = ref(false);
 let resultsTimer: ReturnType<typeof setTimeout> | null = null;
 let resultsController: AbortController | null = null;
 let polls = 0;
@@ -224,6 +232,7 @@ async function load(): Promise<void> {
         dashboard.value = result;
         revision.value = result.revision;
         compactOrder.value = result.compact_order ?? null;
+        dateRange.value = result.date_range ?? null;
         minimized.value = Object.fromEntries(
             result.items.map((item) => [item.item_id, item.minimized]),
         );
@@ -1631,6 +1640,99 @@ function connectLive(): void {
     realtime.connect();
 }
 
+// ---- Date Range and Block period (Story 4.15) --------------------------------------------------------------------------------------------------
+// Applying saves the range with the revision held (a stale one reloads the layout and tries once more), then re-reads the results: only
+// Follow-dashboard Blocks resolve to a new period, the rest answer with the ETag they had. Blocks keep their last values while the new ones are
+// computed and the Date Range button shows the spinner; nothing moves.
+async function saveAndReload(
+    save: (revision: number) => Promise<PeriodOutcome>,
+    failed: string,
+): Promise<boolean> {
+    if (props.dashboard_id === null || offlineBlocked()) {
+        return false;
+    }
+
+    try {
+        let outcome = await save(revision.value);
+
+        if (!outcome.ok && outcome.conflict) {
+            await load();
+            outcome = await save(revision.value);
+        }
+
+        if (outcome.ok && dashboard.value !== null) {
+            revision.value = outcome.revision;
+            dateRange.value = outcome.dateRange ?? null;
+            dashboard.value = {
+                ...dashboard.value,
+                revision: outcome.revision,
+                items: outcome.items,
+            };
+
+            return true;
+        }
+    } catch (error) {
+        if (
+            error instanceof DashboardError &&
+            (error.status === 401 || error.status === 419)
+        ) {
+            window.location.assign(SIGN_IN_URL);
+
+            return false;
+        }
+    }
+
+    toasts.add({ kind: 'rollback', message: failed });
+
+    return false;
+}
+
+async function onDateRange(value: DateRangeValue): Promise<void> {
+    if (props.dashboard_id === null) {
+        return;
+    }
+
+    const id = props.dashboard_id;
+
+    rangeBusy.value = true;
+
+    try {
+        if (
+            await saveAndReload(
+                (rev) => setDateRange(id, value, rev),
+                labels.dateRangeFailed,
+            )
+        ) {
+            polls = 0;
+            await loadResults();
+        }
+    } finally {
+        rangeBusy.value = false;
+    }
+}
+
+async function onPeriod(
+    itemId: string,
+    blockId: string,
+    selection: string | null,
+): Promise<void> {
+    if (props.dashboard_id === null) {
+        return;
+    }
+
+    const id = props.dashboard_id;
+
+    if (
+        await saveAndReload(
+            (rev) => setPeriodSelection(id, blockId, selection, rev),
+            labels.periodFailed,
+        )
+    ) {
+        polls = 0;
+        await loadResults({ items: [itemId] });
+    }
+}
+
 // ---- Pause live updates (Story 4.14) ---------------------------------------------------------------------------------------------------------
 // While paused no poll, push-triggered refetch or reconnect refetch is applied, so values do not change under the reader. The refresh button, layout
 // commands and (Story 4.15) period changes still fetch. Resume refreshes at once. The state lives in the page: leaving the dashboard ends it.
@@ -1846,14 +1948,12 @@ onBeforeUnmount(() => {
                     >
                         {{ labels.switcher }}
                     </Button>
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        aria-disabled="true"
-                        data-slot="date-range"
-                    >
-                        {{ labels.dateRange }}
-                    </Button>
+                    <DateRangePopover
+                        :value="dateRange"
+                        :busy="rangeBusy"
+                        :disabled="offline"
+                        @apply="onDateRange"
+                    />
                     <Button
                         type="button"
                         variant="secondary"
@@ -1958,6 +2058,8 @@ onBeforeUnmount(() => {
                 :picked-up="picked?.id ?? null"
                 :compact="!desktop"
                 :order="compactOrder"
+                :date-range="dateRange?.range ?? null"
+                @period="onPeriod"
                 @movekey="onMoveKey"
                 @step="onStep"
                 @geometry="onGeometry"

@@ -225,11 +225,12 @@ it('reports a Block with no published version as unpublished and a user-bound Bl
 it('refuses a range the Blocks do not offer, a date and a non-string with 422, and another member\'s dashboard with 404', function () {
     $w = dr5World();
 
-    foreach (['?range=last_year', '?range=2026-01-01', '?range[]=this_month'] as $query) {
+    foreach (['?range=last_decade', '?range=2026-01-01', '?range[]=this_month'] as $query) {
         dr5Results($w, $query)->assertStatus(422);
     }
 
     dr5Results($w, '?range=this_month')->assertOk();
+    dr5Results($w, '?range=last_year')->assertOk();
 
     $other = Cluster::seedDashboard($w['ws']);
     $this->getJson("/api/v1/dashboards/{$other}/results", DR5_HEADERS)->assertNotFound();

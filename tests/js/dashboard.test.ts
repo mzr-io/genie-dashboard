@@ -2306,3 +2306,175 @@ describe('Pause live updates', () => {
         expect(line()).toContain('Data as of');
     });
 });
+
+describe('Date Range and Block period', () => {
+    const own = (overrides: Partial<DashboardItem> = {}) =>
+        item({
+            period: {
+                behaviour: 'own_selector',
+                selection: null,
+                default: 'current_year',
+            },
+            ...overrides,
+        });
+
+    const puts = () =>
+        (
+            fetch as unknown as {
+                mock: {
+                    calls: Array<[string, { method?: string; body?: string }]>;
+                };
+            }
+        ).mock.calls.filter((call) => call[1]?.method === 'PUT');
+
+    afterEach(() => {
+        useAddBlocksPanel().hide();
+    });
+
+    it('shows a period dropdown only for an Own-selector Block, starting at its default, and no selector for the others', async () => {
+        replies = [
+            ok(
+                dashboard([
+                    own(),
+                    item({
+                        item_id: 'i-2',
+                        block_id: 'b-2',
+                        geometry: { col: 6, row: 2, width: 3, height: 'small' },
+                        period: {
+                            behaviour: 'not_date_filtered',
+                            selection: null,
+                            default: null,
+                        },
+                    }),
+                ]),
+            ),
+            resultsOf([result()]),
+        ];
+
+        await mountPage();
+
+        const selectors = $$('[data-slot="period-selector"] select');
+
+        expect(selectors).toHaveLength(1);
+        expect((selectors[0] as HTMLSelectElement).value).toBe('current_year');
+        expect(
+            Array.from((selectors[0] as HTMLSelectElement).options).map(
+                (o) => o.value,
+            ),
+        ).toContain('last_quarter');
+    });
+
+    it('sends SetPeriodSelection with the revision held and refetches only that Block', async () => {
+        replies = [
+            ok(dashboard([own()])),
+            resultsOf([result()]),
+            {
+                ok: true,
+                status: 200,
+                json: {
+                    data: {
+                        revision: 1,
+                        date_range: null,
+                        items: [
+                            own({
+                                period: {
+                                    behaviour: 'own_selector',
+                                    selection: 'last_quarter',
+                                    default: 'current_year',
+                                },
+                            }),
+                        ],
+                    },
+                },
+            },
+            resultsOf([result({ result_etag: 'e-2' })]),
+        ];
+
+        await mountPage();
+
+        const select = $(
+            '[data-slot="period-selector"] select',
+        ) as HTMLSelectElement;
+
+        select.value = 'last_quarter';
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        await flushPromises();
+
+        expect(puts()).toHaveLength(1);
+        expect(puts()[0][0]).toBe('/api/v1/dashboards/d-1/blocks/b-1/period');
+        expect(JSON.parse(puts()[0][1].body as string)).toEqual({
+            selection: 'last_quarter',
+            expected_revision: 0,
+        });
+        expect(urls.at(-1)).toContain('items%5B%5D=i-1');
+        expect(
+            ($('[data-slot="period-selector"] select') as HTMLSelectElement)
+                .value,
+        ).toBe('last_quarter');
+    });
+
+    it("says in the subtitle when a Block's period differs from the dashboard Date Range", async () => {
+        replies = [
+            ok({
+                ...dashboard([own()]),
+                date_range: { range: 'this_month', from: null, to: null },
+            } as Dashboard),
+            resultsOf([result()]),
+        ];
+
+        await mountPage();
+
+        expect(
+            $('[data-slot="block"]')?.textContent ?? document.body.textContent,
+        ).toContain('· This year');
+    });
+
+    it('saves a chosen Date Range and re-reads the results with the spinner on the button', async () => {
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([result()]),
+            {
+                ok: true,
+                status: 200,
+                json: {
+                    data: {
+                        revision: 1,
+                        date_range: {
+                            range: 'current_year',
+                            from: null,
+                            to: null,
+                        },
+                        items: [item()],
+                    },
+                },
+            },
+            resultsOf([result({ result_etag: 'e-2' })]),
+        ];
+
+        await mountPage();
+
+        $('[data-slot="date-range"]')!.click();
+        await flushPromises();
+        document
+            .querySelector<HTMLElement>('[data-preset="current_year"]')!
+            .click();
+        await flushPromises();
+        document
+            .querySelector<HTMLElement>('[data-slot="date-range-apply"]')!
+            .click();
+        await flushPromises();
+
+        expect(puts()).toHaveLength(1);
+        expect(puts()[0][0]).toBe('/api/v1/dashboards/d-1/date-range');
+        expect(JSON.parse(puts()[0][1].body as string)).toEqual({
+            range: 'current_year',
+            from: null,
+            to: null,
+            expected_revision: 0,
+        });
+        expect(urls.at(-1)).toContain('/results');
+        expect($('[data-slot="date-range"]')?.textContent).toContain(
+            'This year',
+        );
+    });
+});

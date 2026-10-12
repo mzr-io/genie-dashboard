@@ -11,8 +11,9 @@ use DateTimeZone;
  *
  * Precedence: the user's Block Period Selector choice (Own selector Blocks), then the dashboard Date Range (Follow dashboard Blocks), then the
  * Block's Default date range. Not date-filtered Blocks return null and ignore every input. Only presets the Block enabled (its enabled list and
- * its Default date range) are accepted; anything else, an absolute date included, is a 422 and never coerced. The window is computed in the
- * Workspace timezone, never the user's.
+ * its Default date range) are accepted; anything else, an absolute date included, is a 422 and never coerced. The one place absolute dates enter is
+ * `$dashboardCustom`: the dashboard's own stored Custom range, which the `SetDateRange` command validated and the server (never a request) passes in.
+ * The window is computed in the Workspace timezone, never the user's.
  */
 final class PeriodResolver
 {
@@ -22,6 +23,7 @@ final class PeriodResolver
     /**
      * @param  list<string>  $enabled  the presets the Block enabled
      * @param  array{from?: string, to?: string}|null  $customDefault  the Admin's own dates when the Block default is `custom` (inclusive `Y-m-d`; no period while either is missing)
+     * @param  array{from?: string, to?: string}|null  $dashboardCustom  the dates of the dashboard's stored Custom range, used when `$dashboardRange` is `custom`
      *
      * @throws InvalidPeriodInput 422 when the chosen preset is not a catalogue preset the Block enabled
      */
@@ -35,6 +37,7 @@ final class PeriodResolver
         DateTimeInterface $now,
         bool $withComparison = false,
         ?array $customDefault = null,
+        ?array $dashboardCustom = null,
     ): ?ResolvedPeriod {
         if ($behaviour === PeriodBehaviour::NotDateFiltered) {
             return null;
@@ -47,6 +50,10 @@ final class PeriodResolver
 
         if ($token === null) {
             return null;
+        }
+
+        if ($behaviour === PeriodBehaviour::FollowDashboard && $dashboardRange === self::CUSTOM && $dashboardCustom !== null) {
+            return self::custom($dashboardCustom, $withComparison);
         }
 
         if ($token === self::CUSTOM && $token === $default) {

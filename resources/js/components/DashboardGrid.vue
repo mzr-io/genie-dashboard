@@ -31,6 +31,8 @@ const props = defineProps<{
     // A single-column layout: Blocks stack in `order` (reading order when null) and the menu reorders instead of resizing.
     compact?: boolean;
     order?: string[] | null;
+    // The dashboard Date Range's token, for the Blocks that state a period of their own.
+    dateRange?: string | null;
     // Where the next Block would go, shown while "+ Add" is hovered or focused: a dashed free-space hint.
     hint?: {
         col: number;
@@ -44,6 +46,7 @@ const emit = defineEmits<{
     retry: [itemId: string];
     refresh: [itemId: string];
     minimize: [itemId: string, minimized: boolean];
+    period: [itemId: string, blockId: string, selection: string | null];
     remove: [blockId: string, from: 'menu' | 'card'];
     // A drag or resize in progress (`commit` false: a preview) or finished (`commit` true), with the geometry the pointer asks for.
     geometry: [itemId: string, geometry: Geometry, commit: boolean];
@@ -217,6 +220,7 @@ const placement = (item: DashboardItem): Record<string, string> => ({
                 :editing="editing && !compact"
                 :picked-up="pickedUp === item.item_id"
                 :compact="compact"
+                :date-range="dateRange ?? null"
                 :can-move-up="canMoveUp(item)"
                 :can-move-down="canMoveDown(item)"
                 @movekey="(id, event) => $emit('movekey', id, event)"
@@ -226,6 +230,9 @@ const placement = (item: DashboardItem): Record<string, string> => ({
                 @retry="$emit('retry', $event)"
                 @refresh="$emit('refresh', $event)"
                 @minimize="(id, value) => $emit('minimize', id, value)"
+                @period="
+                    (id, blockId, value) => $emit('period', id, blockId, value)
+                "
             />
         </div>
         <div

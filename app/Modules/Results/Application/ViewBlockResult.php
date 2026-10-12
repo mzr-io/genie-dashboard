@@ -22,6 +22,7 @@ use App\Modules\Results\Contracts\ViewedResults;
 use App\Modules\Results\Contracts\ViewRequest;
 use App\Platform\Period\InvalidPeriodInput;
 use App\Platform\Period\PeriodBehaviour;
+use App\Platform\Period\PeriodPreset;
 use App\Platform\Period\PeriodResolver;
 use App\Platform\Period\ResolvedPeriod;
 use App\Platform\Tenancy\TenantCache;
@@ -132,10 +133,11 @@ final class ViewBlockResult implements ViewedResults
             $request->selection,
             $request->dashboardRange,
             $default['preset'],
-            [],
+            PeriodPreset::values(),
             $this->settings->timezone(),
             $now,
             customDefault: ['from' => $default['from'] ?? '', 'to' => $default['to'] ?? ''],
+            dashboardCustom: $request->dashboardCustom,
         );
     }
 

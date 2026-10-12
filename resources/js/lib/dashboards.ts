@@ -49,6 +49,13 @@ export type DashboardBlock = {
     footer?: { label: string; target: string } | null;
 };
 
+// How a Block follows the period (Story 4.15): its behaviour, the member's own choice (a preset token) and the Block's Default date range preset.
+export type ItemPeriod = {
+    behaviour: 'follow_dashboard' | 'own_selector' | 'not_date_filtered';
+    selection: string | null;
+    default: string | null;
+};
+
 export type DashboardItem = {
     item_id: string;
     block_id: string;
@@ -57,6 +64,8 @@ export type DashboardItem = {
     state: ItemState;
     refresh_interval: number | 'live' | null;
     is_live: boolean;
+    // Null for an item that is not `ok`.
+    period?: ItemPeriod | null;
     // Null for an item that is not `ok`: no name and no data.
     block: DashboardBlock | null;
 };
@@ -70,6 +79,12 @@ export type Dashboard = {
     next_free_slot: { col: number; row: number };
     // The stacking order of item ids on a single-column layout; null until somebody reorders.
     compact_order?: string[] | null;
+    // The dashboard Date Range: a preset token, or `custom` with its dates; null while none is set.
+    date_range?: {
+        range: string;
+        from: string | null;
+        to: string | null;
+    } | null;
     // How to stay current (Story 4.13): the realtime socket's public details, and the seconds between polls when it is not connected.
     live?: {
         poll_interval_seconds: number | null;
@@ -352,6 +367,73 @@ export async function setMinimized(
 
     return { ok: false, conflict: false };
 }
+
+// `SetDateRange` and `SetPeriodSelection` (Story 4.15, AD-14): the saved dashboard comes back with its items.
+export type PeriodOutcome =
+    | {
+          ok: true;
+          revision: number;
+          dateRange: Dashboard['date_range'];
+          items: DashboardItem[];
+      }
+    | { ok: false; conflict: boolean; invalid: boolean };
+
+async function savePeriod(
+    url: string,
+    body: Record<string, unknown>,
+): Promise<PeriodOutcome> {
+    const { status, json } = await send('PUT', url, body);
+
+    if (status === 200) {
+        const data = json?.data as
+            | {
+                  revision?: number;
+                  date_range?: Dashboard['date_range'];
+                  items?: DashboardItem[];
+              }
+            | undefined;
+
+        if (typeof data?.revision === 'number' && Array.isArray(data.items)) {
+            return {
+                ok: true,
+                revision: data.revision,
+                dateRange: data.date_range ?? null,
+                items: data.items,
+            };
+        }
+
+        return { ok: false, conflict: false, invalid: false };
+    }
+
+    if (status === 401 || status === 419) {
+        throw new DashboardError(status);
+    }
+
+    return { ok: false, conflict: status === 409, invalid: status === 422 };
+}
+
+export const setDateRange = (
+    dashboardId: string,
+    value: { range: string | null; from?: string | null; to?: string | null },
+    expectedRevision: number,
+): Promise<PeriodOutcome> =>
+    savePeriod(`${dashboardUrl(dashboardId)}/date-range`, {
+        range: value.range,
+        from: value.from ?? null,
+        to: value.to ?? null,
+        expected_revision: expectedRevision,
+    });
+
+export const setPeriodSelection = (
+    dashboardId: string,
+    blockId: string,
+    selection: string | null,
+    expectedRevision: number,
+): Promise<PeriodOutcome> =>
+    savePeriod(
+        `${dashboardUrl(dashboardId)}/blocks/${encodeURIComponent(blockId)}/period`,
+        { selection, expected_revision: expectedRevision },
+    );
 
 export type RefreshResult =
     | { status: 'requested' }

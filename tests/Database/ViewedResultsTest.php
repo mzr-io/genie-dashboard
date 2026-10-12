@@ -175,7 +175,7 @@ it('does not keep the block hot when the cold-key budget refuses, and still answ
 it('refuses a selection the block does not offer with a 422 and leaves nothing subscribed', function () {
     $w = vrWorld(['period' => 'own_selector']);
 
-    expect(fn () => vrView($w, ['selection' => 'last_year']))->toThrow(InvalidPeriodInput::class)
+    expect(fn () => vrView($w, ['selection' => 'last_decade']))->toThrow(InvalidPeriodInput::class)
         ->and(Cluster::rows(Cluster::superuser(), 'select count(*) as n from sync_subscriptions')[0]['n'])->toBe(0);
 });
 

@@ -7,12 +7,14 @@ use App\Modules\Access\Contracts\MembershipLookup;
 use App\Modules\Dashboards\Contracts\BlockNotAvailable;
 use App\Modules\Dashboards\Contracts\DashboardNotFound;
 use App\Modules\Dashboards\Contracts\Dashboards;
+use App\Modules\Dashboards\Contracts\DashboardView;
 use App\Modules\Dashboards\Contracts\ErrorCode;
 use App\Modules\Dashboards\Contracts\InvalidLayout;
 use App\Modules\Dashboards\Contracts\ItemLocked;
 use App\Modules\Dashboards\Contracts\ItemNotFound;
 use App\Modules\Dashboards\Contracts\RevisionConflict;
 use App\Modules\Results\Contracts\RefreshOutcome;
+use App\Platform\Period\InvalidPeriodInput;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -143,6 +145,68 @@ final class DashboardController extends Controller
             'items' => $view->items,
             'next_free_slot' => $view->nextFreeSlot,
             'compact_order' => $view->compactOrder,
+        ]], 200, ['Cache-Control' => 'no-store, private']);
+    }
+
+    /**
+     * `SetDateRange` (Story 4.15, AD-14): `{range, from?, to?, expected_revision}`. `range` is a preset token, `custom` with `from` and `to` (the only
+     * dates this accepts) or null for each Block's own default. The saved dashboard comes back; a refused range is a 422 and nothing is stored.
+     */
+    public function dateRange(Request $request, string $dashboard): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+        $data = $request->validate([
+            'range' => ['present', 'nullable', 'string', 'max:40'],
+            'from' => ['nullable', 'string', 'max:10'],
+            'to' => ['nullable', 'string', 'max:10'],
+            'expected_revision' => ['required', 'integer', 'min:0'],
+        ]);
+
+        try {
+            $view = $this->dashboards->setDateRange($workspaceId, $membershipId, $dashboard, $data['range'] ?? null, $data['from'] ?? null, $data['to'] ?? null, (int) $data['expected_revision']);
+        } catch (DashboardNotFound) {
+            abort(404);
+        } catch (InvalidPeriodInput) {
+            return $this->error($request, ErrorCode::InvalidPeriod->value, 422, 'Choose one of the periods this dashboard offers.', []);
+        } catch (RevisionConflict $e) {
+            return $this->error($request, ErrorCode::RevisionConflict->value, 409, 'The dashboard has changed.', ['revision' => $e->currentRevision]);
+        }
+
+        return $this->saved($view);
+    }
+
+    /**
+     * `SetPeriodSelection` (Story 4.15, AD-14): `{selection, expected_revision}` for one Own-selector Block. `selection` is a preset token or null to
+     * go back to the Block's default; any other Block, or a token that is not a preset, is a 422.
+     */
+    public function periodSelection(Request $request, string $dashboard, string $block): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+        $data = $request->validate([
+            'selection' => ['present', 'nullable', 'string', 'max:40'],
+            'expected_revision' => ['required', 'integer', 'min:0'],
+        ]);
+
+        try {
+            $view = $this->dashboards->setPeriodSelection($workspaceId, $membershipId, $dashboard, $block, $data['selection'] ?? null, (int) $data['expected_revision']);
+        } catch (DashboardNotFound|ItemNotFound) {
+            abort(404);
+        } catch (InvalidPeriodInput) {
+            return $this->error($request, ErrorCode::InvalidPeriod->value, 422, 'Choose one of the periods this block offers.', []);
+        } catch (RevisionConflict $e) {
+            return $this->error($request, ErrorCode::RevisionConflict->value, 409, 'The dashboard has changed.', ['revision' => $e->currentRevision]);
+        }
+
+        return $this->saved($view);
+    }
+
+    private function saved(DashboardView $view): JsonResponse
+    {
+        return response()->json(['data' => [
+            'dashboard_id' => $view->dashboardId,
+            'revision' => $view->revision,
+            'date_range' => $view->dateRange,
+            'items' => $view->items,
         ]], 200, ['Cache-Control' => 'no-store, private']);
     }
 
@@ -319,6 +383,7 @@ final class DashboardController extends Controller
             'items' => $view->items,
             'next_free_slot' => $view->nextFreeSlot,
             'compact_order' => $view->compactOrder,
+            'date_range' => $view->dateRange,
             'live' => $this->live(),
         ]], 200, ['Cache-Control' => 'no-store, private']);
     }

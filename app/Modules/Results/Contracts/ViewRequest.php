@@ -17,6 +17,8 @@ final readonly class ViewRequest
         public ?string $selection = null,
         public ?string $dashboardRange = null,
         public array $bound = [],
+        /** @var array{from: string, to: string}|null the dates of the dashboard's stored Custom range, set only when `$dashboardRange` is `custom` */
+        public ?array $dashboardCustom = null,
     ) {}
 
     /** @return array<string, mixed> */

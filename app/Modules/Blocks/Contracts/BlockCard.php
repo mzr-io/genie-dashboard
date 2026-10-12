@@ -29,5 +29,7 @@ final readonly class BlockCard
          * @var array{description: string|null, source_name: string|null, refresh_interval: int|string|null, version: string, period: string|null}
          */
         public array $about,
+        /** The Default date range's preset token (`custom` when the Admin chose dates): the initial value of an Own selector. */
+        public ?string $defaultPeriod = null,
     ) {}
 }

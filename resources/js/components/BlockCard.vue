@@ -64,6 +64,8 @@ const props = withDefaults(
         canMoveDown?: boolean;
         // The profile `{user.*}` footer tokens are filled from.
         profile?: FooterProfile;
+        // The dashboard Date Range's token (Story 4.15), to say when this Block's own period differs from it.
+        dateRange?: string | null;
     }>(),
     {
         result: null,
@@ -78,6 +80,7 @@ const props = withDefaults(
         canMoveUp: true,
         canMoveDown: true,
         profile: () => ({}),
+        dateRange: null,
     },
 );
 
@@ -92,6 +95,8 @@ const emit = defineEmits<{
     movekey: [itemId: string, event: KeyboardEvent];
     // A menu step: reorder or one step of position or width, in or outside Edit Layout Mode.
     step: [itemId: string, action: 'up' | 'down' | 'wider' | 'narrower'];
+    // The member chose a period for this Own-selector Block (null: back to its default).
+    period: [itemId: string, blockId: string, selection: string | null];
 }>();
 
 const { t } = useI18n();
@@ -119,11 +124,47 @@ const chrome = computed(() => props.item.block?.chrome ?? null);
 const showHeader = computed(
     () => unavailable.value || chrome.value?.show_header !== false,
 );
-const subtitle = computed(() =>
-    chrome.value?.show_subtitle === false
-        ? null
-        : (props.item.block?.subtitle ?? null),
+const ownSelector = computed(
+    () => !unavailable.value && props.item.period?.behaviour === 'own_selector',
 );
+// The period this Block shows: the member's choice, else its Default date range.
+const effectivePeriod = computed(
+    () => props.item.period?.selection ?? props.item.period?.default ?? null,
+);
+const periodOptions = computed(() => {
+    const options = Object.keys(labels.periods).filter((k) => k !== 'custom');
+
+    return effectivePeriod.value === 'custom'
+        ? [...options, 'custom']
+        : options;
+});
+// A Block whose period differs from the dashboard Date Range says so in its subtitle ("Financial performance · This year").
+const subtitle = computed(() => {
+    if (chrome.value?.show_subtitle === false) {
+        return null;
+    }
+
+    const base = props.item.block?.subtitle ?? null;
+    const differs =
+        ownSelector.value &&
+        props.dateRange !== null &&
+        effectivePeriod.value !== null &&
+        effectivePeriod.value !== props.dateRange;
+
+    if (!differs) {
+        return base;
+    }
+
+    const period = labels.periods[effectivePeriod.value as string];
+
+    return base === null ? period : `${base} · ${period}`;
+});
+
+function onPeriodChange(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+
+    emit('period', props.item.item_id, props.item.block_id, value);
+}
 const icon = computed(() => iconFor(props.item.block?.icon));
 const isMinimized = computed(() => props.minimized ?? props.item.minimized);
 const canRefresh = computed(
@@ -490,6 +531,30 @@ function refresh(): void {
             class="min-h-0 flex-1 overflow-auto px-4 pb-4"
             data-slot="block-body"
         >
+            <div
+                v-if="ownSelector"
+                class="mb-2 flex justify-end"
+                data-slot="period-selector"
+            >
+                <select
+                    class="type-caption rounded-md border border-border-control bg-surface-card px-2 py-1 text-text-primary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                    :aria-label="labels.periodSelector(title)"
+                    :value="effectivePeriod ?? ''"
+                    @change="onPeriodChange"
+                >
+                    <option v-if="effectivePeriod === null" value="" disabled>
+                        {{ labels.dateRange }}
+                    </option>
+                    <option
+                        v-for="preset in periodOptions"
+                        :key="preset"
+                        :value="preset"
+                        :disabled="preset === 'custom'"
+                    >
+                        {{ labels.periods[preset] }}
+                    </option>
+                </select>
+            </div>
             <div
                 v-if="!unavailable && payload !== null && renderer !== null"
                 data-slot="block-result"

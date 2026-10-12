@@ -18,4 +18,6 @@ enum ErrorCode: string
     case ItemLocked = 'dashboards.item_locked';
     /** A layout command named an item that is not on the dashboard, or one twice (Story 4.11): HTTP 422, nothing changed. */
     case InvalidLayout = 'dashboards.invalid_layout';
+    /** A Date Range or a Block period selection is not one the dashboard or Block offers, or carries a date it may not (Story 4.15): HTTP 422, nothing stored. */
+    case InvalidPeriod = 'dashboards.invalid_period';
 }

@@ -71,6 +71,33 @@ interface Dashboards
     public function setCompactOrder(string $workspaceId, string $membershipId, string $dashboardId, array $order, int $expectedRevision): DashboardView;
 
     /**
+     * `SetDateRange` (AD-14, Story 4.15): the dashboard Date Range, remembered per dashboard on the server. `range` is a preset token, `custom`
+     * (with the inclusive local dates `from` and `to`) or null to go back to each Block's own default. Only Follow-dashboard Blocks use it. A token
+     * that is not a catalogue preset, a date with a preset, or a custom range that is incomplete, not a real date or reversed is an
+     * {@see InvalidPeriodInput} and nothing is stored.
+     *
+     * @return DashboardView the dashboard after the command
+     *
+     * @throws DashboardNotFound
+     * @throws InvalidPeriodInput
+     * @throws RevisionConflict
+     */
+    public function setDateRange(string $workspaceId, string $membershipId, string $dashboardId, ?string $range, ?string $from, ?string $to, int $expectedRevision): DashboardView;
+
+    /**
+     * `SetPeriodSelection` (AD-14, Story 4.15): the member's own choice for one Own-selector Block, by Block (null clears it). A Block that is not an
+     * Own-selector one, or a token that is not a catalogue preset, is an {@see InvalidPeriodInput}. The dashboard Date Range never resets it.
+     *
+     * @return DashboardView the dashboard after the command
+     *
+     * @throws DashboardNotFound
+     * @throws ItemNotFound the Block is not on the dashboard
+     * @throws InvalidPeriodInput
+     * @throws RevisionConflict
+     */
+    public function setPeriodSelection(string $workspaceId, string $membershipId, string $dashboardId, string $blockId, ?string $selection, int $expectedRevision): DashboardView;
+
+    /**
      * `RemoveItem` (AD-14, Story 4.9): by Block. A Block that is not on the dashboard is a no-op (`changed` false). A Mandatory item is refused.
      *
      * @throws DashboardNotFound

@@ -97,3 +97,14 @@ it('falls back to UTC for an unknown timezone and lists every preset', function 
     expect(resolvePeriod(PeriodBehaviour::FollowDashboard, tz: 'Mars/Olympus')['start'])->toBe('2026-10-01')
         ->and(PeriodPreset::values())->toContain('this_month', 'last_90_days')->toHaveCount(13);
 });
+
+it('takes the dashboard\'s stored Custom range for a Follow-dashboard Block only, and never as an Own selection', function () {
+    $dates = ['from' => '2026-05-01', 'to' => '2026-05-31'];
+    $now = new DateTimeImmutable('2026-10-15T00:00:00Z');
+
+    expect(PeriodResolver::resolve(PeriodBehaviour::FollowDashboard, null, 'custom', 'this_month', ['this_month'], 'UTC', $now, dashboardCustom: $dates)?->toArray())
+        ->toBe(['token' => 'custom', 'start' => '2026-05-01', 'end' => '2026-06-01'])
+        ->and(PeriodResolver::resolve(PeriodBehaviour::OwnSelector, null, 'custom', 'this_month', ['this_month'], 'UTC', $now, dashboardCustom: $dates)?->toArray()['token'])->toBe('this_month')
+        ->and(PeriodResolver::resolve(PeriodBehaviour::NotDateFiltered, null, 'custom', 'this_month', [], 'UTC', $now, dashboardCustom: $dates))->toBeNull()
+        ->and(fn () => PeriodResolver::resolve(PeriodBehaviour::OwnSelector, 'custom', null, 'this_month', ['this_month'], 'UTC', $now, dashboardCustom: $dates))->toThrow(InvalidPeriodInput::class);
+});

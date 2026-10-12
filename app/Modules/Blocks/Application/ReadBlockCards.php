@@ -69,6 +69,7 @@ final class ReadBlockCards implements BlockCards
                     'version' => (string) $row->version,
                     'period' => is_string($config['period'] ?? null) ? $config['period'] : null,
                 ],
+                is_string($config['source']['default_date_range']['preset'] ?? null) ? $config['source']['default_date_range']['preset'] : null,
             );
         }
 

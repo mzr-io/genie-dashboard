@@ -23,6 +23,9 @@ use App\Modules\Results\Contracts\ViewRequest;
 use App\Platform\Audit\AuditAction;
 use App\Platform\Layout\Grid;
 use App\Platform\Outbox\Outbox;
+use App\Platform\Period\InvalidPeriodInput;
+use App\Platform\Period\PeriodBehaviour;
+use App\Platform\Period\PeriodPreset;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -61,7 +64,7 @@ final class ManageDashboards implements Dashboards
     {
         $dashboard = Str::isUuid($dashboardId)
             ? DB::selectOne(
-                'select id, name, is_overview, revision, compact_order::text as compact_order from dashboards where workspace_id = ? and membership_id = ? and id = ?',
+                'select id, name, is_overview, revision, compact_order::text as compact_order, date_range, range_from::text as range_from, range_to::text as range_to from dashboards where workspace_id = ? and membership_id = ? and id = ?',
                 [$workspaceId, $membershipId, strtolower($dashboardId)],
             )
             : null;
@@ -72,7 +75,7 @@ final class ManageDashboards implements Dashboards
 
         /** @var list<\stdClass> $rows */
         $rows = DB::select(
-            'select id, block_id, col, row, width, height, minimized from dashboard_items where workspace_id = ? and dashboard_id = ? order by row, col, id',
+            'select id, block_id, col, row, width, height, minimized, period_selection from dashboard_items where workspace_id = ? and dashboard_id = ? order by row, col, id',
             [$workspaceId, strtolower((string) $dashboard->id)],
         );
 
@@ -98,6 +101,11 @@ final class ManageDashboards implements Dashboards
                 'state' => $state,
                 'refresh_interval' => $state === 'ok' ? $card->refreshInterval : null,
                 'is_live' => $state === 'ok' && $card->refreshInterval === 'live',
+                'period' => $state === 'ok' ? [
+                    'behaviour' => PeriodBehaviour::of($card->about['period'] ?? null)->value,
+                    'selection' => $row->period_selection === null ? null : (string) $row->period_selection,
+                    'default' => $card->defaultPeriod,
+                ] : null,
                 'block' => $state === 'ok' ? [
                     'name' => $card->name,
                     'subtitle' => $card->subtitle,
@@ -118,21 +126,26 @@ final class ManageDashboards implements Dashboards
             $items,
             Grid::nextFreeSlot($placed, 3, 'small'),
             $this->compactOrderOf($dashboard->compact_order ?? null, array_column($items, 'item_id')),
+            $dashboard->date_range === null ? null : ['range' => (string) $dashboard->date_range, 'from' => $dashboard->range_from, 'to' => $dashboard->range_to],
         );
     }
 
     public function results(string $workspaceId, string $membershipId, string $dashboardId, ?string $range, ?array $items = null): array
     {
         $dashboard = Str::isUuid($dashboardId)
-            ? DB::selectOne('select id from dashboards where workspace_id = ? and membership_id = ? and id = ?', [$workspaceId, $membershipId, strtolower($dashboardId)])
+            ? DB::selectOne('select id, date_range, range_from::text as range_from, range_to::text as range_to from dashboards where workspace_id = ? and membership_id = ? and id = ?', [$workspaceId, $membershipId, strtolower($dashboardId)])
             : null;
 
         if ($dashboard === null) {
             throw new DashboardNotFound;
         }
 
+        // The stored Date Range is the dashboard's; a preset in the request is a one-off override (a preview) and is never stored.
+        $range ??= $dashboard->date_range === null ? null : (string) $dashboard->date_range;
+        $custom = $range === 'custom' && $dashboard->range_from !== null ? ['from' => (string) $dashboard->range_from, 'to' => (string) $dashboard->range_to] : null;
+
         /** @var list<\stdClass> $rows */
-        $rows = DB::select('select id, block_id from dashboard_items where workspace_id = ? and dashboard_id = ? order by row, col, id', [$workspaceId, strtolower((string) $dashboard->id)]);
+        $rows = DB::select('select id, block_id, period_selection from dashboard_items where workspace_id = ? and dashboard_id = ? order by row, col, id', [$workspaceId, strtolower((string) $dashboard->id)]);
         $blockIds = array_map(fn (\stdClass $r): string => strtolower((string) $r->block_id), $rows);
         $cards = $this->cards->forBlocks($workspaceId, $blockIds);
         $visible = $this->access->canView($workspaceId, $membershipId, RegisterAccessSubject::BLOCK, $blockIds);
@@ -159,7 +172,15 @@ final class ManageDashboards implements Dashboards
                 continue;
             }
 
-            $viewed = $this->results->view(new ViewRequest($workspaceId, $membershipId, $card->versionId, null, $range));
+            $own = PeriodBehaviour::hasSelector($card->about['period'] ?? null);
+            $viewed = $this->results->view(new ViewRequest(
+                $workspaceId,
+                $membershipId,
+                $card->versionId,
+                $own && $row->period_selection !== null ? (string) $row->period_selection : null,
+                $range,
+                dashboardCustom: $custom,
+            ));
             $result = $viewed->result;
 
             $out[] = $base + ($result === null ? self::empty($viewed->state) : [
@@ -509,6 +530,95 @@ final class ManageDashboards implements Dashboards
         ]);
 
         return $this->find($workspaceId, $membershipId, $id);
+    }
+
+    public function setDateRange(string $workspaceId, string $membershipId, string $dashboardId, ?string $range, ?string $from, ?string $to, int $expectedRevision): DashboardView
+    {
+        $dashboard = $this->lock($workspaceId, $membershipId, $dashboardId);
+        $id = strtolower((string) $dashboard->id);
+        $revision = (int) $dashboard->revision;
+
+        if ($revision !== $expectedRevision) {
+            throw new RevisionConflict($revision);
+        }
+
+        // A date is accepted only here, with `custom`; a preset takes none, and nothing is stored when the range is refused.
+        if ($range === null) {
+            if ($from !== null || $to !== null) {
+                throw new InvalidPeriodInput;
+            }
+        } elseif ($range === 'custom') {
+            $start = self::day($from);
+            $last = self::day($to);
+
+            if ($start === null || $last === null || $start > $last || $start->diff($last)->days > 3660) {
+                throw new InvalidPeriodInput;
+            }
+        } elseif (PeriodPreset::tryFrom($range) === null || $from !== null || $to !== null) {
+            throw new InvalidPeriodInput;
+        }
+
+        DB::update(
+            'update dashboards set date_range = ?, range_from = ?, range_to = ?, revision = revision + 1, updated_at = now() where workspace_id = ? and id = ?',
+            [$range, $range === 'custom' ? $from : null, $range === 'custom' ? $to : null, $workspaceId, $id],
+        );
+
+        $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
+            'dashboard_id' => $id, 'command' => 'set_date_range', 'revision' => $revision + 1,
+        ]);
+
+        return $this->find($workspaceId, $membershipId, $id);
+    }
+
+    public function setPeriodSelection(string $workspaceId, string $membershipId, string $dashboardId, string $blockId, ?string $selection, int $expectedRevision): DashboardView
+    {
+        $dashboard = $this->lock($workspaceId, $membershipId, $dashboardId);
+        $id = strtolower((string) $dashboard->id);
+        $revision = (int) $dashboard->revision;
+
+        if ($revision !== $expectedRevision) {
+            throw new RevisionConflict($revision);
+        }
+
+        $item = Str::isUuid($blockId)
+            ? DB::selectOne('select id, block_id from dashboard_items where workspace_id = ? and dashboard_id = ? and block_id = ? for update', [$workspaceId, $id, strtolower($blockId)])
+            : null;
+
+        if ($item === null) {
+            throw new ItemNotFound;
+        }
+
+        $card = ($this->cards->forBlocks($workspaceId, [strtolower($blockId)]))[strtolower($blockId)] ?? null;
+
+        // Only an Own-selector Block has a selector; any other ignores every period, so a selection for it is refused rather than stored.
+        if ($card === null || ! PeriodBehaviour::hasSelector($card->about['period'] ?? null)) {
+            throw new InvalidPeriodInput;
+        }
+
+        if ($selection !== null && PeriodPreset::tryFrom($selection) === null) {
+            throw new InvalidPeriodInput;
+        }
+
+        DB::update('update dashboard_items set period_selection = ?, updated_at = now() where workspace_id = ? and id = ?', [$selection, $workspaceId, strtolower((string) $item->id)]);
+        DB::update('update dashboards set revision = revision + 1, updated_at = now() where workspace_id = ? and id = ?', [$workspaceId, $id]);
+
+        $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
+            'dashboard_id' => $id, 'item_id' => strtolower((string) $item->id), 'block_id' => strtolower((string) $item->block_id), 'command' => 'set_period_selection', 'revision' => $revision + 1,
+        ]);
+
+        return $this->find($workspaceId, $membershipId, $id);
+    }
+
+    /** A real `Y-m-d` day, or null. */
+    private static function day(?string $value): ?\DateTimeImmutable
+    {
+        if ($value === null || preg_match('/^\d{4}-\d{2}-\d{2}$/', $value) !== 1) {
+            return null;
+        }
+
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value, new \DateTimeZone('UTC'));
+
+        return $date !== false && $date->format('Y-m-d') === $value ? $date : null;
     }
 
     /**
