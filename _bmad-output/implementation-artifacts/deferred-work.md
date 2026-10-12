@@ -464,3 +464,39 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-19-publish-block-v1-0.md`
   summary: precompute_timeout is unset (the maintenance job activates nothing until DASHFLOW_PRECOMPUTE_TIMEOUT is set); the publish route is excluded from the request-wide WorkspaceTransaction so Tx1 and Tx2 commit separately; validation reports and ui state of a published Draft are not purged.
   evidence: needs a product decision on the default and an architectural review of the transaction exclusion.
+
+## Deferred from: code review of spec-2-1-manage-the-workspace-host-allowlist (2026-10-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-1-manage-the-workspace-host-allowlist.md`
+  summary: Story 2.2's guard must define whether an allowlist entry's scheme restricts outbound calls, and `BlockedAddress` should also cover 192.88.99.0/24, 100::/64, ::ffff:0:0:0/96 and 2001:10::/28.
+  evidence: Uniqueness ignores scheme while scheme is stored and drives the "Not encrypted" cue; the blocked list was extended only for the classes the spec names.
+
+## Deferred from: code review of spec-2-2-guard-every-outbound-url-with-egressguard-and-operator-private-range-grants (2026-10-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-guard-every-outbound-url-with-egressguard-and-operator-private-range-grants.md`
+  summary: Test the `egress_grants` active-unique index, CHECK constraints and the 23505 `already_granted` arm with direct inserts.
+  evidence: Every grant test is rejected by the application pre-check before the INSERT; dropping the index or CHECKs leaves all tests green.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-2-guard-every-outbound-url-with-egressguard-and-operator-private-range-grants.md`
+  summary: Widen the egress bypass scanner (variable-URL `file_get_contents`/`fopen`, `SoapClient`, aliased `Http`, `Illuminate\Http\Client\Factory`) and exempt `HealthChecker.php` per line rather than per file.
+  evidence: `Scanner::egressViolations` matches a fixed list of literal-URL patterns, so a later story can reach out without EgressTransport and stay green.
+
+## Deferred from: code review of spec-2-3-register-and-edit-a-data-source (2026-10-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-register-and-edit-a-data-source.md`
+  summary: Add a client test for the Base URL blur check when the server answers 429, 5xx or the network fails (no error shown, Save stays enabled).
+  evidence: `checkUrl()` clears the error and the block on any non-422 failure; no test covers that branch.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-3-register-and-edit-a-data-source.md`
+  summary: Align `data_sources_name_check` with the validator's invisible code points (U+00AD, U+061C, U+180E, U+2066 to U+2069) or pin the gap with a test.
+  evidence: The CHECK lists a fixed set of code points while `ValidateDataSourceInput::name` rejects `\p{Cf}`, `\p{Zl}`, `\p{Zp}` and non-ASCII `\p{Zs}`.
+
+## Deferred from: code review of spec-2-4-add-authentication-and-write-only-secrets-to-a-data-source (2026-10-12)
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-4-add-authentication-and-write-only-secrets-to-a-data-source.md`
+  summary: Capture spans in the Database suite and assert no canary appears in any trace of a credential-saving request.
+  evidence: `scEverything()` joins audit, outbox, data_sources and the log file only; the trace half of the criterion relies on tests/Feature/ObservabilityTest.php.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-4-add-authentication-and-write-only-secrets-to-a-data-source.md`
+  summary: Register a per-source `api_key_name` as sensitive for URL scrubbing, or prove Story 2.5's logs and audit never carry the outbound query.
+  evidence: `Scrubber::url` knows only the fixed `SENSITIVE_KEY` names; a query-placed key under a custom parameter name would pass through.
+- source_spec: `_bmad-output/implementation-artifacts/spec-2-4-add-authentication-and-write-only-secrets-to-a-data-source.md`
+  summary: Give `RejectsSecretValues` an explicit non-secret allowlist (`page_token`, `max_tokens`, `credential_scheme`, `secret_refs`) before Draft endpoints reuse it.
+  evidence: `SENSITIVE_KEY` is substring-based and would refuse legitimate pagination and token-parameter names with 422.

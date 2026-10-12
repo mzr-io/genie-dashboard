@@ -221,7 +221,22 @@ it('refuses bad default headers with a field error and stores nothing', function
     'Content-Length (reserved by the transport)' => [[['name' => 'Content-Length', 'value' => '0']], 'headers.0.name', 'header-name-reserved'],
     'a duplicate name differing by case' => [[['name' => 'X-A', 'value' => '1'], ['name' => 'x-a', 'value' => '2']], 'headers.1.name', 'header-name-duplicate'],
     'the second row' => [[['name' => 'X-A', 'value' => '1'], ['name' => 'X-B', 'value' => "2\n"]], 'headers.1.value', 'header-value-invalid'],
+    'more than 25 headers' => [array_map(fn (int $i): array => ['name' => 'X-H'.$i, 'value' => 'v'], range(1, 26)), 'headers', 'too-many-headers'],
+    'a value over 2048 characters' => [[['name' => 'X-A', 'value' => str_repeat('a', 2049)]], 'headers.0.value', 'header-value-too-long'],
+    'a name over 128 characters' => [[['name' => str_repeat('a', 129), 'value' => 'v']], 'headers.0.name', 'header-name-invalid'],
+    'headers that are not a list' => [['X-A' => 'v'], 'headers', 'headers-invalid'],
 ]);
+
+it('accepts exactly 25 headers and a value of exactly 2048 characters', function () {
+    $workspace = Cluster::workspace('Acme');
+    dsAdmin($workspace);
+    dsAllow($workspace);
+
+    $headers = array_map(fn (int $i): array => ['name' => 'X-H'.$i, 'value' => 'v'], range(1, 24));
+    $headers[] = ['name' => 'X-Long', 'value' => str_repeat('a', 2048)];
+
+    dsCreate(['headers' => $headers])->assertCreated();
+});
 
 it('accepts visible ASCII header values, spaces included, exactly as sent', function () {
     $workspace = Cluster::workspace('Acme');

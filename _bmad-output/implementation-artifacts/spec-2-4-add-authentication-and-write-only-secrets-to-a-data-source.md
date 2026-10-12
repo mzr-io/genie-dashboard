@@ -69,6 +69,18 @@ context:
 - Given an Admin with `data_sources.manage`, when they save a credential after password confirmation, then only `{configured, updated_at}` is ever returned, the value is sealed so that `web` cannot open it, and no canary appears in any log, trace, audit row, response or prop.
 - Given `bin/tools composer ci:check` and `bin/tools npm run build`, when run, then both pass, including the Docker-backed `Database` suite.
 
+### Review Findings
+
+Code review 2026-10-12 (four layers): 0 decision-needed, 2 patch, 3 defer, rest rejected.
+
+- [x] [Review][Patch] The PUT path of the 503 `secrets_not_configured` mapping was untested [tests/Database/DataSourceSecretsTest.php] — an edit with the platform key unset answers 503 and changes nothing
+- [x] [Review][Patch] The PUT path of the wrong-password throttle (429 with `Retry-After`) was untested [tests/Database/DataSourceSecretsTest.php]
+- [x] [Review][Defer] The canary scan covers logs, audit, outbox, responses and props but captures no spans, so "no canary in any trace" rests on the generic span-scrubbing tests [tests/Database/DataSourceSecretsTest.php] — deferred: needs an in-memory span exporter wired into the Database suite
+- [x] [Review][Defer] A query-placed API key under an Admin-chosen parameter name is not known to `Scrubber::url` [Scrubber] — deferred: settle when Story 2.5 logs or audits the outbound URL
+- [x] [Review][Defer] `RejectsSecretValues` matches substrings (`page_token`, `max_tokens`) and would refuse legitimate Draft fields once reused [RejectsSecretValues.php] — deferred: add an explicit allowlist before the Draft endpoints adopt it
+
+**Rejected:** a header marked secret still cannot be named `Authorization` (the spec is silent; bearer and basic cover it) · repointing a stored credential to another host needs no password (already deferred in the spec) · the 429 `confirm_password` branch of the form has no test (cosmetic, server contract covered) · `FetchRequest` userinfo stripping claim (the greedy match strips to the last `@`) · non-ASCII credentials refused and leading spaces allowed (the spec mirrors the header-value rules) · `SecretStatus` ids on the domain object, vault error labelling, removal count unchecked, copied password-confirmation constants, `replacing` flag, snapshot including a secret header's typed value (only compared as a dirty string, never persisted) · `required` on saved secret fields (cosmetic)
+
 ## Implementation Notes
 
 ## Spec Change Log

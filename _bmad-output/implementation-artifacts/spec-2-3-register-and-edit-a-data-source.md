@@ -69,6 +69,19 @@ context:
 - Given an Admin with `data_sources.manage`, when they register and edit a Data Source, then it is stored under RLS with a rising `revision`, audited in the same transaction, listed with the right badge, and a blocked host or stale revision is refused as described.
 - Given `bin/tools composer ci:check` and `bin/tools npm run build`, when run, then both pass, including the Docker-backed `Database` suite.
 
+### Review Findings
+
+Code review 2026-10-12 (four layers): 0 decision-needed, 4 patch, 2 defer, rest rejected. No acceptance criterion is violated.
+
+- [x] [Review][Patch] The form trimmed the Base URL before the blur check and the save, so the server's `whitespace` refusal was unreachable and the spec's "nothing but the name is trimmed" was broken [resources/js/pages/admin/DataSourceForm.vue] — the Base URL is sent as typed
+- [x] [Review][Patch] Default-header limits (25 headers, 128-char name, 2048-char value, non-list) were not pinned [tests/Database/DataSourcesTest.php] — dataset rows plus a boundary-accepting test
+- [x] [Review][Patch] A server header error was never tested when a blank row is dropped from the payload [tests/js/data-sources.test.ts] — the error and focus land on the visible offending row
+- [x] [Review][Patch] The `?updated=` return to the list was untested [tests/js/data-sources.test.ts]
+- [x] [Review][Defer] The blur check swallows 429, 5xx and offline failures without a signal and has no client test — deferred: the server enforces the allowlist on save
+- [x] [Review][Defer] `data_sources_name_check` omits some invisible code points the validator rejects (U+00AD, U+061C, U+180E, U+2066-2069) — deferred: only reachable by a write path that skips the validator
+
+**Rejected:** count caption shown only while searching (no explicit AC wording beyond the list sentence) · `check-url` has its own throttle bucket (a triage-log decision) · field-shape errors outrank a stale revision on PUT (422 before 409 is defensible) · partial PUT erases omitted fields (PUT is a full replace with a required revision) · percent-encoded control bytes in a path (curl sends them literally; nothing decodes them) · credential-looking names such as `X-API-Key` accepted (Story 2.4's secret-header switch is the mitigation) · name and path omitted from the audit state (allowlisted fields by design) · shared unnamed `throttle:30,1` bucket (the same pattern as the groups and allowlist APIs) · `requireHttps` with no workspace row (read by RLS, a provisioned Workspace always has one) · stuck `leaving` flag after a failed visit, stale `replacing` flag, dead `AUTH_TYPES` constant, README layout, spec bookkeeping (cosmetic)
+
 ## Implementation Notes
 
 ## Spec Change Log

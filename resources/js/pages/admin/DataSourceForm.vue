@@ -500,7 +500,7 @@ function messageFor(
 
 async function checkUrl(): Promise<void> {
     checkController?.abort();
-    const url = form.base_url.trim();
+    const url = form.base_url;
 
     if (url === '') {
         errors.base_url = null;
@@ -683,7 +683,7 @@ function retentionPayload(): Pick<
 function payload(): DataSourceInput {
     return {
         name: form.name.trim(),
-        base_url: form.base_url.trim(),
+        base_url: form.base_url,
         ...(form.health_path.trim() !== ''
             ? { health_path: form.health_path.trim() }
             : {}),

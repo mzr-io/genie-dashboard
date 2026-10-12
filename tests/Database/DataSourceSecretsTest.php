@@ -378,6 +378,31 @@ it('refuses to save a secret while the platform key is unset or invalid, and sto
     'version zero' => [base64_encode(str_repeat('k', 32)), '0'],
 ]);
 
+it('refuses to save a secret on an edit while the platform key is unset: 503, nothing changed', function () {
+    $workspace = Cluster::workspace('Acme');
+    scAdmin($workspace);
+    $id = scCreate(['name' => 'Open'])->assertCreated()->json('data.data_source_id');
+    $audits = scAudits();
+
+    config(['dashflow.secrets.cred_public_key.value' => null]);
+
+    scUpdate($id, 1, scBearer())->assertStatus(503)->assertJsonPath('error.code', 'connector.secrets_not_configured');
+
+    expect(scSecrets())->toBe([])->and(scAudits())->toBe($audits);
+});
+
+it('throttles wrong passwords on an edit too: 429 with Retry-After', function () {
+    $workspace = Cluster::workspace('Acme');
+    scAdmin($workspace);
+    $id = scCreate(scBearer())->assertCreated()->json('data.data_source_id');
+
+    foreach (range(1, 6) as $_) {
+        scUpdate($id, 1, scBearer('new-'.SC_CANARY, ['confirm_password' => 'wrong']))->assertStatus(422);
+    }
+
+    scUpdate($id, 1, scBearer('new-'.SC_CANARY))->assertStatus(429)->assertHeader('Retry-After')->assertJsonStructure(['errors' => ['confirm_password']]);
+});
+
 it('answers a stale revision with 409 and changes no secret', function () {
     $workspace = Cluster::workspace('Acme');
     scAdmin($workspace);

@@ -84,6 +84,7 @@ it('adds a host: the port is resolved, the entry stored under the Workspace and 
     $id = $response->json('data.entry_id');
 
     expect($response->json('data'))->toMatchArray(['host' => 'api.example.com', 'scheme' => 'https', 'port' => 443, 'added_by' => 'Ada Admin'])
+        ->and($response->json('data.added_at'))->toMatch('/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/')
         ->and($response->json('meta.revision'))->toBe(1)
         ->and(halEntries())->toHaveCount(1)
         ->and(halEntries()[0])->toMatchArray(['id' => $id, 'workspace_id' => $workspace, 'host' => 'api.example.com', 'scheme' => 'https', 'port' => 443, 'added_by_membership_id' => $editor])

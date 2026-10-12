@@ -63,6 +63,18 @@ context:
 - Given an Admin with `settings.manage`, when they add and remove hosts, then the entries are stored under RLS, audited in the same transaction, and a stale list returns 409 with the fresh state.
 - Given `bin/tools composer ci:check` and `bin/tools npm run build`, when run, then both pass, including the Docker-backed `Database` suite.
 
+### Review Findings
+
+Code review 2026-10-12 (Blind Hunter, Edge Case Hunter, Verification Gap, Acceptance Auditor): 0 decision-needed, 3 patch, 2 defer, 12 rejected. No acceptance criterion or I/O matrix row is violated.
+
+- [x] [Review][Patch] The write throttle (`throttle:30,1` on add and remove) was not verified [tests/Architecture/AdminRoutesTest.php] — asserted in the route map test
+- [x] [Review][Patch] The 409 reset of sort and search was not asserted [tests/js/host-allowlist.test.ts] — new test sorts and searches first, then checks `aria-sort` and the search box after a removal 409
+- [x] [Review][Patch] The `added_at` ISO 8601 UTC format was not asserted server-side [tests/Database/HostAllowlistTest.php] — asserted in the add test
+- [x] [Review][Defer] Story 2.2 must define whether an entry's scheme restricts outbound calls (uniqueness ignores scheme, scheme drives only the "Not encrypted" cue) [ManageHostAllowlist.php] — deferred: Story 2.2 owns the guard that reads the table
+- [x] [Review][Defer] `BlockedAddress` also omits 192.88.99.0/24, 100::/64, ::ffff:0:0:0/96 (SIIT) and 2001:10::/28 [Contracts/BlockedAddress.php] — deferred: extends the documentation-range note already deferred to Story 2.2
+
+**Rejected:** audit of refused SSRF-type entries (spec: 422 writes nothing; egress denials are Story 2.2) · private literals refused while the epic allows operator grants (the spec says 2.2's classifier supersedes) · 403 inside the add form (rejected in the triage log, recoverable) · stale revision after a failed follow-up load (self-corrects through Retry or a 409) · member-name lookup failing after commit (same-DB read) · double-click on remove (dialog closes on confirm; a second DELETE only yields a 404 toast) · UTC `Z` suffix (app timezone is UTC, `timestamp(0)` naive) · server/client reason-copy drift and server English strings (cosmetic, already rejected) · `host_allowlist_versions.id` generated column (documented harness accommodation) · extra platform kernel additions (`AuditField::Host`, trim exemptions) needed for the criteria · list endpoint without `failedValidation` override (the 422 direction test exists and passes) · unbounded list, `maxlength=300`, search not matching port, `FOR UPDATE` only tested sequentially (all already triaged or spec-forbidden cap).
+
 ## Implementation Notes
 
 ## Spec Change Log

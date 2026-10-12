@@ -549,6 +549,40 @@ describe('Host allowlist page', () => {
         ).toBe(true);
     });
 
+    it('resets the sort and the search to the default query when a removal meets a stale list (409)', async () => {
+        vi.useFakeTimers();
+        replies = [ok(list([entry()], { revision: 1 }))];
+        await mountPage();
+
+        replies.push(ok(list([entry()], { revision: 1 })));
+        await click($('[data-column="port"]'));
+        replies.push(ok(list([entry()], { revision: 1 })));
+        await type('[data-test="search"]', 'api');
+        await vi.advanceTimersByTimeAsync(400);
+        await flushPromises();
+        expect($$('thead th')[2].getAttribute('aria-sort')).toBe('ascending');
+
+        replies.push(ok({ data: [] }));
+        await click($('[data-test="remove-host"]'));
+        replies.push(
+            refused(409, {
+                error: { code: 'connector.revision_conflict' },
+                current: list([entry()], { revision: 2 }),
+            }),
+        );
+        await click(
+            $$('[role="alertdialog"] button').find((b) =>
+                b.textContent?.includes('Remove api.example.com'),
+            ) ?? null,
+        );
+
+        expect($$('thead th')[0].getAttribute('aria-sort')).toBe('ascending');
+        expect($$('thead th')[2].getAttribute('aria-sort')).toBe('none');
+        expect(
+            ($('[data-test="search"]') as HTMLInputElement | null)?.value,
+        ).toBe('');
+    });
+
     it('refreshes with a message when the entry is already gone (404)', async () => {
         replies = [ok(list([entry()]))];
         await mountPage();

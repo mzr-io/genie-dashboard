@@ -155,9 +155,8 @@ final class CurlEgressTransport implements EgressTransport
         } else {
             $options[CURLOPT_CUSTOMREQUEST] = $method;
 
-            if ($body !== null) {
-                $options[CURLOPT_POSTFIELDS] = $body;
-            }
+            // A POST without a body still sends `Content-Length: 0`; without POSTFIELDS curl sends none.
+            $options[CURLOPT_POSTFIELDS] = $body ?? '';
         }
 
         foreach ([CURLOPT_CONNECTTIMEOUT => 'connect_timeout', CURLOPT_TIMEOUT => 'total_timeout'] as $option => $name) {

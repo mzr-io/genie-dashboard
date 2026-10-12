@@ -19,8 +19,19 @@ it('returns no address for a failed or empty lookup', function () {
     expect(DnsHostResolver::addresses(false))->toBe([])->and(DnsHostResolver::addresses([]))->toBe([]);
 });
 
-it('asks for both A and AAAA records', function () {
-    expect(file_get_contents(dirname(__DIR__, 2).'/app/Modules/Connector/Infrastructure/DnsHostResolver.php'))->toContain('DNS_A | DNS_AAAA');
+it('asks the resolver for both A and AAAA records and returns the merged answer', function () {
+    $asked = [];
+    $resolver = new DnsHostResolver(function (string $name, int $type) use (&$asked): array {
+        $asked = [$name, $type];
+
+        return [
+            ['type' => 'A', 'ip' => '93.184.216.34'],
+            ['type' => 'AAAA', 'ipv6' => 'fd00:ec2::254'],
+        ];
+    });
+
+    expect($resolver->resolve('a.example'))->toBe(['93.184.216.34', 'fd00:ec2::254'])
+        ->and($asked)->toBe(['a.example', DNS_A | DNS_AAAA]);
 });
 
 it('keeps only the final response\'s headers when interim and redirect header blocks come first', function () {

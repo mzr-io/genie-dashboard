@@ -24,7 +24,7 @@ final class BlockedAddress
         // Cloud metadata outside link-local: Alibaba Cloud (inside CGNAT, which is grantable) and the Azure wireserver (public space).
         '100.100.100.200/32', '168.63.129.16/32',
         // IPv6: ::/96 holds the unspecified and loopback addresses and the deprecated IPv4-compatible range.
-        '::/96', '::ffff:0:0/96', '64:ff9b::/96', '64:ff9b:1::/48', '100::/64', '2001::/32', '2001:2::/48',
+        '::/96', '::ffff:0:0/96', '::ffff:0:0:0/96', '64:ff9b::/96', '64:ff9b:1::/48', '100::/64', '2001::/32', '2001:2::/48', '2001:10::/28', '2001:20::/28',
         '2001:db8::/32', '2002::/16', '3fff::/20', 'fd00:ec2::254/128', 'fe80::/10', 'fec0::/10', 'ff00::/8',
     ];
 

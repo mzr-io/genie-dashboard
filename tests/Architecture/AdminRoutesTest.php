@@ -133,6 +133,9 @@ it('maps the Host allowlist page and API routes to settings.manage and no other 
             ->and($route->uri())->toBe($uri)
             ->and(ShellNavigation::ADMIN_API_ROUTES[$name])->toBe(Permission::SettingsManage)
             ->and(adminMiddlewareKeys($route))->toBe([null]);
+
+        // The writes are throttled; the reads are not.
+        expect(in_array('throttle:30,1', $route->gatherMiddleware(), true))->toBe($method !== 'GET', $name);
     }
 
     $page = Router::getRoutes()->getByName('admin.settings.host-allowlist');

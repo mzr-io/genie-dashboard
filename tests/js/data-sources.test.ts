@@ -382,6 +382,25 @@ describe('Data sources list', () => {
             'Changes saved.',
         );
     });
+
+    it('highlights and focuses the row named by ?updated= after an edit', async () => {
+        window.history.replaceState({}, '', '/admin/data-sources?updated=ds-2');
+        replies = [
+            ok(
+                list([
+                    source(),
+                    source({ data_source_id: 'ds-2', name: 'Zeta' }),
+                ]),
+            ),
+        ];
+        await mountPage(DataSources);
+        await flushPromises();
+
+        const row = $('[data-row-key="ds-2"]');
+        expect(row?.getAttribute('data-highlighted')).toBe('true');
+        expect(document.activeElement).toBe(row);
+        expect(window.location.search).toBe('');
+    });
 });
 
 describe('Data sources list: untrusted query', () => {
@@ -613,6 +632,35 @@ describe('Data source form: register', () => {
         );
         expect(visit).not.toHaveBeenCalled();
         expect((input as HTMLInputElement).value).toBe('caf\u00e9');
+    });
+
+    it('puts a header error on the visible row when a blank row is dropped from the payload', async () => {
+        await mountPage(DataSourceForm);
+        replies = [
+            refused(422, {
+                errors: { 'headers.0.value': ['Bad value.'] },
+                reasons: { 'headers.0.value': 'header-value-invalid' },
+            }),
+        ];
+
+        await type('[data-test="name"]', 'Sales API');
+        await type('[data-test="base-url"]', 'https://api.example.com');
+        await click($('[data-test="add-header"]'));
+        await click($('[data-test="add-header"]'));
+
+        const names = $$('[data-test="header-name"]') as HTMLInputElement[];
+        const values = $$('[data-test="header-value"]') as HTMLInputElement[];
+        names[1].value = 'X-Team';
+        names[1].dispatchEvent(new Event('input', { bubbles: true }));
+        values[1].value = 'caf\u00e9';
+        values[1].dispatchEvent(new Event('input', { bubbles: true }));
+        await flushPromises();
+        await click(save());
+
+        const after = $$('[data-test="header-value"]') as HTMLInputElement[];
+        expect(after[0].getAttribute('aria-invalid')).not.toBe('true');
+        expect(after[1].getAttribute('aria-invalid')).toBe('true');
+        expect(document.activeElement).toBe(after[1]);
     });
 
     it('lists two or more server errors in a summary and shows a ceiling message from the server', async () => {

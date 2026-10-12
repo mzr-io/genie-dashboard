@@ -66,6 +66,19 @@ context:
 - Given an operator grant for one Workspace, when the guard evaluates a private-range host for that Workspace and another, then only the first is allowed, and an undeniable class is denied whatever the grants.
 - Given `bin/tools composer ci:check` and `bin/tools npm run build`, when run, then both pass, including the Docker-backed `Database` suite.
 
+### Review Findings
+
+Code review 2026-10-12 (four layers): 0 decision-needed, 4 patch, 2 defer, rest rejected. No acceptance criterion is violated.
+
+- [x] [Review][Patch] The real `DnsHostResolver` was never run by a test, so the A+AAAA mixed-answer rule rested on a source-text assertion [Infrastructure/DnsHostResolver.php] — the lookup is injectable and a test asserts the type mask and the merged answer
+- [x] [Review][Patch] `BlockedAddress` did not cover SIIT `::ffff:0:0:0/96` and ORCHID `2001:10::/28`, `2001:20::/28` [Contracts/BlockedAddress.php] — added to the undeniable list with class tests (192.88.99.0/24 and 100::/64 were already present; closes the Story 2.1 deferral)
+- [x] [Review][Patch] A POST without a body sent no `Content-Length` (`CURLOPT_POSTFIELDS` unset) [Infrastructure/CurlEgressTransport.php] — an empty body is sent
+- [x] [Review][Patch] Test pinning for the above [tests/Unit/BlockedAddressClassTest.php, tests/Unit/DnsHostResolverTest.php]
+- [x] [Review][Defer] `egress_grants` unique index, CHECKs and the 23505 arm are never hit by a direct insert — deferred: the application pre-check covers the single-writer path and the commands are operator-only
+- [x] [Review][Defer] The egress bypass scanner matches a fixed call list and exempts `HealthChecker.php` as a whole file — deferred: add variable-URL `file_get_contents`, `SoapClient`, aliased `Http` and a line-level exemption when the scanner is next touched
+
+**Rejected:** `unresolvable` denials not counted toward the SSRF alert (a deliberate, documented triage choice so a DNS outage does not page as an attack; overrule in product review if wanted) · `decide(record: false)` for the dry-run check command (README-documented, defensible) · `app` loses INSERT/UPDATE on `egress_grants` (security-positive) · refusing every cross-origin redirect satisfies the credential-stripping criterion · raw exception on a bad `DASHFLOW_EGRESS_DEPLOYMENT_CIDRS` (loud misconfiguration failure, no egress happens) · `host_not_allowlisted` reused for a private address without a grant and `messageKey` mapping (the spec names exactly two message keys) · no response-size ceiling (Story 2.6) · timeouts are set · audit failure swallowed so the denial is still returned · `final class Audit` un-finalized for mocking, `EgressSettings` concrete dependency, README runbook gaps, unit-coverage nits, no-TTY password prompt, numeric header names (cosmetic)
+
 ## Implementation Notes
 
 ## Spec Change Log
