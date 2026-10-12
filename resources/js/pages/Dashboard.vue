@@ -1529,7 +1529,7 @@ function startPolling(): void {
     }
 
     pollTimer = setInterval(() => {
-        if (!offline.value) {
+        if (!offline.value && !paused.value) {
             void loadResults({ background: true });
         }
     }, seconds * 1000);
@@ -1540,8 +1540,11 @@ function onSocketState(state: RealtimeState): void {
         everConnected = true;
         setRealtimeDown(false);
         stopPolling();
-        // What changed while the socket was away is fetched once.
-        void loadResults({ background: true });
+
+        // What changed while the socket was away is fetched once (not while paused: Resume fetches everything).
+        if (!paused.value) {
+            void loadResults({ background: true });
+        }
 
         return;
     }
@@ -1554,6 +1557,10 @@ function onSocketState(state: RealtimeState): void {
 }
 
 function onLiveEvent(_event: string, data: unknown): void {
+    if (paused.value) {
+        return;
+    }
+
     const payload = data as { block_id?: string; result_etag?: string };
 
     if (
@@ -1624,9 +1631,51 @@ function connectLive(): void {
     realtime.connect();
 }
 
+// ---- Pause live updates (Story 4.14) ---------------------------------------------------------------------------------------------------------
+// While paused no poll, push-triggered refetch or reconnect refetch is applied, so values do not change under the reader. The refresh button, layout
+// commands and (Story 4.15) period changes still fetch. Resume refreshes at once. The state lives in the page: leaving the dashboard ends it.
+const paused = ref(false);
+const liveItems = computed(() =>
+    (dashboard.value?.items ?? []).filter((i) => i.is_live && i.state === 'ok'),
+);
+
+// The oldest Data-as-of Time of the Live Blocks; a Stale Block counts with the time of its last data.
+const oldestAsOf = computed<string | null>(() => {
+    const times = liveItems.value
+        .map((i) => {
+            const r = results.value[i.item_id];
+
+            return r?.data_as_of ?? r?.last_success_at ?? null;
+        })
+        .filter((at): at is string => at !== null)
+        .sort();
+
+    return times[0] ?? null;
+});
+
+const freshnessLine = computed<string | null>(() => {
+    if (oldestAsOf.value === null) {
+        return null;
+    }
+
+    const time = formatDateTime(oldestAsOf.value, { timeStyle: 'short' });
+
+    return paused.value ? t('paused', { time }) : labels.dataAsOf(time);
+});
+
+function togglePause(): void {
+    paused.value = !paused.value;
+
+    if (!paused.value) {
+        // Paused Blocks refresh immediately.
+        polls = 0;
+        void loadResults();
+    }
+}
+
 // The connection came back: what changed meanwhile is fetched once, in place.
 watch(offline, (isOffline, wasOffline) => {
-    if (wasOffline && !isOffline) {
+    if (wasOffline && !isOffline && !paused.value) {
         void loadResults({ background: true });
     }
 });
@@ -1772,6 +1821,23 @@ onBeforeUnmount(() => {
                     {{ labels.addBlock }}
                 </Button>
                 <div v-if="!editing" class="hidden items-center gap-2 md:flex">
+                    <template v-if="liveItems.length > 0">
+                        <span
+                            v-if="freshnessLine !== null"
+                            class="type-caption text-text-secondary"
+                            data-slot="freshness-line"
+                            >{{ freshnessLine }}</span
+                        >
+                        <Button
+                            type="button"
+                            variant="secondary"
+                            :aria-pressed="paused"
+                            data-slot="live-updates-toggle"
+                            @click="togglePause"
+                        >
+                            {{ paused ? labels.resumeLive : labels.pauseLive }}
+                        </Button>
+                    </template>
                     <Button
                         type="button"
                         variant="secondary"

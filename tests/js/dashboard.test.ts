@@ -2225,3 +2225,84 @@ describe('Live updates', () => {
         expect(offline.value).toBe(false);
     });
 });
+
+describe('Pause live updates', () => {
+    const withLive = (isLive: boolean): Dashboard =>
+        ({
+            ...dashboard([item({ is_live: isLive })]),
+            live: { poll_interval_seconds: 30, realtime: null },
+        }) as Dashboard;
+
+    const resultCalls = () =>
+        (
+            fetch as unknown as { mock: { calls: Array<[string]> } }
+        ).mock.calls.filter((call) => call[0].includes('/results'));
+
+    afterEach(() => {
+        useAddBlocksPanel().hide();
+        vi.useRealTimers();
+    });
+
+    it('shows no toggle when no Block is Live', async () => {
+        replies = [ok(withLive(false)), resultsOf([result()])];
+
+        await mountPage();
+
+        expect(
+            document.querySelector('[data-slot="live-updates-toggle"]'),
+        ).toBeNull();
+        expect(
+            document.querySelector('[data-slot="freshness-line"]'),
+        ).toBeNull();
+    });
+
+    it('pauses polling, keeps the values, says as of when, and refreshes at once on resume', async () => {
+        vi.useFakeTimers({
+            toFake: [
+                'setTimeout',
+                'clearTimeout',
+                'setInterval',
+                'clearInterval',
+            ],
+        });
+        replies = [
+            ok(withLive(true)),
+            resultsOf([result()]),
+            resultsOf([result({ result_etag: 'e-2' })]),
+            resultsOf([result({ result_etag: 'e-3' })]),
+        ];
+
+        const base = resultCalls().length;
+
+        await mountPage();
+
+        const toggle = document.querySelector<HTMLElement>(
+            '[data-slot="live-updates-toggle"]',
+        )!;
+        const line = () =>
+            document.querySelector('[data-slot="freshness-line"]')?.textContent;
+
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+        expect(toggle.textContent).toContain('Pause live updates');
+        expect(line()).toContain('Data as of');
+
+        toggle.click();
+        await flushPromises();
+
+        expect(toggle.getAttribute('aria-pressed')).toBe('true');
+        expect(toggle.textContent).toContain('Resume live updates');
+        expect(line()).toContain('Paused');
+
+        await vi.advanceTimersByTimeAsync(120_000);
+        await flushPromises();
+
+        expect(resultCalls()).toHaveLength(base + 1);
+
+        toggle.click();
+        await flushPromises();
+
+        expect(resultCalls()).toHaveLength(base + 2);
+        expect(toggle.getAttribute('aria-pressed')).toBe('false');
+        expect(line()).toContain('Data as of');
+    });
+});

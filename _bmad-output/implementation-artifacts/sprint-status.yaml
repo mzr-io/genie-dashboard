@@ -122,7 +122,7 @@ development_status:
   4-11-move-and-resize-blocks-in-edit-layout-mode: review
   4-12-move-resize-reorder-and-shortcut-without-drag-and-drop: review
   4-13-receive-live-updates-through-reverb-with-a-polling-fallback: review
-  4-14-pause-live-updates-and-see-the-oldest-data-as-of: backlog
+  4-14-pause-live-updates-and-see-the-oldest-data-as-of: review
   4-15-set-a-dashboard-date-range-and-block-period-selectors: backlog
   4-16-manage-my-dashboards-and-switch-between-them: backlog
   4-17-use-the-dashboard-on-any-screen-size: backlog
