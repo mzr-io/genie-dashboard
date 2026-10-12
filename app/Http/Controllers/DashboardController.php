@@ -4,9 +4,11 @@ namespace App\Http\Controllers;
 
 use App\Http\Controllers\Concerns\ResolvesMembership;
 use App\Modules\Access\Contracts\MembershipLookup;
+use App\Modules\Dashboards\Contracts\BlockNotAvailable;
 use App\Modules\Dashboards\Contracts\DashboardNotFound;
 use App\Modules\Dashboards\Contracts\Dashboards;
 use App\Modules\Dashboards\Contracts\ErrorCode;
+use App\Modules\Dashboards\Contracts\ItemLocked;
 use App\Modules\Dashboards\Contracts\ItemNotFound;
 use App\Modules\Dashboards\Contracts\RevisionConflict;
 use App\Modules\Results\Contracts\RefreshOutcome;
@@ -60,6 +62,61 @@ final class DashboardController extends Controller
         }
 
         return response()->json(['data' => ['items' => $items]], 200, ['Cache-Control' => 'no-store, private']);
+    }
+
+    /**
+     * `AddItem` (Story 4.9, AD-14): `{block_id, expected_revision}`. 201 with the item when it was placed, 200 with the item that was already there
+     * (idempotent). A Block the member cannot see is a 404, one with no published version a 422, a stale revision a 409; nothing is placed then.
+     */
+    public function addBlock(Request $request, string $dashboard): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+        $data = $request->validate([
+            'block_id' => ['required', 'string', 'uuid'],
+            'expected_revision' => ['required', 'integer', 'min:0'],
+        ]);
+
+        try {
+            $change = $this->dashboards->addItem($workspaceId, $membershipId, $dashboard, $data['block_id'], (int) $data['expected_revision']);
+        } catch (DashboardNotFound) {
+            abort(404);
+        } catch (BlockNotAvailable $e) {
+            if ($e->reason === BlockNotAvailable::NOT_FOUND) {
+                abort(404);
+            }
+
+            return $this->error($request, ErrorCode::BlockUnavailable->value, 422, 'This block is no longer available.', []);
+        } catch (RevisionConflict $e) {
+            return $this->error($request, ErrorCode::RevisionConflict->value, 409, 'The dashboard has changed.', ['revision' => $e->currentRevision]);
+        }
+
+        return response()->json(
+            ['data' => ['item' => $change->item, 'revision' => $change->revision, 'next_free_slot' => $change->nextFreeSlot]],
+            $change->changed ? 201 : 200,
+            ['Cache-Control' => 'no-store, private'],
+        );
+    }
+
+    /**
+     * `RemoveItem` (Story 4.9, AD-14): by Block, `{expected_revision}`. A Mandatory item is a 403, a stale revision a 409, and a Block that is not on
+     * the dashboard a no-op 200.
+     */
+    public function removeBlock(Request $request, string $dashboard, string $block): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+        $data = $request->validate(['expected_revision' => ['required', 'integer', 'min:0']]);
+
+        try {
+            $change = $this->dashboards->removeItem($workspaceId, $membershipId, $dashboard, $block, (int) $data['expected_revision']);
+        } catch (DashboardNotFound) {
+            abort(404);
+        } catch (ItemLocked) {
+            return $this->error($request, ErrorCode::ItemLocked->value, 403, 'Required by your admin.', []);
+        } catch (RevisionConflict $e) {
+            return $this->error($request, ErrorCode::RevisionConflict->value, 409, 'The dashboard has changed.', ['revision' => $e->currentRevision]);
+        }
+
+        return response()->json(['data' => ['block_id' => strtolower($block), 'removed' => $change->changed, 'revision' => $change->revision]], 200, ['Cache-Control' => 'no-store, private']);
     }
 
     /**

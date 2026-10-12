@@ -75,6 +75,12 @@ final class ReadBlockCards implements BlockCards
         return $cards;
     }
 
+    public function exists(string $workspaceId, string $blockId): bool
+    {
+        return Str::isUuid($blockId)
+            && DB::selectOne('select 1 as present from blocks where workspace_id = ? and id = ?', [$workspaceId, strtolower($blockId)]) !== null;
+    }
+
     /** @param  array<string, mixed>  $config */
     private function dataSourceName(string $workspaceId, array $config): ?string
     {

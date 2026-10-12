@@ -396,3 +396,139 @@ it('answers 404 rather than a made-up value when the shaper cannot be fed (a pla
 
     $this->getJson("/api/v1/blocks/{$block}/sample", DB4_HEADERS)->assertNotFound();
 });
+
+// ---- Story 4.9: AddItem and RemoveItem -------------------------------------------------------------------------------------------------------------
+
+function db9Url(string $dashboard, string $tail = 'blocks'): string
+{
+    return "/api/v1/dashboards/{$dashboard}/{$tail}";
+}
+
+function db9Revision(string $dashboard): int
+{
+    return (int) Cluster::rows(Cluster::superuser(), 'select revision from dashboards where id = ?', [$dashboard])[0]['revision'];
+}
+
+function db9Setup(): array
+{
+    $workspace = Cluster::workspace('Acme');
+    [, $membership] = dbMember($workspace, 'ada@example.test');
+    dbSignIn('ada@example.test');
+
+    return [$workspace, $membership, dbOverview()['dashboard_id']];
+}
+
+it('places a Block at the first free position at its default size, bumps the revision, emits the change and moves nothing', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $existing = dbBlock($workspace, 'First');
+    $kept = dbItem($workspace, $dashboard, $existing, ['col' => 0, 'row' => 0, 'width' => 3, 'height' => 'small']);
+    $new = dbBlock($workspace, 'Second', ['sizes' => ['min_width' => 3, 'max_width' => 12, 'width' => 6, 'min_height' => 'small', 'max_height' => 'large', 'height' => 'medium']]);
+
+    $response = $this->postJson(db9Url($dashboard), ['block_id' => $new, 'expected_revision' => 0], DB4_HEADERS)->assertCreated();
+    $item = $response->json('data.item');
+
+    expect($item['block_id'])->toBe($new)
+        ->and($item['geometry'])->toBe(['col' => 3, 'row' => 0, 'width' => 6, 'height' => 'medium'])
+        ->and($item['state'])->toBe('ok')->and($item['block']['name'])->toBe('Second')
+        ->and($response->json('data.revision'))->toBe(1)
+        ->and(db9Revision($dashboard))->toBe(1)
+        ->and(Cluster::rows(Cluster::superuser(), 'select col, row, width from dashboard_items where id = ?', [$kept])[0])->toBe(['col' => 0, 'row' => 0, 'width' => 3]);
+
+    $event = Cluster::rows(Cluster::superuser(), "select data from outbox_events where type = 'dashboards.dashboard.changed'");
+
+    expect($event)->toHaveCount(1)
+        ->and(json_decode($event[0]['data'], true))->toMatchArray(['command' => 'add_item', 'dashboard_id' => $dashboard, 'item_id' => $item['item_id'], 'revision' => 1]);
+});
+
+it('is idempotent per Block: the same add again returns the item, adds no row and is not a conflict', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $block = dbBlock($workspace);
+
+    $first = $this->postJson(db9Url($dashboard), ['block_id' => $block, 'expected_revision' => 0], DB4_HEADERS)->assertCreated()->json('data.item.item_id');
+    $again = $this->postJson(db9Url($dashboard), ['block_id' => $block, 'expected_revision' => 0], DB4_HEADERS)->assertOk();
+
+    expect($again->json('data.item.item_id'))->toBe($first)
+        ->and($again->json('data.revision'))->toBe(1)
+        ->and(Cluster::rows(Cluster::superuser(), 'select count(*) as n from dashboard_items')[0]['n'])->toBe(1)
+        ->and(Cluster::rows(Cluster::superuser(), "select count(*) as n from outbox_events where type = 'dashboards.dashboard.changed'")[0]['n'])->toBe(1);
+});
+
+it('refuses a stale revision with 409, an invisible or unknown Block with 404 and an unpublished one with 422, placing nothing', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $visible = dbBlock($workspace);
+    $hidden = dbBlock($workspace, 'Hidden', visible: false);
+    $unpublished = dbBlock($workspace, 'Unpublished', published: false);
+
+    $conflict = $this->postJson(db9Url($dashboard), ['block_id' => $visible, 'expected_revision' => 5], DB4_HEADERS)->assertStatus(409);
+
+    expect($conflict->json('error.code'))->toBe('dashboards.revision_conflict')->and($conflict->json('error.revision'))->toBe(0);
+
+    $this->postJson(db9Url($dashboard), ['block_id' => $hidden, 'expected_revision' => 0], DB4_HEADERS)->assertNotFound();
+    $this->postJson(db9Url($dashboard), ['block_id' => (string) Str::uuid7(), 'expected_revision' => 0], DB4_HEADERS)->assertNotFound();
+
+    $closed = $this->postJson(db9Url($dashboard), ['block_id' => $unpublished, 'expected_revision' => 0], DB4_HEADERS)->assertStatus(422);
+
+    expect($closed->json('error.code'))->toBe('dashboards.block_unavailable')
+        ->and(Cluster::rows(Cluster::superuser(), 'select count(*) as n from dashboard_items')[0]['n'])->toBe(0)
+        ->and(db9Revision($dashboard))->toBe(0);
+});
+
+it('removes by Block with the revision, emits the change, and a repeat is a no-op', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $block = dbBlock($workspace);
+    $other = dbBlock($workspace, 'Other');
+    dbItem($workspace, $dashboard, $block);
+    dbItem($workspace, $dashboard, $other, ['col' => 3]);
+
+    $response = $this->deleteJson(db9Url($dashboard, "blocks/{$block}"), ['expected_revision' => 0], DB4_HEADERS)->assertOk();
+
+    expect($response->json('data'))->toBe(['block_id' => $block, 'removed' => true, 'revision' => 1])
+        ->and(Cluster::rows(Cluster::superuser(), 'select block_id from dashboard_items')[0]['block_id'])->toBe($other);
+
+    $again = $this->deleteJson(db9Url($dashboard, "blocks/{$block}"), ['expected_revision' => 0], DB4_HEADERS)->assertOk();
+
+    expect($again->json('data'))->toBe(['block_id' => $block, 'removed' => false, 'revision' => 1])
+        ->and(Cluster::rows(Cluster::superuser(), "select count(*) as n from outbox_events where type = 'dashboards.dashboard.changed'")[0]['n'])->toBe(1);
+});
+
+it('refuses removing with a stale revision (409) and removing a Mandatory item (403), leaving the row', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $block = dbBlock($workspace);
+    $locked = dbBlock($workspace, 'Locked');
+    dbItem($workspace, $dashboard, $block);
+    dbItem($workspace, $dashboard, $locked, ['col' => 3, 'mandatory' => 'true']);
+
+    $this->deleteJson(db9Url($dashboard, "blocks/{$block}"), ['expected_revision' => 9], DB4_HEADERS)->assertStatus(409)->assertJsonPath('error.revision', 0);
+
+    $forbidden = $this->deleteJson(db9Url($dashboard, "blocks/{$locked}"), ['expected_revision' => 0], DB4_HEADERS)->assertForbidden();
+
+    expect($forbidden->json('error.code'))->toBe('dashboards.item_locked')
+        ->and(Cluster::rows(Cluster::superuser(), 'select count(*) as n from dashboard_items')[0]['n'])->toBe(2)
+        ->and(db9Revision($dashboard))->toBe(0);
+});
+
+it('keeps DELETE away from the web role: items go only through the definer function, scoped to the Workspace and dashboard', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $block = dbBlock($workspace);
+    $item = dbItem($workspace, $dashboard, $block);
+
+    expect(Cluster::rows(Cluster::superuser(), "select has_table_privilege('app', 'public.dashboard_items', 'DELETE') as p")[0]['p'])->toBeFalse()
+        ->and(fn () => Cluster::inWorkspace(Cluster::directApp(), $workspace, fn ($pdo) => $pdo->exec('DELETE FROM dashboard_items')))->toThrow(PDOException::class, 'permission denied');
+
+    // Another dashboard's id, or no Workspace context, removes nothing.
+    $foreign = Cluster::seedDashboard($workspace);
+    $removed = Cluster::inWorkspace(Cluster::directApp(), $workspace, fn ($pdo) => Cluster::rows($pdo, 'select dashboards_remove_item(?::uuid, ?::uuid) as r', [$foreign, $item])[0]['r']);
+
+    expect($removed)->toBeFalse()
+        ->and(Cluster::rows(Cluster::superuser(), 'select count(*) as n from dashboard_items where id = ?', [$item])[0]['n'])->toBe(1)
+        ->and(fn () => Cluster::rows(Cluster::directApp(), 'select dashboards_remove_item(?::uuid, ?::uuid)', [$dashboard, $item]))->toThrow(PDOException::class);
+});
+
+it('answers 404 for another member\'s dashboard on add and remove', function () {
+    [$workspace] = db9Setup();
+    $theirs = Cluster::seedDashboard($workspace);
+    $block = dbBlock($workspace);
+
+    $this->postJson(db9Url($theirs), ['block_id' => $block, 'expected_revision' => 0], DB4_HEADERS)->assertNotFound();
+    $this->deleteJson(db9Url($theirs, "blocks/{$block}"), ['expected_revision' => 0], DB4_HEADERS)->assertNotFound();
+});

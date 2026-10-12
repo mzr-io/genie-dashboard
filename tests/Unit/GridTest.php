@@ -27,3 +27,36 @@ it('finds the first free slot, left to right then top to bottom, and falls below
         ->and(Grid::nextFreeSlot([$item(0, 0, 6, 'medium'), $item(6, 0, 6, 'small')], 6, 'small'))->toBe(['col' => 6, 'row' => 2])
         ->and(Grid::nextFreeSlot([$item(0, 0, 12, 'large')], 12, 'medium'))->toBe(['col' => 0, 'row' => 9]);
 });
+
+// Story 4.9: the conformance suite of the Layout kernel (deterministic, never overlapping, never moving what is placed).
+it('places a long run of Blocks without an overlap, one after another, whatever their sizes', function () {
+    $sizes = [[3, 'small'], [4, 'medium'], [6, 'small'], [3, 'large'], [12, 'small'], [8, 'medium'], [3, 'small'], [4, 'small'], [6, 'large'], [3, 'medium']];
+    $placed = [];
+
+    foreach (array_merge($sizes, $sizes) as [$width, $height]) {
+        $slot = Grid::nextFreeSlot($placed, $width, $height);
+        $new = ['col' => $slot['col'], 'row' => $slot['row'], 'width' => $width, 'height' => $height];
+
+        expect($new['col'] + $new['width'])->toBeLessThanOrEqual(Grid::COLUMNS);
+
+        foreach ($placed as $other) {
+            $overlap = $new['col'] < $other['col'] + $other['width'] && $other['col'] < $new['col'] + $new['width']
+                && $new['row'] < $other['row'] + Grid::HEIGHTS[$other['height']] && $other['row'] < $new['row'] + Grid::HEIGHTS[$new['height']];
+
+            expect($overlap)->toBeFalse();
+        }
+
+        $placed[] = $new;
+    }
+
+    expect($placed)->toHaveCount(20);
+});
+
+it('is deterministic and leaves the input alone', function () {
+    $items = [['col' => 0, 'row' => 0, 'width' => 6, 'height' => 'medium'], ['col' => 6, 'row' => 2, 'width' => 3, 'height' => 'small']];
+    $copy = $items;
+
+    expect(Grid::nextFreeSlot($items, 4, 'small'))->toBe(Grid::nextFreeSlot($items, 4, 'small'))
+        ->and($items)->toBe($copy)
+        ->and(Grid::clamp(11, 3, 12, 'large', 3, 6, 'small', 'medium'))->toBe(Grid::clamp(11, 3, 12, 'large', 3, 6, 'small', 'medium'));
+});

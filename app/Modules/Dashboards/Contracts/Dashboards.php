@@ -18,6 +18,26 @@ interface Dashboards
     public function find(string $workspaceId, string $membershipId, string $dashboardId): DashboardView;
 
     /**
+     * `AddItem` (AD-14, Story 4.9): idempotent per Block. A Block already on the dashboard is returned as it is, unchanged, whatever
+     * `expected_revision` says. Otherwise the dashboard is held `FOR UPDATE`, the revision checked, the Block placed at the first free position
+     * of the Layout kernel at its default size (no other item moves), the revision bumped and `dashboards.dashboard.changed` emitted.
+     *
+     * @throws DashboardNotFound
+     * @throws BlockNotAvailable
+     * @throws RevisionConflict
+     */
+    public function addItem(string $workspaceId, string $membershipId, string $dashboardId, string $blockId, int $expectedRevision): ItemChange;
+
+    /**
+     * `RemoveItem` (AD-14, Story 4.9): by Block. A Block that is not on the dashboard is a no-op (`changed` false). A Mandatory item is refused.
+     *
+     * @throws DashboardNotFound
+     * @throws ItemLocked
+     * @throws RevisionConflict
+     */
+    public function removeItem(string $workspaceId, string $membershipId, string $dashboardId, string $blockId, int $expectedRevision): ItemChange;
+
+    /**
      * `SetMinimized` (AD-14): holds the dashboard `FOR UPDATE`, checks `expected_revision`, sets the item's flag, bumps the revision and emits
      * `dashboards.dashboard.changed`. Setting the value it already has still bumps nothing and succeeds (idempotent).
      *

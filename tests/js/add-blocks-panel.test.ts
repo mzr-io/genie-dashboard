@@ -285,8 +285,7 @@ describe('Add-blocks Panel', () => {
         expect(add.getAttribute('aria-label')).toBe(
             'Add Revenue overview to dashboard',
         );
-        expect(add.getAttribute('aria-disabled')).toBe('true');
-        expect(add.getAttribute('title')).toBe('Adding is not enabled yet');
+        expect(add.getAttribute('aria-disabled')).toBeNull();
         expect(rows.map((r) => r.dataset.block)).toEqual(['b-1', 'b-2', 'b-3']);
     });
 
@@ -476,7 +475,7 @@ describe('Preview with sample values', () => {
         );
     });
 
-    it('shows + Add to dashboard aria-disabled with its reason, and Close preview and Esc collapse it, a second Esc closing the drawer', async () => {
+    it('shows + Add to dashboard in the preview, and Close preview and Esc collapse it, a second Esc closing the drawer', async () => {
         replies = [ok(THREE), sample(), sample()];
 
         await mountPanel();
@@ -484,8 +483,8 @@ describe('Preview with sample values', () => {
 
         const add = $('[data-slot=preview-add]')!;
 
-        expect(add.getAttribute('aria-disabled')).toBe('true');
-        expect(add.getAttribute('title')).toBe('Adding is not enabled yet');
+        expect(add.getAttribute('aria-disabled')).toBeNull();
+        expect(add.textContent).toContain('+ Add to dashboard');
 
         $('[data-slot=preview-close]')!.click();
         await flushPromises();
@@ -555,5 +554,71 @@ describe('catalogue helpers', () => {
 
     it('lists the categories that have a Block, sorted', () => {
         expect(categoriesOf(THREE)).toEqual(['Finance', 'People']);
+    });
+});
+
+describe('Add and remove from the panel', () => {
+    it('emits the whole Block for + Add and for × Remove, and does nothing while the Block is busy', async () => {
+        replies = [ok(THREE)];
+        wrapper = mount(AddBlocksPanel as never, {
+            props: { addedIds: ['b-1'], busyIds: ['b-2'] },
+            attachTo: document.body,
+            global: { plugins: [createCatalogue()] },
+        });
+        await flushPromises();
+        await flushPromises();
+
+        (
+            $('[data-block=b-1] [data-slot=row-remove]') as HTMLButtonElement
+        ).click();
+        (
+            $('[data-block=b-2] [data-slot=row-add]') as HTMLButtonElement
+        ).click();
+        (
+            $('[data-block=b-3] [data-slot=row-add]') as HTMLButtonElement
+        ).click();
+
+        const added = wrapper.emitted('add') ?? [];
+        const removed = wrapper.emitted('remove') ?? [];
+
+        expect(removed).toHaveLength(1);
+        expect((removed[0][0] as CatalogueBlock).block_id).toBe('b-1');
+        // b-2 is busy: aria-disabled, no event; b-3 goes.
+        expect(added).toHaveLength(1);
+        expect((added[0][0] as CatalogueBlock).block_id).toBe('b-3');
+        expect(
+            $('[data-block=b-2] [data-slot=row-add]')?.getAttribute(
+                'aria-disabled',
+            ),
+        ).toBe('true');
+    });
+
+    it('shows the free-space hint for a mouse or the keyboard and never for touch', async () => {
+        replies = [ok(THREE)];
+
+        await mountPanel();
+
+        const add = $(
+            '[data-block=b-1] [data-slot=row-add]',
+        ) as HTMLButtonElement;
+        const pointer = (type: string, pointerType: string) => {
+            const event = new Event(type, { bubbles: false });
+            Object.defineProperty(event, 'pointerType', { value: pointerType });
+            add.dispatchEvent(event);
+        };
+
+        pointer('pointerenter', 'touch');
+        expect(wrapper!.emitted('hint')).toBeUndefined();
+
+        pointer('pointerenter', 'mouse');
+        expect((wrapper!.emitted('hint') ?? []).length).toBe(1);
+
+        add.dispatchEvent(new Event('pointerleave'));
+        add.dispatchEvent(new FocusEvent('focus'));
+
+        const hints = wrapper!.emitted('hint') ?? [];
+
+        expect(hints.length).toBe(3);
+        expect(hints[1]).toEqual([null]);
     });
 });

@@ -4,6 +4,7 @@ import type { VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAddBlocksPanel } from '../../resources/js/composables/useAddBlocksPanel';
+import { useToasts } from '../../resources/js/stores/toasts';
 import { resetAnnouncer } from '../../resources/js/lib/announce';
 import type {
     Dashboard,
@@ -875,5 +876,295 @@ describe('Add-blocks Panel on the dashboard', () => {
         await flushPromises();
 
         expect($('[data-slot=add-blocks-drawer]')).toBeNull();
+    });
+});
+
+describe('Adding and removing Blocks', () => {
+    const wide = () =>
+        vi.stubGlobal('matchMedia', (query: string) => ({
+            matches: query.includes('min-width'),
+            media: query,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+        }));
+
+    const entry = (id: string, name: string) => ({
+        block_id: id,
+        name,
+        description: 'Support queue',
+        category: null,
+        type: 'kpi-card',
+        data_source: null,
+        refresh_interval: 60,
+        version: '1.0',
+        is_new: false,
+        default_size: { width: 3, height: 'small' },
+    });
+
+    const catalogue = (...entries: ReturnType<typeof entry>[]): Reply => ({
+        ok: true,
+        status: 200,
+        json: { data: entries, meta: { total: entries.length } },
+    });
+
+    const served = (blockId: string, itemId: string, revision = 1): Reply => ({
+        ok: true,
+        status: 201,
+        json: {
+            data: {
+                item: item({
+                    item_id: itemId,
+                    block_id: blockId,
+                    geometry: { col: 3, row: 0, width: 3, height: 'small' },
+                }),
+                revision,
+                next_free_slot: { col: 6, row: 0 },
+            },
+        },
+    });
+
+    const calls = (method: string) =>
+        (
+            fetch as unknown as {
+                mock: {
+                    calls: Array<[string, { method?: string; body?: string }]>;
+                };
+            }
+        ).mock.calls.filter((call) => (call[1]?.method ?? 'GET') === method);
+
+    async function openPanel(): Promise<void> {
+        ($('[data-slot=add-block]') as HTMLButtonElement).click();
+        await flushPromises();
+        await flushPromises();
+    }
+
+    afterEach(() => {
+        useAddBlocksPanel().hide();
+        useToasts().items.splice(0);
+        vi.unstubAllGlobals();
+    });
+
+    it('adds a Block with the revision, shows it at once, outlines it as Just added and offers Show me and Undo', async () => {
+        wide();
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([result()]),
+            catalogue(entry('b-9', 'Open tickets')),
+            served('b-9', 'i-9'),
+            resultsOf([result()]),
+        ];
+
+        await mountPage();
+        await openPanel();
+        (
+            $('[data-block=b-9] [data-slot=row-add]') as HTMLButtonElement
+        ).click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(JSON.parse(calls('POST')[0][1].body!)).toEqual({
+            block_id: 'b-9',
+            expected_revision: 0,
+        });
+        expect($('[data-item=i-9]')).not.toBeNull();
+        expect(
+            $('[data-item=i-9] [data-slot=block-card]')?.getAttribute(
+                'data-just-added',
+            ),
+        ).toBe('true');
+        expect($('[data-item=i-9] [data-slot=just-added]')?.textContent).toBe(
+            'Just added',
+        );
+        expect($('[data-block=b-9] [data-slot=row-added]')?.textContent).toBe(
+            '✓ Added',
+        );
+
+        const toast = useToasts().items[0];
+
+        expect(toast.kind).toBe('action');
+        expect(toast.message).toBe('Open tickets added · Show me · Undo');
+        expect(toast.actions.map((a) => a.label)).toEqual(['Show me', 'Undo']);
+    });
+
+    it('rolls back with msg:toast-rollback and reloads the layout on a stale revision, and adds nothing twice on a double click', async () => {
+        wide();
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([result()]),
+            catalogue(entry('b-9', 'Open tickets')),
+            {
+                ok: false,
+                status: 409,
+                json: {
+                    error: {
+                        code: 'dashboards.revision_conflict',
+                        revision: 3,
+                    },
+                },
+            },
+            ok({ ...dashboard([item()]), revision: 3 }),
+            resultsOf([result()]),
+        ];
+
+        await mountPage();
+        await openPanel();
+
+        const button = $(
+            '[data-block=b-9] [data-slot=row-add]',
+        ) as HTMLButtonElement;
+        button.click();
+        button.click();
+        await flushPromises();
+        await flushPromises();
+        await flushPromises();
+
+        expect(calls('POST')).toHaveLength(1);
+        expect($('[data-item="pending:b-9"]')).toBeNull();
+        expect($$('[data-slot=block-card]')).toHaveLength(1);
+
+        const toast = useToasts().items[0];
+
+        expect(toast.kind).toBe('rollback');
+        expect(toast.message).toBe(
+            en['toast-rollback'].replace('{block}', 'Open tickets'),
+        );
+    });
+
+    it('removes from the panel at once with no confirmation, keeps focus on the row and says so', async () => {
+        wide();
+        replies = [
+            ok(dashboard([item()])),
+            resultsOf([result()]),
+            catalogue(entry('b-1', 'Revenue overview')),
+            {
+                ok: true,
+                status: 200,
+                json: { data: { block_id: 'b-1', removed: true, revision: 1 } },
+            },
+        ];
+
+        await mountPage();
+        await openPanel();
+        (
+            $('[data-block=b-1] [data-slot=row-remove]') as HTMLButtonElement
+        ).click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(calls('DELETE')).toHaveLength(1);
+        expect(JSON.parse(calls('DELETE')[0][1].body!)).toEqual({
+            expected_revision: 0,
+        });
+        expect($('[data-slot=block-card]')).toBeNull();
+        expect($('[data-block=b-1] [data-slot=row-add]')).toBe(
+            document.activeElement,
+        );
+        expect(useToasts().items[0].message).toBe('Revenue overview removed');
+    });
+
+    it('puts the Block back with msg:toast-rollback when the server refuses a remove, and shows msg:locked for a Mandatory item', async () => {
+        wide();
+        replies = [
+            ok(
+                dashboard([
+                    item(),
+                    item({
+                        item_id: 'i-2',
+                        block_id: 'b-2',
+                        block: { ...item().block!, name: 'Locked one' },
+                    }),
+                ]),
+            ),
+            resultsOf([]),
+            { ok: false, status: 500, json: {} },
+            {
+                ok: false,
+                status: 403,
+                json: { error: { code: 'dashboards.item_locked' } },
+            },
+        ];
+
+        await mountPage();
+
+        const menus = $$('[data-slot=block-menu]');
+        const removeFrom = async (index: number) => {
+            menus[index].dispatchEvent(
+                new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+            );
+            await flushPromises();
+
+            const entry = Array.from(
+                document.querySelectorAll<HTMLElement>('[role=menuitem]'),
+            ).find((i) => i.textContent?.includes('Remove from dashboard'))!;
+
+            entry.click();
+            await flushPromises();
+            await flushPromises();
+        };
+
+        await removeFrom(0);
+
+        expect($$('[data-slot=block-card]')).toHaveLength(2);
+        expect(useToasts().items.at(-1)!.kind).toBe('rollback');
+
+        await removeFrom(1);
+
+        expect($$('[data-slot=block-card]')).toHaveLength(2);
+        expect(useToasts().items.at(-1)!.message).toBe(en.locked);
+    });
+
+    it('lets a card that is no longer available be removed', async () => {
+        replies = [
+            ok(dashboard([item({ state: 'unpublished', block: null })])),
+            resultsOf([]),
+            {
+                ok: true,
+                status: 200,
+                json: { data: { block_id: 'b-1', removed: true, revision: 1 } },
+            },
+        ];
+
+        await mountPage();
+        (
+            $('[data-slot=block-unavailable] button') as HTMLButtonElement
+        ).click();
+        await flushPromises();
+        await flushPromises();
+
+        expect(calls('DELETE')).toHaveLength(1);
+        expect($('[data-slot=dashboard-empty]')).not.toBeNull();
+    });
+
+    it('shows the free-space hint where the layout says the next Block goes', async () => {
+        wide();
+        replies = [
+            ok({ ...dashboard([item()]), next_free_slot: { col: 6, row: 2 } }),
+            resultsOf([result()]),
+            catalogue(entry('b-9', 'Open tickets')),
+        ];
+
+        await mountPage();
+        await openPanel();
+
+        const add = $(
+            '[data-block=b-9] [data-slot=row-add]',
+        ) as HTMLButtonElement;
+        const enter = new Event('pointerenter');
+        Object.defineProperty(enter, 'pointerType', { value: 'mouse' });
+        add.dispatchEvent(enter);
+        await flushPromises();
+
+        const hint = $('[data-slot=free-space-hint]')!;
+
+        expect(hint.getAttribute('style')).toContain('--col: 7');
+        expect(hint.getAttribute('style')).toContain('--row: 3');
+        expect(hint.textContent).toContain(en['free-space-hint']);
+
+        add.dispatchEvent(new Event('pointerleave'));
+        await flushPromises();
+
+        expect($('[data-slot=free-space-hint]')).toBeNull();
     });
 });

@@ -1,7 +1,9 @@
 <script setup lang="ts">
+import { computed } from 'vue';
+import { useI18n } from 'vue-i18n';
 import BlockCard from '@/components/BlockCard.vue';
 import { HEIGHT_UNITS } from '@/lib/dashboards';
-import type { DashboardItem, ItemResult } from '@/lib/dashboards';
+import type { DashboardItem, HeightPreset, ItemResult } from '@/lib/dashboards';
 import type { FooterProfile } from '@/lib/footerAction';
 import { dashboardLabels as labels } from '@/locales/labels';
 
@@ -19,13 +21,25 @@ defineProps<{
     limited?: string[];
     admin?: boolean;
     profile?: FooterProfile;
+    justAdded?: string[];
+    // Where the next Block would go, shown while "+ Add" is hovered or focused: a dashed free-space hint.
+    hint?: {
+        col: number;
+        row: number;
+        width: number;
+        height: HeightPreset;
+    } | null;
 }>();
 
 defineEmits<{
     retry: [itemId: string];
     refresh: [itemId: string];
     minimize: [itemId: string, minimized: boolean];
+    remove: [blockId: string, from: 'menu' | 'card'];
 }>();
+
+const { t } = useI18n();
+const hintText = computed(() => t('free-space-hint'));
 
 const placement = (item: DashboardItem): Record<string, string> => ({
     '--col': String(item.geometry.col + 1),
@@ -57,10 +71,27 @@ const placement = (item: DashboardItem): Record<string, string> => ({
                 :refresh-limited="limited?.includes(item.item_id) ?? false"
                 :admin="admin"
                 :profile="profile"
+                :just-added="justAdded?.includes(item.item_id) ?? false"
+                @remove="(blockId, from) => $emit('remove', blockId, from)"
                 @retry="$emit('retry', $event)"
                 @refresh="$emit('refresh', $event)"
                 @minimize="(id, value) => $emit('minimize', id, value)"
             />
+        </div>
+        <div
+            v-if="hint"
+            class="dashboard-grid__cell dashboard-grid__hint"
+            :style="
+                placement({
+                    geometry: hint,
+                } as unknown as DashboardItem)
+            "
+            data-slot="free-space-hint"
+            aria-hidden="true"
+        >
+            <p class="type-caption text-accent-ink">
+                {{ hintText }}
+            </p>
         </div>
     </div>
 </template>
@@ -79,6 +110,15 @@ const placement = (item: DashboardItem): Record<string, string> => ({
 
 .dashboard-grid__cell > * {
     flex: 1 1 auto;
+}
+
+.dashboard-grid__hint {
+    align-items: center;
+    justify-content: center;
+    border: 2px dashed var(--df-accent-border, currentColor);
+    border-radius: var(--radius-lg, 12px);
+    background: var(--df-accent-wash, transparent);
+    pointer-events: none;
 }
 
 @media (min-width: 768px) {

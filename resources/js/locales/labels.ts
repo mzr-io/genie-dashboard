@@ -2571,6 +2571,14 @@ export const addBlocksLabels = {
     removeFromDashboard: '× Remove',
     removeNamed: (name: string): string => `Remove ${name} from dashboard`,
     addingNotEnabled: 'Adding is not enabled yet',
+    justAdded: 'Just added',
+    removed: (name: string): string => `${name} removed`,
+    announceAdded: (name: string): string => `${name} added to your dashboard.`,
+    announceRemoved: (name: string): string =>
+        `${name} removed from your dashboard.`,
+    showMe: 'Show me',
+    showMeBelow: 'Show me ↓',
+    undo: 'Undo',
     previewRegion: (name: string): string =>
         `Preview of ${name} with sample data`,
     closePreview: 'Close preview',

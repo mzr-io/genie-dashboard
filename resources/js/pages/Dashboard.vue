@@ -16,16 +16,25 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAddBlocksPanel } from '@/composables/useAddBlocksPanel';
 import { announce, announceAggregated } from '@/lib/announce';
+import type { CatalogueBlock } from '@/lib/blockCatalogue';
 import {
     DashboardError,
+    addBlock,
     fetchDashboard,
     fetchResults,
     refreshItem,
+    removeBlock,
     setMinimized,
 } from '@/lib/dashboards';
-import type { Dashboard, ItemResult } from '@/lib/dashboards';
+import type {
+    Dashboard,
+    DashboardItem,
+    HeightPreset,
+    ItemResult,
+} from '@/lib/dashboards';
 import { formatDateTime } from '@/lib/format';
 import { SIGN_IN_URL } from '@/lib/session';
+import { useToasts } from '@/stores/toasts';
 import {
     addBlocksLabels,
     dashboardLabels as labels,
@@ -87,6 +96,19 @@ const profile = computed(() => {
 });
 
 const dashboard = ref<Dashboard | null>(null);
+const toasts = useToasts();
+// Add and remove (Story 4.9): the Blocks with a command in flight, those just added (outlined for a few seconds), where the next Block would go
+// while "+ Add" is hovered or focused, and how many new Blocks sit below the visible area.
+const busy = ref<string[]>([]);
+const justAdded = ref<string[]>([]);
+const hint = ref<{
+    col: number;
+    row: number;
+    width: number;
+    height: HeightPreset;
+} | null>(null);
+const below = ref<{ itemId: string; count: number } | null>(null);
+
 // The member's own minimize choices and the revision every layout command carries (AD-14), the Blocks being refreshed and those in their window.
 const minimized = ref<Record<string, boolean>>({});
 const revision = ref(props.revision);
@@ -350,6 +372,371 @@ async function onRefresh(itemId: string): Promise<void> {
     }
 }
 
+const JUST_ADDED_MS = 3000;
+
+function titleOf(itemId: string): HTMLElement | null {
+    const cell = document.querySelector<HTMLElement>(
+        `[data-item="${CSS.escape(itemId)}"]`,
+    );
+
+    return cell?.querySelector<HTMLElement>('h2') ?? null;
+}
+
+// "Show me": the view scrolls to the Block (smooth unless motion is reduced), focus moves to its title and the outline pulses; on a phone the sheet
+// closes first.
+async function showMe(itemId: string): Promise<void> {
+    if (!wide.value) {
+        hidePanel();
+    }
+
+    await nextTick();
+
+    const cell = document.querySelector<HTMLElement>(
+        `[data-item="${CSS.escape(itemId)}"]`,
+    );
+    const reduced =
+        window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ===
+        true;
+
+    cell?.scrollIntoView({
+        block: 'center',
+        behavior: reduced ? 'auto' : 'smooth',
+    });
+
+    const title = titleOf(itemId);
+
+    if (title !== null) {
+        title.setAttribute('tabindex', '-1');
+        title.focus({ preventScroll: true });
+    }
+
+    justAdded.value = [...justAdded.value, itemId];
+    setTimeout(() => {
+        justAdded.value = justAdded.value.filter((id) => id !== itemId);
+    }, JUST_ADDED_MS);
+
+    if (below.value?.itemId === itemId) {
+        below.value = null;
+    }
+}
+
+function neighbourOf(item: DashboardItem): string | null {
+    const others = (dashboard.value?.items ?? []).filter(
+        (other) => other.item_id !== item.item_id && other.block !== null,
+    );
+    let best: DashboardItem | null = null;
+    let distance = Infinity;
+
+    for (const other of others) {
+        const d =
+            Math.abs(other.geometry.row - item.geometry.row) +
+            Math.abs(other.geometry.col - item.geometry.col);
+
+        if (d < distance) {
+            distance = d;
+            best = other;
+        }
+    }
+
+    return best?.block?.name ?? null;
+}
+
+function rollback(name: string): void {
+    toasts.add({
+        kind: 'rollback',
+        message: t('toast-rollback', { block: name }),
+    });
+}
+
+// Add a Block: it appears at once where the layout's next free slot is, and the server's answer replaces it (or it is taken away again with
+// `msg:toast-rollback`). A repeated add is the same item. Existing Blocks never move.
+async function onAdd(block: CatalogueBlock): Promise<void> {
+    const current = dashboard.value;
+
+    if (
+        props.dashboard_id === null ||
+        current === null ||
+        busy.value.includes(block.block_id) ||
+        current.items.some((item) => item.block_id === block.block_id)
+    ) {
+        return;
+    }
+
+    busy.value = [...busy.value, block.block_id];
+
+    const temporary: DashboardItem = {
+        item_id: `pending:${block.block_id}`,
+        block_id: block.block_id,
+        geometry: {
+            ...current.next_free_slot,
+            width: block.default_size.width,
+            height: block.default_size.height,
+        },
+        minimized: false,
+        state: 'ok',
+        refresh_interval: block.refresh_interval,
+        is_live: block.refresh_interval === 'live',
+        block: {
+            name: block.name,
+            subtitle: block.description,
+            type: block.type,
+            icon: null,
+            chrome: {
+                show_header: true,
+                show_subtitle: true,
+                allow_resize: true,
+                allow_minimize: false,
+                allow_refresh: false,
+                show_footer_action: false,
+            },
+            about: {
+                description: block.description,
+                source_name: block.data_source,
+                refresh_interval: block.refresh_interval,
+                version: block.version,
+                period: null,
+            },
+        },
+    };
+
+    current.items.push(temporary);
+
+    try {
+        const outcome = await addBlock(
+            props.dashboard_id,
+            block.block_id,
+            revision.value,
+        );
+
+        current.items = current.items.filter(
+            (item) => item.item_id !== temporary.item_id,
+        );
+
+        if (!outcome.ok || outcome.item === null) {
+            rollback(block.name);
+
+            if (!outcome.ok && outcome.reason === 'conflict') {
+                await load();
+            }
+
+            return;
+        }
+
+        revision.value = outcome.revision;
+        current.revision = outcome.revision;
+
+        if (outcome.nextFreeSlot !== null) {
+            current.next_free_slot = outcome.nextFreeSlot;
+        }
+
+        const item = outcome.item;
+
+        // A repeated add answers with the item that is already there: it is not shown twice.
+        if (
+            !current.items.some((existing) => existing.item_id === item.item_id)
+        ) {
+            current.items.push(item);
+            minimized.value = {
+                ...minimized.value,
+                [item.item_id]: item.minimized,
+            };
+        }
+
+        justAdded.value = [...justAdded.value, item.item_id];
+        setTimeout(() => {
+            justAdded.value = justAdded.value.filter(
+                (id) => id !== item.item_id,
+            );
+        }, JUST_ADDED_MS);
+
+        await nextTick();
+        void loadResults();
+
+        const element = document.querySelector<HTMLElement>(
+            `[data-item="${CSS.escape(item.item_id)}"]`,
+        );
+        const outOfView =
+            element !== null &&
+            element.getBoundingClientRect().top > window.innerHeight;
+        const neighbour = neighbourOf(item);
+
+        if (outOfView) {
+            below.value = {
+                itemId: item.item_id,
+                count: (below.value?.count ?? 0) + 1,
+            };
+        }
+
+        toasts.add({
+            kind: 'action',
+            message: t(
+                outOfView ? 'toast-add-below.visible' : 'toast-add.visible',
+                { block: block.name },
+            ),
+            announce:
+                neighbour === null
+                    ? addBlocksLabels.announceAdded(block.name)
+                    : t(
+                          outOfView
+                              ? 'toast-add-below.announce'
+                              : 'toast-add.announce',
+                          {
+                              block: block.name,
+                              neighbour,
+                              shortcut: 'Ctrl+Z',
+                          },
+                      ),
+            actions: [
+                {
+                    label: outOfView
+                        ? addBlocksLabels.showMeBelow
+                        : addBlocksLabels.showMe,
+                    run: () => void showMe(item.item_id),
+                },
+                {
+                    label: addBlocksLabels.undo,
+                    run: () => void onRemove(block.block_id, 'toast'),
+                },
+            ],
+        });
+    } catch (error) {
+        current.items = current.items.filter(
+            (item) => item.item_id !== temporary.item_id,
+        );
+
+        if (
+            error instanceof DashboardError &&
+            (error.status === 401 || error.status === 419)
+        ) {
+            window.location.assign(SIGN_IN_URL);
+
+            return;
+        }
+
+        rollback(block.name);
+    } finally {
+        busy.value = busy.value.filter((id) => id !== block.block_id);
+    }
+}
+
+// Remove a Block, from the panel, the ⋯ menu, an unavailable card or the add toast's Undo: it goes at once, with no confirmation, and comes back with
+// `msg:toast-rollback` when the server refuses. Focus lands where the person was working: on the row (now "+ Add"), on the next Block's title, the
+// previous one's, or "+ Add block".
+async function onRemove(
+    blockId: string,
+    from: 'menu' | 'card' | 'panel' | 'toast',
+): Promise<void> {
+    const current = dashboard.value;
+
+    if (
+        props.dashboard_id === null ||
+        current === null ||
+        busy.value.includes(blockId)
+    ) {
+        return;
+    }
+
+    const index = current.items.findIndex((item) => item.block_id === blockId);
+
+    if (index === -1) {
+        return;
+    }
+
+    const item = current.items[index];
+    const name = item.block?.name ?? addBlocksLabels.title;
+    const sibling =
+        current.items[index + 1] ?? current.items[index - 1] ?? null;
+
+    busy.value = [...busy.value, blockId];
+    current.items.splice(index, 1);
+
+    try {
+        const outcome = await removeBlock(
+            props.dashboard_id,
+            blockId,
+            revision.value,
+        );
+
+        if (!outcome.ok) {
+            current.items.splice(index, 0, item);
+
+            if (outcome.reason === 'locked') {
+                toasts.add({ kind: 'info', message: t('locked') });
+            } else {
+                rollback(name);
+
+                if (outcome.reason === 'conflict') {
+                    await load();
+                }
+            }
+
+            return;
+        }
+
+        revision.value = outcome.revision;
+        current.revision = outcome.revision;
+        below.value = below.value?.itemId === item.item_id ? null : below.value;
+
+        toasts.add({
+            kind: 'info',
+            message: addBlocksLabels.removed(name),
+            announce: addBlocksLabels.announceRemoved(name),
+        });
+
+        await nextTick();
+
+        if (from === 'panel') {
+            document
+                .querySelector<HTMLElement>(
+                    `[data-block="${CSS.escape(blockId)}"] [data-slot=row-add]`,
+                )
+                ?.focus();
+        } else {
+            const target = sibling === null ? null : titleOf(sibling.item_id);
+
+            if (target !== null) {
+                target.setAttribute('tabindex', '-1');
+                target.focus();
+            } else {
+                document
+                    .querySelector<HTMLElement>(
+                        '[data-slot=add-block], [data-slot=add-block-empty]',
+                    )
+                    ?.focus();
+            }
+        }
+    } catch (error) {
+        current.items.splice(index, 0, item);
+
+        if (
+            error instanceof DashboardError &&
+            (error.status === 401 || error.status === 419)
+        ) {
+            window.location.assign(SIGN_IN_URL);
+
+            return;
+        }
+
+        rollback(name);
+    } finally {
+        busy.value = busy.value.filter((id) => id !== blockId);
+    }
+}
+
+// The free-space hint: where the next Block of that size would go, from the layout's own `next_free_slot`.
+function showHint(block: CatalogueBlock | null): void {
+    const current = dashboard.value;
+
+    hint.value =
+        block === null || current === null
+            ? null
+            : {
+                  ...current.next_free_slot,
+                  width: block.default_size.width,
+                  height: block.default_size.height,
+              };
+}
+
 onMounted(async () => {
     await load();
 
@@ -468,10 +855,23 @@ onBeforeUnmount(() => {
                 :limited="limited"
                 :admin="admin"
                 :profile="profile"
+                :just-added="justAdded"
+                :hint="hint"
                 @retry="loadResults"
                 @refresh="onRefresh"
                 @minimize="onMinimize"
+                @remove="(blockId, from) => onRemove(blockId, from)"
             />
+
+            <button
+                v-if="below"
+                type="button"
+                class="type-caption fixed bottom-6 left-1/2 z-40 -translate-x-1/2 rounded-full border border-accent bg-accent px-4 py-1.5 font-semibold text-on-accent shadow-md focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                data-slot="edge-pill"
+                @click="showMe(below.itemId)"
+            >
+                {{ t('edge-pill', { count: below.count }, below.count) }}
+            </button>
         </div>
 
         <aside
@@ -482,8 +882,13 @@ onBeforeUnmount(() => {
         >
             <AddBlocksPanel
                 :added-ids="addedIds"
+                :busy-ids="busy"
+                :can-add="dashboard_id !== null && state === 'ready'"
                 @close="hidePanel"
                 @skip="skipToDashboard"
+                @add="onAdd"
+                @remove="(block) => onRemove(block.block_id, 'panel')"
+                @hint="showHint"
             />
         </aside>
 
@@ -505,8 +910,13 @@ onBeforeUnmount(() => {
                 }}</SheetDescription>
                 <AddBlocksPanel
                     :added-ids="addedIds"
+                    :busy-ids="busy"
+                    :can-add="dashboard_id !== null && state === 'ready'"
                     @close="hidePanel"
                     @skip="skipToDashboard"
+                    @add="onAdd"
+                    @remove="(block) => onRemove(block.block_id, 'panel')"
+                    @hint="showHint"
                 />
             </SheetContent>
         </Sheet>

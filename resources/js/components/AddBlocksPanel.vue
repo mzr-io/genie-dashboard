@@ -37,12 +37,26 @@ import { addBlocksLabels as labels } from '@/locales/labels';
 // categories, highlighted as text), category chips, a type and Data Source filter, an announced count, and each row's status. Adding and removing
 // are wired by Story 4.9 and say so; there are no drag grips, no multi-add and no "Request a block". The panel only reads: it creates no target and
 // no subscription, and shows no value.
-const props = defineProps<{
-    // Block ids already on the dashboard: they show "✓ Added" and keep their place in the list.
-    addedIds: string[];
-}>();
+const props = withDefaults(
+    defineProps<{
+        // Block ids already on the dashboard: they show "✓ Added" and keep their place in the list.
+        addedIds: string[];
+        // Block ids with an add or remove in flight: their action waits, never doubles.
+        busyIds?: string[];
+        // Whether there is a dashboard to add to (a person with no membership has none).
+        canAdd?: boolean;
+    }>(),
+    { busyIds: () => [], canAdd: true },
+);
 
-const emit = defineEmits<{ close: []; skip: [] }>();
+const emit = defineEmits<{
+    close: [];
+    skip: [];
+    add: [block: CatalogueBlock];
+    remove: [block: CatalogueBlock];
+    // The row whose "+ Add" is hovered or focused with a pointing device (null: none): the page shows where it would go.
+    hint: [block: CatalogueBlock | null];
+}>();
 
 const { t } = useI18n();
 const searchId = useId();
@@ -185,6 +199,19 @@ function previewRenderer(blockId: string) {
         sample === 'placeholder'
         ? null
         : rendererFor(sample.type);
+}
+
+// The free-space hint is for a pointer: it is never shown for touch (UX-DR-72). A keyboard focus shows it too.
+function onHint(event: PointerEvent, block: CatalogueBlock): void {
+    if (event.pointerType === 'touch') {
+        return;
+    }
+
+    emit('hint', block);
+}
+
+function onFocusHint(block: CatalogueBlock): void {
+    emit('hint', block);
 }
 
 // A click on the row's text opens its preview too; the controls inside it keep their own action.
@@ -575,10 +602,17 @@ onBeforeUnmount(() => controller?.abort());
                                     type="button"
                                     variant="secondary"
                                     size="sm"
-                                    aria-disabled="true"
+                                    :aria-disabled="
+                                        busyIds.includes(block.block_id)
+                                            ? 'true'
+                                            : undefined
+                                    "
                                     :aria-label="labels.removeNamed(block.name)"
                                     data-slot="row-remove"
-                                    @click.prevent
+                                    @click="
+                                        busyIds.includes(block.block_id) ||
+                                        emit('remove', block)
+                                    "
                                 >
                                     {{ labels.removeFromDashboard }}
                                 </Button>
@@ -588,11 +622,22 @@ onBeforeUnmount(() => controller?.abort());
                                 type="button"
                                 variant="secondary"
                                 size="sm"
-                                aria-disabled="true"
+                                :aria-disabled="
+                                    !canAdd || busyIds.includes(block.block_id)
+                                        ? 'true'
+                                        : undefined
+                                "
                                 :aria-label="labels.addTo(block.name)"
-                                :title="labels.addingNotEnabled"
                                 data-slot="row-add"
-                                @click.prevent
+                                @click="
+                                    canAdd &&
+                                    !busyIds.includes(block.block_id) &&
+                                    emit('add', block)
+                                "
+                                @pointerenter="onHint($event, block)"
+                                @pointerleave="emit('hint', null)"
+                                @focus="onFocusHint(block)"
+                                @blur="emit('hint', null)"
                             >
                                 + {{ labels.add }}
                             </Button>
@@ -670,11 +715,23 @@ onBeforeUnmount(() => controller?.abort());
                                 type="button"
                                 variant="secondary"
                                 size="sm"
-                                aria-disabled="true"
+                                :aria-disabled="
+                                    !canAdd ||
+                                    addedIds.includes(block.block_id) ||
+                                    busyIds.includes(block.block_id)
+                                        ? 'true'
+                                        : undefined
+                                "
                                 :aria-label="labels.addTo(block.name)"
-                                :title="labels.addingNotEnabled"
                                 data-slot="preview-add"
-                                @click.prevent
+                                @click="
+                                    canAdd &&
+                                    !addedIds.includes(block.block_id) &&
+                                    !busyIds.includes(block.block_id) &&
+                                    emit('add', block)
+                                "
+                                @pointerenter="onHint($event, block)"
+                                @pointerleave="emit('hint', null)"
                             >
                                 {{ labels.addToDashboard }}
                             </Button>

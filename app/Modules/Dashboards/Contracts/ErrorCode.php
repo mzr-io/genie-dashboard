@@ -12,4 +12,8 @@ enum ErrorCode: string
     case RevisionConflict = 'dashboards.revision_conflict';
     /** A manual refresh came inside the manual-refresh window (Story 4.6): HTTP 429 with `Retry-After`; nothing was requested. */
     case RefreshLimited = 'dashboards.refresh_limited';
+    /** A Block cannot be added (Story 4.9): it has no published version (HTTP 422). A Block the member cannot see is a 404. */
+    case BlockUnavailable = 'dashboards.block_unavailable';
+    /** `RemoveItem` of a Mandatory item (Story 4.9): HTTP 403, with `msg:locked`. */
+    case ItemLocked = 'dashboards.item_locked';
 }

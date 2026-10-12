@@ -30,7 +30,7 @@ import type { DashboardItem, ItemResult } from '@/lib/dashboards';
 import { resolveFooterLink } from '@/lib/footerAction';
 import type { FooterProfile } from '@/lib/footerAction';
 import { formatDateTime } from '@/lib/format';
-import { dashboardLabels as labels } from '@/locales/labels';
+import { addBlocksLabels, dashboardLabels as labels } from '@/locales/labels';
 
 // One Block on a dashboard (Story 4.4 to 4.6; UX-DR-50, 51, 231): a `section` labelled by its `h2` title, on the card surface with a 1px border and the
 // large radius. The server decides the state. An item that is not `ok` shows its message and a Remove action and no data. A Block with no result yet
@@ -50,6 +50,8 @@ const props = withDefaults(
         refreshLimited?: boolean;
         // Admins also see technical details in About this block; a User never does.
         admin?: boolean;
+        // Just added to the dashboard: outlined, with "Just added", for a few seconds.
+        justAdded?: boolean;
         // The profile `{user.*}` footer tokens are filled from.
         profile?: FooterProfile;
     }>(),
@@ -59,6 +61,7 @@ const props = withDefaults(
         refreshing: false,
         refreshLimited: false,
         admin: false,
+        justAdded: false,
         profile: () => ({}),
     },
 );
@@ -67,11 +70,11 @@ const emit = defineEmits<{
     retry: [itemId: string];
     refresh: [itemId: string];
     minimize: [itemId: string, minimized: boolean];
+    remove: [blockId: string, from: 'menu' | 'card'];
 }>();
 
 const { t } = useI18n();
 const headingId = useId();
-const reasonId = useId();
 const limitedId = useId();
 const aboutOpen = ref(false);
 
@@ -217,8 +220,14 @@ function refresh(): void {
         data-slot="block-card"
         :data-state="state"
         :data-minimized="isMinimized ? 'true' : undefined"
+        :data-just-added="justAdded ? 'true' : undefined"
         :aria-labelledby="headingId"
-        class="flex min-h-0 flex-col overflow-hidden rounded-lg border border-border-default bg-surface-card"
+        class="flex min-h-0 flex-col overflow-hidden rounded-lg border bg-surface-card"
+        :class="
+            justAdded
+                ? 'border-accent bg-success-soft outline outline-2 outline-accent'
+                : 'border-border-default'
+        "
     >
         <header
             class="flex items-start justify-between gap-2 px-4 py-3"
@@ -246,6 +255,13 @@ function refresh(): void {
                     </h2>
                     <p v-if="subtitle" class="type-caption text-text-muted">
                         {{ subtitle }}
+                    </p>
+                    <p
+                        v-if="justAdded"
+                        class="type-caption font-semibold text-success-text"
+                        data-slot="just-added"
+                    >
+                        {{ addBlocksLabels.justAdded }}
                     </p>
                 </div>
             </div>
@@ -316,7 +332,9 @@ function refresh(): void {
                         <DropdownMenuItem @select="aboutOpen = true">
                             {{ labels.menuAbout }}
                         </DropdownMenuItem>
-                        <DropdownMenuItem disabled>
+                        <DropdownMenuItem
+                            @select="emit('remove', item.block_id, 'menu')"
+                        >
                             {{ labels.menuRemove }}
                         </DropdownMenuItem>
                     </DropdownMenuContent>
@@ -367,16 +385,11 @@ function refresh(): void {
                     type="button"
                     variant="secondary"
                     size="sm"
-                    aria-disabled="true"
                     :aria-label="labels.removeBlock(title)"
-                    :aria-describedby="reasonId"
-                    @click.prevent
+                    @click="emit('remove', item.block_id, 'card')"
                 >
                     {{ labels.remove }}
                 </Button>
-                <span :id="reasonId" class="type-caption text-text-muted">{{
-                    labels.laterStory
-                }}</span>
             </div>
         </div>
 

@@ -5,10 +5,13 @@ namespace App\Modules\Dashboards\Application;
 use App\Modules\Access\Contracts\RegisterAccessSubject;
 use App\Modules\Access\Contracts\SubjectAccess;
 use App\Modules\Blocks\Contracts\BlockCards;
+use App\Modules\Dashboards\Contracts\BlockNotAvailable;
 use App\Modules\Dashboards\Contracts\DashboardNotFound;
 use App\Modules\Dashboards\Contracts\DashboardRef;
 use App\Modules\Dashboards\Contracts\Dashboards;
 use App\Modules\Dashboards\Contracts\DashboardView;
+use App\Modules\Dashboards\Contracts\ItemChange;
+use App\Modules\Dashboards\Contracts\ItemLocked;
 use App\Modules\Dashboards\Contracts\ItemNotFound;
 use App\Modules\Dashboards\Contracts\RevisionConflict;
 use App\Modules\Results\Contracts\ManualRefresh;
@@ -248,5 +251,124 @@ final class ManageDashboards implements Dashboards
         }
 
         return $this->refreshes->refresh(new ViewRequest($workspaceId, $membershipId, $card->versionId));
+    }
+
+    public function addItem(string $workspaceId, string $membershipId, string $dashboardId, string $blockId, int $expectedRevision): ItemChange
+    {
+        $dashboard = $this->lock($workspaceId, $membershipId, $dashboardId);
+        $blockId = strtolower($blockId);
+        $id = strtolower((string) $dashboard->id);
+        $revision = (int) $dashboard->revision;
+
+        // Idempotent: a Block already here is returned as it is, so a delivery repeated after the revision moved is not a conflict.
+        $existing = Str::isUuid($blockId)
+            ? DB::selectOne('select id from dashboard_items where workspace_id = ? and dashboard_id = ? and block_id = ?', [$workspaceId, $id, $blockId])
+            : null;
+
+        if ($existing !== null) {
+            return $this->changeOf($workspaceId, $membershipId, $id, strtolower((string) $existing->id), false, $revision);
+        }
+
+        if (! Str::isUuid($blockId) || ! ($this->access->canView($workspaceId, $membershipId, RegisterAccessSubject::BLOCK, [$blockId])[$blockId] ?? false)) {
+            throw new BlockNotAvailable(BlockNotAvailable::NOT_FOUND);
+        }
+
+        $card = $this->cards->forBlocks($workspaceId, [$blockId])[$blockId] ?? null;
+
+        if ($card === null) {
+            throw new BlockNotAvailable($this->cards->exists($workspaceId, $blockId) ? BlockNotAvailable::UNPUBLISHED : BlockNotAvailable::NOT_FOUND);
+        }
+
+        if ($revision !== $expectedRevision) {
+            throw new RevisionConflict($revision);
+        }
+
+        /** @var list<\stdClass> $rows */
+        $rows = DB::select('select col, row, width, height from dashboard_items where workspace_id = ? and dashboard_id = ?', [$workspaceId, $id]);
+        $placed = array_map(fn (\stdClass $r): array => ['col' => (int) $r->col, 'row' => (int) $r->row, 'width' => (int) $r->width, 'height' => (string) $r->height], $rows);
+
+        $size = $card->sizes;
+        $fit = Grid::clamp(0, 0, $size['width'], $size['height'], $size['min_width'], $size['max_width'], $size['min_height'], $size['max_height']);
+        $slot = Grid::nextFreeSlot($placed, $fit['width'], $fit['height']);
+        $itemId = (string) Str::uuid7();
+
+        DB::insert(
+            'insert into dashboard_items (id, workspace_id, dashboard_id, block_id, col, row, width, height, minimized, mandatory, created_at, updated_at) '
+            .'values (?, ?, ?, ?, ?, ?, ?, ?, false, false, now(), now())',
+            [$itemId, $workspaceId, $id, $blockId, $slot['col'], $slot['row'], $fit['width'], $fit['height']],
+        );
+        DB::update('update dashboards set revision = revision + 1, updated_at = now() where workspace_id = ? and id = ?', [$workspaceId, $id]);
+
+        $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
+            'dashboard_id' => $id, 'item_id' => $itemId, 'command' => 'add_item', 'revision' => $revision + 1,
+        ]);
+
+        return $this->changeOf($workspaceId, $membershipId, $id, $itemId, true, $revision + 1);
+    }
+
+    public function removeItem(string $workspaceId, string $membershipId, string $dashboardId, string $blockId, int $expectedRevision): ItemChange
+    {
+        $dashboard = $this->lock($workspaceId, $membershipId, $dashboardId);
+        $id = strtolower((string) $dashboard->id);
+        $revision = (int) $dashboard->revision;
+        $blockId = strtolower($blockId);
+
+        $item = Str::isUuid($blockId)
+            ? DB::selectOne('select id, mandatory from dashboard_items where workspace_id = ? and dashboard_id = ? and block_id = ? for update', [$workspaceId, $id, $blockId])
+            : null;
+
+        // Removing what is not there changes nothing and is not an error.
+        if ($item === null) {
+            return new ItemChange($revision, false);
+        }
+
+        if ((bool) $item->mandatory) {
+            throw new ItemLocked;
+        }
+
+        if ($revision !== $expectedRevision) {
+            throw new RevisionConflict($revision);
+        }
+
+        $removed = (bool) DB::selectOne('select dashboards_remove_item(?::uuid, ?::uuid) as removed', [$id, strtolower((string) $item->id)])->removed;
+
+        if (! $removed) {
+            return new ItemChange($revision, false);
+        }
+
+        DB::update('update dashboards set revision = revision + 1, updated_at = now() where workspace_id = ? and id = ?', [$workspaceId, $id]);
+
+        $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
+            'dashboard_id' => $id, 'item_id' => strtolower((string) $item->id), 'command' => 'remove_item', 'revision' => $revision + 1,
+        ]);
+
+        return new ItemChange($revision + 1, true);
+    }
+
+    /** The member's dashboard, held for the rest of the transaction. */
+    private function lock(string $workspaceId, string $membershipId, string $dashboardId): \stdClass
+    {
+        $dashboard = Str::isUuid($dashboardId)
+            ? DB::selectOne(
+                'select id, revision from dashboards where workspace_id = ? and membership_id = ? and id = ? for update',
+                [$workspaceId, $membershipId, strtolower($dashboardId)],
+            )
+            : null;
+
+        return $dashboard ?? throw new DashboardNotFound;
+    }
+
+    private function changeOf(string $workspaceId, string $membershipId, string $dashboardId, string $itemId, bool $changed, int $revision): ItemChange
+    {
+        $view = $this->find($workspaceId, $membershipId, $dashboardId);
+        $item = null;
+
+        foreach ($view->items as $candidate) {
+            if ($candidate['item_id'] === $itemId) {
+                $item = $candidate;
+            }
+        }
+
+        return new ItemChange($revision, $changed, $item, $view->nextFreeSlot);
     }
 }

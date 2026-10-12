@@ -240,7 +240,7 @@ export function kpiPayloadOf(result: ItemResult): KpiCardPayload | null {
 // ---- Chrome commands (Story 4.6) ------------------------------------------------------------------------------------------------------------------
 
 async function send(
-    method: 'PUT' | 'POST',
+    method: 'PUT' | 'POST' | 'DELETE',
     url: string,
     body: Record<string, unknown> | null,
 ): Promise<{
@@ -360,4 +360,103 @@ export async function refreshItem(
     }
 
     return { status: 'failed' };
+}
+
+// ---- Add and remove (Story 4.9) -------------------------------------------------------------------------------------------------------------------
+
+export type ItemOutcome =
+    | {
+          ok: true;
+          item: DashboardItem | null;
+          revision: number;
+          nextFreeSlot: { col: number; row: number } | null;
+          changed: boolean;
+      }
+    // A stale `expected_revision`: nothing changed and the layout has moved on.
+    | { ok: false; reason: 'conflict'; revision: number | null }
+    // The Block is not available to this member any more (404) or has no published version (422).
+    | { ok: false; reason: 'unavailable' }
+    // A Mandatory item (403): the reason is `msg:locked`.
+    | { ok: false; reason: 'locked' }
+    | { ok: false; reason: 'failed' };
+
+function outcomeOf(
+    status: number,
+    json: Record<string, unknown> | null,
+): ItemOutcome {
+    if (status === 200 || status === 201) {
+        const data = (json?.data ?? {}) as {
+            item?: DashboardItem | null;
+            revision?: number;
+            next_free_slot?: { col: number; row: number } | null;
+            removed?: boolean;
+        };
+
+        if (typeof data.revision !== 'number') {
+            return { ok: false, reason: 'failed' };
+        }
+
+        return {
+            ok: true,
+            item: data.item ?? null,
+            revision: data.revision,
+            nextFreeSlot: data.next_free_slot ?? null,
+            changed: data.removed ?? status === 201,
+        };
+    }
+
+    if (status === 409) {
+        const revision = (json?.error as { revision?: number } | undefined)
+            ?.revision;
+
+        return {
+            ok: false,
+            reason: 'conflict',
+            revision: typeof revision === 'number' ? revision : null,
+        };
+    }
+
+    if (status === 403) {
+        return { ok: false, reason: 'locked' };
+    }
+
+    if (status === 404 || status === 422) {
+        return { ok: false, reason: 'unavailable' };
+    }
+
+    if (status === 401 || status === 419) {
+        throw new DashboardError(status);
+    }
+
+    return { ok: false, reason: 'failed' };
+}
+
+// `AddItem{block_id, expected_revision}`: idempotent per Block.
+export async function addBlock(
+    dashboardId: string,
+    blockId: string,
+    expectedRevision: number,
+): Promise<ItemOutcome> {
+    const { status, json } = await send(
+        'POST',
+        `${dashboardUrl(dashboardId)}/blocks`,
+        { block_id: blockId, expected_revision: expectedRevision },
+    );
+
+    return outcomeOf(status, json);
+}
+
+// `RemoveItem{block_id, expected_revision}`.
+export async function removeBlock(
+    dashboardId: string,
+    blockId: string,
+    expectedRevision: number,
+): Promise<ItemOutcome> {
+    const { status, json } = await send(
+        'DELETE',
+        `${dashboardUrl(dashboardId)}/blocks/${encodeURIComponent(blockId)}`,
+        { expected_revision: expectedRevision },
+    );
+
+    return outcomeOf(status, json);
 }

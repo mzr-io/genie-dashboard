@@ -42,6 +42,8 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('blocks/available', [BlockCatalogueController::class, 'index'])->middleware('throttle:120,1')->name('api.blocks.available');
     Route::get('blocks/{block}/sample', [BlockCatalogueController::class, 'sample'])->middleware('throttle:120,1')->name('api.blocks.sample');
     Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])->name('api.dashboards.show');
+    Route::post('dashboards/{dashboard}/blocks', [DashboardController::class, 'addBlock'])->middleware('throttle:60,1')->name('api.dashboards.blocks.add');
+    Route::delete('dashboards/{dashboard}/blocks/{block}', [DashboardController::class, 'removeBlock'])->middleware('throttle:60,1')->name('api.dashboards.blocks.remove');
     Route::put('dashboards/{dashboard}/items/{item}/minimized', [DashboardController::class, 'minimize'])->middleware('throttle:60,1')->name('api.dashboards.items.minimize');
     Route::post('dashboards/{dashboard}/items/{item}/refresh', [DashboardController::class, 'refresh'])->middleware('throttle:60,1')->name('api.dashboards.items.refresh');
     Route::get('dashboards/{dashboard}/results', [DashboardController::class, 'results'])->middleware('throttle:120,1')->name('api.dashboards.results');

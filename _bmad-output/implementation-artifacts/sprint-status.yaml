@@ -117,7 +117,7 @@ development_status:
   4-6-use-block-chrome-refresh-minimize-about-this-block-footer: review
   4-7-browse-the-add-blocks-panel: review
   4-8-preview-a-block-with-generated-sample-values: review
-  4-9-add-and-remove-blocks-with-automatic-placement: backlog
+  4-9-add-and-remove-blocks-with-automatic-placement: review
   4-10-undo-adds-and-removes: backlog
   4-11-move-and-resize-blocks-in-edit-layout-mode: backlog
   4-12-move-resize-reorder-and-shortcut-without-drag-and-drop: backlog
