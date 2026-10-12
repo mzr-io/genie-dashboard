@@ -57,6 +57,20 @@ interface Dashboards
     public function moveResizeItems(string $workspaceId, string $membershipId, string $dashboardId, array $items, int $expectedRevision): DashboardView;
 
     /**
+     * `SetCompactOrder` (AD-14, Story 4.12): the order the Blocks stack in on a phone. `order` names exactly the dashboard's items, each once. It is
+     * stored apart from the saved desktop positions, which never change; the revision is checked and bumped and `dashboards.dashboard.changed`
+     * emitted.
+     *
+     * @param  list<string>  $order
+     * @return DashboardView the saved layout
+     *
+     * @throws DashboardNotFound
+     * @throws InvalidLayout the order is not exactly the dashboard's items
+     * @throws RevisionConflict
+     */
+    public function setCompactOrder(string $workspaceId, string $membershipId, string $dashboardId, array $order, int $expectedRevision): DashboardView;
+
+    /**
      * `RemoveItem` (AD-14, Story 4.9): by Block. A Block that is not on the dashboard is a no-op (`changed` false). A Mandatory item is refused.
      *
      * @throws DashboardNotFound

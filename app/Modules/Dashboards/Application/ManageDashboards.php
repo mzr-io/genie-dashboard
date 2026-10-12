@@ -61,7 +61,7 @@ final class ManageDashboards implements Dashboards
     {
         $dashboard = Str::isUuid($dashboardId)
             ? DB::selectOne(
-                'select id, name, is_overview, revision from dashboards where workspace_id = ? and membership_id = ? and id = ?',
+                'select id, name, is_overview, revision, compact_order::text as compact_order from dashboards where workspace_id = ? and membership_id = ? and id = ?',
                 [$workspaceId, $membershipId, strtolower($dashboardId)],
             )
             : null;
@@ -117,6 +117,7 @@ final class ManageDashboards implements Dashboards
             (int) $dashboard->revision,
             $items,
             Grid::nextFreeSlot($placed, 3, 'small'),
+            $this->compactOrderOf($dashboard->compact_order ?? null, array_column($items, 'item_id')),
         );
     }
 
@@ -319,7 +320,11 @@ final class ManageDashboards implements Dashboards
             .'values (?, ?, ?, ?, ?, ?, ?, ?, ?, false, now(), now())',
             [$itemId, $workspaceId, $id, $blockId, $spot['col'], $spot['row'], $fit['width'], $fit['height'], $minimized],
         );
-        DB::update('update dashboards set revision = revision + 1, updated_at = now() where workspace_id = ? and id = ?', [$workspaceId, $id]);
+        DB::update(
+            'update dashboards set revision = revision + 1, '
+            .'compact_order = case when compact_order is null then null else compact_order || to_jsonb(?::text) end, updated_at = now() where workspace_id = ? and id = ?',
+            [$itemId, $workspaceId, $id],
+        );
 
         $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
             'dashboard_id' => $id, 'item_id' => $itemId, 'command' => $command, 'revision' => $revision + 1,
@@ -358,7 +363,11 @@ final class ManageDashboards implements Dashboards
             return new ItemChange($revision, false);
         }
 
-        DB::update('update dashboards set revision = revision + 1, updated_at = now() where workspace_id = ? and id = ?', [$workspaceId, $id]);
+        DB::update(
+            'update dashboards set revision = revision + 1, '
+            .'compact_order = case when compact_order is null then null else compact_order - ?::text end, updated_at = now() where workspace_id = ? and id = ?',
+            [strtolower((string) $item->id), $workspaceId, $id],
+        );
 
         $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
             'dashboard_id' => $id, 'item_id' => strtolower((string) $item->id), 'command' => 'remove_item', 'revision' => $revision + 1,
@@ -460,5 +469,65 @@ final class ManageDashboards implements Dashboards
         ]);
 
         return $this->find($workspaceId, $membershipId, $id);
+    }
+
+    public function setCompactOrder(string $workspaceId, string $membershipId, string $dashboardId, array $order, int $expectedRevision): DashboardView
+    {
+        $dashboard = $this->lock($workspaceId, $membershipId, $dashboardId);
+        $id = strtolower((string) $dashboard->id);
+        $revision = (int) $dashboard->revision;
+
+        if ($revision !== $expectedRevision) {
+            throw new RevisionConflict($revision);
+        }
+
+        /** @var list<\stdClass> $rows */
+        $rows = DB::select('select id from dashboard_items where workspace_id = ? and dashboard_id = ?', [$workspaceId, $id]);
+        $known = array_map(fn (\stdClass $r): string => strtolower((string) $r->id), $rows);
+        $given = array_map(strtolower(...), $order);
+        $sortedKnown = $known;
+        $sortedGiven = $given;
+        sort($sortedKnown);
+        sort($sortedGiven);
+
+        // Exactly the dashboard's items, each once: it orders them, it never adds or drops one.
+        if ($sortedKnown !== $sortedGiven) {
+            throw new InvalidLayout;
+        }
+
+        DB::update(
+            'update dashboards set compact_order = ?::jsonb, revision = revision + 1, updated_at = now() where workspace_id = ? and id = ?',
+            [json_encode($given, JSON_THROW_ON_ERROR), $workspaceId, $id],
+        );
+
+        $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
+            'dashboard_id' => $id, 'command' => 'set_compact_order', 'revision' => $revision + 1, 'items' => count($given),
+        ]);
+
+        return $this->find($workspaceId, $membershipId, $id);
+    }
+
+    /**
+     * The stored order with items that have since been added appended in reading order and items that are gone left out; null while nobody
+     * reordered.
+     *
+     * @param  list<string>  $itemIds  the dashboard's items in reading order
+     * @return list<string>|null
+     */
+    private function compactOrderOf(mixed $stored, array $itemIds): ?array
+    {
+        if (! is_string($stored)) {
+            return null;
+        }
+
+        $decoded = json_decode($stored, true);
+
+        if (! is_array($decoded)) {
+            return null;
+        }
+
+        $order = array_values(array_filter(array_map(fn ($v): string => strtolower((string) $v), $decoded), fn (string $v): bool => in_array($v, $itemIds, true)));
+
+        return array_values(array_unique([...$order, ...array_values(array_diff($itemIds, $order))]));
     }
 }

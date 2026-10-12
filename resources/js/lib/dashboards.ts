@@ -68,6 +68,8 @@ export type Dashboard = {
     revision: number;
     items: DashboardItem[];
     next_free_slot: { col: number; row: number };
+    // The stacking order of item ids on a single-column layout; null until somebody reorders.
+    compact_order?: string[] | null;
 };
 
 // A request the server refused (or that never arrived: status 0): 401 or 419 the session ended, 404 not this member's dashboard.
@@ -526,6 +528,48 @@ export async function saveLayout(
         'PUT',
         `${dashboardUrl(dashboardId)}/layout`,
         { items, expected_revision: expectedRevision },
+    );
+
+    if (status === 200) {
+        const data = json?.data as Dashboard | undefined;
+
+        return data && Array.isArray(data.items)
+            ? { ok: true, dashboard: data }
+            : { ok: false, reason: 'failed' };
+    }
+
+    if (status === 409) {
+        const revision = (json?.error as { revision?: number } | undefined)
+            ?.revision;
+
+        return {
+            ok: false,
+            reason: 'conflict',
+            revision: typeof revision === 'number' ? revision : null,
+        };
+    }
+
+    if (status === 422) {
+        return { ok: false, reason: 'invalid' };
+    }
+
+    if (status === 401 || status === 419) {
+        throw new DashboardError(status);
+    }
+
+    return { ok: false, reason: 'failed' };
+}
+
+// `SetCompactOrder{order[], expected_revision}`: the stacking order of a single-column layout; the desktop positions never change.
+export async function saveCompactOrder(
+    dashboardId: string,
+    order: string[],
+    expectedRevision: number,
+): Promise<SaveLayoutOutcome> {
+    const { status, json } = await send(
+        'PUT',
+        `${dashboardUrl(dashboardId)}/compact-order`,
+        { order, expected_revision: expectedRevision },
     );
 
     if (status === 200) {

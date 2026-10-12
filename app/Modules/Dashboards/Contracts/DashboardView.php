@@ -22,5 +22,7 @@ final readonly class DashboardView
         public int $revision,
         public array $items,
         public array $nextFreeSlot,
+        /** @var list<string>|null the stacking order of item ids on a single-column layout, or null while nobody reordered */
+        public ?array $compactOrder = null,
     ) {}
 }

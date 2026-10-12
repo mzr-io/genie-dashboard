@@ -4,6 +4,11 @@ import type { VueWrapper } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAddBlocksPanel } from '../../resources/js/composables/useAddBlocksPanel';
+import {
+    clearShortcuts,
+    installShortcuts,
+    setSingleKeyShortcuts,
+} from '../../resources/js/lib/shortcuts';
 import { useToasts } from '../../resources/js/stores/toasts';
 import { resetAnnouncer } from '../../resources/js/lib/announce';
 import type {
@@ -1638,5 +1643,380 @@ describe('Edit Layout Mode', () => {
         await edit();
 
         expect($('[draggable=true]')).toBeNull();
+    });
+});
+
+describe('Keyboard and menu layout paths', () => {
+    const layoutItems = () => [
+        item({
+            item_id: 'i-1',
+            block_id: 'b-1',
+            geometry: { col: 0, row: 0, width: 3, height: 'small' },
+        }),
+        item({
+            item_id: 'i-2',
+            block_id: 'b-2',
+            geometry: { col: 6, row: 0, width: 3, height: 'small' },
+            block: { ...item().block!, name: 'Open tickets' },
+        }),
+    ];
+    const calls = (method: string) =>
+        (
+            fetch as unknown as {
+                mock: {
+                    calls: Array<[string, { method?: string; body?: string }]>;
+                };
+            }
+        ).mock.calls.filter((call) => (call[1]?.method ?? 'GET') === method);
+    const media = (desktop: boolean) =>
+        vi.stubGlobal('matchMedia', (query: string) => ({
+            matches: desktop && query.includes('min-width'),
+            media: query,
+            addEventListener: () => {},
+            removeEventListener: () => {},
+            addListener: () => {},
+            removeListener: () => {},
+        }));
+    const key = (
+        target: EventTarget,
+        k: string,
+        init: KeyboardEventInit = {},
+    ) =>
+        target.dispatchEvent(
+            new KeyboardEvent('keydown', {
+                key: k,
+                bubbles: true,
+                cancelable: true,
+                ...init,
+            }),
+        );
+    const said = () =>
+        document.querySelector('[data-announcer=polite]')?.textContent ?? '';
+    // The announcer sets its text on a later tick, so a screen reader sees the change.
+    const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+    let uninstall: () => void;
+
+    beforeEach(() => {
+        uninstall = installShortcuts();
+        setSingleKeyShortcuts(true);
+    });
+
+    afterEach(() => {
+        uninstall();
+        clearShortcuts();
+        setSingleKeyShortcuts(true);
+        useAddBlocksPanel().hide();
+        vi.unstubAllGlobals();
+    });
+
+    async function edit(): Promise<void> {
+        ($('[data-slot=edit-layout]') as HTMLButtonElement).click();
+        await flushPromises();
+    }
+
+    it('names the Move button for its Block, describes how to pick it up, and moves, resizes, drops and cancels with the keyboard', async () => {
+        media(true);
+        replies = [ok(dashboard(layoutItems())), resultsOf([])];
+
+        await mountPage();
+        await edit();
+
+        const button = $(
+            '[data-item=i-1] [data-slot=move-button]',
+        ) as HTMLButtonElement;
+
+        expect(button.getAttribute('aria-label')).toBe('Move Revenue overview');
+        expect(
+            document.getElementById(button.getAttribute('aria-describedby')!)
+                ?.textContent,
+        ).toBe('Press M or Space to pick up');
+
+        button.focus();
+        key(button, ' ');
+        await flushPromises();
+
+        await settle();
+
+        expect(button.getAttribute('aria-pressed')).toBe('true');
+        expect(said()).toContain('Revenue overview picked up');
+
+        key(button, 'ArrowRight');
+        key(button, 'ArrowRight');
+        key(button, 'ArrowDown');
+        await flushPromises();
+
+        const style = $('[data-item=i-1]')!.getAttribute('style')!;
+
+        expect(style).toContain('--col: 3');
+        expect(style).toContain('--row: 3');
+
+        key(button, 'ArrowRight', { shiftKey: true });
+        await flushPromises();
+
+        expect($('[data-item=i-1]')!.getAttribute('style')).toContain(
+            '--width: 4',
+        );
+
+        key(button, 'Enter');
+        await flushPromises();
+
+        await settle();
+
+        expect(button.getAttribute('aria-pressed')).toBe('false');
+        expect(said()).toMatch(/Revenue overview, row 2, column 3/);
+
+        // Pick up again and cancel: the Block is back where it was dropped.
+        key(button, ' ');
+        key(button, 'ArrowRight');
+        await flushPromises();
+        key(button, 'Escape');
+        await flushPromises();
+
+        expect($('[data-item=i-1]')!.getAttribute('style')).toContain(
+            '--col: 3',
+        );
+        expect(said()).toContain('Move cancelled');
+    });
+
+    it('announces what a move pushed down', async () => {
+        media(true);
+        replies = [ok(dashboard(layoutItems())), resultsOf([])];
+
+        await mountPage();
+        await edit();
+
+        const button = $(
+            '[data-item=i-1] [data-slot=move-button]',
+        ) as HTMLButtonElement;
+        button.focus();
+        key(button, ' ');
+
+        for (let i = 0; i < 6; i++) {
+            key(button, 'ArrowRight');
+        }
+
+        key(button, 'Enter');
+        await flushPromises();
+        await settle();
+
+        expect(said()).toContain('Open tickets moved down');
+    });
+
+    it('lets Esc cancel a move first and only a second Esc finish and save, never both', async () => {
+        media(true);
+        replies = [
+            ok(dashboard(layoutItems())),
+            resultsOf([]),
+            {
+                ok: true,
+                status: 200,
+                json: { data: { ...dashboard(layoutItems()), revision: 1 } },
+            },
+        ];
+
+        await mountPage();
+        await edit();
+
+        const button = $(
+            '[data-item=i-1] [data-slot=move-button]',
+        ) as HTMLButtonElement;
+        button.focus();
+        key(button, ' ');
+        key(button, 'ArrowRight');
+        key(button, 'Enter');
+        await flushPromises();
+
+        key(button, ' ');
+        key(button, 'ArrowRight');
+        key(document.body, 'Escape');
+        await flushPromises();
+
+        // The first Esc only cancelled the pickup: still in the mode, nothing saved.
+        expect($('[data-slot=edit-layout-toolbar]')).not.toBeNull();
+        expect(calls('PUT')).toHaveLength(0);
+
+        key(document.body, 'Escape');
+        await flushPromises();
+
+        expect($('[data-slot=edit-layout-toolbar]')).not.toBeNull();
+        expect(calls('PUT')).toHaveLength(0);
+
+        key(document.body, 'Escape');
+        await flushPromises();
+        await flushPromises();
+
+        expect(calls('PUT')).toHaveLength(1);
+        expect($('[data-slot=edit-layout-toolbar]')).toBeNull();
+    });
+
+    it('moves and resizes from the menu outside the mode with one save each, and disables Make wider at the largest size with the reason', async () => {
+        media(true);
+        const wide = layoutItems();
+        wide[0].block!.sizes = { ...wide[0].block!.sizes, max_width: 4 };
+        wide[0].geometry.width = 4;
+        replies = [
+            ok(dashboard(wide)),
+            resultsOf([]),
+            {
+                ok: true,
+                status: 200,
+                json: { data: { ...dashboard(wide), revision: 1 } },
+            },
+        ];
+
+        await mountPage();
+
+        const openMenu = async () => {
+            (
+                $('[data-item=i-1] [data-slot=block-menu]') as HTMLButtonElement
+            ).dispatchEvent(
+                new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+            );
+            await flushPromises();
+        };
+
+        await openMenu();
+
+        const wider = $('[data-slot=menu-wider]')!;
+
+        expect(wider.getAttribute('aria-disabled')).toBe('true');
+        expect(wider.textContent).toContain(
+            'Already at the widest size this block allows',
+        );
+
+        ($('[data-slot=menu-move-down]') as HTMLElement).click();
+        await flushPromises();
+        await flushPromises();
+
+        const put = calls('PUT')[0];
+
+        expect(put[0]).toBe('/api/v1/dashboards/d-1/layout');
+        expect(JSON.parse(put[1].body!)).toEqual({
+            items: [
+                { item_id: 'i-1', col: 0, row: 2, width: 4, height: 'small' },
+            ],
+            expected_revision: 0,
+        });
+    });
+
+    it('reorders on a single column with Move up and Move down through SetCompactOrder and offers no free resize', async () => {
+        media(false);
+        replies = [
+            ok(dashboard(layoutItems())),
+            resultsOf([]),
+            {
+                ok: true,
+                status: 200,
+                json: {
+                    data: {
+                        ...dashboard(layoutItems()),
+                        revision: 1,
+                        compact_order: ['i-2', 'i-1'],
+                    },
+                },
+            },
+        ];
+
+        await mountPage();
+
+        expect(
+            $$('[data-slot=block-card] h2').map((h) => h.textContent?.trim()),
+        ).toEqual(['Revenue overview', 'Open tickets']);
+
+        (
+            $('[data-item=i-1] [data-slot=block-menu]') as HTMLButtonElement
+        ).dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }),
+        );
+        await flushPromises();
+
+        expect($('[data-slot=menu-wider]')).toBeNull();
+        expect(
+            $('[data-slot=menu-move-up]')?.getAttribute('aria-disabled'),
+        ).toBe('true');
+
+        ($('[data-slot=menu-move-down]') as HTMLElement).click();
+        await flushPromises();
+        await flushPromises();
+
+        const put = calls('PUT')[0];
+
+        expect(put[0]).toBe('/api/v1/dashboards/d-1/compact-order');
+        expect(JSON.parse(put[1].body!)).toEqual({
+            order: ['i-2', 'i-1'],
+            expected_revision: 0,
+        });
+        expect(
+            $$('[data-slot=block-card] h2').map((h) => h.textContent?.trim()),
+        ).toEqual(['Open tickets', 'Revenue overview']);
+    });
+
+    it('triggers A, / and M only while the Keyboard shortcuts setting is on, and keeps the buttons working either way', async () => {
+        media(true);
+        replies = [
+            ok(dashboard(layoutItems())),
+            resultsOf([]),
+            { ok: true, status: 200, json: { data: [], meta: { total: 0 } } },
+        ];
+        setSingleKeyShortcuts(false);
+
+        await mountPage();
+
+        key(document.body, 'a');
+        await flushPromises();
+
+        expect($('[data-slot=add-blocks-drawer]')).toBeNull();
+
+        // The button route is unaffected by the setting.
+        ($('[data-slot=add-block]') as HTMLButtonElement).click();
+        await flushPromises();
+
+        expect($('[data-slot=add-blocks-drawer]')).not.toBeNull();
+
+        useAddBlocksPanel().hide();
+        await flushPromises();
+        setSingleKeyShortcuts(true);
+        replies.push({
+            ok: true,
+            status: 200,
+            json: { data: [], meta: { total: 0 } },
+        });
+
+        key(document.body, 'a');
+        await flushPromises();
+        await flushPromises();
+
+        expect($('[data-slot=add-blocks-drawer]')).not.toBeNull();
+    });
+
+    it('lets M pick up a focused Move button with the setting on, and Space still works with it off', async () => {
+        media(true);
+        replies = [ok(dashboard(layoutItems())), resultsOf([])];
+        setSingleKeyShortcuts(false);
+
+        await mountPage();
+        await edit();
+
+        const button = $(
+            '[data-item=i-1] [data-slot=move-button]',
+        ) as HTMLButtonElement;
+        button.focus();
+        key(button, 'm');
+        await flushPromises();
+
+        expect(button.getAttribute('aria-pressed')).toBe('false');
+
+        key(button, ' ');
+        await flushPromises();
+
+        expect(button.getAttribute('aria-pressed')).toBe('true');
+
+        key(button, 'Escape');
+        setSingleKeyShortcuts(true);
+        await flushPromises();
+        key(button, 'm');
+        await flushPromises();
+
+        expect(button.getAttribute('aria-pressed')).toBe('true');
     });
 });

@@ -581,8 +581,8 @@ it('rolls the Endpoints migration back and migrates forward again', function () 
     $tables = fn (): int => (int) Cluster::rows(Cluster::superuser(), "select count(*) as n from information_schema.tables where table_name in ('endpoints', 'endpoint_revisions')")[0]['n'];
 
     try {
-        // Twenty-one steps: the newest migrations are Story 4.9's (item removal), Story 4.4's (dashboards), Story 4.1's (Workspace time zone), Story 3.19's (publish lifecycle), Story 3.18's (validation reports), Story 3.11c's (datasets), Story 3.9's (fetch columns of draft samples), Story 3.8's (paste columns of draft samples), Story 3.4's (block categories), Story 3.3's (Blocks and Drafts), Story 2.20's (sync generations), Story 2.19's (subscriptions), Story 2.18's (health), Story 2.17's (attempt), Story 2.16's (retention), Story 2.15's (conditional state), Story 2.14's (scheduled fetch), Story 2.13's (user context), Story 2.12's (user attributes) and Story 2.11's (pagination), then this one.
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 21, '--force' => true]))->toBe(0)
+        // Twenty-two steps: the newest migrations are Story 4.12's (compact order), Story 4.9's (item removal), Story 4.4's (dashboards), Story 4.1's (Workspace time zone), Story 3.19's (publish lifecycle), Story 3.18's (validation reports), Story 3.11c's (datasets), Story 3.9's (fetch columns of draft samples), Story 3.8's (paste columns of draft samples), Story 3.4's (block categories), Story 3.3's (Blocks and Drafts), Story 2.20's (sync generations), Story 2.19's (subscriptions), Story 2.18's (health), Story 2.17's (attempt), Story 2.16's (retention), Story 2.15's (conditional state), Story 2.14's (scheduled fetch), Story 2.13's (user context), Story 2.12's (user attributes) and Story 2.11's (pagination), then this one.
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 22, '--force' => true]))->toBe(0)
             ->and($tables())->toBe(0);
     } finally {
         Artisan::call('migrate', ['--database' => 'migrator', '--force' => true]);

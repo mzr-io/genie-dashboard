@@ -185,3 +185,136 @@ export function moved(
         row: Math.max(start.row + Math.round(dy / p.y), 0),
     };
 }
+
+// ---- Keyboard and menu steps (Story 4.12) ---------------------------------------------------------------------------------------------------------
+
+// One arrow press moves a Block one column or one Small row (two 60 px units); a menu step is the same.
+export const ROW_STEP = 2;
+
+export type Direction = 'left' | 'right' | 'up' | 'down';
+
+export function step(geometry: Geometry, direction: Direction): Geometry {
+    switch (direction) {
+        case 'left':
+            return clamp({ ...geometry, col: geometry.col - 1 });
+        case 'right':
+            return clamp({ ...geometry, col: geometry.col + 1 });
+        case 'up':
+            return { ...geometry, row: Math.max(0, geometry.row - ROW_STEP) };
+        default:
+            return { ...geometry, row: geometry.row + ROW_STEP };
+    }
+}
+
+// Shift plus an arrow: left and right step the width through the presets, up and down the height; never past the Block's limits.
+export function resizeStep(
+    geometry: Geometry,
+    direction: Direction,
+    limits: Limits = NO_LIMITS,
+): Geometry {
+    if (direction === 'left' || direction === 'right') {
+        const widths = WIDTHS.filter(
+            (w) => w >= limits.minWidth && w <= limits.maxWidth,
+        );
+        const at = widths.indexOf(geometry.width as (typeof WIDTHS)[number]);
+        const next =
+            direction === 'right'
+                ? widths[Math.min(widths.length - 1, at + 1)]
+                : widths[Math.max(0, at - 1)];
+
+        return clamp({ ...geometry, width: next ?? geometry.width }, limits);
+    }
+
+    const from = HEIGHTS.indexOf(limits.minHeight);
+    const to = HEIGHTS.indexOf(limits.maxHeight);
+    const at = HEIGHTS.indexOf(geometry.height);
+    const next =
+        direction === 'down' ? Math.min(to, at + 1) : Math.max(from, at - 1);
+
+    return clamp({ ...geometry, height: HEIGHTS[next] }, limits);
+}
+
+// Whether a step in a direction changes the width at all (a menu item disables "Make wider" at the largest allowed size).
+export function canWiden(
+    geometry: Geometry,
+    limits: Limits = NO_LIMITS,
+): boolean {
+    return resizeStep(geometry, 'right', limits).width !== geometry.width;
+}
+
+export function canNarrow(
+    geometry: Geometry,
+    limits: Limits = NO_LIMITS,
+): boolean {
+    return resizeStep(geometry, 'left', limits).width !== geometry.width;
+}
+
+// What a screen reader hears when a move lands: where the Block is (row and column among the layout's rows) and what it is next to, then the
+// Blocks it pushed down. "Revenue vs Expense, row 3, column 7, right of Revenue overview; Project status moved down".
+export function describeMove(
+    after: Layout,
+    before: Layout,
+    id: string,
+    names: Record<string, string>,
+): string {
+    const me = after[id];
+
+    if (me === undefined) {
+        return '';
+    }
+
+    const rows = Array.from(
+        new Set(Object.values(after).map((g) => g.row)),
+    ).sort((a, b) => a - b);
+    const where = `row ${rows.indexOf(me.row) + 1}, column ${me.col + 1}`;
+    const others = Object.entries(after).filter(([other]) => other !== id);
+    const sameBand = (g: Geometry) =>
+        g.row < me.row + units(me.height) && me.row < g.row + units(g.height);
+    const left = others
+        .filter(([, g]) => sameBand(g) && g.col + g.width <= me.col)
+        .sort(([, a], [, b]) => b.col - a.col)[0];
+    const right = others
+        .filter(([, g]) => sameBand(g) && g.col >= me.col + me.width)
+        .sort(([, a], [, b]) => a.col - b.col)[0];
+    const above = others
+        .filter(
+            ([, g]) =>
+                g.row + units(g.height) <= me.row &&
+                g.col < me.col + me.width &&
+                me.col < g.col + g.width,
+        )
+        .sort(([, a], [, b]) => b.row - a.row)[0];
+    const below = others
+        .filter(
+            ([, g]) =>
+                g.row >= me.row + units(me.height) &&
+                g.col < me.col + me.width &&
+                me.col < g.col + g.width,
+        )
+        .sort(([, a], [, b]) => a.row - b.row)[0];
+
+    const relation = left
+        ? `right of ${names[left[0]] ?? 'another block'}`
+        : right
+          ? `left of ${names[right[0]] ?? 'another block'}`
+          : above
+            ? `below ${names[above[0]] ?? 'another block'}`
+            : below
+              ? `above ${names[below[0]] ?? 'another block'}`
+              : '';
+    const pushed = Object.keys(after)
+        .filter(
+            (other) =>
+                other !== id &&
+                before[other] !== undefined &&
+                after[other].row > before[other].row,
+        )
+        .map((other) => names[other] ?? 'Another block');
+
+    return [
+        `${names[id] ?? 'Block'}, ${where}${relation === '' ? '' : `, ${relation}`}`,
+        pushed.length === 0 ? '' : `${pushed.join(', ')} moved down`,
+    ]
+        .filter((part) => part !== '')
+        .join('; ');
+}

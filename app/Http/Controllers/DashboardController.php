@@ -136,6 +136,41 @@ final class DashboardController extends Controller
             'revision' => $view->revision,
             'items' => $view->items,
             'next_free_slot' => $view->nextFreeSlot,
+            'compact_order' => $view->compactOrder,
+        ]], 200, ['Cache-Control' => 'no-store, private']);
+    }
+
+    /**
+     * `SetCompactOrder` (Story 4.12, AD-14): `{order: [item_id], expected_revision}`. Stores the stacking order of a single-column layout; the saved
+     * desktop positions never change. The order must name exactly the dashboard's items.
+     */
+    public function compactOrder(Request $request, string $dashboard): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+        $data = $request->validate([
+            'expected_revision' => ['required', 'integer', 'min:0'],
+            'order' => ['required', 'array', 'min:1', 'max:200'],
+            'order.*' => ['required', 'string', 'uuid', 'distinct:strict'],
+        ]);
+
+        try {
+            $view = $this->dashboards->setCompactOrder($workspaceId, $membershipId, $dashboard, array_values(array_map('strval', $data['order'])), (int) $data['expected_revision']);
+        } catch (DashboardNotFound) {
+            abort(404);
+        } catch (InvalidLayout) {
+            return $this->error($request, ErrorCode::InvalidLayout->value, 422, 'The order must name every block on this dashboard once.', []);
+        } catch (RevisionConflict $e) {
+            return $this->error($request, ErrorCode::RevisionConflict->value, 409, 'The dashboard has changed.', ['revision' => $e->currentRevision]);
+        }
+
+        return response()->json(['data' => [
+            'dashboard_id' => $view->dashboardId,
+            'name' => $view->name,
+            'is_overview' => $view->isOverview,
+            'revision' => $view->revision,
+            'items' => $view->items,
+            'next_free_slot' => $view->nextFreeSlot,
+            'compact_order' => $view->compactOrder,
         ]], 200, ['Cache-Control' => 'no-store, private']);
     }
 
@@ -277,6 +312,7 @@ final class DashboardController extends Controller
             'revision' => $view->revision,
             'items' => $view->items,
             'next_free_slot' => $view->nextFreeSlot,
+            'compact_order' => $view->compactOrder,
         ]], 200, ['Cache-Control' => 'no-store, private']);
     }
 }

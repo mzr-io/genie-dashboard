@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+    canNarrow,
+    canWiden,
     clamp,
+    describeMove,
     moved,
     place,
+    resizeStep,
     resized,
     resolve,
     sameLayout,
+    step,
 } from '../../resources/js/lib/layout';
 import type { Geometry, Layout } from '../../resources/js/lib/layout';
 import cases from '../Fixtures/layout-resolve.json';
@@ -117,5 +122,66 @@ describe('sameLayout', () => {
         expect(sameLayout(a, { x: { ...a.x } })).toBe(true);
         expect(sameLayout(a, { x: { ...a.x, col: 3 } })).toBe(false);
         expect(sameLayout(a, {})).toBe(false);
+    });
+});
+
+describe('keyboard steps', () => {
+    const g: Geometry = { col: 4, row: 4, width: 4, height: 'medium' };
+
+    it('moves one column or one Small row at a time and stays in the grid', () => {
+        expect(step(g, 'left')).toEqual({ ...g, col: 3 });
+        expect(step(g, 'right')).toEqual({ ...g, col: 5 });
+        expect(step(g, 'up')).toEqual({ ...g, row: 2 });
+        expect(step(g, 'down')).toEqual({ ...g, row: 6 });
+        expect(step({ ...g, col: 0, row: 0 }, 'left')).toEqual({
+            ...g,
+            col: 0,
+            row: 0,
+        });
+        expect(step({ ...g, col: 8 }, 'right')).toEqual({ ...g, col: 8 });
+    });
+
+    it('steps the size through the presets within the limits', () => {
+        const limits = {
+            minWidth: 3,
+            maxWidth: 6,
+            minHeight: 'small' as const,
+            maxHeight: 'medium' as const,
+        };
+
+        expect(resizeStep(g, 'right', limits).width).toBe(6);
+        expect(resizeStep({ ...g, width: 6 }, 'right', limits).width).toBe(6);
+        expect(resizeStep(g, 'left', limits).width).toBe(3);
+        expect(resizeStep(g, 'down', limits).height).toBe('medium');
+        expect(resizeStep(g, 'up', limits).height).toBe('small');
+        expect(canWiden({ ...g, width: 6 }, limits)).toBe(false);
+        expect(canWiden(g, limits)).toBe(true);
+        expect(canNarrow({ ...g, width: 3 }, limits)).toBe(false);
+    });
+});
+
+describe('describeMove', () => {
+    const names = {
+        a: 'Revenue overview',
+        b: 'Revenue vs Expense',
+        c: 'Project status',
+    };
+
+    it('names the position, the neighbour and what was pushed down', () => {
+        const before: Layout = {
+            a: { col: 0, row: 0, width: 6, height: 'small' },
+            b: { col: 6, row: 4, width: 3, height: 'small' },
+            c: { col: 6, row: 0, width: 3, height: 'small' },
+        };
+        const after = place(before, 'b', {
+            col: 6,
+            row: 0,
+            width: 3,
+            height: 'small',
+        });
+
+        expect(describeMove(after, before, 'b', names)).toBe(
+            'Revenue vs Expense, row 1, column 7, right of Revenue overview; Project status moved down',
+        );
     });
 });

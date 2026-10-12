@@ -26,6 +26,11 @@ const props = defineProps<{
     justAdded?: string[];
     // Edit Layout Mode (Story 4.11): the Blocks show their move and resize handles.
     editing?: boolean;
+    // The item picked up with the keyboard (Story 4.12), if any.
+    pickedUp?: string | null;
+    // A single-column layout: Blocks stack in `order` (reading order when null) and the menu reorders instead of resizing.
+    compact?: boolean;
+    order?: string[] | null;
     // Where the next Block would go, shown while "+ Add" is hovered or focused: a dashed free-space hint.
     hint?: {
         col: number;
@@ -42,10 +47,38 @@ const emit = defineEmits<{
     remove: [blockId: string, from: 'menu' | 'card'];
     // A drag or resize in progress (`commit` false: a preview) or finished (`commit` true), with the geometry the pointer asks for.
     geometry: [itemId: string, geometry: Geometry, commit: boolean];
+    movekey: [itemId: string, event: KeyboardEvent];
+    step: [itemId: string, action: 'up' | 'down' | 'wider' | 'narrower'];
 }>();
 
 const { t } = useI18n();
 const grid = ref<HTMLElement | null>(null);
+
+// On a single column the Blocks stack in the person's own order, then reading order for any not named in it.
+const ordered = computed(() => {
+    if (!props.compact || !props.order) {
+        return props.items;
+    }
+
+    const byId = new Map(props.items.map((item) => [item.item_id, item]));
+    const named = props.order
+        .map((id) => byId.get(id))
+        .filter((i): i is DashboardItem => i !== undefined);
+    const rest = props.items.filter(
+        (item) => !props.order!.includes(item.item_id),
+    );
+
+    return [...named, ...rest];
+});
+
+const canMoveUp = (item: DashboardItem): boolean =>
+    props.compact
+        ? ordered.value[0]?.item_id !== item.item_id
+        : item.geometry.row > 0;
+const canMoveDown = (item: DashboardItem): boolean =>
+    props.compact
+        ? ordered.value[ordered.value.length - 1]?.item_id !== item.item_id
+        : true;
 
 // One pointer gesture at a time: it records where it began and turns every move into the geometry the pointer asks for. The page settles the
 // layout around it and keeps the history; nothing is written until Done.
@@ -166,7 +199,7 @@ const placement = (item: DashboardItem): Record<string, string> => ({
         class="dashboard-grid"
     >
         <div
-            v-for="item in items"
+            v-for="item in ordered"
             :key="item.item_id"
             class="dashboard-grid__cell"
             :style="placement(item)"
@@ -181,7 +214,13 @@ const placement = (item: DashboardItem): Record<string, string> => ({
                 :admin="admin"
                 :profile="profile"
                 :just-added="justAdded?.includes(item.item_id) ?? false"
-                :editing="editing"
+                :editing="editing && !compact"
+                :picked-up="pickedUp === item.item_id"
+                :compact="compact"
+                :can-move-up="canMoveUp(item)"
+                :can-move-down="canMoveDown(item)"
+                @movekey="(id, event) => $emit('movekey', id, event)"
+                @step="(id, action) => $emit('step', id, action)"
                 @drag="(_id, kind, event) => startDrag(item, kind, event)"
                 @remove="(blockId, from) => $emit('remove', blockId, from)"
                 @retry="$emit('retry', $event)"

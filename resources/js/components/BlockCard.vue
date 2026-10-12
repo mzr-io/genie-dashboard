@@ -24,6 +24,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Skeleton } from '@/components/ui/skeleton';
 import { iconFor } from '@/lib/blockIcons';
+import { NO_LIMITS, canNarrow, canWiden } from '@/lib/layout';
 import { rendererFor } from '@/lib/blockRenderers';
 import { kpiPayloadOf } from '@/lib/dashboards';
 import type { DashboardItem, ItemResult } from '@/lib/dashboards';
@@ -54,6 +55,13 @@ const props = withDefaults(
         justAdded?: boolean;
         // Edit Layout Mode (Story 4.11): the whole header is a move handle and a Block that allows resize shows a 24 x 24 handle at its corner.
         editing?: boolean;
+        // Picked up with the keyboard (Story 4.12): the Block is shown lifted and its Move button is pressed.
+        pickedUp?: boolean;
+        // A single-column layout (Story 4.12): the menu reorders (Move up, Move down) and offers no free resize.
+        compact?: boolean;
+        // Whether Move up and Move down have anywhere to go (the first and the last Block, or the top row), with the reasons the menu shows.
+        canMoveUp?: boolean;
+        canMoveDown?: boolean;
         // The profile `{user.*}` footer tokens are filled from.
         profile?: FooterProfile;
     }>(),
@@ -65,6 +73,10 @@ const props = withDefaults(
         admin: false,
         justAdded: false,
         editing: false,
+        pickedUp: false,
+        compact: false,
+        canMoveUp: true,
+        canMoveDown: true,
         profile: () => ({}),
     },
 );
@@ -76,6 +88,10 @@ const emit = defineEmits<{
     remove: [blockId: string, from: 'menu' | 'card'];
     // A pointer went down on the move handle or the resize handle.
     drag: [itemId: string, kind: 'move' | 'resize', event: PointerEvent];
+    // A key went down on the Move button (M or Space picks up; arrows, Enter and Escape act on a picked-up Block).
+    movekey: [itemId: string, event: KeyboardEvent];
+    // A menu step: reorder or one step of position or width, in or outside Edit Layout Mode.
+    step: [itemId: string, action: 'up' | 'down' | 'wider' | 'narrower'];
 }>();
 
 const { t } = useI18n();
@@ -211,6 +227,30 @@ const technical = computed(() =>
         : [],
 );
 
+const widthLimits = computed(() => {
+    const sizes = props.item.block?.sizes;
+
+    return sizes
+        ? {
+              minWidth: sizes.min_width,
+              maxWidth: sizes.max_width,
+              minHeight: sizes.min_height,
+              maxHeight: sizes.max_height,
+          }
+        : NO_LIMITS;
+});
+const widerAllowed = computed(
+    () =>
+        chrome.value?.allow_resize === true &&
+        canWiden(props.item.geometry, widthLimits.value),
+);
+const narrowerAllowed = computed(
+    () =>
+        chrome.value?.allow_resize === true &&
+        canNarrow(props.item.geometry, widthLimits.value),
+);
+const moveDescribedBy = useId();
+
 const canResize = computed(
     () => !unavailable.value && chrome.value?.allow_resize === true,
 );
@@ -295,6 +335,23 @@ function refresh(): void {
                 </div>
             </div>
 
+            <button
+                v-if="editing && !unavailable"
+                type="button"
+                class="type-caption rounded-md border border-border-default px-2 py-1 text-text-secondary focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                :class="pickedUp ? 'bg-accent-soft text-accent-ink' : ''"
+                :aria-label="labels.moveButton(title)"
+                :aria-describedby="moveDescribedBy"
+                :aria-pressed="pickedUp ? 'true' : 'false'"
+                data-slot="move-button"
+                @keydown="emit('movekey', item.item_id, $event)"
+            >
+                {{ labels.moveVerb }}
+            </button>
+            <span :id="moveDescribedBy" class="sr-only">{{
+                labels.movePickup
+            }}</span>
+
             <div
                 v-if="canRefresh || canMinimize || showMenu"
                 class="flex shrink-0 items-center gap-0.5"
@@ -358,6 +415,60 @@ function refresh(): void {
                         >
                             {{ labels.menuRefresh }}
                         </DropdownMenuItem>
+                        <DropdownMenuItem
+                            :disabled="!canMoveUp"
+                            data-slot="menu-move-up"
+                            @select="emit('step', item.item_id, 'up')"
+                        >
+                            {{ labels.moveUp }}
+                            <span
+                                v-if="!canMoveUp"
+                                class="type-caption text-text-muted"
+                            >
+                                · {{ labels.atTop }}
+                            </span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                            :disabled="!canMoveDown"
+                            data-slot="menu-move-down"
+                            @select="emit('step', item.item_id, 'down')"
+                        >
+                            {{ labels.moveDown }}
+                            <span
+                                v-if="!canMoveDown"
+                                class="type-caption text-text-muted"
+                            >
+                                · {{ labels.atBottom }}
+                            </span>
+                        </DropdownMenuItem>
+                        <template v-if="!compact && chrome?.allow_resize">
+                            <DropdownMenuItem
+                                :disabled="!widerAllowed"
+                                data-slot="menu-wider"
+                                @select="emit('step', item.item_id, 'wider')"
+                            >
+                                {{ labels.wider }}
+                                <span
+                                    v-if="!widerAllowed"
+                                    class="type-caption text-text-muted"
+                                >
+                                    · {{ labels.atWidest }}
+                                </span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                :disabled="!narrowerAllowed"
+                                data-slot="menu-narrower"
+                                @select="emit('step', item.item_id, 'narrower')"
+                            >
+                                {{ labels.narrower }}
+                                <span
+                                    v-if="!narrowerAllowed"
+                                    class="type-caption text-text-muted"
+                                >
+                                    · {{ labels.atNarrowest }}
+                                </span>
+                            </DropdownMenuItem>
+                        </template>
                         <DropdownMenuItem @select="aboutOpen = true">
                             {{ labels.menuAbout }}
                         </DropdownMenuItem>

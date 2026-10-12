@@ -25,6 +25,7 @@ import {
     refreshItem,
     removeBlock,
     restoreBlock,
+    saveCompactOrder,
     saveLayout,
     setMinimized,
 } from '@/lib/dashboards';
@@ -35,9 +36,17 @@ import type {
     ItemResult,
 } from '@/lib/dashboards';
 import { formatDateTime } from '@/lib/format';
-import { NO_LIMITS, place, sameLayout } from '@/lib/layout';
+import {
+    NO_LIMITS,
+    describeMove,
+    place,
+    resizeStep,
+    sameLayout,
+    step,
+} from '@/lib/layout';
 import type { Geometry, Layout } from '@/lib/layout';
 import { SIGN_IN_URL } from '@/lib/session';
+import { registerShortcut } from '@/lib/shortcuts';
 import { useToasts } from '@/stores/toasts';
 import {
     addBlocksLabels,
@@ -135,6 +144,11 @@ const committed = ref<Layout>({});
 const past = ref<Layout[]>([]);
 const future = ref<Layout[]>([]);
 const saving = ref(false);
+// The Block picked up with the keyboard (Story 4.12), the layout it was lifted from, and whether one more Esc would finish the mode.
+const picked = ref<{ id: string; base: Layout } | null>(null);
+let escArmed = false;
+const desktop = useMediaQuery('(min-width: 768px)');
+const compactOrder = ref<string[] | null>(null);
 const saveError = ref<'failed' | 'conflict' | null>(null);
 const focusEditButton = (): void =>
     document.querySelector<HTMLElement>('[data-slot=edit-layout]')?.focus();
@@ -198,6 +212,7 @@ async function load(): Promise<void> {
 
         dashboard.value = result;
         revision.value = result.revision;
+        compactOrder.value = result.compact_order ?? null;
         minimized.value = Object.fromEntries(
             result.items.map((item) => [item.item_id, item.minimized]),
         );
@@ -1056,6 +1071,300 @@ function redoLayout(): void {
     working.value = { ...next };
 }
 
+const namesOf = (): Record<string, string> =>
+    Object.fromEntries(
+        (dashboard.value?.items ?? []).map((i) => [
+            i.item_id,
+            i.block?.name ?? 'Block',
+        ]),
+    );
+
+// Pick a Block up with M or Space: its Move button is pressed, arrows move it, Shift with arrows resizes it, Enter drops it and Escape puts it back.
+function pickUp(itemId: string): void {
+    if (
+        !editing.value ||
+        picked.value !== null ||
+        working.value[itemId] === undefined
+    ) {
+        return;
+    }
+
+    picked.value = { id: itemId, base: { ...committed.value } };
+    escArmed = false;
+    announce(labels.pickedUp(namesOf()[itemId] ?? 'Block'), 'polite');
+}
+
+function dropPicked(): void {
+    const current = picked.value;
+
+    if (current === null) {
+        return;
+    }
+
+    if (!sameLayout(working.value, current.base)) {
+        past.value.push(current.base);
+        future.value = [];
+        committed.value = { ...working.value };
+    }
+
+    picked.value = null;
+    announce(
+        describeMove(working.value, current.base, current.id, namesOf()),
+        'polite',
+    );
+}
+
+function cancelPicked(): void {
+    const current = picked.value;
+
+    if (current === null) {
+        return;
+    }
+
+    working.value = { ...current.base };
+    picked.value = null;
+    announce(labels.cancelled(namesOf()[current.id] ?? 'Block'), 'polite');
+}
+
+function onMoveKey(itemId: string, event: KeyboardEvent): void {
+    if (!editing.value) {
+        return;
+    }
+
+    if (picked.value === null) {
+        if (event.key === ' ') {
+            event.preventDefault();
+            pickUp(itemId);
+        }
+
+        return;
+    }
+
+    if (picked.value.id !== itemId) {
+        return;
+    }
+
+    const directions: Record<string, 'left' | 'right' | 'up' | 'down'> = {
+        ArrowLeft: 'left',
+        ArrowRight: 'right',
+        ArrowUp: 'up',
+        ArrowDown: 'down',
+    };
+    const direction = directions[event.key];
+
+    if (direction !== undefined) {
+        event.preventDefault();
+
+        const from = working.value[itemId];
+        const next = event.shiftKey
+            ? resizeStep(from, direction, limitsOf(itemId))
+            : step(from, direction);
+
+        working.value = place(
+            picked.value.base,
+            itemId,
+            next,
+            limitsOf(itemId),
+        );
+
+        return;
+    }
+
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        dropPicked();
+    } else if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        cancelPicked();
+    }
+}
+
+// Esc in the mode: the first press only cancels a picked-up Block; with nothing picked up, one press arms and the next finishes and saves. One press
+// never does both, and an open menu or dialog keeps its own Esc.
+function onEscape(event: KeyboardEvent): void {
+    if (!editing.value) {
+        return;
+    }
+
+    if (event.key !== 'Escape') {
+        escArmed = false;
+
+        return;
+    }
+
+    if (document.querySelector('[role=menu], [role=dialog]') !== null) {
+        return;
+    }
+
+    if (picked.value !== null) {
+        event.preventDefault();
+        cancelPicked();
+        escArmed = false;
+
+        return;
+    }
+
+    if (escArmed) {
+        escArmed = false;
+        event.preventDefault();
+        void finishEditing();
+
+        return;
+    }
+
+    escArmed = true;
+    announce(labels.exitHint, 'polite');
+}
+
+// A menu step, in or outside Edit Layout Mode: Move up and Move down, Make wider and Make narrower, by one step with the Layout kernel's rules. On a
+// single column it reorders (`SetCompactOrder`); on the desktop grid outside the mode it saves at once with the revision held.
+async function onStep(
+    itemId: string,
+    action: 'up' | 'down' | 'wider' | 'narrower',
+): Promise<void> {
+    const current = dashboard.value;
+
+    if (props.dashboard_id === null || current === null || saving.value) {
+        return;
+    }
+
+    const name = namesOf()[itemId] ?? 'Block';
+
+    if (!desktop.value) {
+        const ids = (
+            compactOrder.value ?? current.items.map((i) => i.item_id)
+        ).filter((id) => current.items.some((i) => i.item_id === id));
+        const from = ids.indexOf(itemId);
+        const to =
+            action === 'up' ? from - 1 : action === 'down' ? from + 1 : from;
+
+        if (from === -1 || to < 0 || to >= ids.length || to === from) {
+            return;
+        }
+
+        const next = [...ids];
+        [next[from], next[to]] = [next[to], next[from]];
+
+        try {
+            const outcome = await saveCompactOrder(
+                props.dashboard_id,
+                next,
+                revision.value,
+            );
+
+            if (outcome.ok) {
+                dashboard.value = outcome.dashboard;
+                revision.value = outcome.dashboard.revision;
+                compactOrder.value = outcome.dashboard.compact_order ?? null;
+                announce(labels.reordered(name, to + 1, next.length), 'polite');
+                await nextTick();
+                titleOf(itemId)?.focus();
+
+                return;
+            }
+
+            if (outcome.reason === 'conflict') {
+                await load();
+            }
+
+            rollback(name);
+        } catch (error) {
+            if (
+                error instanceof DashboardError &&
+                (error.status === 401 || error.status === 419)
+            ) {
+                window.location.assign(SIGN_IN_URL);
+            }
+        }
+
+        return;
+    }
+
+    const base = editing.value ? committed.value : layoutOf(current.items);
+    const from = base[itemId];
+
+    if (from === undefined) {
+        return;
+    }
+
+    const limits = limitsOf(itemId);
+    const next =
+        action === 'up'
+            ? step(from, 'up')
+            : action === 'down'
+              ? step(from, 'down')
+              : resizeStep(from, action === 'wider' ? 'right' : 'left', limits);
+    const layout = place(base, itemId, next, limits);
+
+    if (sameLayout(layout, base)) {
+        return;
+    }
+
+    if (editing.value) {
+        past.value.push(committed.value);
+        future.value = [];
+        committed.value = layout;
+        working.value = { ...layout };
+        announce(describeMove(layout, base, itemId, namesOf()), 'polite');
+
+        return;
+    }
+
+    await persist(layout, describeMove(layout, base, itemId, namesOf()));
+}
+
+// Save a layout's changed items with the revision held, without entering the mode.
+async function persist(layout: Layout, spoken: string): Promise<void> {
+    const current = dashboard.value;
+
+    if (props.dashboard_id === null || current === null) {
+        return;
+    }
+
+    const saved = layoutOf(current.items);
+    const changed = Object.entries(layout)
+        .filter(
+            ([id, g]) =>
+                saved[id] !== undefined &&
+                !sameLayout({ [id]: g }, { [id]: saved[id] }),
+        )
+        .map(([id, g]) => ({ item_id: id, ...g }));
+
+    if (changed.length === 0) {
+        return;
+    }
+
+    try {
+        const outcome = await saveLayout(
+            props.dashboard_id,
+            changed,
+            revision.value,
+        );
+
+        if (outcome.ok) {
+            dashboard.value = outcome.dashboard;
+            revision.value = outcome.dashboard.revision;
+            announce(spoken, 'polite');
+
+            return;
+        }
+
+        if (outcome.reason === 'conflict') {
+            await load();
+        }
+
+        toasts.add({ kind: 'rollback', message: t('layout-save-failed') });
+    } catch (error) {
+        if (
+            error instanceof DashboardError &&
+            (error.status === 401 || error.status === 419)
+        ) {
+            window.location.assign(SIGN_IN_URL);
+        }
+    }
+}
+
 // Done: the changed items go in one `MoveResizeItems` with the revision held. On success the server's settled layout replaces ours and the mode
 // ends with focus back on Edit layout; on failure the mode stays open with `msg:layout-save-failed` and the local arrangement kept (a stale revision
 // offers a reload instead of an overwrite).
@@ -1146,8 +1455,54 @@ function showHint(block: CatalogueBlock | null): void {
               };
 }
 
+const stops: Array<() => void> = [];
+
 onMounted(async () => {
     document.addEventListener('keydown', onUndoKey);
+    document.addEventListener('keydown', onEscape);
+    document.addEventListener('pointerdown', () => (escArmed = false));
+
+    // Single-key shortcuts (Story 4.12): `A` opens the Add-blocks Panel, `/` opens it with search focused and `M` picks up the focused Block's Move
+    // button. They obey the Keyboard shortcuts switch; the buttons and menu items do the same with it off.
+    stops.push(
+        registerShortcut({
+            id: 'dashboard-add',
+            key: 'a',
+            run: () => showPanel(),
+        }),
+        registerShortcut({
+            id: 'dashboard-search',
+            key: '/',
+            run: (event) => {
+                event.preventDefault();
+                showPanel();
+                void nextTick().then(() =>
+                    document
+                        .querySelector<HTMLElement>(
+                            '[data-slot=add-blocks-search]',
+                        )
+                        ?.focus(),
+                );
+            },
+        }),
+        registerShortcut({
+            id: 'dashboard-move',
+            key: 'm',
+            scope: () =>
+                document.activeElement?.closest<HTMLElement>(
+                    '[data-slot=move-button]',
+                ) ?? null,
+            run: () => {
+                const id = document.activeElement
+                    ?.closest<HTMLElement>('[data-item]')
+                    ?.getAttribute('data-item');
+
+                if (id) {
+                    pickUp(id);
+                }
+            },
+        }),
+    );
     await load();
 
     if (state.value === 'ready' && items.value.length > 0) {
@@ -1157,6 +1512,8 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
     document.removeEventListener('keydown', onUndoKey);
+    document.removeEventListener('keydown', onEscape);
+    stops.forEach((stop) => stop());
     controller?.abort();
     resultsController?.abort();
 
@@ -1336,6 +1693,11 @@ onBeforeUnmount(() => {
                 :just-added="justAdded"
                 :hint="hint"
                 :editing="editing"
+                :picked-up="picked?.id ?? null"
+                :compact="!desktop"
+                :order="compactOrder"
+                @movekey="onMoveKey"
+                @step="onStep"
                 @geometry="onGeometry"
                 @retry="loadResults"
                 @refresh="onRefresh"

@@ -698,3 +698,61 @@ it('lets a Mandatory item move and resize', function () {
 
     expect(db11Geometry($locked))->toBe(['col' => 3, 'row' => 2, 'width' => 4, 'height' => 'medium']);
 });
+
+// ---- Story 4.12: SetCompactOrder -----------------------------------------------------------------------------------------------------------------
+
+function db12Put(string $dashboard, array $order, int $revision)
+{
+    return test()->putJson("/api/v1/dashboards/{$dashboard}/compact-order", ['order' => $order, 'expected_revision' => $revision], DB4_HEADERS);
+}
+
+it('stores the stacking order apart from the desktop positions, bumps the revision and returns it', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $a = dbItem($workspace, $dashboard, dbBlock($workspace, 'A'), ['col' => 0, 'row' => 0]);
+    $b = dbItem($workspace, $dashboard, dbBlock($workspace, 'B'), ['col' => 3, 'row' => 0]);
+    $c = dbItem($workspace, $dashboard, dbBlock($workspace, 'C'), ['col' => 6, 'row' => 0]);
+
+    expect($this->getJson("/api/v1/dashboards/{$dashboard}", DB4_HEADERS)->json('data.compact_order'))->toBeNull();
+
+    $response = db12Put($dashboard, [$c, $a, $b], 0)->assertOk();
+
+    expect($response->json('data.compact_order'))->toBe([$c, $a, $b])
+        ->and($response->json('data.revision'))->toBe(1)
+        ->and(db11Geometry($a))->toBe(['col' => 0, 'row' => 0, 'width' => 3, 'height' => 'small'])
+        ->and(db11Geometry($c))->toBe(['col' => 6, 'row' => 0, 'width' => 3, 'height' => 'small'])
+        ->and($this->getJson("/api/v1/dashboards/{$dashboard}", DB4_HEADERS)->json('data.compact_order'))->toBe([$c, $a, $b]);
+
+    $event = json_decode(Cluster::rows(Cluster::superuser(), "select data from outbox_events where type = 'dashboards.dashboard.changed'")[0]['data'], true);
+
+    expect($event['command'])->toBe('set_compact_order');
+});
+
+it('refuses an order that is not exactly the dashboard\'s items and a stale revision', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $a = dbItem($workspace, $dashboard, dbBlock($workspace, 'A'));
+    $b = dbItem($workspace, $dashboard, dbBlock($workspace, 'B'), ['col' => 3]);
+
+    db12Put($dashboard, [$a], 0)->assertStatus(422)->assertJsonPath('error.code', 'dashboards.invalid_layout');
+    db12Put($dashboard, [$a, $b, (string) Str::uuid7()], 0)->assertStatus(422);
+    db12Put($dashboard, [$a, $a], 0)->assertStatus(422);
+    db12Put($dashboard, [$b, $a], 3)->assertStatus(409)->assertJsonPath('error.revision', 0);
+
+    expect(db9Revision($dashboard))->toBe(0);
+});
+
+it('appends a new item to an existing order and drops a removed one from it', function () {
+    [$workspace, , $dashboard] = db9Setup();
+    $a = dbItem($workspace, $dashboard, dbBlock($workspace, 'A'));
+    $b = dbItem($workspace, $dashboard, dbBlock($workspace, 'B'), ['col' => 3]);
+    db12Put($dashboard, [$b, $a], 0)->assertOk();
+
+    $new = dbBlock($workspace, 'New');
+    $added = $this->postJson(db9Url($dashboard), ['block_id' => $new, 'expected_revision' => 1], DB4_HEADERS)->assertCreated()->json('data.item.item_id');
+
+    expect($this->getJson("/api/v1/dashboards/{$dashboard}", DB4_HEADERS)->json('data.compact_order'))->toBe([$b, $a, $added]);
+
+    $blockOfA = Cluster::rows(Cluster::superuser(), 'select block_id from dashboard_items where id = ?', [$a])[0]['block_id'];
+    $this->deleteJson(db9Url($dashboard, "blocks/{$blockOfA}"), ['expected_revision' => 2], DB4_HEADERS)->assertOk();
+
+    expect($this->getJson("/api/v1/dashboards/{$dashboard}", DB4_HEADERS)->json('data.compact_order'))->toBe([$b, $added]);
+});

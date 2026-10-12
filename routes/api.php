@@ -42,6 +42,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('blocks/available', [BlockCatalogueController::class, 'index'])->middleware('throttle:120,1')->name('api.blocks.available');
     Route::get('blocks/{block}/sample', [BlockCatalogueController::class, 'sample'])->middleware('throttle:120,1')->name('api.blocks.sample');
     Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])->name('api.dashboards.show');
+    Route::put('dashboards/{dashboard}/compact-order', [DashboardController::class, 'compactOrder'])->middleware('throttle:60,1')->name('api.dashboards.compact-order');
     Route::put('dashboards/{dashboard}/layout', [DashboardController::class, 'layout'])->middleware('throttle:60,1')->name('api.dashboards.layout');
     Route::post('dashboards/{dashboard}/blocks', [DashboardController::class, 'addBlock'])->middleware('throttle:60,1')->name('api.dashboards.blocks.add');
     Route::post('dashboards/{dashboard}/blocks/{block}/restore', [DashboardController::class, 'restoreBlock'])->middleware('throttle:60,1')->name('api.dashboards.blocks.restore');
