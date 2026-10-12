@@ -797,7 +797,7 @@ describe('Slot checklist: Continue', () => {
 
         await click(go);
 
-        expect($('[data-test=later-step]')).not.toBeNull();
+        expect($('[data-test=step-4]')).not.toBeNull();
         expect($('[data-test=step-3]')).toBeNull();
         const save = calls.find((c) => c.url === BASE && c.method === 'PUT')!;
 

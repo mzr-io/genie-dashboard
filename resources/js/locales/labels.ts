@@ -2291,3 +2291,59 @@ export const blockPresentationLabels = {
         'The format and display settings were refused. Check the marked fields.',
     readOnly: 'Read-only: format and display cannot be changed here.',
 } as const;
+
+// Step 4, Preview (Story 3.16): the Block on every device and state, in a sample dashboard grid, and the warnings the Admin acknowledges.
+export const blockPreviewStepLabels = {
+    title: 'Preview on every device and state',
+    caption:
+        'See the block as people will, at its configured size, and review anything worth a second look.',
+    sampleLabel: 'Sample data',
+    states: 'Preview state',
+    stateOptions: [
+        { value: 'normal', label: 'Normal' },
+        { value: 'loading', label: 'Loading' },
+        { value: 'empty', label: 'Empty' },
+        { value: 'stale', label: 'Stale' },
+        { value: 'unavailable', label: 'Unavailable' },
+        { value: 'minimized', label: 'Minimized' },
+    ] as { value: string; label: string }[],
+    fullSizeTitle: 'Full size',
+    gridTitle: 'In a sample dashboard',
+    gridCaption: (columns: number, gap: number) =>
+        `12 columns, ${gap} px gap. The block takes ${columns} ${columns === 1 ? 'column' : 'columns'}.`,
+    gridRegion: (device: string) => `Sample dashboard grid, ${device}`,
+    otherBlock: 'Other block',
+    minimizedHint: 'Minimized: only the title bar shows on a dashboard.',
+    minimizedBar: (title: string) => `${title} (minimized)`,
+    contentScrolls: 'Long content scrolls inside the block.',
+    loading: 'Building the preview.',
+    // Warnings.
+    warningsTitle: 'Warnings',
+    noWarnings: 'No warnings. The block is ready to continue.',
+    warningsCount: (open: number, total: number) =>
+        open === 0
+            ? `All ${total} ${total === 1 ? 'warning is' : 'warnings are'} acknowledged.`
+            : `${open} of ${total} ${total === 1 ? 'warning needs' : 'warnings need'} acknowledging.`,
+    acknowledge: 'Acknowledge',
+    clearedOptional: (slot: string) =>
+        `${slot} is optional and has no field mapped: a suggested field was left out. The block shows nothing for it.`,
+    nullValue: (slot: string, field: string) =>
+        `${slot} is optional and the sample has no value for ${field}. The block shows its empty display, or nothing.`,
+    unavailableValue: (slot: string, field: string, why: string) =>
+        `${slot} is mapped to ${field} but unavailable (${why}).`,
+    staleMapping:
+        'The mapping was made for an earlier sample. Re-run auto-map in Map Data to bring it up to date.',
+    // Continue.
+    blockedUnresolved: (open: number) =>
+        `Acknowledge ${open} ${open === 1 ? 'warning' : 'warnings'} to continue.`,
+    blockedNotReady: 'Wait for the preview to load before continuing.',
+    blockedNoPreview:
+        'The preview could not be built, so its warnings cannot be checked. Go back to Map Data.',
+    back: 'Back',
+    continue: 'Continue',
+    readOnly: 'Read-only: warnings cannot be acknowledged here.',
+    announceAcknowledged: (open: number) =>
+        open === 0
+            ? 'All warnings acknowledged. Continue is available.'
+            : `${open} ${open === 1 ? 'warning' : 'warnings'} left to acknowledge.`,
+} as const;

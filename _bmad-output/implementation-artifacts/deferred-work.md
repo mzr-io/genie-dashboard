@@ -436,3 +436,10 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-3-15b-presentation-rules-editor-ui.md`
   summary: Missing tests for the in-flight write race (rulesSeq) and example text for date, relative-time and duration formats.
   evidence: The tests await settle() after each change, so only one write is ever in flight (needs a deferred-promise harness).
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-16-preview-on-every-device-and-state.md`
+  summary: Step 4 detects a cleared optional slot by comparing the server reason to the English text "Cleared by an admin."; it should use a machine-readable state or code.
+  evidence: blockPreviewWarnings.ts compares slot.reason to a literal; a wording change silently drops the warning (needs a backend field).
+- source_spec: `_bmad-output/implementation-artifacts/spec-3-16-preview-on-every-device-and-state.md`
+  summary: Mapping and preview are fetched separately in Step 4 with no draft_revision comparison; the sample-grid and full-size cards are both announced by screen readers; read-only and published (not just offline) paths have no test (unverified severity: low-medium).
+  evidence: reviewers traced these from code only.

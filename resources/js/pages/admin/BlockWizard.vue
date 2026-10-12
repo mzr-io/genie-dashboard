@@ -23,6 +23,7 @@ import ConfigureBlockStep from '@/components/wizard/ConfigureBlockStep.vue';
 import DataSourceStep from '@/components/wizard/DataSourceStep.vue';
 import LivePreview from '@/components/wizard/LivePreview.vue';
 import MapDataStep from '@/components/wizard/MapDataStep.vue';
+import PreviewStep from '@/components/wizard/PreviewStep.vue';
 import WizardStepper from '@/components/wizard/WizardStepper.vue';
 import { useEditLock } from '@/composables/useEditLock';
 import { useOfflineAction } from '@/composables/useOfflineAction';
@@ -448,16 +449,28 @@ const gate = computed(() => {
     );
 });
 // Why Continue cannot leave Step 2 yet: a POST not marked read-only, or no Data Source to read.
+// Step 4 (Story 3.16) says why itself: warnings still to acknowledge, or a preview not ready.
+const previewGate = ref<string | undefined>(undefined);
+// The fingerprints of the warnings Step 4 lists now; null while unknown. A save keeps only these acknowledgements.
+const liveWarnings = ref<string[] | null>(null);
 const stepBlocked = computed<string | undefined>(() =>
-    current.value === 2
-        ? (gate.value.continue ??
-          (sampleBlock(sample) === 'invalid'
-              ? blockSampleLabels.invalidBlocked
-              : sampleBlock(sample) === 'unchecked'
-                ? blockSampleLabels.uncheckedBlocked
-                : undefined))
-        : undefined,
+    current.value === 4
+        ? previewGate.value
+        : current.value === 2
+          ? (gate.value.continue ??
+            (sampleBlock(sample) === 'invalid'
+                ? blockSampleLabels.invalidBlocked
+                : sampleBlock(sample) === 'unchecked'
+                  ? blockSampleLabels.uncheckedBlocked
+                  : undefined))
+          : undefined,
 );
+
+// The warnings Step 4 lists are acknowledged one by one; the list is kept in `draft_ui_state` with the next save.
+function setAcknowledged(ids: string[]): void {
+    uiState.acknowledged_warnings = [...ids];
+    onChange();
+}
 
 // ---- Validation ------------------------------------------------------------------------------------------------
 
@@ -569,7 +582,12 @@ function deltaOf(step: number): PendingDelta {
         step,
         config: configOf(),
         ui_state: {
-            acknowledged_warnings: [...(uiState.acknowledged_warnings ?? [])],
+            acknowledged_warnings: (uiState.acknowledged_warnings ?? []).filter(
+                (id) =>
+                    current.value !== 4 ||
+                    liveWarnings.value === null ||
+                    liveWarnings.value.includes(id),
+            ),
             slot_statuses: { ...uiState.slot_statuses },
         },
     };
@@ -1632,6 +1650,27 @@ onBeforeUnmount(() => {
                                 {{ labels.back }}
                             </Button>
                         </div>
+                    </div>
+
+                    <div
+                        v-else-if="current === 4"
+                        class="flex flex-col gap-4"
+                        data-test="step-4-wrap"
+                    >
+                        <PreviewStep
+                            :draft-id="draft?.draft_id ?? null"
+                            :name="form.name"
+                            :description="form.description"
+                            :display="form.display"
+                            :acknowledged="uiState.acknowledged_warnings ?? []"
+                            :blocked="mapBlocked"
+                            @update:acknowledged="setAcknowledged"
+                            @gate="(reason) => (previewGate = reason)"
+                            @live="(ids) => (liveWarnings = ids)"
+                            @auth-error="sessionEnded"
+                            @back="goTo(3)"
+                            @continue="onContinue"
+                        />
                     </div>
 
                     <section
