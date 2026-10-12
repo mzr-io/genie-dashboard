@@ -23,5 +23,14 @@ final readonly class PublishedConfig
         public array $presentation,
         public array $fields,
         public ?string $endpointId,
+        public ?string $dataSourceId = null,
+        /** Whole seconds, `live`, or null when none was chosen. */
+        public int|string|null $refreshInterval = null,
+        /** `follow_dashboard`, `own_selector`, `not_date_filtered`, or null when none was chosen. */
+        public ?string $period = null,
+        /** @var array{preset: string, from?: string, to?: string}|null the Block's Default date range */
+        public ?array $defaultRange = null,
+        /** @var array<string, string|null> the Fixed parameters' own values */
+        public array $bindings = [],
     ) {}
 }

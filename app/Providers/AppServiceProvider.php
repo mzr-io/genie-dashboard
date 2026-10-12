@@ -169,7 +169,9 @@ use App\Modules\RawStore\Contracts\RawTierSweep;
 use App\Modules\RawStore\Infrastructure\PostgresRawStore;
 use App\Modules\RawStore\Infrastructure\PostgresRawTierSweep;
 use App\Modules\Results\Application\ComputeOnPayloadChanged;
+use App\Modules\Results\Application\ViewBlockResult;
 use App\Modules\Results\Contracts\ResultStore;
+use App\Modules\Results\Contracts\ViewedResults;
 use App\Modules\Results\Infrastructure\LaravelValkeyCommands;
 use App\Modules\Results\Infrastructure\ValkeyCommands;
 use App\Modules\Results\Infrastructure\ValkeyResultStore;
@@ -301,6 +303,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ComputeSources::class, ReadComputeSources::class);
         // Blocks and Results (Story 4.2): a version's frozen configuration for compute, and the Valkey `cache` store of Block Results.
         $this->app->bind(PublishedConfigs::class, ReadPublishedConfigs::class);
+        $this->app->bind(ViewedResults::class, ViewBlockResult::class);
         $this->app->bind(ValkeyCommands::class, fn ($app) => new LaravelValkeyCommands($app['redis']->connection('cache')));
         $this->app->bind(ResultStore::class, fn ($app) => new ValkeyResultStore(
             $app->make(ValkeyCommands::class),

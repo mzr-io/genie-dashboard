@@ -39,6 +39,16 @@ final class ReadPublishedConfigs implements PublishedConfigs
             }
         }
 
+        $source = is_array($config['source'] ?? null) ? $config['source'] : [];
+        $range = is_array($source['default_date_range'] ?? null) && is_string($source['default_date_range']['preset'] ?? null)
+            ? array_filter(['preset' => $source['default_date_range']['preset'], 'from' => $source['default_date_range']['from'] ?? null, 'to' => $source['default_date_range']['to'] ?? null], is_string(...))
+            : null;
+        $bindings = [];
+
+        foreach (is_array($source['bindings'] ?? null) ? $source['bindings'] : [] as $name => $value) {
+            $bindings[(string) $name] = is_string($value) ? $value : null;
+        }
+
         $endpoint = $config['endpoint']['id'] ?? $config['source']['endpoint_id'] ?? null;
 
         return new PublishedConfig(
@@ -51,6 +61,11 @@ final class ReadPublishedConfigs implements PublishedConfigs
             is_array($config['presentation'] ?? null) ? $config['presentation'] : [],
             $fields,
             is_string($endpoint) ? strtolower($endpoint) : null,
+            is_string($source['data_source_id'] ?? null) ? strtolower($source['data_source_id']) : null,
+            is_int($config['refresh_interval'] ?? null) || ($config['refresh_interval'] ?? null) === 'live' ? $config['refresh_interval'] : null,
+            is_string($config['period'] ?? null) ? $config['period'] : null,
+            $range,
+            $bindings,
         );
     }
 }

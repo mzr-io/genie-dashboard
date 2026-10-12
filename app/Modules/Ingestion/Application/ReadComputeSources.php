@@ -5,6 +5,7 @@ namespace App\Modules\Ingestion\Application;
 use App\Modules\Ingestion\Contracts\ComputeSources;
 use App\Modules\Ingestion\Contracts\ComputeSubscription;
 use App\Modules\Ingestion\Contracts\ComputeTarget;
+use App\Modules\Ingestion\Contracts\WatchedTarget;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -29,6 +30,24 @@ final class ReadComputeSources implements ComputeSources
         return $row === null ? null : $this->targetOf($row);
     }
 
+    public function watching(string $workspaceId, string $blockVersionId, string $computeContext): ?WatchedTarget
+    {
+        if (! Str::isUuid($blockVersionId)) {
+            return null;
+        }
+
+        /** @var \stdClass|null $row */
+        $row = DB::selectOne(
+            'select '.self::COLUMNS.', s.block_version_id, s.role, s.compute_context, s.period_start, s.period_end, s.refresh_interval_seconds, s.hot_until '
+            .'from sync_subscriptions s join sync_targets t on t.workspace_id = s.workspace_id and t.id = s.sync_target_id '
+            ."where s.workspace_id = ? and s.block_version_id = ? and s.role = 'primary' and s.compute_context = ? and t.retired_at is null and t.current_payload_id is not null "
+            .'order by s.last_access_at desc limit 1',
+            [$workspaceId, strtolower($blockVersionId), $computeContext],
+        );
+
+        return $row === null ? null : new WatchedTarget($this->targetOf($row), $this->subscriptionOf($row));
+    }
+
     public function subscriptions(string $workspaceId, string $syncTargetId): array
     {
         if (! Str::isUuid($syncTargetId)) {
@@ -36,14 +55,20 @@ final class ReadComputeSources implements ComputeSources
         }
 
         $rows = DB::select(
-            "select block_version_id, role, compute_context, period_start, period_end from sync_subscriptions where workspace_id = ? and sync_target_id = ? and role = 'primary' order by block_version_id, compute_context",
+            "select block_version_id, role, compute_context, period_start, period_end, refresh_interval_seconds, hot_until from sync_subscriptions where workspace_id = ? and sync_target_id = ? and role = 'primary' order by block_version_id, compute_context",
             [$workspaceId, strtolower($syncTargetId)],
         );
 
-        return array_values(array_map(fn (\stdClass $r): ComputeSubscription => new ComputeSubscription(
+        return array_values(array_map($this->subscriptionOf(...), $rows));
+    }
+
+    private function subscriptionOf(\stdClass $r): ComputeSubscription
+    {
+        return new ComputeSubscription(
             strtolower((string) $r->block_version_id), (string) $r->role, (string) $r->compute_context,
             $r->period_start === null ? null : substr((string) $r->period_start, 0, 10), $r->period_end === null ? null : substr((string) $r->period_end, 0, 10),
-        ), $rows));
+            (int) $r->refresh_interval_seconds, $r->hot_until === null ? null : CarbonImmutable::parse((string) $r->hot_until)->utc()->format('Y-m-d\TH:i:s\Z'),
+        );
     }
 
     public function watched(string $workspaceId, int $limit, ?string $afterId = null): array

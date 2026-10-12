@@ -27,6 +27,8 @@ use App\Platform\Outbox\Outbox;
 use App\Platform\Tenancy\TenantCache;
 use App\Platform\Tenancy\WorkspaceSettings;
 use Carbon\CarbonImmutable;
+use DateTimeImmutable;
+use DateTimeZone;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -166,7 +168,22 @@ final class ComputeResults
             $applying[] = ResultState::Empty;
         }
 
-        return $this->result($key, $target, ResultState::strongest(...$applying, ...[ResultState::Ok]), $states, $result->payload);
+        // A mapped Data-as-of slot says how old the data is; without one it is when the payload was first observed (Story 4.3).
+        return $this->result($key, $target, ResultState::strongest(...$applying, ...[ResultState::Ok]), $states, $result->payload, self::asOf($result->slots['data_as_of'] ?? null));
+    }
+
+    private static function asOf(mixed $value): ?string
+    {
+        // Only an ISO date or date-time: PHP's parser would also take `yesterday` or `now`.
+        if (! is_string($value) || preg_match('/\A\d{4}-\d{2}-\d{2}(?:[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?\z/D', trim($value)) !== 1) {
+            return null;
+        }
+
+        try {
+            return (new DateTimeImmutable($value, new DateTimeZone('UTC')))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
+        } catch (\Exception) {
+            return null;
+        }
     }
 
     /** @param  list<string>  $slots */
@@ -185,13 +202,13 @@ final class ComputeResults
      * @param  array<string, array{state: string, reason?: string}>  $states
      * @param  array<string, mixed>  $payload
      */
-    private function result(string $key, ComputeTarget $target, ResultState $state, array $states, array $payload): BlockResult
+    private function result(string $key, ComputeTarget $target, ResultState $state, array $states, array $payload, ?string $dataAsOf = null): BlockResult
     {
         return new BlockResult(
             BlockResult::VERSION,
             $target->payloadId,
             $target->payloadSeq,
-            $target->payloadChangedAt,
+            $dataAsOf ?? $target->payloadChangedAt,
             $target->lastSuccessAt,
             $state,
             false,

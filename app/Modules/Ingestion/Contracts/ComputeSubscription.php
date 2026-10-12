@@ -11,5 +11,9 @@ final readonly class ComputeSubscription
         public string $computeContext,
         public ?string $periodStart,
         public ?string $periodEnd,
+        /** The refresh interval copied at subscribe time (Story 2.19). */
+        public int $refreshIntervalSeconds = 0,
+        /** ISO 8601, UTC: while it is in the future the target is hot for this subscription. */
+        public ?string $hotUntil = null,
     ) {}
 }

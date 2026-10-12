@@ -47,8 +47,8 @@ function periodViolations(string $root, array $callers): array
     return $out;
 }
 
-it('keeps every period decision inside Platform\Period, called through one Blocks helper', function () {
-    expect(periodViolations(dirname(__DIR__, 2).'/app', ['Modules/Blocks/Application/DraftPeriod.php']))->toBe([]);
+it('keeps every period decision inside Platform\Period, called through the wizard helper and the viewed-result read', function () {
+    expect(periodViolations(dirname(__DIR__, 2).'/app', ['Modules/Blocks/Application/DraftPeriod.php', 'Modules/Results/Application/ViewBlockResult.php']))->toBe([]);
 });
 
 it('fails a second implementation and names file and line', function () {

@@ -38,6 +38,12 @@ final readonly class BlockResult
         return hash('sha256', $key."\n".$generationId."\n".$v);
     }
 
+    /** The same result judged by the read path (Freshness): the flags are the only fields it changes. */
+    public function withFreshness(bool $stale, bool $refreshing): self
+    {
+        return new self($this->v, $this->generationId, $this->payloadSeq, $this->dataAsOf, $this->lastSuccessAt, $this->state, $stale, $refreshing, $this->slotStates, $this->renderPayload, $this->resultEtag, $this->computedAt);
+    }
+
     /** Some slots are unavailable while others hold a value: derived, never stored. */
     public function partial(): bool
     {
