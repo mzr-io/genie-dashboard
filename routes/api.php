@@ -41,7 +41,12 @@ Route::middleware('auth:sanctum')->group(function () {
     // The Add-blocks Panel's list (Story 4.7): every published Block the member can see.
     Route::get('blocks/available', [BlockCatalogueController::class, 'index'])->middleware('throttle:120,1')->name('api.blocks.available');
     Route::get('blocks/{block}/sample', [BlockCatalogueController::class, 'sample'])->middleware('throttle:120,1')->name('api.blocks.sample');
+    Route::get('dashboards', [DashboardController::class, 'index'])->middleware('throttle:120,1')->name('api.dashboards.index');
+    Route::post('dashboards', [DashboardController::class, 'create'])->middleware('throttle:60,1')->name('api.dashboards.create');
     Route::get('dashboards/{dashboard}', [DashboardController::class, 'show'])->name('api.dashboards.show');
+    Route::put('dashboards/{dashboard}/name', [DashboardController::class, 'rename'])->middleware('throttle:60,1')->name('api.dashboards.rename');
+    Route::post('dashboards/{dashboard}/duplicate', [DashboardController::class, 'duplicate'])->middleware('throttle:60,1')->name('api.dashboards.duplicate');
+    Route::delete('dashboards/{dashboard}', [DashboardController::class, 'destroy'])->middleware('throttle:60,1')->name('api.dashboards.destroy');
     Route::put('dashboards/{dashboard}/compact-order', [DashboardController::class, 'compactOrder'])->middleware('throttle:60,1')->name('api.dashboards.compact-order');
     Route::put('dashboards/{dashboard}/date-range', [DashboardController::class, 'dateRange'])->middleware('throttle:60,1')->name('api.dashboards.date-range');
     Route::put('dashboards/{dashboard}/blocks/{block}/period', [DashboardController::class, 'periodSelection'])->middleware('throttle:60,1')->name('api.dashboards.blocks.period');

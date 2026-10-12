@@ -55,7 +55,9 @@ Route::middleware(['auth'])->group(function () {
     // The page of Story 4.4: the shell and `{dashboard_id, revision}`; its layout comes from `GET /api/v1/dashboards/{id}`.
     Route::get('dashboard', [DashboardController::class, 'overview'])->name('overview');
     Route::redirect('overview', '/dashboard')->name('dashboard');
-    Route::inertia('dashboards', 'Placeholder', ['page' => 'my-dashboards'])->name('dashboards.index');
+    // My dashboards (Story 4.16): the member's own list, loaded from `GET /api/v1/dashboards`; a dashboard opens by its address.
+    Route::inertia('dashboards', 'MyDashboards')->name('dashboards.index');
+    Route::get('dashboards/{dashboard}', [DashboardController::class, 'open'])->name('dashboards.open');
     Route::inertia('templates', 'Placeholder', ['page' => 'templates'])->name('templates.index');
 
     Route::prefix('admin')->middleware('admin')->group(function () {

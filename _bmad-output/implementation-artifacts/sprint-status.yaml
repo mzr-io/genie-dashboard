@@ -124,7 +124,7 @@ development_status:
   4-13-receive-live-updates-through-reverb-with-a-polling-fallback: review
   4-14-pause-live-updates-and-see-the-oldest-data-as-of: review
   4-15-set-a-dashboard-date-range-and-block-period-selectors: review
-  4-16-manage-my-dashboards-and-switch-between-them: backlog
+  4-16-manage-my-dashboards-and-switch-between-them: review
   4-17-use-the-dashboard-on-any-screen-size: backlog
   epic-4-retrospective: optional
 

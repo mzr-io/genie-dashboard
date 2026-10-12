@@ -20,4 +20,8 @@ enum ErrorCode: string
     case InvalidLayout = 'dashboards.invalid_layout';
     /** A Date Range or a Block period selection is not one the dashboard or Block offers, or carries a date it may not (Story 4.15): HTTP 422, nothing stored. */
     case InvalidPeriod = 'dashboards.invalid_period';
+    /** A dashboard name is empty, longer than 120 characters or holds a control character (Story 4.16): HTTP 422 with the field error `name`. */
+    case InvalidName = 'dashboards.invalid_name';
+    /** `DeleteDashboard` of the Overview (Story 4.16): HTTP 422, with `msg:overview-delete`. */
+    case OverviewUndeletable = 'dashboards.overview_undeletable';
 }

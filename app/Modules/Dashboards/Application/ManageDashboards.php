@@ -9,11 +9,15 @@ use App\Modules\Dashboards\Contracts\BlockNotAvailable;
 use App\Modules\Dashboards\Contracts\DashboardNotFound;
 use App\Modules\Dashboards\Contracts\DashboardRef;
 use App\Modules\Dashboards\Contracts\Dashboards;
+use App\Modules\Dashboards\Contracts\DashboardSummary;
 use App\Modules\Dashboards\Contracts\DashboardView;
+use App\Modules\Dashboards\Contracts\DuplicateOutcome;
+use App\Modules\Dashboards\Contracts\InvalidDashboardName;
 use App\Modules\Dashboards\Contracts\InvalidLayout;
 use App\Modules\Dashboards\Contracts\ItemChange;
 use App\Modules\Dashboards\Contracts\ItemLocked;
 use App\Modules\Dashboards\Contracts\ItemNotFound;
+use App\Modules\Dashboards\Contracts\OverviewUndeletable;
 use App\Modules\Dashboards\Contracts\RevisionConflict;
 use App\Modules\Results\Contracts\ManualRefresh;
 use App\Modules\Results\Contracts\RefreshOutcome;
@@ -36,6 +40,8 @@ use Illuminate\Support\Str;
  */
 final class ManageDashboards implements Dashboards
 {
+    private const COPY_SUFFIX = ' (copy)';
+
     public function __construct(
         private readonly BlockCards $cards,
         private readonly SubjectAccess $access,
@@ -58,6 +64,186 @@ final class ManageDashboards implements Dashboards
         );
 
         return new DashboardRef(strtolower((string) $row->id), (int) $row->revision);
+    }
+
+    public function list(string $workspaceId, string $membershipId): array
+    {
+        $this->overview($workspaceId, $membershipId);
+
+        /** @var list<\stdClass> $rows */
+        $rows = DB::select(
+            'select d.id, d.name, d.is_overview, '
+            ."to_char(d.updated_at at time zone 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"') as updated_at, "
+            .'(select count(*) from dashboard_items i where i.workspace_id = d.workspace_id and i.dashboard_id = d.id) as item_count '
+            .'from dashboards d where d.workspace_id = ? and d.membership_id = ? order by d.is_overview desc, d.created_at, d.id',
+            [$workspaceId, $membershipId],
+        );
+
+        return array_map(fn (\stdClass $r): DashboardSummary => $this->summary($r), $rows);
+    }
+
+    public function create(string $workspaceId, string $membershipId, string $name): DashboardSummary
+    {
+        $name = self::validName($name);
+        $id = (string) Str::uuid7();
+
+        DB::insert(
+            'insert into dashboards (id, workspace_id, membership_id, name, is_overview, revision, created_at, updated_at) values (?, ?, ?, ?, false, 0, now(), now())',
+            [$id, $workspaceId, $membershipId, $name],
+        );
+
+        $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
+            'dashboard_id' => $id, 'membership_id' => strtolower($membershipId), 'command' => 'create', 'revision' => 0,
+        ]);
+
+        return $this->summaryOf($workspaceId, $membershipId, $id);
+    }
+
+    public function rename(string $workspaceId, string $membershipId, string $dashboardId, string $name): DashboardSummary
+    {
+        $dashboard = $this->lock($workspaceId, $membershipId, $dashboardId);
+        $name = self::validName($name);
+        $id = strtolower((string) $dashboard->id);
+
+        DB::update('update dashboards set name = ?, updated_at = now() where workspace_id = ? and id = ?', [$name, $workspaceId, $id]);
+
+        $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
+            'dashboard_id' => $id, 'membership_id' => strtolower($membershipId), 'command' => 'rename', 'revision' => (int) $dashboard->revision,
+        ]);
+
+        return $this->summaryOf($workspaceId, $membershipId, $id);
+    }
+
+    public function duplicate(string $workspaceId, string $membershipId, string $dashboardId): DuplicateOutcome
+    {
+        $source = $this->lock($workspaceId, $membershipId, $dashboardId);
+        $sourceId = strtolower((string) $source->id);
+
+        $head = DB::selectOne('select name, compact_order::text as compact_order from dashboards where workspace_id = ? and id = ?', [$workspaceId, $sourceId]);
+
+        /** @var list<\stdClass> $rows */
+        $rows = DB::select(
+            'select id, block_id, col, row, width, height, minimized, mandatory, period_selection from dashboard_items where workspace_id = ? and dashboard_id = ? order by row, col, id',
+            [$workspaceId, $sourceId],
+        );
+        $blockIds = array_map(fn (\stdClass $r): string => strtolower((string) $r->block_id), $rows);
+        $cards = $this->cards->forBlocks($workspaceId, $blockIds);
+        $visible = $this->access->canView($workspaceId, $membershipId, RegisterAccessSubject::BLOCK, $blockIds);
+
+        $newId = (string) Str::uuid7();
+        $name = mb_substr((string) $head->name, 0, 120 - mb_strlen(self::COPY_SUFFIX)).self::COPY_SUFFIX;
+
+        DB::insert(
+            'insert into dashboards (id, workspace_id, membership_id, name, is_overview, revision, date_range, range_from, range_to, created_at, updated_at) '
+            .'select ?, workspace_id, membership_id, ?, false, 0, date_range, range_from, range_to, now(), now() from dashboards where workspace_id = ? and id = ?',
+            [$newId, $name, $workspaceId, $sourceId],
+        );
+
+        $map = [];
+        $omitted = 0;
+
+        foreach ($rows as $row) {
+            $blockId = strtolower((string) $row->block_id);
+
+            if (! ($visible[$blockId] ?? false) || ! isset($cards[$blockId])) {
+                $omitted++;
+
+                continue;
+            }
+
+            $itemId = (string) Str::uuid7();
+            $map[strtolower((string) $row->id)] = $itemId;
+
+            DB::insert(
+                'insert into dashboard_items (id, workspace_id, dashboard_id, block_id, col, row, width, height, minimized, mandatory, period_selection, created_at, updated_at) '
+                .'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, now(), now())',
+                [$itemId, $workspaceId, $newId, $blockId, (int) $row->col, (int) $row->row, (int) $row->width, (string) $row->height, (bool) $row->minimized, (bool) $row->mandatory, $row->period_selection],
+            );
+
+            $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$newId, [
+                'dashboard_id' => $newId, 'item_id' => $itemId, 'block_id' => $blockId, 'membership_id' => strtolower($membershipId), 'command' => 'add_item', 'revision' => 0,
+            ]);
+        }
+
+        $stored = is_string($head->compact_order) ? json_decode($head->compact_order, true) : null;
+
+        if (is_array($stored)) {
+            $order = [];
+
+            foreach ($stored as $old) {
+                $key = strtolower((string) $old);
+
+                if (isset($map[$key])) {
+                    $order[] = $map[$key];
+                }
+            }
+
+            DB::update('update dashboards set compact_order = ?::jsonb where workspace_id = ? and id = ?', [json_encode($order), $workspaceId, $newId]);
+        }
+
+        $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$newId, [
+            'dashboard_id' => $newId, 'source_dashboard_id' => $sourceId, 'membership_id' => strtolower($membershipId), 'command' => 'duplicate', 'revision' => 0,
+        ]);
+
+        return new DuplicateOutcome($this->summaryOf($workspaceId, $membershipId, $newId), $omitted);
+    }
+
+    public function delete(string $workspaceId, string $membershipId, string $dashboardId): void
+    {
+        $this->lock($workspaceId, $membershipId, $dashboardId);
+        $id = strtolower($dashboardId);
+
+        $row = DB::selectOne('select is_overview from dashboards where workspace_id = ? and id = ?', [$workspaceId, $id]);
+
+        if ((bool) $row->is_overview) {
+            throw new OverviewUndeletable;
+        }
+
+        /** @var list<\stdClass> $items */
+        $items = DB::select('select id, block_id from dashboard_items where workspace_id = ? and dashboard_id = ?', [$workspaceId, $id]);
+
+        if (! (bool) DB::selectOne('select dashboards_delete(?::uuid, ?::uuid) as removed', [$id, $membershipId])->removed) {
+            throw new DashboardNotFound;
+        }
+
+        foreach ($items as $item) {
+            $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
+                'dashboard_id' => $id, 'item_id' => strtolower((string) $item->id), 'block_id' => strtolower((string) $item->block_id),
+                'membership_id' => strtolower($membershipId), 'command' => 'remove_item', 'revision' => 0,
+            ]);
+        }
+
+        $this->outbox->emit(AuditAction::DashboardsDashboardChanged, 'dashboard:'.$id, [
+            'dashboard_id' => $id, 'membership_id' => strtolower($membershipId), 'command' => 'delete', 'revision' => 0,
+        ]);
+    }
+
+    private function summaryOf(string $workspaceId, string $membershipId, string $dashboardId): DashboardSummary
+    {
+        foreach ($this->list($workspaceId, $membershipId) as $summary) {
+            if ($summary->dashboardId === $dashboardId) {
+                return $summary;
+            }
+        }
+
+        throw new DashboardNotFound;
+    }
+
+    private function summary(\stdClass $r): DashboardSummary
+    {
+        return new DashboardSummary(strtolower((string) $r->id), (string) $r->name, (bool) $r->is_overview, (int) $r->item_count, (string) $r->updated_at);
+    }
+
+    /** A name as stored: trimmed, 1 to 120 characters, with no control or format characters. */
+    private static function validName(string $name): string
+    {
+        $name = trim($name);
+
+        if ($name === '' || ! mb_check_encoding($name, 'UTF-8') || mb_strlen($name) > 120 || preg_match('/[\p{Cc}\p{Cf}]/u', $name) !== 0) {
+            throw new InvalidDashboardName;
+        }
+
+        return $name;
     }
 
     public function find(string $workspaceId, string $membershipId, string $dashboardId): DashboardView

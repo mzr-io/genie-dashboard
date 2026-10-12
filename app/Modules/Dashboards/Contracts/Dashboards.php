@@ -14,6 +14,44 @@ interface Dashboards
     /** The member's Overview, created on first use (empty, `revision` 0). Idempotent under concurrent first opens. */
     public function overview(string $workspaceId, string $membershipId): DashboardRef;
 
+    /**
+     * The member's dashboards in the active Workspace (Story 4.16): Overview first (created on first use), then the others by creation.
+     *
+     * @return list<DashboardSummary>
+     */
+    public function list(string $workspaceId, string $membershipId): array;
+
+    /**
+     * `CreateDashboard` (Story 4.16, AD-14): an empty dashboard at revision 0.
+     *
+     * @throws InvalidDashboardName
+     */
+    public function create(string $workspaceId, string $membershipId, string $name): DashboardSummary;
+
+    /**
+     * `RenameDashboard` (Story 4.16): saves the name. It does not move the revision, so a layout command in another tab is not made to conflict.
+     *
+     * @throws DashboardNotFound
+     * @throws InvalidDashboardName
+     */
+    public function rename(string $workspaceId, string $membershipId, string $dashboardId, string $name): DashboardSummary;
+
+    /**
+     * `DuplicateDashboard` (Story 4.16): a new dashboard with the same items, positions, sizes, minimized states, Mandatory flags, Date Range and
+     * period choices and an independent revision. Items whose Block the member can no longer use are omitted and counted.
+     *
+     * @throws DashboardNotFound
+     */
+    public function duplicate(string $workspaceId, string $membershipId, string $dashboardId): DuplicateOutcome;
+
+    /**
+     * `DeleteDashboard` (Story 4.16): removes a dashboard and its items. An Overview is refused.
+     *
+     * @throws DashboardNotFound
+     * @throws OverviewUndeletable
+     */
+    public function delete(string $workspaceId, string $membershipId, string $dashboardId): void;
+
     /** @throws DashboardNotFound */
     public function find(string $workspaceId, string $membershipId, string $dashboardId): DashboardView;
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Head, usePage } from '@inertiajs/vue3';
+import { Head, router, usePage } from '@inertiajs/vue3';
 import { useMediaQuery } from '@vueuse/core';
 import {
     computed,
@@ -12,6 +12,7 @@ import {
 import { useI18n } from 'vue-i18n';
 import AddBlocksPanel from '@/components/AddBlocksPanel.vue';
 import DashboardGrid from '@/components/DashboardGrid.vue';
+import DashboardSwitcher from '@/components/DashboardSwitcher.vue';
 import DateRangePopover from '@/components/DateRangePopover.vue';
 import PageHeader from '@/components/PageHeader.vue';
 import { Button } from '@/components/ui/button';
@@ -30,6 +31,7 @@ import type { CatalogueBlock } from '@/lib/blockCatalogue';
 import {
     DashboardError,
     addBlock,
+    dashboardPageUrl,
     fetchDashboard,
     fetchResults,
     refreshItem,
@@ -44,6 +46,7 @@ import {
 import type {
     Dashboard,
     DashboardItem,
+    DashboardSummary,
     HeightPreset,
     ItemResult,
     PeriodOutcome,
@@ -67,6 +70,7 @@ import { useToasts } from '@/stores/toasts';
 import {
     addBlocksLabels,
     dashboardLabels as labels,
+    manageDashboardLabels as manageLabels,
     shellPages,
 } from '@/locales/labels';
 
@@ -1733,6 +1737,15 @@ async function onPeriod(
     }
 }
 
+// ---- Switch dashboards (Story 4.16) ----------------------------------------------------------------------------------------------------------
+// Choosing a dashboard in the switcher loads it in place (the page remounts with the new dashboard's `{dashboard_id, revision}`) and closes the
+// Add-blocks Panel. A layout still being edited ends with the page, exactly as when leaving it.
+function switchTo(target: DashboardSummary): void {
+    hidePanel();
+    announce(manageLabels.switching(target.name), 'polite');
+    router.visit(dashboardPageUrl(target));
+}
+
 // ---- Pause live updates (Story 4.14) ---------------------------------------------------------------------------------------------------------
 // While paused no poll, push-triggered refetch or reconnect refetch is applied, so values do not change under the reader. The refresh button, layout
 // commands and (Story 4.15) period changes still fetch. Resume refreshes at once. The state lives in the page: leaving the dashboard ends it.
@@ -1940,14 +1953,12 @@ onBeforeUnmount(() => {
                             {{ paused ? labels.resumeLive : labels.pauseLive }}
                         </Button>
                     </template>
-                    <Button
-                        type="button"
-                        variant="secondary"
-                        aria-disabled="true"
-                        data-slot="dashboard-switcher"
-                    >
-                        {{ labels.switcher }}
-                    </Button>
+                    <DashboardSwitcher
+                        :current-id="props.dashboard_id"
+                        :current-name="title"
+                        :disabled="offline"
+                        @switch="switchTo"
+                    />
                     <DateRangePopover
                         :value="dateRange"
                         :busy="rangeBusy"

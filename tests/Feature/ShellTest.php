@@ -83,7 +83,7 @@ it('renders the placeholder page of every navigation target for a signed-in pers
         ->where('dashboard_id', null)
         ->where('shell.area', 'user'));
 
-    $pages = ['dashboards.index' => 'my-dashboards', 'templates.index' => 'templates'];
+    $pages = ['templates.index' => 'templates'];
 
     foreach ($pages as $name => $page) {
         $this->get(route($name))->assertOk()->assertInertia(fn (AssertableInertia $inertia) => $inertia
@@ -91,6 +91,11 @@ it('renders the placeholder page of every navigation target for a signed-in pers
             ->where('page', $page)
             ->where('shell.area', 'user'));
     }
+
+    // My dashboards is its own page (Story 4.16).
+    $this->get(route('dashboards.index'))->assertOk()->assertInertia(fn (AssertableInertia $inertia) => $inertia
+        ->component('MyDashboards')
+        ->where('shell.area', 'user'));
 
     // Admin pages are gated (Story 1.19): with no Workspace and no Admin area they are the 403 page.
     foreach (array_column(array_values(ShellNavigation::ADMIN_ITEMS), 0) as $name) {

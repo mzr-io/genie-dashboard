@@ -702,3 +702,189 @@ export async function saveCompactOrder(
 
     return { ok: false, reason: 'failed' };
 }
+
+// ---- Manage my dashboards (Story 4.16) --------------------------------------------------------------------------
+
+export type DashboardSummary = {
+    dashboard_id: string;
+    name: string;
+    is_overview: boolean;
+    item_count: number;
+    updated_at: string;
+};
+
+// The address a dashboard opens at: the Overview at `/dashboard`, any other at `/dashboards/{id}`.
+export const dashboardPageUrl = (summary: {
+    dashboard_id: string;
+    is_overview: boolean;
+}): string =>
+    summary.is_overview
+        ? '/dashboard'
+        : `/dashboards/${encodeURIComponent(summary.dashboard_id)}`;
+
+export type NameOutcome =
+    | { ok: true; dashboard: DashboardSummary }
+    // A name the server refused (empty, over-long, a control character): `msg` is the field error's message key.
+    | { ok: false; invalid: true }
+    | { ok: false; invalid: false; status: number };
+
+function summaryOf(
+    json: Record<string, unknown> | null,
+): DashboardSummary | null {
+    const data = json?.data as Partial<DashboardSummary> | undefined;
+
+    return data !== undefined &&
+        typeof data.dashboard_id === 'string' &&
+        typeof data.name === 'string'
+        ? (data as DashboardSummary)
+        : null;
+}
+
+function nameOutcome(
+    status: number,
+    json: Record<string, unknown> | null,
+): NameOutcome {
+    if (status === 401 || status === 419) {
+        throw new DashboardError(status);
+    }
+
+    if (status === 200 || status === 201) {
+        const dashboard = summaryOf(json);
+
+        return dashboard === null
+            ? { ok: false, invalid: false, status: 500 }
+            : { ok: true, dashboard };
+    }
+
+    const code = (json?.error as { code?: string } | undefined)?.code;
+
+    return status === 422 && code === 'dashboards.invalid_name'
+        ? { ok: false, invalid: true }
+        : { ok: false, invalid: false, status };
+}
+
+// `GET /api/v1/dashboards`: the member's dashboards, Overview first.
+export async function fetchDashboards(
+    signal?: AbortSignal,
+): Promise<DashboardSummary[]> {
+    let response: Response;
+
+    try {
+        response = await fetch('/api/v1/dashboards', {
+            method: 'GET',
+            credentials: 'same-origin',
+            signal,
+            headers: {
+                Accept: 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-XSRF-TOKEN': xsrfToken(),
+            },
+        });
+    } catch (error) {
+        if (signal?.aborted) {
+            throw error;
+        }
+
+        throw new DashboardError(0);
+    }
+
+    if (!response.ok) {
+        throw new DashboardError(response.status);
+    }
+
+    let json: { data?: DashboardSummary[] } | null = null;
+
+    try {
+        json = (await response.json()) as { data?: DashboardSummary[] };
+    } catch {
+        json = null;
+    }
+
+    if (!Array.isArray(json?.data)) {
+        throw new DashboardError(500);
+    }
+
+    return json.data;
+}
+
+// `CreateDashboard{name}`.
+export async function createDashboard(name: string): Promise<NameOutcome> {
+    const { status, json } = await send('POST', '/api/v1/dashboards', { name });
+
+    return nameOutcome(status, json);
+}
+
+// `RenameDashboard{name}`.
+export async function renameDashboard(
+    dashboardId: string,
+    name: string,
+): Promise<NameOutcome> {
+    const { status, json } = await send(
+        'PUT',
+        `${dashboardUrl(dashboardId)}/name`,
+        { name },
+    );
+
+    return nameOutcome(status, json);
+}
+
+export type DuplicateOutcome =
+    | { ok: true; dashboard: DashboardSummary; omitted: number }
+    | { ok: false; status: number };
+
+// `DuplicateDashboard`: the new dashboard and how many items were left out.
+export async function duplicateDashboard(
+    dashboardId: string,
+): Promise<DuplicateOutcome> {
+    const { status, json } = await send(
+        'POST',
+        `${dashboardUrl(dashboardId)}/duplicate`,
+        {},
+    );
+
+    if (status === 401 || status === 419) {
+        throw new DashboardError(status);
+    }
+
+    const dashboard = summaryOf(json);
+    const omitted = (json?.data as { omitted?: number } | undefined)?.omitted;
+
+    return status === 201 && dashboard !== null
+        ? {
+              ok: true,
+              dashboard,
+              omitted: typeof omitted === 'number' ? omitted : 0,
+          }
+        : { ok: false, status };
+}
+
+export type DeleteOutcome =
+    | { ok: true }
+    // The Overview: the server refused, whatever the page showed.
+    | { ok: false; overview: true }
+    | { ok: false; overview: false; status: number };
+
+// `DeleteDashboard`: removes a dashboard that is not the Overview.
+export async function deleteDashboard(
+    dashboardId: string,
+): Promise<DeleteOutcome> {
+    const { status, json } = await send(
+        'DELETE',
+        dashboardUrl(dashboardId),
+        null,
+    );
+
+    if (status === 401 || status === 419) {
+        throw new DashboardError(status);
+    }
+
+    if (status === 200) {
+        return { ok: true };
+    }
+
+    const code = (json?.error as { code?: string } | undefined)?.code;
+
+    return status === 422 && code === 'dashboards.overview_undeletable'
+        ? { ok: false, overview: true }
+        : { ok: false, overview: false, status };
+}

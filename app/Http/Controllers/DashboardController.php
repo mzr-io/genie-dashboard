@@ -7,11 +7,14 @@ use App\Modules\Access\Contracts\MembershipLookup;
 use App\Modules\Dashboards\Contracts\BlockNotAvailable;
 use App\Modules\Dashboards\Contracts\DashboardNotFound;
 use App\Modules\Dashboards\Contracts\Dashboards;
+use App\Modules\Dashboards\Contracts\DashboardSummary;
 use App\Modules\Dashboards\Contracts\DashboardView;
 use App\Modules\Dashboards\Contracts\ErrorCode;
+use App\Modules\Dashboards\Contracts\InvalidDashboardName;
 use App\Modules\Dashboards\Contracts\InvalidLayout;
 use App\Modules\Dashboards\Contracts\ItemLocked;
 use App\Modules\Dashboards\Contracts\ItemNotFound;
+use App\Modules\Dashboards\Contracts\OverviewUndeletable;
 use App\Modules\Dashboards\Contracts\RevisionConflict;
 use App\Modules\Results\Contracts\RefreshOutcome;
 use App\Platform\Period\InvalidPeriodInput;
@@ -44,6 +47,111 @@ final class DashboardController extends Controller
         $ref = $this->dashboards->overview(...$membership);
 
         return Inertia::render('Dashboard', ['dashboard_id' => $ref->dashboardId, 'revision' => $ref->revision]);
+    }
+
+    /** A member's own dashboard opened by address (Story 4.16): the same page as the Overview, for another dashboard of theirs. */
+    public function open(Request $request, string $dashboard): Response
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+
+        try {
+            $view = $this->dashboards->find($workspaceId, $membershipId, $dashboard);
+        } catch (DashboardNotFound) {
+            abort(404);
+        }
+
+        return Inertia::render('Dashboard', ['dashboard_id' => $view->dashboardId, 'revision' => $view->revision]);
+    }
+
+    /** `GET /api/v1/dashboards` (Story 4.16): the member's dashboards, Overview first. */
+    public function index(Request $request): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+
+        return response()->json(
+            ['data' => array_map(self::summary(...), $this->dashboards->list($workspaceId, $membershipId))],
+            200,
+            ['Cache-Control' => 'no-store, private'],
+        );
+    }
+
+    /** `CreateDashboard` (Story 4.16, AD-14): `{name}`. An empty or over-long name is a 422 with a field error. */
+    public function create(Request $request): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+
+        try {
+            $summary = $this->dashboards->create($workspaceId, $membershipId, self::nameOf($request));
+        } catch (InvalidDashboardName) {
+            return $this->invalidName($request);
+        }
+
+        return response()->json(['data' => self::summary($summary)], 201);
+    }
+
+    /** `RenameDashboard` (Story 4.16): `{name}`. */
+    public function rename(Request $request, string $dashboard): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+
+        try {
+            $summary = $this->dashboards->rename($workspaceId, $membershipId, $dashboard, self::nameOf($request));
+        } catch (DashboardNotFound) {
+            abort(404);
+        } catch (InvalidDashboardName) {
+            return $this->invalidName($request);
+        }
+
+        return response()->json(['data' => self::summary($summary)]);
+    }
+
+    /** `DuplicateDashboard` (Story 4.16): the new dashboard and how many items were left out. */
+    public function duplicate(Request $request, string $dashboard): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+
+        try {
+            $outcome = $this->dashboards->duplicate($workspaceId, $membershipId, $dashboard);
+        } catch (DashboardNotFound) {
+            abort(404);
+        }
+
+        return response()->json(['data' => self::summary($outcome->dashboard) + ['omitted' => $outcome->omitted]], 201);
+    }
+
+    /** `DeleteDashboard` (Story 4.16): an Overview is a 422 `dashboards.overview_undeletable`. */
+    public function destroy(Request $request, string $dashboard): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+
+        try {
+            $this->dashboards->delete($workspaceId, $membershipId, $dashboard);
+        } catch (DashboardNotFound) {
+            abort(404);
+        } catch (OverviewUndeletable) {
+            return $this->error($request, ErrorCode::OverviewUndeletable->value, 422, 'The Overview cannot be deleted.', []);
+        }
+
+        return response()->json(['data' => ['deleted' => true]]);
+    }
+
+    private static function nameOf(Request $request): string
+    {
+        $name = $request->input('name');
+
+        return is_string($name) ? $name : '';
+    }
+
+    /** The 422 of a name that is empty, over-long or holds a control character, with the field error the form shows under the name. */
+    private function invalidName(Request $request): JsonResponse
+    {
+        return $this->error($request, ErrorCode::InvalidName->value, 422, 'Enter a name of 1 to 120 characters.', ['fields' => ['name' => ['msg:dashboard-name-invalid']]]);
+    }
+
+    /** @return array{dashboard_id: string, name: string, is_overview: bool, item_count: int, updated_at: string} */
+    private static function summary(DashboardSummary $s): array
+    {
+        return ['dashboard_id' => $s->dashboardId, 'name' => $s->name, 'is_overview' => $s->isOverview, 'item_count' => $s->itemCount, 'updated_at' => $s->updatedAt];
     }
 
     /**

@@ -1260,8 +1260,8 @@ it('backfills Data as of and nulls the old byte hashes when the conditional-stat
     sdRun($workspace, $target, 1);
 
     try {
-        // Nineteen steps: the newest migrations are Story 4.15's (date range and period selection), Story 4.13's (block viewers), Story 4.12's (compact order), Story 4.9's (item removal), Story 4.4's (dashboards), Story 4.1's (Workspace time zone), Story 3.19's (publish lifecycle), Story 3.18's (validation reports), Story 3.11c's (datasets), Story 3.9's (fetch columns of draft samples), Story 3.8's (paste columns of draft samples), Story 3.4's (block categories), Story 3.3's (Blocks and Drafts), Story 2.20's (sync generations), Story 2.19's (subscriptions), Story 2.18's (health), Story 2.17's (attempt), 2.16's (retention), then 2.15's (conditional state).
-        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 19, '--force' => true]))->toBe(0);
+        // Twenty steps: the newest migrations are Story 4.16's (dashboard delete), Story 4.15's (date range and period selection), Story 4.13's (block viewers), Story 4.12's (compact order), Story 4.9's (item removal), Story 4.4's (dashboards), Story 4.1's (Workspace time zone), Story 3.19's (publish lifecycle), Story 3.18's (validation reports), Story 3.11c's (datasets), Story 3.9's (fetch columns of draft samples), Story 3.8's (paste columns of draft samples), Story 3.4's (block categories), Story 3.3's (Blocks and Drafts), Story 2.20's (sync generations), Story 2.19's (subscriptions), Story 2.18's (health), Story 2.17's (attempt), 2.16's (retention), then 2.15's (conditional state).
+        expect(Artisan::call('migrate:rollback', ['--database' => 'migrator', '--step' => 20, '--force' => true]))->toBe(0);
 
         // A target as 2.14 left it: a payload, the hash of the bytes and a last success.
         Cluster::superuser()->prepare('update sync_targets set content_hash = ?, last_success_at = ? where id = ?')->execute([hash('sha256', SD_BODY), '2026-10-01 10:00:00+00', $target]);
