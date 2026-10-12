@@ -602,6 +602,7 @@ onBeforeUnmount(() => controller?.abort());
                                     type="button"
                                     variant="secondary"
                                     size="sm"
+                                    class="max-sm:min-h-11"
                                     :aria-disabled="
                                         busyIds.includes(block.block_id)
                                             ? 'true'
@@ -622,6 +623,7 @@ onBeforeUnmount(() => controller?.abort());
                                 type="button"
                                 variant="secondary"
                                 size="sm"
+                                class="max-sm:min-h-11"
                                 :aria-disabled="
                                     !canAdd || busyIds.includes(block.block_id)
                                         ? 'true'
@@ -754,7 +756,11 @@ onBeforeUnmount(() => controller?.abort());
             class="flex items-center justify-between gap-3 border-t border-border-default px-4 py-3"
         >
             <p class="type-caption text-text-muted">{{ t('drawer-footer') }}</p>
-            <Button type="button" @click="emit('close')">
+            <Button
+                type="button"
+                class="max-sm:min-h-11"
+                @click="emit('close')"
+            >
                 {{ labels.done }}
             </Button>
         </footer>

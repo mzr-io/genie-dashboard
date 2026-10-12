@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import BlockCard from '@/components/BlockCard.vue';
 import { HEIGHT_UNITS } from '@/lib/dashboards';
@@ -9,9 +9,11 @@ import { NO_LIMITS, moved, resized } from '@/lib/layout';
 import type { Geometry, Limits } from '@/lib/layout';
 import { dashboardLabels as labels } from '@/locales/labels';
 
-// The 12-column dashboard grid (Story 4.4; UX-DR-149): 14 px gaps and 60 px rows. From the `md` breakpoint each Block sits where the server clamped it
-// (`col`, `row`, width in columns, height preset in 60 px units); below it the Blocks stack in layout order in one column. The grid height is a track
-// size, so a Block's content scrolls inside its body instead of being clipped.
+// The 12-column dashboard grid (Story 4.4; UX-DR-149): 14 px gaps and 60 px rows. It follows the width of its own content area, not the screen's
+// (Story 4.17; UX-DR-150, 151): from 1100 px each Block sits where the server clamped it (`col`, `row`, width in columns, height preset in 60 px
+// units); from 720 to 1099 px the grid keeps 12 columns, 3-column Blocks stay four across and wider Blocks take 6 columns, in reading order; below
+// 720 px the Blocks stack in the person's order in one column. Only the drawing changes: no position is ever written back. The grid height is a
+// track size, so a Block's content scrolls inside its body instead of being clipped.
 const props = defineProps<{
     items: DashboardItem[];
     // The latest result of each item by item id; an item with none shows its skeleton.
@@ -43,6 +45,8 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
+    // The layout mode changed with the content width: `full` (saved positions), `tablet` (display only) or `single` (one column).
+    mode: [mode: GridMode];
     retry: [itemId: string];
     refresh: [itemId: string];
     minimize: [itemId: string, minimized: boolean];
@@ -56,6 +60,45 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const grid = ref<HTMLElement | null>(null);
+
+export type GridMode = 'full' | 'tablet' | 'single';
+
+// Content widths of UX-DR-150: below 720 px one column, below 1100 px the display-only six-column reflow.
+const SINGLE_BELOW = 720;
+const FULL_FROM = 1100;
+const modeOf = (width: number): GridMode =>
+    width < SINGLE_BELOW ? 'single' : width < FULL_FROM ? 'tablet' : 'full';
+
+// Null until the grid has been laid out (and in a test DOM with no layout): the saved positions are drawn.
+const width = ref<number | null>(null);
+const mode = computed<GridMode>(() =>
+    width.value === null ? 'full' : modeOf(width.value),
+);
+let observer: ResizeObserver | null = null;
+
+onMounted(() => {
+    if (grid.value === null) {
+        return;
+    }
+
+    width.value = grid.value.getBoundingClientRect().width || null;
+    emit('mode', mode.value);
+
+    if (typeof ResizeObserver === 'undefined') {
+        return;
+    }
+
+    observer = new ResizeObserver((entries) => {
+        const before = mode.value;
+
+        width.value = entries[0]?.contentRect.width || null;
+
+        if (mode.value !== before) {
+            emit('mode', mode.value);
+        }
+    });
+    observer.observe(grid.value);
+});
 
 // On a single column the Blocks stack in the person's own order, then reading order for any not named in it.
 const ordered = computed(() => {
@@ -182,13 +225,18 @@ function startDrag(
     window.addEventListener('pointercancel', onPointerCancel);
 }
 
-onBeforeUnmount(() => finish(null));
+onBeforeUnmount(() => {
+    observer?.disconnect();
+    finish(null);
+});
 const hintText = computed(() => t('free-space-hint'));
 
 const placement = (item: DashboardItem): Record<string, string> => ({
     '--col': String(item.geometry.col + 1),
     '--row': String(item.geometry.row + 1),
     '--width': String(item.geometry.width),
+    // The reflow of the display-only mode: 3-column Blocks stay four across, anything wider takes half the row.
+    '--span': String(item.geometry.width <= 3 ? 3 : 6),
     '--units': String(HEIGHT_UNITS[item.geometry.height]),
 });
 </script>
@@ -200,6 +248,7 @@ const placement = (item: DashboardItem): Record<string, string> => ({
         role="group"
         :aria-label="labels.grid"
         class="dashboard-grid"
+        :data-mode="mode"
     >
         <div
             v-for="item in ordered"
@@ -278,16 +327,27 @@ const placement = (item: DashboardItem): Record<string, string> => ({
     pointer-events: none;
 }
 
-@media (min-width: 768px) {
-    .dashboard-grid {
-        grid-template-columns: repeat(12, minmax(0, 1fr));
-        grid-auto-rows: 60px;
-    }
+/* Content width, not the screen's: the grid itself is measured (UX-DR-150, 151). */
+.dashboard-grid[data-mode='tablet'],
+.dashboard-grid[data-mode='full'] {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    grid-auto-rows: 60px;
+}
 
-    .dashboard-grid__cell {
-        grid-column: var(--col) / span var(--width);
-        grid-row: var(--row) / span var(--units);
-        min-height: 0;
-    }
+.dashboard-grid[data-mode='tablet'] .dashboard-grid__cell {
+    grid-column: span var(--span);
+    grid-row: span var(--units);
+    min-height: 0;
+}
+
+.dashboard-grid[data-mode='full'] .dashboard-grid__cell {
+    grid-column: var(--col) / span var(--width);
+    grid-row: var(--row) / span var(--units);
+    min-height: 0;
+}
+
+.dashboard-grid[data-mode='tablet'] .dashboard-grid__hint,
+.dashboard-grid[data-mode='single'] .dashboard-grid__hint {
+    display: none;
 }
 </style>

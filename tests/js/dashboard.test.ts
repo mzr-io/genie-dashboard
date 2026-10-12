@@ -148,7 +148,23 @@ afterEach(() => {
     document.body.innerHTML = '';
     resetAnnouncer();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
 });
+
+// The grid follows the width of its own content (Story 4.17): a test DOM has no layout, so the measured width is stated.
+function contentWidth(width: number): void {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+        width,
+        height: 0,
+        top: 0,
+        left: 0,
+        right: width,
+        bottom: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+    });
+}
 
 const ok = (data: Dashboard): Reply => ({
     ok: true,
@@ -1914,8 +1930,41 @@ describe('Keyboard and menu layout paths', () => {
         });
     });
 
+    it('keeps 12 columns on a tablet-width content area, shows wider Blocks at 6 columns and offers no Edit layout', async () => {
+        contentWidth(900);
+        replies = [ok(dashboard(layoutItems())), resultsOf([])];
+
+        await mountPage();
+
+        const grid = $('[data-slot=dashboard-grid]')!;
+        const cells = $$('[data-slot=dashboard-grid] > [data-item]');
+
+        expect(grid.getAttribute('data-mode')).toBe('tablet');
+        expect(cells.map((c) => c.style.getPropertyValue('--span'))).toEqual(
+            cells.map((_c, i) =>
+                layoutItems()[i].geometry.width <= 3 ? '3' : '6',
+            ),
+        );
+        expect($('[data-slot=edit-layout]')).toBeNull();
+    });
+
+    it('stacks the Blocks in one column on a narrow content area and keeps the controls in the header', async () => {
+        contentWidth(500);
+        replies = [ok(dashboard(layoutItems())), resultsOf([])];
+
+        await mountPage();
+
+        expect($('[data-slot=dashboard-grid]')!.getAttribute('data-mode')).toBe(
+            'single',
+        );
+        expect($('[data-slot=dashboard-switcher]')).not.toBeNull();
+        expect($('[data-slot=date-range]')).not.toBeNull();
+        expect($('[data-slot=edit-layout]')).toBeNull();
+    });
+
     it('reorders on a single column with Move up and Move down through SetCompactOrder and offers no free resize', async () => {
         media(false);
+        contentWidth(500);
         replies = [
             ok(dashboard(layoutItems())),
             resultsOf([]),

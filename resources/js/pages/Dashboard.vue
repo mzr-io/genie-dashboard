@@ -12,6 +12,7 @@ import {
 import { useI18n } from 'vue-i18n';
 import AddBlocksPanel from '@/components/AddBlocksPanel.vue';
 import DashboardGrid from '@/components/DashboardGrid.vue';
+import type { GridMode } from '@/components/DashboardGrid.vue';
 import DashboardSwitcher from '@/components/DashboardSwitcher.vue';
 import DateRangePopover from '@/components/DateRangePopover.vue';
 import PageHeader from '@/components/PageHeader.vue';
@@ -167,7 +168,16 @@ const saving = ref(false);
 // The Block picked up with the keyboard (Story 4.12), the layout it was lifted from, and whether one more Esc would finish the mode.
 const picked = ref<{ id: string; base: Layout } | null>(null);
 let escArmed = false;
-const desktop = useMediaQuery('(min-width: 768px)');
+// How the grid draws, from the width of the content area (Story 4.17): `full` shows the saved positions and allows Edit layout, `tablet` is
+// display only, `single` is one column in the member's own order, where a menu reorders. Until the grid has measured itself, the screen decides.
+const phone = useMediaQuery('(max-width: 639px)');
+const gridMode = ref<GridMode>(
+    typeof window !== 'undefined' && window.innerWidth < 768
+        ? 'single'
+        : 'full',
+);
+const singleColumn = computed(() => gridMode.value === 'single');
+const canEditLayout = computed(() => gridMode.value === 'full');
 const compactOrder = ref<string[] | null>(null);
 const saveError = ref<'failed' | 'conflict' | null>(null);
 const focusEditButton = (): void =>
@@ -1291,7 +1301,7 @@ async function onStep(
 
     const name = namesOf()[itemId] ?? 'Block';
 
-    if (!desktop.value) {
+    if (singleColumn.value) {
         const ids = (
             compactOrder.value ?? current.items.map((i) => i.item_id)
         ).filter((id) => current.items.some((i) => i.item_id === id));
@@ -1799,8 +1809,12 @@ watch(offline, (isOffline, wasOffline) => {
 function showHint(block: CatalogueBlock | null): void {
     const current = dashboard.value;
 
+    // A phone has no hover and no room for it (UX-DR-154): no free-space hint is shown there.
     hint.value =
-        block === null || current === null
+        block === null ||
+        current === null ||
+        phone.value ||
+        !canEditLayout.value
             ? null
             : {
                   ...current.next_free_slot,
@@ -1935,7 +1949,11 @@ onBeforeUnmount(() => {
                 >
                     {{ labels.addBlock }}
                 </Button>
-                <div v-if="!editing" class="hidden items-center gap-2 md:flex">
+                <div
+                    v-if="!editing"
+                    class="flex flex-wrap items-center gap-2 max-sm:[&_button]:min-h-11"
+                    data-slot="dashboard-controls"
+                >
                     <template v-if="liveItems.length > 0">
                         <span
                             v-if="freshnessLine !== null"
@@ -1966,6 +1984,7 @@ onBeforeUnmount(() => {
                         @apply="onDateRange"
                     />
                     <Button
+                        v-if="canEditLayout"
                         type="button"
                         variant="secondary"
                         :aria-disabled="
@@ -2065,11 +2084,12 @@ onBeforeUnmount(() => {
                 :profile="profile"
                 :just-added="justAdded"
                 :hint="hint"
-                :editing="editing"
+                :editing="editing && canEditLayout"
                 :picked-up="picked?.id ?? null"
-                :compact="!desktop"
+                :compact="singleColumn"
                 :order="compactOrder"
                 :date-range="dateRange?.range ?? null"
+                @mode="(mode) => (gridMode = mode)"
                 @period="onPeriod"
                 @movekey="onMoveKey"
                 @step="onStep"
