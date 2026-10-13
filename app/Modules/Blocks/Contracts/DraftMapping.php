@@ -38,6 +38,8 @@ final readonly class DraftMapping
         public array $presentation = [],
         /** @var list<array<string, mixed>> the stored transform steps (Story 5.1), in stage order; empty when none */
         public array $transforms = [],
+        /** @var array<string, array<string, mixed>> the stored Text Templates (Story 5.4), `{slot: {source, parts}}`; empty when none */
+        public array $templates = [],
     ) {}
 
     /** The validator of a conditional GET: both revisions name the content. */

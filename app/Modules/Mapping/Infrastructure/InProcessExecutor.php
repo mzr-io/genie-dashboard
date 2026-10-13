@@ -13,6 +13,7 @@ use App\Modules\Mapping\Contracts\GuardExceeded;
 use App\Modules\Mapping\Contracts\PlanGuards;
 use App\Modules\Mapping\Contracts\QueryExecutor;
 use App\Modules\Mapping\Contracts\SettingNotConfigured;
+use App\Modules\Mapping\Contracts\Templates;
 use App\Modules\Mapping\Contracts\Transforms;
 use App\Platform\Json\DecimalLiteral;
 use App\Platform\Json\SamplePath;
@@ -45,7 +46,7 @@ final class InProcessExecutor implements QueryExecutor
         $this->clock = $clock ?? static fn (): float => hrtime(true) / 1_000_000;
     }
 
-    public function execute(array $plan, mixed $document, BlockType $type, PlanGuards $guards): ExecutionResult
+    public function execute(array $plan, mixed $document, BlockType $type, PlanGuards $guards, ?array $period = null): ExecutionResult
     {
         $started = ($this->clock)();
         $evaluations = 0;
@@ -61,7 +62,7 @@ final class InProcessExecutor implements QueryExecutor
             }
 
             // A calculated field (`calc:<name>`) is made by a calc stage, not read from the document.
-            if (str_starts_with((string) $path, Transforms::CALC_PREFIX)) {
+            if (str_starts_with((string) $path, Transforms::CALC_PREFIX) || str_starts_with((string) $path, Templates::PREFIX)) {
                 $selected[(string) $alias] = [];
 
                 continue;
@@ -81,9 +82,15 @@ final class InProcessExecutor implements QueryExecutor
 
         $rows = null;
         $columns = [];
+        $table = [];
+        $rowsLeft = 0;
+
+        foreach ($selected as $nodes) {
+            $rowsLeft = max($rowsLeft, count($nodes));
+        }
 
         if (array_intersect_key($plan, array_flip([Transforms::FILTER, Transforms::ROW_CALC, Transforms::GROUP, Transforms::AGGREGATE, Transforms::AGGREGATE_CALC, Transforms::SORT, Transforms::TOP_N])) !== []) {
-            [$selected, $rows, $columns] = $this->transform($plan, $document, $selected, $guards, $started, $evaluations, $extracted);
+            [$selected, $rows, $columns, $table, $rowsLeft] = $this->transform($plan, $document, $selected, $guards, $started, $evaluations, $extracted);
         }
 
         $valueTypes = [];
@@ -98,7 +105,39 @@ final class InProcessExecutor implements QueryExecutor
         /** @var array<string, string> $shape */
         $shape = $plan['shape'] ?? [];
 
+        /** @var array<string, array<string, mixed>> $templates */
+        $templates = is_array($plan[Templates::KEY] ?? null) ? $plan[Templates::KEY] : [];
+
+        // Without row stages the rows are the longest list any path of the plan selects, the template's own fields included.
+        if ($rows === null && $templates !== []) {
+            foreach ($templates as $template) {
+                foreach ((array) ($template['parts'] ?? []) as $part) {
+                    if (($part['t'] ?? null) === 'field' && is_string($part['path'] ?? null)) {
+                        $rowsLeft = max($rowsLeft, count(SamplePath::select($document, $part['path'])));
+                    }
+                }
+            }
+        }
+
         foreach ($shape as $slot => $alias) {
+            if (isset($templates[(string) $slot]) && ($fields[$alias] ?? null) === Templates::PREFIX.$slot) {
+                /** @var list<array<string, mixed>> $parts */
+                $parts = array_values((array) ($templates[(string) $slot]['parts'] ?? []));
+                $slots[(string) $slot] = $this->render(
+                    $parts,
+                    $document,
+                    $table,
+                    $rowsLeft,
+                    $period,
+                    $guards,
+                    $started,
+                    $evaluations,
+                    $extracted,
+                );
+
+                continue;
+            }
+
             [$value, $reason] = self::slotValue($selected[$alias] ?? [], $valueTypes[$slot] ?? 'text');
             $slots[(string) $slot] = $value;
 
@@ -127,7 +166,7 @@ final class InProcessExecutor implements QueryExecutor
      *
      * @param  array<string, mixed>  $plan
      * @param  array<string, list<mixed>>  $selected  the values each alias selected
-     * @return array{0: array<string, list<mixed>>, 1: array{input: int, steps: list<int>}, 2: array<string, list<string|bool|null>>}
+     * @return array{0: array<string, list<mixed>>, 1: array{input: int, steps: list<int>}, 2: array<string, list<string|bool|null>>, 3: array<string, array<mixed>>, 4: int}
      */
     private function transform(array $plan, mixed $document, array $selected, PlanGuards $guards, float $started, int &$evaluations, int &$extracted): array
     {
@@ -396,7 +435,7 @@ final class InProcessExecutor implements QueryExecutor
             );
         }
 
-        return [$selected, ['input' => $rowCount, 'steps' => $counts], $left];
+        return [$selected, ['input' => $rowCount, 'steps' => $counts], $left, $broken ? [] : $table, $broken ? 0 : $rows];
     }
 
     /**
@@ -489,6 +528,89 @@ final class InProcessExecutor implements QueryExecutor
         }
 
         return $out;
+    }
+
+    /**
+     * A Text Template as its wire form (see {@see Templates}): the rows' own columns when the rows are down to one, else the one value a path selects.
+     *
+     * @param  list<array<string, mixed>>  $parts
+     * @param  array<string, array<mixed>>  $table
+     * @param  array{start: string, end: string}|null  $period
+     */
+    private function render(array $parts, mixed $document, array $table, int $rows, ?array $period, PlanGuards $guards, float $started, int &$evaluations, int &$extracted): string
+    {
+        $out = '';
+
+        foreach ($parts as $part) {
+            switch ($part['t']) {
+                case 'lit':
+                    $out .= Templates::escape((string) $part['v']);
+                    break;
+                case 'row_count':
+                    $out .= '{#'.$rows.'|'.$part['fmt'].'}';
+                    break;
+                case 'period':
+                    $date = $period === null ? null : $period[$part['end'] ? 'end' : 'start'];
+                    $out .= $date === null ? Templates::EMPTY : '{@'.$date.'|'.$part['fmt'].'}';
+                    break;
+                case 'user':
+                    $out .= '{user.'.$part['key'].'}';
+                    break;
+                default:
+                    $path = (string) ($part['path'] ?? '');
+                    $node = null;
+
+                    if (isset($table[$path]) && count($table[$path]) === 1) {
+                        $node = $table[$path][0];
+                    } else {
+                        if (++$evaluations > $guards->maxEvaluations) {
+                            throw new GuardExceeded(GuardExceeded::EVALUATIONS);
+                        }
+
+                        $this->checkTime($started, $guards);
+                        $nodes = SamplePath::select($document, $path);
+                        $extracted += count($nodes);
+
+                        if ($extracted > $guards->maxExtractedValues) {
+                            throw new GuardExceeded(GuardExceeded::EXTRACTED_VALUES);
+                        }
+
+                        $node = count($nodes) === 1 ? $nodes[0] : null;
+                    }
+
+                    $out .= self::wire($node, $part['fmt'] ?? null);
+            }
+        }
+
+        return $out;
+    }
+
+    /** One value of a template as its wire form: formatted in the browser when it has a format, escaped text otherwise, `{-}` when it is nothing. */
+    private static function wire(mixed $node, ?string $format): string
+    {
+        $numeric = ['number', 'integer', 'currency', 'percent', 'compact'];
+
+        if ($node instanceof DecimalLiteral) {
+            return $format !== null && in_array($format, $numeric, true) ? '{#'.$node->lexeme.'|'.$format.'}' : $node->lexeme;
+        }
+
+        if (is_bool($node)) {
+            return $node ? 'true' : 'false';
+        }
+
+        if (is_string($node)) {
+            if ($format === 'date' && preg_match('/\A(\d{4}-\d{2}-\d{2})/', $node, $m) === 1) {
+                return '{@'.$m[1].'|MMM d, yyyy}';
+            }
+
+            if ($format !== null && in_array($format, $numeric, true) && preg_match(ExecutionResult::DECIMAL, trim($node)) === 1) {
+                return '{#'.trim($node).'|'.$format.'}';
+            }
+
+            return $node === '' ? Templates::EMPTY : Templates::escape($node);
+        }
+
+        return Templates::EMPTY;
     }
 
     /** @return list<int> */

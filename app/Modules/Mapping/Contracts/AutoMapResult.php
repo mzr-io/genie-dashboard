@@ -28,6 +28,8 @@ final readonly class AutoMapResult
         public array $plan,
         public array $apiChanged = [],
         public array $transformFaults = [],
+        /** @var list<array{slot: string, field: string, reason: string}> a Text Template that reads a field the sample no longer has (Story 5.4); each blocks Continue */
+        public array $templateFaults = [],
     ) {}
 
     /** @return array<string, mixed>|null the checklist entry of a Slot */
@@ -54,6 +56,7 @@ final readonly class AutoMapResult
             'baseline' => $this->baseline,
             'api_changed' => $this->apiChanged,
             'transform_faults' => $this->transformFaults,
+            'template_faults' => $this->templateFaults,
         ];
     }
 }

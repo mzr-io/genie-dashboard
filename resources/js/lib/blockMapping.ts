@@ -1,3 +1,4 @@
+import type { StoredTemplates, TemplateFault } from '@/lib/blockTemplates';
 import type { TransformFault, TransformStep } from '@/lib/blockTransforms';
 import { WizardError, wizardCall } from '@/lib/blockWizard';
 import type { SampleClaim } from '@/lib/blockSample';
@@ -130,6 +131,8 @@ export type Checklist = {
     api_changed: ApiChange[];
     // The transform steps the sample cannot satisfy (Story 5.1); each blocks Continue.
     transform_faults?: TransformFault[];
+    // A Text Template that reads a field the sample no longer has (Story 5.4); each blocks Continue.
+    template_faults?: TemplateFault[];
 };
 
 // A decided slot whose field left the sample (Story 3.13a): the slot reads Required missing or Optional empty, and `match` is a candidate that is
@@ -166,6 +169,8 @@ export type MappingRead = {
     presentation?: PresentationRules;
     // The Draft's Filter, Sort and Top-N steps (Story 5.1) in stage order; `[]` when there are none.
     transforms?: TransformStep[];
+    // The Draft's Text Templates (Story 5.4) by slot, with their parsed parts; `{}` when there are none.
+    templates?: StoredTemplates;
 };
 
 // What a mapping write answers: the checklist, the revisions it stored and the plan; a role write also says what it changed.
@@ -180,7 +185,7 @@ export type MappingWrite = Checklist & {
 
 // One entry of a slot's field picker (`GET .../mapping/slots/{slot}/fields`), compatible fields first.
 export type PickerField = {
-    kind: 'field' | 'static_text' | 'calculated';
+    kind: 'field' | 'static_text' | 'calculated' | 'template';
     path: string | null;
     display: string;
     type?: string;

@@ -88,9 +88,27 @@ final class FrozenConfig
                 'max_height' => $display['max_height'] ?? $size['max_height'],
                 'height' => $display['height'] ?? $size['default_height'],
             ],
+            'footer' => self::footer($display),
             'period' => is_string($display['period'] ?? null) ? $display['period'] : null,
             'refresh_interval' => is_int($interval) || is_string($interval) ? $interval : null,
         ];
+    }
+
+    /**
+     * The footer action as frozen (Story 5.4): only when the Block shows one and the Admin set it.
+     *
+     * @param  array<string, mixed>  $display
+     * @return array{target: string, label: string, url: string|null}|null
+     */
+    private static function footer(array $display): ?array
+    {
+        $footer = $display['footer'] ?? null;
+
+        if (($display['show_footer_action'] ?? false) !== true || ! is_array($footer) || ! is_string($footer['label'] ?? null) || ! is_string($footer['target'] ?? null)) {
+            return null;
+        }
+
+        return ['target' => $footer['target'], 'label' => $footer['label'], 'url' => is_string($footer['url'] ?? null) ? $footer['url'] : null];
     }
 
     /**
@@ -129,7 +147,8 @@ final class FrozenConfig
         $out = [];
 
         foreach (is_array($plan['extract']['fields'] ?? null) ? $plan['extract']['fields'] : [] as $alias => $path) {
-            if (is_string($path)) {
+            // A calculated field and a Text Template are made by the plan, not read from the response: they have no role or type of their own.
+            if (is_string($path) && ! str_starts_with($path, 'calc:') && ! str_starts_with($path, 'tpl:')) {
                 $out[(string) $alias] = $path;
             }
         }

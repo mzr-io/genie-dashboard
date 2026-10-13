@@ -265,6 +265,87 @@ const typeLabel = (key: string) =>
                         "
                     />
                 </div>
+                <div
+                    v-if="form.display.show_footer_action"
+                    class="grid gap-3 rounded-md border border-border-default p-3 sm:col-span-2 sm:grid-cols-2"
+                    data-test="footer-action-config"
+                >
+                    <FormField
+                        :id="FIELD_IDS['display.footer.target']"
+                        :label="labels.footerTarget"
+                        :error="errors['display.footer.target']"
+                    >
+                        <template #default="{ field }">
+                            <NativeSelect
+                                v-bind="field"
+                                :model-value="form.display.footer.target"
+                                data-test="footer-target"
+                                @update:model-value="
+                                    form.display.footer.target =
+                                        $event === 'expanded_view'
+                                            ? 'expanded_view'
+                                            : 'external';
+                                    emit('change');
+                                "
+                            >
+                                <option value="external">
+                                    {{ labels.footerTargets.external }}
+                                </option>
+                                <option value="expanded_view">
+                                    {{ labels.footerTargets.expanded_view }}
+                                </option>
+                            </NativeSelect>
+                        </template>
+                    </FormField>
+                    <FormField
+                        :id="FIELD_IDS['display.footer.label']"
+                        :label="labels.footerLabel"
+                        :helper="labels.footerLabelHelper"
+                        :error="errors['display.footer.label']"
+                    >
+                        <template #default="{ field }">
+                            <Input
+                                v-bind="field"
+                                v-model="form.display.footer.label"
+                                type="text"
+                                maxlength="60"
+                                autocomplete="off"
+                                data-test="footer-label"
+                                @input="emit('change')"
+                                @blur="emit('blur', 'display.footer.label')"
+                            />
+                        </template>
+                    </FormField>
+                    <FormField
+                        v-if="form.display.footer.target === 'external'"
+                        class="sm:col-span-2"
+                        :id="FIELD_IDS['display.footer.url']"
+                        :label="labels.footerUrl"
+                        :helper="labels.footerUrlHelper"
+                        :error="errors['display.footer.url']"
+                    >
+                        <template #default="{ field }">
+                            <Input
+                                v-bind="field"
+                                v-model="form.display.footer.url"
+                                type="text"
+                                maxlength="500"
+                                autocomplete="off"
+                                spellcheck="false"
+                                data-test="footer-url"
+                                @input="emit('change')"
+                                @blur="emit('blur', 'display.footer.url')"
+                            />
+                        </template>
+                    </FormField>
+                    <p
+                        v-else
+                        class="type-caption text-text-secondary sm:col-span-2"
+                        data-test="footer-expanded-note"
+                    >
+                        {{ labels.footerExpandedNote }}
+                    </p>
+                </div>
             </div>
 
             <div class="grid gap-4 sm:grid-cols-2">

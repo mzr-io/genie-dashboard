@@ -154,4 +154,15 @@ interface DraftSlots
      * @throws InvalidDraft
      */
     public function setTransforms(DraftActor $actor, string $draftId, ?array $steps, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftTransforms;
+
+    /**
+     * `SetTemplates` (Story 5.4): the Text Templates of the Draft's text slots, `{slot key: source}`, judged whole (nothing is stored when any part is
+     * faulty; a fault is keyed `config.templates.{slot}.source` and names the token and its position). A slot with a template is read from it; `null` or
+     * `[]` clears them all. The plan is recomputed and the Draft's revision moves, like any mapping write.
+     *
+     * @param  array<string, mixed>|null  $templates
+     *
+     * @throws InvalidDraft
+     */
+    public function setTemplates(DraftActor $actor, string $draftId, ?array $templates, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftTemplates;
 }

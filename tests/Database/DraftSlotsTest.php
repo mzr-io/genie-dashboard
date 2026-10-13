@@ -770,7 +770,7 @@ it('reads the mapping in one pass with an ETag of both revisions and a 304 for a
     $etag = '"d'.dslRev().'-s1"';
 
     expect($res->headers->get('ETag'))->toBe($etag)
-        ->and(array_keys($data))->toEqualCanonicalizing(['checklist', 'roles', 'slot_map', 'query_plan', 'draft_revision', 'sample_revision', 'plan_stale', 'sample', 'dataset_suggestion', 'presentation', 'transforms'])
+        ->and(array_keys($data))->toEqualCanonicalizing(['checklist', 'roles', 'slot_map', 'query_plan', 'draft_revision', 'sample_revision', 'plan_stale', 'sample', 'dataset_suggestion', 'presentation', 'transforms', 'templates'])
         ->and($data['sample'])->toBe('ok')->and($data['plan_stale'])->toBeFalse()
         ->and($data['draft_revision'])->toBe(dslRev())->and($data['sample_revision'])->toBe(1)
         ->and($data['query_plan'])->toEqual(dslConfig()['query_plan'])
@@ -1352,4 +1352,97 @@ it('makes a ratio that sums numerator and denominator apart, and refuses a ratio
         ->assertStatus(422);
     dslTransforms($id, [['type' => 'calc', 'name' => 'completion', 'level' => 'aggregate', 'ratio' => ['numerator' => 'done', 'denominator' => 'region']]])
         ->assertOk()->assertJsonPath('data.transform_faults.0.reason', 'not_numeric');
+});
+
+// Story 5.4: Text Templates (`config.templates`), written through PUT .../mapping/templates.
+function dslTemplates(string $id, ?array $templates, array $extra = [])
+{
+    return test()->putJson(BD_URL."/{$id}/mapping/templates", $extra + ['templates' => $templates, 'draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS);
+}
+
+it('stores a Text Template, reads a text slot from it and previews the wire form with the viewer left unresolved', function () {
+    $id = dslDraft();
+
+    expect(array_column(dslFields($id, 'kpi_label')->json('data.fields'), 'kind'))->toContain('template');
+
+    $saved = dslTemplates($id, ['kpi_label' => '{region} · {total|currency} · {ROW_COUNT} items · {user.name}'])
+        ->assertOk()->assertHeader('Cache-Control', 'no-store, private')->json('data');
+
+    expect($saved['templates']['kpi_label']['source'])->toBe('{region} · {total|currency} · {ROW_COUNT} items · {user.name}')
+        ->and($saved['templates']['kpi_label']['parts'][0])->toMatchArray(['t' => 'field', 'path' => '$.region'])
+        ->and($saved['query_plan']['extract']['fields']['kpi_label'])->toBe('tpl:kpi_label')
+        ->and($saved['query_plan']['templates']['kpi_label']['source'])->toContain('{region}')
+        ->and(dslGet($id)->assertOk()->json('data.templates.kpi_label.source'))->toBe($saved['templates']['kpi_label']['source']);
+
+    $row = dslRow(dslGet($id)->json('data.checklist'), 'kpi_label');
+
+    expect($row['state'])->toBe('overridden')->and($row['path'])->toBe('tpl:kpi_label');
+
+    $preview = dslPreview($id)->assertOk()->json('data');
+
+    expect($preview['payload']['kpiLabel'])->toBe('EU · {#284680.50|currency} · {#1|integer} items · {user.name}')
+        ->and($preview['slots']['kpi_label']['value'])->toBe('EU · {#284680.50|currency} · {#1|integer} items · {user.name}');
+});
+
+it('refuses an unknown field or format naming the token, and a slot that is not text, storing nothing', function () {
+    $id = dslDraft();
+    $revision = dslRev();
+
+    $errors = dslTemplates($id, ['kpi_label' => 'Total {ghost|currency}'])->assertStatus(422)->json('errors');
+
+    expect(array_keys($errors))->toBe(['config.templates.kpi_label.source'])
+        ->and($errors['config.templates.kpi_label.source'][0])->toContain('{ghost|currency}')->toContain('position 7');
+
+    $format = dslTemplates($id, ['kpi_label' => '{total|bogus}'])->assertStatus(422)->json('errors');
+
+    expect($format['config.templates.kpi_label.source'][0])->toContain('bogus');
+
+    dslTemplates($id, ['headline_value' => '{total}'])->assertStatus(422);
+    expect(dslRev())->toBe($revision)->and(dslConfig())->not->toHaveKey('templates');
+});
+
+it('clears the templates and the slot goes back to its own mapping', function () {
+    $id = dslDraft();
+    dslTemplates($id, ['kpi_label' => '{region}'])->assertOk();
+
+    $cleared = dslTemplates($id, [])->assertOk()->json('data');
+
+    expect($cleared['query_plan'])->not->toHaveKey('templates')
+        ->and($cleared['query_plan']['extract']['fields'])->not->toHaveKey('kpi_label')
+        ->and(dslConfig())->not->toHaveKey('templates');
+});
+
+it('keeps the templates out of a Draft save', function () {
+    $id = dslDraft();
+
+    test()->putJson(BD_URL."/{$id}", ['config' => ['templates' => ['kpi_label' => '{region}']], 'draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS)->assertStatus(422);
+});
+
+// Story 5.4: the footer action (`config.display.footer`) is judged on a Draft save.
+function dslSaveDisplay(string $id, array $display)
+{
+    return bdSave($id, dslRev(), 1, ['config' => ['display' => ['show_footer_action' => true] + $display]]);
+}
+
+it('stores a footer action with a literal host and user tokens, and refuses a script, a token host or a field token', function () {
+    $id = dslDraft();
+
+    $ok = dslSaveDisplay($id, ['footer' => ['target' => 'external', 'label' => 'View all approvals', 'url' => 'https://erp.example.com/approvals?user={user.email}']])->assertOk();
+
+    expect(dslConfig()['display']['footer'])->toEqual(['target' => 'external', 'label' => 'View all approvals', 'url' => 'https://erp.example.com/approvals?user={user.email}']);
+
+    foreach (['javascript:alert(1)', 'https://{user.name}.example.com/x', 'https://example.com/{revenue}'] as $url) {
+        $errors = dslSaveDisplay($id, ['footer' => ['target' => 'external', 'label' => 'Open', 'url' => $url]])->assertStatus(422)->json('errors');
+
+        expect($errors['config.display.footer.url'][0])->toBe('Use a link that starts with https:// or http://.');
+    }
+
+    $label = dslSaveDisplay($id, ['footer' => ['target' => 'external', 'label' => '{revenue}', 'url' => 'https://example.com']])->assertStatus(422)->json('errors');
+
+    expect(array_keys($label))->toBe(['config.display.footer.label']);
+
+    // The Expanded view has no address; its label is kept.
+    dslSaveDisplay($id, ['footer' => ['target' => 'expanded_view', 'label' => 'View all approvals', 'url' => '']])->assertOk();
+    expect(dslConfig()['display']['footer'])->toEqual(['target' => 'expanded_view', 'label' => 'View all approvals', 'url' => null]);
+    expect($ok)->not->toBeNull();
 });

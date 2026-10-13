@@ -7,6 +7,7 @@ use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\Mapping\Contracts\FieldRole;
 use App\Modules\Mapping\Contracts\Presentation;
 use App\Modules\Mapping\Contracts\QueryPlan;
+use App\Modules\Mapping\Contracts\Templates;
 use App\Modules\Mapping\Contracts\Transforms;
 use App\Platform\Json\DecimalLiteral;
 use App\Platform\Json\JsonObject;
@@ -32,7 +33,7 @@ final class DraftConfig
     public const FIELD_TYPES = ['text', 'number', 'boolean', 'date'];
 
     /** Written only through the mapping endpoints. */
-    public const MAPPING_KEYS = ['record_path', 'field_roles', 'field_types', 'slot_map', Presentation::KEY, Transforms::KEY];
+    public const MAPPING_KEYS = ['record_path', 'field_roles', 'field_types', 'slot_map', Presentation::KEY, Transforms::KEY, Templates::KEY];
 
     private const FLAGS = ['show_header', 'show_subtitle', 'allow_resize', 'allow_minimize', 'allow_refresh', 'show_footer_action'];
 
@@ -254,6 +255,46 @@ final class DraftConfig
         return $steps;
     }
 
+    /**
+     * The sources of the Text Templates (Story 5.4): a map from a text slot's key to its source text. Their grammar and fields are judged against the
+     * sample by the mapper.
+     *
+     * @return array<string, string>
+     *
+     * @throws InvalidDraft
+     */
+    public static function normaliseTemplates(mixed $input): array
+    {
+        if ($input === null || $input === []) {
+            return [];
+        }
+
+        $errors = [];
+        $out = [];
+
+        if (! is_array($input) || array_is_list($input)) {
+            throw new InvalidDraft(['config.templates' => ['Templates map a text slot to its text.']], 'blocks.invalid_config');
+        }
+
+        foreach ($input as $slot => $source) {
+            $slot = (string) $slot;
+
+            if (preg_match('/\A[a-z][a-z0-9_]{0,63}\z/', $slot) !== 1) {
+                $errors["config.templates.{$slot}"] = ['This is not a slot of the block.'];
+            } elseif (! is_string($source)) {
+                $errors["config.templates.{$slot}.source"] = ['Enter the text of the template.'];
+            } else {
+                $out[$slot] = $source;
+            }
+        }
+
+        if ($errors !== []) {
+            throw new InvalidDraft($errors, 'blocks.invalid_config');
+        }
+
+        return $out;
+    }
+
     /** A stored path in its canonical spelling, naming at least one segment. */
     public static function isCanonicalPath(string $path): bool
     {
@@ -307,6 +348,18 @@ final class DraftConfig
                     $out[$flag] = $display[$flag];
                 } else {
                     $errors["config.display.{$flag}"] = ['Choose on or off.'];
+                }
+            }
+        }
+
+        if (isset($display['footer'])) {
+            if (! is_array($display['footer'])) {
+                $errors['config.display.footer'] = ['The footer action must be an object.'];
+            } else {
+                $footer = FooterAction::check($display['footer'], $errors);
+
+                if ($footer !== null) {
+                    $out['footer'] = $footer;
                 }
             }
         }

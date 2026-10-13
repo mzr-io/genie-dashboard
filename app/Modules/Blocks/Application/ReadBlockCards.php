@@ -70,6 +70,7 @@ final class ReadBlockCards implements BlockCards
                     'period' => is_string($config['period'] ?? null) ? $config['period'] : null,
                 ],
                 is_string($config['source']['default_date_range']['preset'] ?? null) ? $config['source']['default_date_range']['preset'] : null,
+                self::footer($config['footer'] ?? null, $flag('show_footer_action', false)),
             );
         }
 
@@ -96,5 +97,17 @@ final class ReadBlockCards implements BlockCards
         } catch (DataSourceNotFound) {
             return null;
         }
+    }
+
+    /**
+     * @return array{target: string, label: string, url: string|null}|null
+     */
+    private static function footer(mixed $footer, bool $shown): ?array
+    {
+        if (! $shown || ! is_array($footer) || ! is_string($footer['target'] ?? null) || ! is_string($footer['label'] ?? null) || $footer['label'] === '') {
+            return null;
+        }
+
+        return ['target' => $footer['target'], 'label' => $footer['label'], 'url' => is_string($footer['url'] ?? null) ? $footer['url'] : null];
     }
 }

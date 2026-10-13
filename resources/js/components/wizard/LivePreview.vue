@@ -9,12 +9,14 @@ import {
     ref,
     watch,
 } from 'vue';
+import { usePage } from '@inertiajs/vue3';
 import { useI18n } from 'vue-i18n';
 import SegmentedControl from '@/components/SegmentedControl.vue';
 import PreviewHotspots from '@/components/wizard/PreviewHotspots.vue';
 import type { Hotspot, Region } from '@/components/wizard/PreviewHotspots.vue';
 import SourceLegend from '@/components/wizard/SourceLegend.vue';
 import { createPreviewRunner, fetchPreview } from '@/lib/blockPreview';
+import { expandKpiPayload } from '@/lib/textTemplate';
 import type { PreviewProblem, PreviewResult } from '@/lib/blockPreview';
 import type { ChecklistSlot, RoleField } from '@/lib/blockMapping';
 import { WizardError, heightLabel, sizeText } from '@/lib/blockWizard';
@@ -128,6 +130,10 @@ watch(
     (rows) => emit('rows', rows),
 );
 
+const shownPayload = computed(() =>
+    expandKpiPayload(payload.value, profile.value),
+);
+
 const runner = createPreviewRunner({
     load: (signal) =>
         props.draftId === null
@@ -221,6 +227,18 @@ watch(
 const empty = computed(
     () => active.value && result.value === null && problem.value !== null,
 );
+
+// Text Templates reach the browser in their wire form: the signed-in Admin's own name and email are what `{user.*}` shows in the preview.
+const page = usePage();
+const profile = computed(() => {
+    const user = (
+        page.props.auth as
+            | { user?: { name?: string; email?: string } }
+            | undefined
+    )?.user;
+
+    return { name: user?.name ?? null, email: user?.email ?? null };
+});
 
 const payload = computed<KpiCardPayload>(() => {
     const frame = {
@@ -528,7 +546,7 @@ const notices = computed<string[]>(() => {
                     :data-height="display.height"
                     :title="heightLabel(display.height)"
                 >
-                    <Renderer :payload="payload" audience="admin" />
+                    <Renderer :payload="shownPayload" audience="admin" />
                 </div>
                 <PreviewHotspots
                     v-if="live"

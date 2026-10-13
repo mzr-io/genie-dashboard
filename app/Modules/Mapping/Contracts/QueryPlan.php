@@ -48,7 +48,7 @@ final class QueryPlan
         }
 
         foreach (array_keys($plan) as $key) {
-            if (! in_array($key, ['v', ...self::STAGES_V1], true)) {
+            if (! in_array($key, ['v', ...self::STAGES_V1, Templates::KEY], true)) {
                 $errors["{$root}.{$key}"] = ['This stage is not part of query plan version 1.'];
             }
         }
@@ -63,6 +63,13 @@ final class QueryPlan
                     $calcs[Transforms::CALC_PREFIX.$item['name']] = true;
                 }
             }
+        }
+
+        // The Text Templates the plan defines (Story 5.4): a slot may read one as `tpl:<slot key>`.
+        $templates = is_array($plan[Templates::KEY] ?? null) ? $plan[Templates::KEY] : [];
+
+        foreach (array_keys($templates) as $slotKey) {
+            $calcs[Templates::PREFIX.$slotKey] = true;
         }
 
         $extract = $plan['extract'] ?? null;
@@ -102,6 +109,20 @@ final class QueryPlan
         }
 
         $errors += Transforms::validateStages($plan, $root);
+
+        foreach ($templates as $slotKey => $template) {
+            $found = false;
+
+            foreach ($type->slots as $candidate) {
+                $found = $found || ($candidate->key === (string) $slotKey && $candidate->valueType === 'text');
+            }
+
+            if (! $found) {
+                $errors["{$root}.templates.{$slotKey}"] = ['Only a text slot of the '.$type->title.' takes a Text Template.'];
+            } elseif (! is_array($template) || ! is_string($template['source'] ?? null) || ! is_array($template['parts'] ?? null) || ! array_is_list($template['parts'])) {
+                $errors["{$root}.templates.{$slotKey}"] = ['A Text Template is its source text and its parts.'];
+            }
+        }
 
         $slots = [];
 

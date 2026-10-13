@@ -300,6 +300,7 @@ final class ManageDashboards implements Dashboards
                     'chrome' => $card->chrome,
                     'about' => $card->about,
                     'sizes' => $card->sizes,
+                    'footer' => $card->footer === null ? null : ['target' => $card->footer['target'], 'label' => $card->footer['label'], 'url' => $card->footer['url']],
                 ] : null,
             ];
         }

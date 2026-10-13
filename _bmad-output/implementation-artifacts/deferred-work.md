@@ -531,3 +531,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-3-calculated-fields-and-ratio-safe-aggregation.md`
   summary: Make the expression grammar available to Text Templates and URL templates (the same parser and evaluator, `{field}` token syntax).
   evidence: The grammar is shared by design (AD-12) and lives in `Mapping\Application\Expressions`; the template slots and their editors are Story 5.4.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-text-templates-tokens-and-footer-action-target.md`
+  summary: Make the Expanded view footer link open the Expanded view, and show it in the preview as inert with its note.
+  evidence: The Expanded view is Story 5.9; until then the dashboard draws no footer link for that target, and the Configure step says why.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-4-text-templates-tokens-and-footer-action-target.md`
+  summary: Show the template's own rendering (sample values) in the editor row, beside the live card.
+  evidence: The live card on the right is the real result after each save; a client-side rendering of field tokens would duplicate the server's renderer.

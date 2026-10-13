@@ -18,6 +18,7 @@ use App\Modules\Blocks\Contracts\DraftPublished;
 use App\Modules\Blocks\Contracts\DraftRevisionConflict;
 use App\Modules\Blocks\Contracts\Drafts;
 use App\Modules\Blocks\Contracts\DraftSlots;
+use App\Modules\Blocks\Contracts\DraftTemplates;
 use App\Modules\Blocks\Contracts\DraftTransforms;
 use App\Modules\Blocks\Contracts\ErrorCode as BlocksErrorCode;
 use App\Modules\Blocks\Contracts\InvalidDraft;
@@ -75,6 +76,7 @@ final class DraftSlotsController extends Controller
                     'dataset_suggestion' => $mapping->datasetSuggestion,
                     'presentation' => (object) $mapping->presentation,
                     'transforms' => $mapping->transforms,
+                    'templates' => (object) $mapping->templates,
                 ]], 200, $headers);
             },
         );
@@ -150,6 +152,20 @@ final class DraftSlotsController extends Controller
                 return $this->slots->setTransforms($actor, $draft, $request->transforms(), $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
             },
             fn (DraftTransforms $saved): array => ['transforms' => $saved->steps, 'draft_revision' => $saved->revision, 'query_plan' => $saved->queryPlan, 'transform_faults' => $saved->faults],
+        );
+    }
+
+    /** The Text Templates (Story 5.4): the resolved templates by slot, the Draft's new revision and the plan it stores. */
+    public function templates(DraftSlotRequest $request, string $draft): Response
+    {
+        return $this->respond(
+            $request,
+            function () use ($request, $draft): DraftTemplates {
+                $actor = $this->actor($request);
+
+                return $this->slots->setTemplates($actor, $draft, $request->templates(), $request->draftRevision(), $request->lockEpoch(), $this->holdsLock($request, $actor, $draft));
+            },
+            fn (DraftTemplates $saved): array => ['templates' => (object) $saved->templates, 'draft_revision' => $saved->revision, 'query_plan' => $saved->queryPlan],
         );
     }
 

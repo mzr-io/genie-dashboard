@@ -21,6 +21,12 @@ export type PeriodBehavior =
     | 'own_selector'
     | 'not_date_filtered';
 
+export type FooterConfig = {
+    target: 'external' | 'expanded_view';
+    label: string;
+    url: string;
+};
+
 export type DisplayConfig = {
     width: number;
     height: BlockTypeHeight;
@@ -30,6 +36,8 @@ export type DisplayConfig = {
     allow_minimize: boolean;
     allow_refresh: boolean;
     show_footer_action: boolean;
+    // The footer action's target, label and link (Story 5.4); only used while `show_footer_action` is on.
+    footer: FooterConfig;
     min_width: number;
     max_width: number;
     min_height: BlockTypeHeight;
@@ -89,6 +97,9 @@ export const FIELD_IDS: Record<string, string> = {
     'display.min_height': 'wizard-min-height',
     'display.max_height': 'wizard-max-height',
     'display.period': 'wizard-period',
+    'display.footer.target': 'wizard-footer-target',
+    'display.footer.label': 'wizard-footer-label',
+    'display.footer.url': 'wizard-footer-url',
 };
 
 export const HEIGHTS: BlockTypeHeight[] = ['small', 'medium', 'large'];
@@ -117,6 +128,7 @@ export function defaultDisplay(type: BlockType): DisplayConfig {
         allow_minimize: false,
         allow_refresh: true,
         show_footer_action: false,
+        footer: { target: 'external', label: '', url: '' },
         min_width: type.size.min_width,
         max_width: type.size.max_width,
         min_height: type.size.min_height,
@@ -130,7 +142,13 @@ export function mergedDisplay(
     type: BlockType,
     saved: Partial<DisplayConfig> | undefined,
 ): DisplayConfig {
-    return { ...defaultDisplay(type), ...saved };
+    const base = defaultDisplay(type);
+
+    return {
+        ...base,
+        ...saved,
+        footer: { ...base.footer, ...saved?.footer },
+    };
 }
 
 // "3 columns × Small", the pill under the preview and the summary of a completed step.

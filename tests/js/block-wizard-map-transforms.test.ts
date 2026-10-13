@@ -147,6 +147,8 @@ let presentationReply: ((call: Call) => Reply) | null = null;
 let storedTransforms: Record<string, unknown>[] = [];
 let transformFaults: Record<string, unknown>[] = [];
 let transformsReply: ((call: Call) => Reply) | null = null;
+let storedTemplates: Record<string, { source: string; parts: unknown[] }> = {};
+let templatesReply: ((call: Call) => Reply) | null = null;
 
 const $ = (selector: string) => document.querySelector<HTMLElement>(selector);
 const $$ = (selector: string) =>
@@ -206,6 +208,8 @@ beforeEach(() => {
     storedTransforms = [];
     transformFaults = [];
     transformsReply = null;
+    storedTemplates = {};
+    templatesReply = null;
     sessionStorage.clear();
     localStorage.clear();
     Object.defineProperty(window, 'innerWidth', {
@@ -274,6 +278,7 @@ beforeEach(() => {
                                     slot_map: {},
                                     presentation: stored,
                                     transforms: storedTransforms,
+                                    templates: storedTemplates,
                                     query_plan: null,
                                     draft_revision: revision,
                                     sample_revision: 1,
@@ -284,6 +289,33 @@ beforeEach(() => {
                         };
                     } else if (/\/mapping\/slots\/[a-z_]+\/fields$/.test(url)) {
                         reply = fieldsReply;
+                    } else if (url === `${BASE}/mapping/templates`) {
+                        if (templatesReply) {
+                            reply = templatesReply(call);
+                        } else {
+                            revision += 1;
+                            storedTemplates = Object.fromEntries(
+                                Object.entries(
+                                    call.body!.templates as Record<
+                                        string,
+                                        string
+                                    >,
+                                ).map(([slot, source]) => [
+                                    slot,
+                                    { source, parts: [] },
+                                ]),
+                            );
+                            reply = {
+                                status: 200,
+                                json: {
+                                    data: {
+                                        templates: storedTemplates,
+                                        draft_revision: revision,
+                                        query_plan: null,
+                                    },
+                                },
+                            };
+                        }
                     } else if (url === `${BASE}/mapping/transforms`) {
                         if (transformsReply) {
                             reply = transformsReply(call);
@@ -648,5 +680,83 @@ describe('Transforms section: calculated fields', () => {
             level: 'row',
             source: 'revenue * 2',
         });
+    });
+});
+
+const textSlot = () =>
+    slot({
+        slot: 'kpi_label',
+        label: 'KPI label',
+        value_type: 'text',
+        group: 'KPI',
+        state: 'overridden',
+        path: 'tpl:kpi_label',
+        display: 'Text Template',
+    });
+const templatePuts = () =>
+    calls.filter(
+        (c) => c.method === 'PUT' && c.url === `${BASE}/mapping/templates`,
+    );
+
+describe('Text templates section', () => {
+    it('shows a stored template under its slot and sends the changed text with the others', async () => {
+        storedTemplates = {
+            kpi_label: { source: '{ROW_COUNT} requests', parts: [] },
+        };
+        await open([...mapped(), textSlot()]);
+
+        const input = $('[data-test=template-input]') as HTMLInputElement;
+
+        expect(input.value).toBe('{ROW_COUNT} requests');
+
+        await setValue(input, '{done}/{total} tasks');
+
+        expect(templatePuts()).toHaveLength(1);
+        expect(templatePuts()[0].body).toMatchObject({
+            templates: { kpi_label: '{done}/{total} tasks' },
+            draft_revision: 1,
+        });
+    });
+
+    it('shows the token the server refused, with its position, and blocks Continue', async () => {
+        storedTemplates = { kpi_label: { source: '{ROW_COUNT}', parts: [] } };
+        await open([...mapped(), textSlot()]);
+
+        templatesReply = () => ({
+            status: 422,
+            json: {
+                error: { code: 'blocks.invalid_config' },
+                errors: {
+                    'config.templates.kpi_label.source': [
+                        '{ghost|currency}: ghost isn’t a field of the response (position 7).',
+                    ],
+                },
+            },
+        });
+
+        await setValue(
+            $('[data-test=template-input]'),
+            'Total {ghost|currency}',
+        );
+
+        expect(text('[data-test=template-error]')).toContain(
+            '{ghost|currency}',
+        );
+        expect(
+            $('[data-test=slots-continue]')?.getAttribute('aria-disabled'),
+        ).toBe('true');
+        expect(text('[data-test=slots-continue-reason]')).toContain(
+            'text template',
+        );
+    });
+
+    it('removes a template through the server', async () => {
+        storedTemplates = { kpi_label: { source: '{ROW_COUNT}', parts: [] } };
+        await open([...mapped(), textSlot()]);
+
+        await click($('[data-test=template-remove]'));
+
+        expect(templatePuts().at(-1)!.body).toMatchObject({ templates: {} });
+        expect($('[data-test=templates-section]')).toBeNull();
     });
 });

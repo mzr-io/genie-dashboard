@@ -55,6 +55,11 @@ final class DraftSlotRequest extends FormRequest
             $rules['transforms'] = ['present', 'nullable', 'array', 'max:20'];
         }
 
+        // The Text Templates (Story 5.4): a map of text slot key to source text, judged whole by Mapping's grammar; null or `{}` clears them.
+        if ($this->routeIs('api.admin.blocks.drafts.mapping.templates')) {
+            $rules['templates'] = ['present', 'nullable', 'array', 'max:12'];
+        }
+
         if ($this->routeIs('api.admin.blocks.drafts.mapping.undo')) {
             $rules += [
                 'undo' => ['required', 'array'],
@@ -109,6 +114,14 @@ final class DraftSlotRequest extends FormRequest
     public function presentation(): ?array
     {
         $value = $this->input('presentation');
+
+        return is_array($value) ? $value : null;
+    }
+
+    /** @return array<string, mixed>|null */
+    public function templates(): ?array
+    {
+        $value = $this->input('templates');
 
         return is_array($value) ? $value : null;
     }

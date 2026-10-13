@@ -49,6 +49,7 @@ const emit = defineEmits<{
     (e: 'rerun'): void;
     (e: 'pick', slot: string, path: string | null): void;
     (e: 'calculated', slot: string, opener: HTMLElement | null): void;
+    (e: 'template', slot: string, opener: HTMLElement | null): void;
     (e: 'undo', slot: string): void;
     (e: 'treat', slot: string, path: string, type: FieldType | null): void;
     (e: 'tree', slot: string): void;
@@ -266,6 +267,7 @@ defineExpose({
                     @calculated="
                         (key, opener) => emit('calculated', key, opener)
                     "
+                    @template="(key, opener) => emit('template', key, opener)"
                     @undo="emit('undo', $event)"
                     @treat="(key, path, type) => emit('treat', key, path, type)"
                     :rules="rules"

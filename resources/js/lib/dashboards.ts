@@ -45,8 +45,12 @@ export type DashboardBlock = {
         max_height: HeightPreset;
         height: HeightPreset;
     };
-    // The footer action, when the Block has one configured (its target is set in a later epic): a label and a URL template or in-app route.
-    footer?: { label: string; target: string } | null;
+    // The footer action, when the Block has one (Story 5.4): `external` with its URL template (`{user.*}` tokens) or `expanded_view`, inert until Story 5.9.
+    footer?: {
+        target: 'external' | 'expanded_view';
+        label: string;
+        url: string | null;
+    } | null;
 };
 
 // How a Block follows the period (Story 4.15): its behaviour, the member's own choice (a preset token) and the Block's Default date range preset.

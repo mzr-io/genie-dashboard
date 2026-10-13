@@ -26,6 +26,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { iconFor } from '@/lib/blockIcons';
 import { NO_LIMITS, canNarrow, canWiden } from '@/lib/layout';
 import { rendererFor } from '@/lib/blockRenderers';
+import { expandKpiPayload, expandTemplate } from '@/lib/textTemplate';
 import { kpiPayloadOf } from '@/lib/dashboards';
 import type { DashboardItem, ItemResult } from '@/lib/dashboards';
 import { resolveFooterLink } from '@/lib/footerAction';
@@ -178,11 +179,15 @@ const showMenu = computed(() => !unavailable.value);
 const renderer = computed(() =>
     props.item.block === null ? null : rendererFor(props.item.block.type),
 );
-const payload = computed(() =>
-    props.result === null || props.result === undefined
-        ? null
-        : kpiPayloadOf(props.result),
-);
+// The server's text is the same for every viewer; a Text Template's numbers, dates and `{user.*}` tokens are filled in here (Story 5.4).
+const payload = computed(() => {
+    const made =
+        props.result === null || props.result === undefined
+            ? null
+            : kpiPayloadOf(props.result);
+
+    return made === null ? null : expandKpiPayload(made, props.profile);
+});
 
 const footer = computed(() => {
     const configured = props.item.block?.footer ?? null;
@@ -195,9 +200,19 @@ const footer = computed(() => {
         return null;
     }
 
-    const link = resolveFooterLink(configured.target, props.profile);
+    // The Expanded view is built with the table Blocks (Story 5.9); until then its footer link is inert, so there is none to draw.
+    if (
+        configured.target !== 'external' ||
+        configured.url === null ||
+        configured.url === undefined
+    ) {
+        return null;
+    }
 
-    return link === null ? null : { ...link, label: configured.label };
+    const link = resolveFooterLink(configured.url, props.profile);
+    const label = expandTemplate(configured.label, { profile: props.profile });
+
+    return link === null ? null : { ...link, label };
 });
 
 // "About this block": the description, the Data Source, the interval in words, when the data is from (full date and zone), the version and how the

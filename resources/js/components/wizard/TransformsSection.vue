@@ -412,7 +412,7 @@ function focusCalc(name: string): void {
         ).find(
             (r) =>
                 r.querySelector<HTMLInputElement>('[data-test="calc-name"]')
-                    ?.defaultValue === name,
+                    ?.value === name,
         );
 
         row?.querySelector<HTMLElement>(

@@ -12,8 +12,18 @@ interface AutoMapping
      * @param  array<string, mixed>  $slotMap  `config.slot_map`: slot key => `{path, state}` with state `confirmed` or `overridden`; entries that are not that are ignored
      * @param  array<string, mixed>  $fieldTypes  `config.field_types` (Story 3.13a): stored path => `text|number|boolean|date`, "Treat as"; the effective type is this, else the inferred one
      * @param  list<array<string, mixed>>  $transforms  `config.transforms` as {@see Transforms::check()} returned them (Story 5.1): carried into the plan, and each judged against the fields of the sample
+     * @param  array<string, array<string, mixed>>  $templates  `config.templates` (Story 5.4): slot key => `{source, parts}`; a slot with one is read from it, and the plan carries it
      */
-    public function map(FieldRoleReport $report, BlockType $type, array $slotMap, array $fieldTypes = [], array $transforms = []): AutoMapResult;
+    public function map(FieldRoleReport $report, BlockType $type, array $slotMap, array $fieldTypes = [], array $transforms = [], array $templates = []): AutoMapResult;
+
+    /**
+     * Text Templates judged against the fields of the sample (Story 5.4): each source is parsed by the one template grammar and its field names are
+     * resolved to stored paths. Only a text slot of the Block Type takes one.
+     *
+     * @param  array<string, mixed>  $sources  slot key => source text
+     * @return array{0: array<string, array<string, mixed>>, 1: array<string, list<string>>} slot key => `{source, parts}`, and the faults keyed `config.templates.{slot}.{part}`
+     */
+    public function resolveTemplates(FieldRoleReport $report, BlockType $type, array $sources): array;
 
     /**
      * The calculated fields of a Draft's transform steps judged against the fields of the sample (Story 5.3): each expression is parsed by the one grammar

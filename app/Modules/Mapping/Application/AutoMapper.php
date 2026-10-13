@@ -7,6 +7,7 @@ use App\Modules\BlockTypes\Contracts\BlockTypeSlot;
 use App\Modules\BlockTypes\Contracts\KpiCardSlots;
 use App\Modules\Mapping\Application\Expressions\ExpressionParser;
 use App\Modules\Mapping\Application\Expressions\ExpressionResolver;
+use App\Modules\Mapping\Application\Expressions\TextTemplate;
 use App\Modules\Mapping\Contracts\AutoMapping;
 use App\Modules\Mapping\Contracts\AutoMapResult;
 use App\Modules\Mapping\Contracts\ExecutionResult;
@@ -15,6 +16,7 @@ use App\Modules\Mapping\Contracts\FieldRoleReport;
 use App\Modules\Mapping\Contracts\InvalidExpression;
 use App\Modules\Mapping\Contracts\QueryPlan;
 use App\Modules\Mapping\Contracts\SlotState;
+use App\Modules\Mapping\Contracts\Templates;
 use App\Modules\Mapping\Contracts\Transforms;
 use App\Platform\Json\SamplePath;
 
@@ -67,12 +69,12 @@ final class AutoMapper implements AutoMapping
 
     private const BASELINE_WORDS = ['previous', 'prior', 'prev', 'last', 'baseline'];
 
-    public function map(FieldRoleReport $report, BlockType $type, array $slotMap, array $fieldTypes = [], array $transforms = []): AutoMapResult
+    public function map(FieldRoleReport $report, BlockType $type, array $slotMap, array $fieldTypes = [], array $transforms = [], array $templates = []): AutoMapResult
     {
         $fields = $this->enrich($report, $fieldTypes);
         // Calculated fields are fields a slot may be pointed at by hand, never picked by the auto-mapper.
         $own = $fields;
-        $fields = [...$fields, ...$this->calcFields($transforms, $fields)];
+        $fields = [...$fields, ...$this->calcFields($transforms, $fields), ...$this->templateFields($templates)];
 
         $byPath = array_column($fields, null, 'path');
         $rows = [];
@@ -83,6 +85,11 @@ final class AutoMapper implements AutoMapping
 
         foreach ($type->slots as $slot) {
             $decision = in_array($slot->key, self::CONFIG_ONLY, true) ? null : $this->decision($slotMap[$slot->key] ?? null);
+
+            // A slot with a Text Template is read from it: the template is the Admin's decision.
+            if (isset($templates[$slot->key])) {
+                $decision = ['path' => Templates::PREFIX.$slot->key, 'state' => 'overridden'];
+            }
 
             if ($decision !== null && $decision['path'] !== null) {
                 $used[$decision['path']] = true;
@@ -99,6 +106,11 @@ final class AutoMapper implements AutoMapping
             }
 
             $decision = $this->decision($slotMap[$slot->key] ?? null);
+
+            if (isset($templates[$slot->key])) {
+                $decision = ['path' => Templates::PREFIX.$slot->key, 'state' => 'overridden'];
+            }
+
             $row = $decision !== null ? $this->decided($slot, $decision, $byPath, $fields, $apiChanged) : $this->auto($slot, $own, $used);
             $rows[] = $row;
 
@@ -122,7 +134,7 @@ final class AutoMapper implements AutoMapping
             $groups[] = ['group' => $name, 'slots' => $slots];
         }
 
-        return new AutoMapResult($groups, $this->counts($rows), $this->blockers($rows, $apiChanged), $baseline, Transforms::apply($this->plan($rows), $transforms), $apiChanged, $this->transformFaults($transforms, $fields));
+        return new AutoMapResult($groups, $this->counts($rows), $this->blockers($rows, $apiChanged), $baseline, self::withTemplates(Transforms::apply($this->plan($rows), $transforms), $templates), $apiChanged, $this->transformFaults($transforms, $fields), $this->templateFaults($templates, $own));
     }
 
     /**
@@ -172,7 +184,10 @@ final class AutoMapper implements AutoMapping
 
         if ($definition->valueType === 'text') {
             $firstIncompatible = count(array_filter($entries, fn (array $e): bool => $e['compatible']));
-            array_splice($entries, $firstIncompatible, 0, [['kind' => 'static_text', 'path' => null, 'display' => 'Static text', 'compatible' => true]]);
+            array_splice($entries, $firstIncompatible, 0, [
+                ['kind' => 'static_text', 'path' => null, 'display' => 'Static text', 'compatible' => true],
+                ['kind' => 'template', 'path' => null, 'display' => 'Text Template', 'example' => '{ROW_COUNT} requests need your attention', 'compatible' => true],
+            ]);
         }
 
         // A number slot may be filled by an expression (Story 5.3): the entry sits beside the fields, with an example of what to write.
@@ -559,6 +574,153 @@ final class AutoMapper implements AutoMapping
         }
 
         return $out;
+    }
+
+    public function resolveTemplates(FieldRoleReport $report, BlockType $type, array $sources): array
+    {
+        $names = $this->names($report);
+        $textSlots = [];
+
+        foreach ($type->slots as $slot) {
+            if ($slot->valueType === 'text' && ! in_array($slot->key, self::CONFIG_ONLY, true)) {
+                $textSlots[$slot->key] = true;
+            }
+        }
+
+        $out = [];
+        $errors = [];
+
+        foreach ($sources as $slot => $source) {
+            $slot = (string) $slot;
+            $at = "config.templates.{$slot}";
+
+            if (! isset($textSlots[$slot])) {
+                $errors[$at] = ['Only a text slot takes a Text Template.'];
+
+                continue;
+            }
+
+            if (! is_string($source)) {
+                $errors["{$at}.source"] = ['Enter the text of the template.'];
+
+                continue;
+            }
+
+            try {
+                $parts = TextTemplate::resolve(TextTemplate::parse($source), $names);
+            } catch (InvalidExpression $e) {
+                $errors["{$at}.source"] = [rtrim($e->getMessage(), '.').' (position '.$e->position.').'];
+
+                continue;
+            }
+
+            $out[$slot] = ['source' => $source, 'parts' => $parts];
+        }
+
+        return [$out, $errors];
+    }
+
+    /**
+     * The lower-case names a field can be written by (its last name and its displayed name) to its stored path; a name two fields share is ambiguous
+     * and maps to an empty string.
+     *
+     * @return array<string, string>
+     */
+    private function names(FieldRoleReport $report): array
+    {
+        $names = [];
+
+        foreach ($report->fields as $field) {
+            $path = (string) $field['path'];
+
+            foreach ([$this->key($path), $this->display($path)] as $name) {
+                $key = mb_strtolower($name);
+
+                if ($key === '') {
+                    continue;
+                }
+
+                $names[$key] = isset($names[$key]) && $names[$key] !== $path ? '' : $path;
+            }
+        }
+
+        return $names;
+    }
+
+    /**
+     * Text Templates as fields a slot is read from: text, single, never picked by the auto-mapper.
+     *
+     * @param  array<string, array<string, mixed>>  $templates
+     * @return list<array<string, mixed>>
+     */
+    private function templateFields(array $templates): array
+    {
+        $out = [];
+
+        foreach (array_keys($templates) as $slot) {
+            $out[] = [
+                'path' => Templates::PREFIX.$slot,
+                'display' => 'Text Template',
+                'type' => 'string',
+                'example' => null,
+                'role' => 'label',
+                'confidence' => 'high',
+                'overridden' => false,
+                'in_records' => false,
+                'suggestion' => null,
+                'key' => (string) $slot,
+                'single' => true,
+                'forced' => false,
+                'inferred' => 'text',
+                'effective' => 'text',
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * The templates that read a field the sample does not have.
+     *
+     * @param  array<string, array<string, mixed>>  $templates
+     * @param  list<array<string, mixed>>  $fields  the sample's enriched fields
+     * @return list<array{slot: string, field: string, reason: string}>
+     */
+    private function templateFaults(array $templates, array $fields): array
+    {
+        $known = array_flip(array_map(fn (array $f): string => (string) $f['path'], $fields));
+        $out = [];
+
+        foreach ($templates as $slot => $template) {
+            /** @var list<array<string, mixed>> $parts */
+            $parts = array_values((array) ($template['parts'] ?? []));
+
+            foreach (TextTemplate::paths($parts) as $path) {
+                if (! isset($known[$path])) {
+                    $out[] = ['slot' => (string) $slot, 'field' => $path, 'reason' => 'field_missing'];
+
+                    break;
+                }
+            }
+        }
+
+        return $out;
+    }
+
+    /**
+     * @param  array<string, mixed>  $plan
+     * @param  array<string, array<string, mixed>>  $templates
+     * @return array<string, mixed>
+     */
+    private static function withTemplates(array $plan, array $templates): array
+    {
+        if ($templates === []) {
+            return $plan;
+        }
+
+        $plan[Templates::KEY] = $templates;
+
+        return $plan;
     }
 
     public function resolveTransforms(FieldRoleReport $report, array $steps): array

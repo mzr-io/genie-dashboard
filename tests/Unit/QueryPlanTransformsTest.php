@@ -8,6 +8,7 @@ use App\Modules\BlockTypes\Infrastructure\PackageShapers;
 use App\Modules\Mapping\Application\DecimalMath;
 use App\Modules\Mapping\Application\Expressions\ExpressionParser;
 use App\Modules\Mapping\Application\Expressions\ExpressionResolver;
+use App\Modules\Mapping\Application\Expressions\TextTemplate;
 use App\Modules\Mapping\Application\QueryPlanEngine;
 use App\Modules\Mapping\Contracts\GuardExceeded;
 use App\Modules\Mapping\Contracts\InvalidPlan;
@@ -403,4 +404,64 @@ it('judges calculated field steps whole: a name, a level, an expression or a rat
     ]);
 
     expect(array_keys($errors))->toBe(['config.transforms.0.name', 'config.transforms.0.level', 'config.transforms.1.ratio', 'config.transforms.2.source', 'config.transforms.3.ratio']);
+});
+
+// Story 5.4: Text Templates rendered to their wire form.
+function qtTemplatePlan(string $source, array $names, string $slot = 'kpi_label'): array
+{
+    $parts = TextTemplate::resolve(TextTemplate::parse($source), $names);
+
+    return [
+        'v' => 1,
+        'extract' => ['fields' => [$slot => 'tpl:'.$slot]],
+        'shape' => [$slot => $slot],
+        'templates' => [$slot => ['source' => $source, 'parts' => $parts]],
+    ];
+}
+
+function qtTemplateRun(array $plan, string $json, ?array $period = null)
+{
+    $engine = qtEngine();
+
+    return $engine->run(qtType(), $plan, LosslessJson::decode($json), $engine->guards(), [], $period);
+}
+
+it('renders field tokens, formats, the row count, the period and the viewer as the wire form', function () {
+    $plan = qtTemplatePlan('{ROW_COUNT} requests · {category} · {revenue|currency} · {period.start|MMM d} – {period.end|MMM d, yyyy} · {user.name}', [
+        'category' => '$.category', 'revenue' => '$.revenue',
+    ]);
+    $result = qtTemplateRun($plan, '{"category":"Ops","revenue":1234.50,"rows":[{"a":1},{"a":2}]}', ['start' => '2026-05-01', 'end' => '2026-05-31']);
+
+    // Rows: the longest list any path selected; with none beyond single values it is one.
+    expect($result->slots['kpi_label'])->toBe('{#1|integer} requests · Ops · {#1234.50|currency} · {@2026-05-01|MMM d} – {@2026-05-31|MMM d, yyyy} · {user.name}');
+});
+
+it('counts the rows that are left after the transforms', function () {
+    $plan = qtTemplatePlan('{ROW_COUNT} approved', ['status' => '$.data[*].status']);
+    $plan['filter'] = [['field' => '$.data[*].status', 'operator' => 'is', 'value' => 'Approved']];
+    $result = qtTemplateRun($plan, json_encode(['data' => [['status' => 'Approved'], ['status' => 'Rejected'], ['status' => 'Approved']]]));
+
+    expect($result->slots['kpi_label'])->toBe('{#2|integer} approved');
+});
+
+it('writes a null, missing or non-scalar value as the empty marker, never 0 or undefined', function () {
+    $plan = qtTemplatePlan('A {gone} B {nothing} C {obj} D {period.start|MMM d}', ['gone' => '$.gone', 'nothing' => '$.nothing', 'obj' => '$.obj']);
+    $result = qtTemplateRun($plan, '{"nothing":null,"obj":{"x":1}}');
+
+    expect($result->slots['kpi_label'])->toBe('A {-} B {-} C {-} D {-}');
+});
+
+it('doubles every brace in data so a value can never become a token', function () {
+    $plan = qtTemplatePlan('{note}', ['note' => '$.note']);
+    $result = qtTemplateRun($plan, '{"note":"<img src=x onerror=alert(1)> {user.name} {#9|currency}"}');
+
+    expect($result->slots['kpi_label'])->toBe('<img src=x onerror=alert(1)> {{user.name}} {{#9|currency}}');
+});
+
+it('reads one value of aggregated rows and formats a date field', function () {
+    $plan = qtTemplatePlan('{done}/{total} tasks · {day|date}', ['done' => '$.data[*].done', 'total' => '$.data[*].total', 'day' => '$.day']);
+    $plan['aggregate'] = [['function' => 'sum', 'field' => '$.data[*].done'], ['function' => 'sum', 'field' => '$.data[*].total']];
+    $result = qtTemplateRun($plan, '{"day":"2026-05-03T10:00:00Z","data":[{"done":3,"total":5},{"done":4,"total":5}]}');
+
+    expect($result->slots['kpi_label'])->toBe('7/10 tasks · {@2026-05-03|MMM d, yyyy}');
 });

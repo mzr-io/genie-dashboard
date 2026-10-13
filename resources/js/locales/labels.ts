@@ -979,7 +979,20 @@ export const blockWizardLabels = {
     allowRefresh: 'Allow refresh',
     showFooterAction: 'Show footer action',
     showFooterActionHelper:
-        'Adds an optional, empty Footer action slot to map later.',
+        'Adds a link in the footer of the block. Choose where it goes below.',
+    footerTarget: 'Footer link target',
+    footerTargets: {
+        external: 'External link',
+        expanded_view: 'Expanded view',
+    } as Record<string, string>,
+    footerLabel: 'Footer link label',
+    footerLabelHelper:
+        'Literal text. {user.name} and {user.email} are filled in for each viewer.',
+    footerUrl: 'Footer link address',
+    footerUrlHelper:
+        'Starts with https:// or http://. Write {user.email} (or {user.name}) in the path or query: it is encoded in place. The scheme and host stay as written.',
+    footerExpandedNote:
+        'The link opens the Expanded view, which arrives with the table block. Until then it is inert and does not appear on the dashboard.',
     period: 'Period',
     periods: {
         follow_dashboard: 'Follow dashboard default',
@@ -1985,6 +1998,48 @@ export const blockTransformLabels = {
     notSaved: 'The transform steps weren’t saved. Try again.',
     stepRemoved: (sentence: string) => `Removed: ${sentence}.`,
     stepAdded: (sentence: string) => `Added: ${sentence}.`,
+} as const;
+
+// Text Templates of Map Data (Story 5.4; UX-DR-193, 196): a template for any text slot, with a token helper.
+export const blockTemplateLabels = {
+    title: 'Text templates',
+    caption: 'Mix literal text with live values in a text slot.',
+    empty: 'No text templates yet. Choose "Text Template" in a text slot\'s field picker.',
+    slotName: (slot: string) => `Template for ${slot}`,
+    inputName: (slot: string) => `Text template for ${slot}`,
+    inputHelp:
+        'Write text and tokens such as {revenue|currency}, {ROW_COUNT}, {period.start|MMM d} or {user.name}. Write {{ and }} for literal braces.',
+    placeholder: '{ROW_COUNT} requests need your attention',
+    helper: 'Insert a token',
+    insertField: 'Field',
+    insertFieldName: 'Insert a field token',
+    insertFormat: 'Format',
+    insertFormatName: 'Format of the field token',
+    noFormat: 'as it is',
+    tokens: {
+        rowCount: '{ROW_COUNT}',
+        periodStart: '{period.start|MMM d}',
+        periodEnd: '{period.end|MMM d, yyyy}',
+        userName: '{user.name}',
+    },
+    tokenNames: {
+        rowCount: 'Insert the row count',
+        periodStart: 'Insert the start of the period',
+        periodEnd: 'Insert the end of the period',
+        userName: 'Insert your name',
+    },
+    remove: 'Remove',
+    removeName: (slot: string) => `Remove the template of ${slot}`,
+    preview: 'Looks like',
+    previewNote:
+        "Numbers and dates follow each viewer's language; {user.name} is the viewer's own name.",
+    blockedContinue: 'Fix the highlighted text template to continue.',
+    notSaved: "The text template wasn't saved. Try again.",
+    faults: {
+        field_missing: (field: string) =>
+            `${field} isn't in the response any more. Edit the template.`,
+        empty: 'Enter the text of the template.',
+    },
 } as const;
 
 export const blockMapLabels = {

@@ -124,7 +124,7 @@ final class ComputeResults
             $built = $this->errored($key, $target, $slots);
         } else {
             try {
-                $result = $this->plans->run($type, $config->queryPlan, $document, $guards, $config->presentation);
+                $result = $this->plans->run($type, $config->queryPlan, $document, $guards, $config->presentation, self::inclusivePeriod($subscription->periodStart, $subscription->periodEnd));
                 $built = $this->build($key, $target, $result, $slots);
                 $failed = $result->unavailable;
             } catch (GuardExceeded|InvalidPlan) {
@@ -270,5 +270,23 @@ final class ComputeResults
             'result_etag' => $etag,
             'scope' => $own && $target->ownerMembershipId !== null ? 'member' : 'shared',
         ] + ($own && $target->ownerMembershipId !== null ? ['membership_id' => $target->ownerMembershipId] : []));
+    }
+
+    /**
+     * The window `[start, end)` of a subscription as the two days a reader sees: `end` is the last day inside it.
+     *
+     * @return array{start: string, end: string}|null
+     */
+    private static function inclusivePeriod(?string $start, ?string $end): ?array
+    {
+        if ($start === null || $end === null) {
+            return null;
+        }
+
+        try {
+            return ['start' => $start, 'end' => (new DateTimeImmutable($end))->modify('-1 day')->format('Y-m-d')];
+        } catch (\Exception) {
+            return null;
+        }
     }
 }

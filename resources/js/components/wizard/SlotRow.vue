@@ -55,6 +55,8 @@ const emit = defineEmits<{
     (e: 'pick', slot: string, path: string | null): void;
     // "Calculated Field" was chosen in the picker (Story 5.3): the page opens the expression editor for this slot.
     (e: 'calculated', slot: string, opener: HTMLElement | null): void;
+    // "Text Template" was chosen in the picker (Story 5.4): the page opens the template editor for this slot.
+    (e: 'template', slot: string, opener: HTMLElement | null): void;
     (e: 'undo', slot: string): void;
     (e: 'treat', slot: string, path: string, type: FieldType | null): void;
     // "Choose from the field tree" on a required slot with nothing mapped (Story 3.11d).
@@ -151,6 +153,16 @@ watch(
 );
 
 function pick(field: PickerField): void {
+    if (field.kind === 'template') {
+        emit(
+            'template',
+            props.item.slot,
+            document.activeElement as HTMLElement | null,
+        );
+
+        return;
+    }
+
     if (field.kind === 'calculated') {
         emit(
             'calculated',

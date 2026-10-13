@@ -22,6 +22,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import FormErrorSummary from '@/components/FormErrorSummary.vue';
 import FieldTree from '@/components/wizard/FieldTree.vue';
 import RolesSection from '@/components/wizard/RolesSection.vue';
+import TemplatesSection from '@/components/wizard/TemplatesSection.vue';
 import TransformsSection from '@/components/wizard/TransformsSection.vue';
 import SectionCard from '@/components/wizard/SectionCard.vue';
 import SlotChecklist from '@/components/wizard/SlotChecklist.vue';
@@ -68,11 +69,14 @@ import {
     sameSteps,
 } from '@/lib/blockTransforms';
 import type { RowCounts, TransformStep } from '@/lib/blockTransforms';
+import { putTemplates, sourcesOf } from '@/lib/blockTemplates';
+import type { TemplateSources } from '@/lib/blockTemplates';
 import { WizardError } from '@/lib/blockWizard';
 import { ErrorCode } from '@/types/error-codes';
 import {
     blockMapLabels as labels,
     blockPresentationLabels as presentationLabels,
+    blockTemplateLabels as templateLabels,
     blockTransformLabels as transformLabels,
 } from '@/locales/labels';
 
@@ -321,6 +325,13 @@ const continueBlocked = computed<string | undefined>(() => {
 
     if (Object.keys(transformFaults.value).length > 0) {
         return transformLabels.blockedContinue;
+    }
+
+    if (
+        Object.keys(templateErrors.value).length > 0 ||
+        (checklist.template_faults?.length ?? 0) > 0
+    ) {
+        return templateLabels.blockedContinue;
     }
 
     return checklist.blockers.length > 0 ? blockerReason.value : props.blocked;
@@ -998,6 +1009,162 @@ watch(
     { immediate: true },
 );
 
+// ---- Text templates (Story 5.4) ----------------------------------------------------------------------------------------------
+
+const templatesRef = ref<InstanceType<typeof TemplatesSection> | null>(null);
+// The templates as the Admin has them (one just chosen is empty until it is written) and what the server said of each one it refused.
+const templateSources = ref<TemplateSources>({});
+const templateErrors = ref<Record<string, string>>({});
+let templateOpener: { slot: string; el: HTMLElement | null } | null = null;
+
+// The text slots a template can be set on: the slots of the checklist that take text, never the icon or the footer action.
+const textSlots = computed(() =>
+    (read.value?.checklist?.groups ?? [])
+        .flatMap((g) => g.slots)
+        .filter(
+            (s) =>
+                s.value_type === 'text' &&
+                s.slot !== 'icon' &&
+                s.slot !== 'footer_action',
+        )
+        .map((s) => ({ slot: s.slot, label: s.label })),
+);
+
+function onTemplate(slot: string, opener: HTMLElement | null): void {
+    if (templateSources.value[slot] === undefined) {
+        templateSources.value = { ...templateSources.value, [slot]: '' };
+    }
+
+    templateOpener = { slot, el: opener };
+    void nextTick(() => templatesRef.value?.focusSlot(slot));
+}
+
+// Escape in a template the picker opened: an empty one was never stored, so it goes, and focus returns to the picker's opener.
+function onCancelTemplate(slot: string): void {
+    if (templateSources.value[slot] === '') {
+        const { [slot]: _gone, ...rest } = templateSources.value;
+
+        templateSources.value = rest;
+    }
+
+    const opener = templateOpener;
+
+    templateOpener = null;
+    void nextTick(() => opener?.el?.focus());
+}
+
+function templatesRefused(error: WizardError): boolean {
+    if (error.status !== 422) {
+        return false;
+    }
+
+    const next: Record<string, string> = {};
+
+    for (const [path, list] of Object.entries(error.fields ?? {})) {
+        const match = /^config\.templates\.([a-z0-9_]+)/.exec(path);
+
+        if (match !== null && list[0] !== undefined) {
+            next[match[1]] = list[0];
+        }
+    }
+
+    templateErrors.value = next;
+    notSaved.value = templateLabels.notSaved;
+    announce(Object.values(next)[0] ?? templateLabels.notSaved, 'assertive');
+
+    return true;
+}
+
+async function sendTemplates(next: TemplateSources): Promise<boolean> {
+    const done = await submit(
+        (id, revision, claim) => putTemplates(id, next, revision, claim),
+        templatesRefused,
+    );
+
+    if (done === null || read.value === null) {
+        return false;
+    }
+
+    read.value = {
+        ...read.value,
+        draft_revision: done.draft_revision,
+        query_plan: done.query_plan,
+        templates: done.templates,
+    };
+    templateErrors.value = {};
+
+    // The slot is now read from the template: the checklist says so.
+    await reread();
+
+    return true;
+}
+
+// Only the templates that have text are stored: one just chosen and still empty is the Admin's, not the plan's.
+const withText = (sources: TemplateSources): TemplateSources =>
+    Object.fromEntries(
+        Object.entries(sources).filter(([, text]) => text.trim() !== ''),
+    );
+
+async function saveTemplate(slot: string, source: string): Promise<void> {
+    const next = { ...templateSources.value, [slot]: source };
+
+    templateSources.value = next;
+
+    if (source.trim() === '') {
+        templateErrors.value = {
+            ...templateErrors.value,
+            [slot]: templateLabels.faults.empty,
+        };
+
+        return;
+    }
+
+    const { [slot]: _cleared, ...errors } = templateErrors.value;
+
+    templateErrors.value = errors;
+
+    const stored = withText(next);
+
+    if (
+        JSON.stringify(stored) ===
+        JSON.stringify(sourcesOf(read.value?.templates))
+    ) {
+        return;
+    }
+
+    await sendTemplates(stored);
+}
+
+async function removeTemplate(slot: string): Promise<void> {
+    const { [slot]: _gone, ...rest } = templateSources.value;
+    const { [slot]: _error, ...errors } = templateErrors.value;
+
+    templateSources.value = rest;
+    templateErrors.value = errors;
+
+    if (read.value?.templates?.[slot] === undefined) {
+        return;
+    }
+
+    await sendTemplates(withText(rest));
+}
+
+watch(
+    () => read.value?.templates,
+    (stored) => {
+        // A template being written (empty or refused) stays as typed; the rest follows what the server holds.
+        const kept = Object.fromEntries(
+            Object.entries(templateSources.value).filter(
+                ([slot, text]) =>
+                    templateErrors.value[slot] !== undefined || text === '',
+            ),
+        );
+
+        templateSources.value = { ...sourcesOf(stored), ...kept };
+    },
+    { immediate: true },
+);
+
 // ---- Presentation rules (Story 3.15b) ----------------------------------------------------------------------------------------
 
 // The server refused the rules (422 with `config.presentation.<path>` errors): each fault is shown on its field, nothing was stored and the
@@ -1355,6 +1522,11 @@ function onContinueBlocked(): HTMLElement | null {
             });
         }
 
+        return null;
+    }
+
+    // A text template that is refused, or reads a field that left the sample: its row opens and takes focus.
+    if (first === undefined && templatesRef.value?.focusFirstFault() === true) {
         return null;
     }
 
@@ -1777,6 +1949,7 @@ onBeforeUnmount(() => {
                     :presentation-errors="presentationErrors"
                     @presentation="savePresentation"
                     @calculated="onCalculated"
+                    @template="onTemplate"
                     @confirm="confirmSlot"
                     @rerun="rerun"
                     @pick="pickField"
@@ -1828,6 +2001,18 @@ onBeforeUnmount(() => {
                     >
                 </div>
             </SectionCard>
+
+            <TemplatesSection
+                ref="templatesRef"
+                :templates="templateSources"
+                :slots="textSlots"
+                :fields="transformFields"
+                :errors="templateErrors"
+                :blocked="blocked"
+                @change="saveTemplate"
+                @remove="removeTemplate"
+                @cancel="onCancelTemplate"
+            />
 
             <TransformsSection
                 ref="transformsRef"

@@ -215,12 +215,13 @@ it('lists the headline picker: compatible numeric single scalars first, text wit
         ->and($fields[0])->not->toHaveKey('reason');
 });
 
-it('offers static_text for a text slot only, and nothing for an unknown or config-only slot', function () {
+it('offers static_text and a Text Template for a text slot only, and nothing for an unknown or config-only slot', function () {
     $text = amFields('{"total":1,"region":"EU"}', 'subtitle');
     $kinds = array_column($text, 'kind');
 
-    expect($kinds)->toBe(['field', 'static_text', 'field'])
+    expect($kinds)->toBe(['field', 'static_text', 'template', 'field'])
         ->and($text[1])->toMatchArray(['path' => null, 'compatible' => true])
+        ->and($text[2])->toMatchArray(['path' => null, 'compatible' => true, 'display' => 'Text Template'])
         ->and(array_column(amFields('{"total":1}', 'headline_value'), 'kind'))->not->toContain('static_text')
         ->and(amFields('{"total":1}', 'icon'))->toBeNull()
         ->and(amFields('{"total":1}', 'footer_action'))->toBeNull()

@@ -15,8 +15,9 @@ interface QueryExecutor
     /**
      * @param  array<string, mixed>  $plan  a plan already judged by {@see QueryPlan::validate()}
      * @param  mixed  $document  the tree {@see LosslessJson} made
+     * @param  array{start: string, end: string}|null  $period  both dates inclusive, Workspace-local
      *
      * @throws GuardExceeded
      */
-    public function execute(array $plan, mixed $document, BlockType $type, PlanGuards $guards): ExecutionResult;
+    public function execute(array $plan, mixed $document, BlockType $type, PlanGuards $guards, ?array $period = null): ExecutionResult;
 }

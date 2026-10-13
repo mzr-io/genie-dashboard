@@ -110,7 +110,15 @@ final class PreviewDraft implements DraftPreviews
             [$document, $revision] = $user === null
                 ? $this->document($actor->workspaceId, $draft->id, $revision)
                 : [$user['tree'], $revision];
-            $result = $this->plans->run($type, $plan, $document, $guards, is_array($draft->config[Presentation::KEY] ?? null) ? $draft->config[Presentation::KEY] : []);
+            $period = DraftPeriod::resolve($draft->config, $this->settings->timezone(), now());
+            $result = $this->plans->run(
+                $type,
+                $plan,
+                $document,
+                $guards,
+                is_array($draft->config[Presentation::KEY] ?? null) ? $draft->config[Presentation::KEY] : [],
+                $period === null ? null : ['start' => $period->start, 'end' => $period->lastDay()],
+            );
         } catch (GuardExceeded $e) {
             $outcome = 'guard_exceeded';
 
@@ -131,7 +139,7 @@ final class PreviewDraft implements DraftPreviews
             );
         }
 
-        return new DraftPreview($result->payload, $result->unavailable, $revision, $draft->revision, $this->slotValues($plan, $result->slots, $result->unavailable), ManageDraftSlots::planStale($draft->config, $revision), $user['expires_at'] ?? null, DraftPeriod::resolve($draft->config, $this->settings->timezone(), now())?->toArray(), $result->rows);
+        return new DraftPreview($result->payload, $result->unavailable, $revision, $draft->revision, $this->slotValues($plan, $result->slots, $result->unavailable), ManageDraftSlots::planStale($draft->config, $revision), $user['expires_at'] ?? null, $period?->toArray(), $result->rows);
     }
 
     /**

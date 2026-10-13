@@ -31,5 +31,7 @@ final readonly class BlockCard
         public array $about,
         /** The Default date range's preset token (`custom` when the Admin chose dates): the initial value of an Own selector. */
         public ?string $defaultPeriod = null,
+        /** @var array{target: string, label: string, url: string|null}|null the footer action (Story 5.4): User-safe, its tokens are filled in the browser */
+        public ?array $footer = null,
     ) {}
 }

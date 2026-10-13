@@ -562,7 +562,7 @@ it('stores a failed report with engine_error when the engine throws something un
             return new PlanGuards(100, 100, 1000);
         }
 
-        public function run(BlockType $type, array $plan, mixed $document, PlanGuards $guards, array $presentation = []): PlanResult
+        public function run(BlockType $type, array $plan, mixed $document, PlanGuards $guards, array $presentation = [], ?array $period = null): PlanResult
         {
             throw new RuntimeException('boom CANARY-pv-body-3f9a');
         }

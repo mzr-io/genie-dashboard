@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Renderer from '@block-types/kpi-card/v1/Renderer.vue';
 import type { KpiCardPayload } from '@block-types/kpi-card/v1/payload';
+import { usePage } from '@inertiajs/vue3';
 import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
 import SegmentedControl from '@/components/SegmentedControl.vue';
 import BlockedReason from '@/components/BlockedReason.vue';
@@ -18,6 +19,7 @@ import type { FetchBody } from '@/lib/blockSample';
 import { asUserRef, asUserUsable, endAsUser } from '@/lib/blockUserSample';
 import type { AsUserState } from '@/lib/blockUserSample';
 import { WizardError } from '@/lib/blockWizard';
+import { expandKpiPayload } from '@/lib/textTemplate';
 import type { DisplayConfig } from '@/lib/blockWizard';
 import {
     blockAsUserLabels,
@@ -367,6 +369,21 @@ const payload = computed<KpiCardPayload>(() => {
     }
 });
 
+// Text Templates reach the browser in their wire form: the signed-in Admin's own name and email are what `{user.*}` shows here.
+const page = usePage();
+const shownPayload = computed(() => {
+    const user = (
+        page.props.auth as
+            | { user?: { name?: string; email?: string } }
+            | undefined
+    )?.user;
+
+    return expandKpiPayload(payload.value, {
+        name: user?.name ?? null,
+        email: user?.email ?? null,
+    });
+});
+
 const minimized = computed(() => state.value === 'minimized');
 const heading = computed(() => frame.value.title ?? '');
 const deviceLabel = computed(
@@ -543,7 +560,7 @@ const notice = computed<string | null>(() => {
                         :style="cardStyle"
                         data-test="block-full"
                     >
-                        <Renderer :payload="payload" audience="user" />
+                        <Renderer :payload="shownPayload" audience="user" />
                     </div>
                 </div>
             </div>
@@ -583,7 +600,7 @@ const notice = computed<string | null>(() => {
                         data-test="grid-block"
                         :data-span="columns"
                     >
-                        <Renderer :payload="payload" audience="user" />
+                        <Renderer :payload="shownPayload" audience="user" />
                     </div>
                     <div
                         v-for="(rest, index) in fillers"

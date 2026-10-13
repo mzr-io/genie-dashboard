@@ -795,7 +795,11 @@ describe('Block chrome', () => {
                         ...item().block!.chrome,
                         show_footer_action: true,
                     },
-                    footer: { label: 'View all approvals', target },
+                    footer: {
+                        label: 'View all approvals',
+                        target: 'external',
+                        url: target,
+                    },
                 },
             });
 

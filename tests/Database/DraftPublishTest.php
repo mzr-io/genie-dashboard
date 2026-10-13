@@ -127,7 +127,7 @@ it('publishes a validated Draft: prepared then published, frozen, current versio
     // The frozen document: the contract of the version.
     $config = json_decode($row['config'], true);
     expect($config)->toMatchArray(['schema_version' => 1, 'type_key' => 'kpi-card', 'contract_version' => 1])
-        ->and(array_keys($config))->toEqualCanonicalizing(['schema_version', 'type_key', 'contract_version', 'source', 'endpoint', 'fields', 'slot_map', 'query_plan', 'presentation', 'chrome', 'sizes', 'period', 'refresh_interval'])
+        ->and(array_keys($config))->toEqualCanonicalizing(['schema_version', 'type_key', 'contract_version', 'source', 'endpoint', 'fields', 'slot_map', 'query_plan', 'presentation', 'chrome', 'sizes', 'footer', 'period', 'refresh_interval'])
         ->and($config['source'])->toMatchArray(['data_source_id' => $source, 'endpoint_id' => $endpoint])
         ->and($config['endpoint'])->toBe(['id' => $endpoint, 'revision' => (int) $report['endpoint_revision']])
         ->and($config['query_plan']['shape'])->toEqual(['headline_value' => 'rev', 'kpi_label' => 'name'])

@@ -31,7 +31,7 @@ final class QueryPlanEngine implements QueryPlans
         return $this->settings->guards();
     }
 
-    public function run(BlockType $type, array $plan, mixed $document, PlanGuards $guards, array $presentation = []): PlanResult
+    public function run(BlockType $type, array $plan, mixed $document, PlanGuards $guards, array $presentation = [], ?array $period = null): PlanResult
     {
         $errors = QueryPlan::validate($plan, $type);
 
@@ -39,7 +39,7 @@ final class QueryPlanEngine implements QueryPlans
             throw new InvalidPlan($errors);
         }
 
-        $result = $this->executor->execute($plan, $document, $type, $guards);
+        $result = $this->executor->execute($plan, $document, $type, $guards, $period);
 
         // The presentation rules (Story 3.15a) become the Shaper's options; the bands are judged here, on the exact headline value.
         $mapped = array_map('strval', array_keys(is_array($plan['shape'] ?? null) ? $plan['shape'] : []));
