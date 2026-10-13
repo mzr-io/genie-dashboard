@@ -6,10 +6,12 @@ use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\BlockTypes\Contracts\BlockTypeShapers;
 use App\Modules\BlockTypes\Contracts\UnknownBlockType;
 use BlockTypes\Bar\V1\Shaper as BarV1;
+use BlockTypes\ItemList\V1\Shaper as ListV1;
 use BlockTypes\KpiCard\V1\Shaper as KpiCardV1;
 use BlockTypes\KpiChart\V1\Shaper as KpiChartV1;
 use BlockTypes\LineArea\V1\Shaper as LineAreaV1;
 use BlockTypes\PieDonut\V1\Shaper as PieDonutV1;
+use BlockTypes\ProgressList\V1\Shaper as ProgressListV1;
 use BlockTypes\Table\V1\Shaper as TableV1;
 
 /** The Shapers of the packages under `block-types/`, by pinned `(key, contractVersion)`: never "latest". */
@@ -23,6 +25,8 @@ final class PackageShapers implements BlockTypeShapers
         'bar@1' => BarV1::class,
         'pie-donut@1' => PieDonutV1::class,
         'table@1' => TableV1::class,
+        'list@1' => ListV1::class,
+        'progress-list@1' => ProgressListV1::class,
     ];
 
     public function shape(BlockType $type, array $slots, array $options = []): array

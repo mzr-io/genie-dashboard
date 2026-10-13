@@ -70,10 +70,14 @@ const isPieAxis = computed(() => key.value === 'pie_category');
 // A table's columns (Story 5.12): each one's alignment, width and sort; the page size, the highlight column and its bands sit on the first.
 const isColumn = computed(() => /^col_\d+$/.test(key.value));
 const isFirstColumn = computed(() => key.value === 'col_1');
+// A progress list's colour rule sits on its progress row (Story 5.13).
+const isProgress = computed(() => key.value === 'progress_value');
 const COLUMN_KEYS = Array.from({ length: 12 }, (_, n) => `col_${n + 1}`);
 const numeric = computed(
     () =>
         props.item.value_type === 'number' ||
+        // A table column or a list's value takes any value (Stories 5.12 and 5.13): the Admin picks how it is written.
+        props.item.value_type === 'any' ||
         dated.value ||
         isHeadline.value ||
         isComparison.value,
@@ -1323,7 +1327,7 @@ const field = 'grid gap-1 [&>label]:type-caption [&>label]:text-text-secondary';
 
         <!-- Bands (on the headline value) -->
         <BandsEditor
-            v-if="isHeadline || isFirstColumn"
+            v-if="isHeadline || isFirstColumn || isProgress"
             :bands="rules.bands ?? []"
             :errors="errors"
             :disabled="disabled"

@@ -3,6 +3,8 @@ import {
     kpiCardV1,
     kpiChartV1,
     lineAreaV1,
+    listV1,
+    progressListV1,
     tableV1,
 } from '@/types/block-types';
 import type { BlockType, BlockTypeHeight } from '@/types/block-types';
@@ -26,6 +28,8 @@ export const BLOCK_TYPES: BlockType[] = [
     kpiChartV1,
     barV1,
     tableV1,
+    listV1,
+    progressListV1,
 ];
 
 export type PeriodBehavior =

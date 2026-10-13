@@ -23,6 +23,14 @@
         {
             "key": "table",
             "contractVersion": 1
+        },
+        {
+            "key": "list",
+            "contractVersion": 1
+        },
+        {
+            "key": "progress-list",
+            "contractVersion": 1
         }
     ]
 }

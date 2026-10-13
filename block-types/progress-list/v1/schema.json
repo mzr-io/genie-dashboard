@@ -1,0 +1,88 @@
+{
+    "key": "progress-list",
+    "contractVersion": 1,
+    "title": "Progress list",
+    "slots": [
+        {
+            "key": "title",
+            "label": "Title",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "subtitle",
+            "label": "Subtitle",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "icon",
+            "label": "Icon",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label", "filter"]
+        },
+        {
+            "key": "footer_action",
+            "label": "Footer action",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "item_title",
+            "label": "Item title",
+            "required": true,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["label", "dimension"]
+        },
+        {
+            "key": "progress_value",
+            "label": "Progress (value, or percent without a total)",
+            "required": true,
+            "valueType": "number",
+            "cardinality": "rows",
+            "fieldRoles": ["value", "measure"]
+        },
+        {
+            "key": "progress_total",
+            "label": "Total",
+            "required": false,
+            "valueType": "number",
+            "cardinality": "rows",
+            "fieldRoles": ["value", "measure"]
+        },
+        {
+            "key": "item_caption",
+            "label": "Caption",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["label", "dimension"]
+        },
+        {
+            "key": "row_key",
+            "label": "Row key",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["dimension", "label", "filter"]
+        }
+    ],
+    "size": {
+        "defaultWidth": 4,
+        "minWidth": 3,
+        "maxWidth": 6,
+        "defaultHeight": "medium",
+        "minHeight": "small",
+        "maxHeight": "large"
+    },
+    "defaultAggregations": {}
+}

@@ -2,7 +2,9 @@ import { defineAsyncComponent } from 'vue';
 import type { Component } from 'vue';
 import * as barTable from '@block-types/bar/v1/table';
 import * as lineAreaTable from '@block-types/line-area/v1/table';
+import * as listTable from '@block-types/list/v1/table';
 import * as pieTable from '@block-types/pie-donut/v1/table';
+import * as progressTable from '@block-types/progress-list/v1/table';
 import * as tableTable from '@block-types/table/v1/table';
 
 // The client side of the Block Type registry (Story 4.5, AD-21): a Block Type key to its Renderer, loaded when a Block of that type is first drawn.
@@ -23,6 +25,12 @@ export const blockRenderers: Record<string, Component> = {
     ),
     table: defineAsyncComponent(
         () => import('@block-types/table/v1/Renderer.vue'),
+    ),
+    list: defineAsyncComponent(
+        () => import('@block-types/list/v1/Renderer.vue'),
+    ),
+    'progress-list': defineAsyncComponent(
+        () => import('@block-types/progress-list/v1/Renderer.vue'),
     ),
 };
 
@@ -57,6 +65,17 @@ export const tableBuilders: Record<string, TableBuilder> = {
             tableTable.tableOf(payload as never, locale),
         cell: (key, value, payload, locale) =>
             tableTable.cell(key, value, payload as never, locale),
+    },
+    list: {
+        table: (payload, locale) => listTable.tableOf(payload as never, locale),
+        cell: (key, value, payload, locale) =>
+            listTable.cell(key, value, payload as never, locale),
+    },
+    'progress-list': {
+        table: (payload, locale) =>
+            progressTable.tableOf(payload as never, locale),
+        cell: (key, value, payload, locale) =>
+            progressTable.cell(key, value, payload, locale),
     },
     'pie-donut': {
         table: (payload, locale) => pieTable.tableOf(payload as never, locale),

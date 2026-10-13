@@ -129,6 +129,20 @@ final class InProcessExecutor implements QueryExecutor
             if (isset($templates[(string) $slot]) && ($fields[$alias] ?? null) === Templates::PREFIX.$slot) {
                 /** @var list<array<string, mixed>> $parts */
                 $parts = array_values((array) ($templates[(string) $slot]['parts'] ?? []));
+
+                // A template of a `rows` slot (a list's subtitle, a progress caption, Story 5.13) is written once for every row.
+                if ($lists[$slot] ?? false) {
+                    $each = [];
+
+                    for ($at = 0; $at < $rowsLeft; $at++) {
+                        $each[] = $this->render($parts, $document, $table, $rowsLeft, $period, $guards, $started, $evaluations, $extracted, $at);
+                    }
+
+                    $slots[(string) $slot] = $each;
+
+                    continue;
+                }
+
                 $slots[(string) $slot] = $this->render(
                     $parts,
                     $document,
@@ -693,8 +707,9 @@ final class InProcessExecutor implements QueryExecutor
      * @param  list<array<string, mixed>>  $parts
      * @param  array<string, array<mixed>>  $table
      * @param  array{start: string, end: string}|null  $period
+     * @param  int|null  $at  the row a `rows` slot's template is written for; null writes the one value of a single slot
      */
-    private function render(array $parts, mixed $document, array $table, int $rows, ?array $period, PlanGuards $guards, float $started, int &$evaluations, int &$extracted): string
+    private function render(array $parts, mixed $document, array $table, int $rows, ?array $period, PlanGuards $guards, float $started, int &$evaluations, int &$extracted, ?int $at = null): string
     {
         $out = '';
 
@@ -717,7 +732,10 @@ final class InProcessExecutor implements QueryExecutor
                     $path = (string) ($part['path'] ?? '');
                     $node = null;
 
-                    if (isset($table[$path]) && count($table[$path]) === 1) {
+                    if ($at !== null && isset($table[$path])) {
+                        $column = array_values($table[$path]);
+                        $node = count($column) === 1 ? $column[0] : ($column[$at] ?? null);
+                    } elseif (isset($table[$path]) && count($table[$path]) === 1) {
                         $node = $table[$path][0];
                     } else {
                         if (++$evaluations > $guards->maxEvaluations) {
@@ -732,7 +750,7 @@ final class InProcessExecutor implements QueryExecutor
                             throw new GuardExceeded(GuardExceeded::EXTRACTED_VALUES);
                         }
 
-                        $node = count($nodes) === 1 ? $nodes[0] : null;
+                        $node = count($nodes) === 1 ? $nodes[0] : ($at !== null ? ($nodes[$at] ?? null) : null);
                     }
 
                     $out .= self::wire($node, $part['fmt'] ?? null);

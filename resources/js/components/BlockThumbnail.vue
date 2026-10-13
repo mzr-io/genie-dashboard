@@ -94,6 +94,82 @@ defineProps<{ type: string }>();
                 stroke-dasharray="26 88"
             />
         </template>
+        <template v-else-if="type === 'list'">
+            <circle cx="14" cy="13" r="4" class="fill-chart-1" />
+            <rect
+                x="24"
+                y="11"
+                width="30"
+                height="4"
+                class="fill-surface-muted"
+            />
+            <circle cx="14" cy="26" r="4" class="fill-chart-2" />
+            <rect
+                x="24"
+                y="24"
+                width="30"
+                height="4"
+                class="fill-surface-muted"
+            />
+            <circle cx="14" cy="39" r="4" class="fill-chart-3" />
+            <rect
+                x="24"
+                y="37"
+                width="30"
+                height="4"
+                class="fill-surface-muted"
+            />
+        </template>
+        <template v-else-if="type === 'progress-list'">
+            <rect
+                x="8"
+                y="12"
+                width="48"
+                height="5"
+                rx="2"
+                class="fill-surface-muted"
+            />
+            <rect
+                x="8"
+                y="12"
+                width="34"
+                height="5"
+                rx="2"
+                class="fill-chart-1"
+            />
+            <rect
+                x="8"
+                y="26"
+                width="48"
+                height="5"
+                rx="2"
+                class="fill-surface-muted"
+            />
+            <rect
+                x="8"
+                y="26"
+                width="20"
+                height="5"
+                rx="2"
+                class="fill-chart-2"
+            />
+            <rect
+                x="8"
+                y="40"
+                width="48"
+                height="5"
+                rx="2"
+                class="fill-surface-muted"
+            />
+            <rect
+                x="8"
+                y="40"
+                width="42"
+                height="5"
+                rx="2"
+                class="fill-chart-3"
+            />
+        </template>
         <template v-else-if="type === 'table'">
             <rect x="8" y="8" width="48" height="6" class="fill-chart-1" />
             <rect

@@ -59,4 +59,30 @@ final class DecimalValue
         /** @var numeric-string $right */
         return (new Number($left))->compare(new Number($right));
     }
+
+    /**
+     * `$value` as a percentage of `$total`, exact to two places (half away from zero) and without trailing zeros: "75" for 12 of 16, "33.33" for 1 of 3.
+     * Null when either is not a decimal or the total is 0.
+     */
+    public static function percent(string $value, string $total): ?string
+    {
+        $part = self::plain($value);
+        $whole = self::plain($total);
+
+        if ($part === null || $whole === null) {
+            return null;
+        }
+
+        /** @var numeric-string $part */
+        /** @var numeric-string $whole */
+        $divisor = new Number($whole);
+
+        if ($divisor->compare(new Number('0')) === 0) {
+            return null;
+        }
+
+        $out = (string) (new Number($part))->mul(new Number('100'))->div($divisor, 6)->round(2);
+
+        return str_contains($out, '.') ? rtrim(rtrim($out, '0'), '.') : $out;
+    }
 }

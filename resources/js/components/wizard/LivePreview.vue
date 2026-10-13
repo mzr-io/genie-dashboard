@@ -5,6 +5,8 @@ import BarRenderer from '@block-types/bar/v1/Renderer.vue';
 import KpiChartRenderer from '@block-types/kpi-chart/v1/Renderer.vue';
 import LineAreaRenderer from '@block-types/line-area/v1/Renderer.vue';
 import PieDonutRenderer from '@block-types/pie-donut/v1/Renderer.vue';
+import ListRenderer from '@block-types/list/v1/Renderer.vue';
+import ProgressListRenderer from '@block-types/progress-list/v1/Renderer.vue';
 import TableRenderer from '@block-types/table/v1/Renderer.vue';
 import {
     computed,
@@ -184,16 +186,38 @@ const TABLE_REGIONS: Record<string, { selector: string; text?: string }> = {
         ]),
     ),
 };
+// A list's and a progress list's regions (Story 5.13): the first row's own part, else the whole list.
+const LIST_REGIONS: Record<string, { selector: string; text?: string }> = {
+    item_title: { selector: '[data-test=list-title]' },
+    item_subtitle: { selector: '[data-test=list-subtitle]' },
+    item_avatar: { selector: '[data-test=avatar-initials]' },
+    item_icon: { selector: '[data-test=list-row]' },
+    item_value: { selector: '[data-test=list-value]' },
+    item_meta: { selector: '[data-test=list-meta]' },
+    item_status: { selector: '[data-test=list-status]' },
+    row_key: { selector: '[data-test=list-block]' },
+};
+const PROGRESS_REGIONS: Record<string, { selector: string; text?: string }> = {
+    item_title: { selector: '[data-test=progress-title]' },
+    progress_value: { selector: '[data-test=progress-percent]' },
+    progress_total: { selector: '[data-test=progress-percent]' },
+    item_caption: { selector: '[data-test=progress-caption]' },
+    row_key: { selector: '[data-test=progress-list-block]' },
+};
 const isChart = computed(() => props.typeKey in CHART_SLOTS);
 // A KPI & Chart has the card's regions and the chart's (Story 5.10).
 const regionMap = computed(() =>
-    props.typeKey === 'table'
-        ? TABLE_REGIONS
-        : props.typeKey === 'kpi-chart'
-          ? { ...REGIONS, ...chartRegions(CHART_SLOTS['kpi-chart']) }
-          : isChart.value
-            ? chartRegions(CHART_SLOTS[props.typeKey])
-            : REGIONS,
+    props.typeKey === 'list'
+        ? LIST_REGIONS
+        : props.typeKey === 'progress-list'
+          ? PROGRESS_REGIONS
+          : props.typeKey === 'table'
+            ? TABLE_REGIONS
+            : props.typeKey === 'kpi-chart'
+              ? { ...REGIONS, ...chartRegions(CHART_SLOTS['kpi-chart']) }
+              : isChart.value
+                ? chartRegions(CHART_SLOTS[props.typeKey])
+                : REGIONS,
 );
 // The slot a Block cannot be drawn without: the headline of a card, the axis (or the categories) of a chart.
 const primarySlot = computed(
@@ -203,6 +227,8 @@ const primarySlot = computed(
             bar: 'category',
             'pie-donut': 'pie_category',
             table: 'col_1',
+            list: 'item_title',
+            'progress-list': 'progress_value',
         })[props.typeKey] ?? 'headline_value',
 );
 // Both are imported here, not loaded on demand: the regions are measured as soon as the card is drawn.
@@ -214,6 +240,8 @@ const rendererOf = computed(
             bar: BarRenderer,
             'pie-donut': PieDonutRenderer,
             table: TableRenderer,
+            list: ListRenderer,
+            'progress-list': ProgressListRenderer,
         })[props.typeKey] ?? KpiRenderer,
 );
 

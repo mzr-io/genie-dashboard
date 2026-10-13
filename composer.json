@@ -50,6 +50,8 @@
             "BlockTypes\\Bar\\V1\\": "block-types/bar/v1/",
             "BlockTypes\\PieDonut\\V1\\": "block-types/pie-donut/v1/",
             "BlockTypes\\Table\\V1\\": "block-types/table/v1/",
+            "BlockTypes\\ItemList\\V1\\": "block-types/list/v1/",
+            "BlockTypes\\ProgressList\\V1\\": "block-types/progress-list/v1/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         }

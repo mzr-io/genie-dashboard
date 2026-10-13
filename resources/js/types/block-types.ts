@@ -665,6 +665,133 @@ export const lineAreaV1: BlockType = {
     default_aggregations: {},
 };
 
+export type ListSlotKey =
+    | 'title'
+    | 'subtitle'
+    | 'icon'
+    | 'footer_action'
+    | 'item_title'
+    | 'item_subtitle'
+    | 'item_avatar'
+    | 'item_icon'
+    | 'item_value'
+    | 'item_meta'
+    | 'item_status'
+    | 'row_key';
+
+export const listV1: BlockType = {
+    key: 'list',
+    contract_version: 1,
+    title: 'List',
+    slots: [
+        {
+            key: 'title',
+            label: 'Title',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'subtitle',
+            label: 'Subtitle',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'icon',
+            label: 'Icon',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label', 'filter'],
+        },
+        {
+            key: 'footer_action',
+            label: 'Footer action',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'item_title',
+            label: 'Item title',
+            required: true,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension'],
+        },
+        {
+            key: 'item_subtitle',
+            label: 'Item subtitle',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension'],
+        },
+        {
+            key: 'item_avatar',
+            label: 'Avatar name',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension'],
+        },
+        {
+            key: 'item_icon',
+            label: 'Item icon',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension', 'filter'],
+        },
+        {
+            key: 'item_value',
+            label: 'Right value',
+            required: false,
+            value_type: 'any',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure', 'label', 'dimension', 'time'],
+        },
+        {
+            key: 'item_meta',
+            label: 'Right meta',
+            required: false,
+            value_type: 'any',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension', 'time', 'value', 'measure'],
+        },
+        {
+            key: 'item_status',
+            label: 'Status',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension', 'filter'],
+        },
+        {
+            key: 'row_key',
+            label: 'Row key',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['dimension', 'label', 'filter'],
+        },
+    ],
+    size: {
+        default_width: 4,
+        min_width: 3,
+        max_width: 6,
+        default_height: 'medium',
+        min_height: 'small',
+        max_height: 'large',
+    },
+    default_aggregations: {},
+};
+
 export type PieDonutSlotKey =
     | 'title'
     | 'subtitle'
@@ -738,6 +865,106 @@ export const pieDonutV1: BlockType = {
     ],
     size: {
         default_width: 3,
+        min_width: 3,
+        max_width: 6,
+        default_height: 'medium',
+        min_height: 'small',
+        max_height: 'large',
+    },
+    default_aggregations: {},
+};
+
+export type ProgressListSlotKey =
+    | 'title'
+    | 'subtitle'
+    | 'icon'
+    | 'footer_action'
+    | 'item_title'
+    | 'progress_value'
+    | 'progress_total'
+    | 'item_caption'
+    | 'row_key';
+
+export const progressListV1: BlockType = {
+    key: 'progress-list',
+    contract_version: 1,
+    title: 'Progress list',
+    slots: [
+        {
+            key: 'title',
+            label: 'Title',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'subtitle',
+            label: 'Subtitle',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'icon',
+            label: 'Icon',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label', 'filter'],
+        },
+        {
+            key: 'footer_action',
+            label: 'Footer action',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'item_title',
+            label: 'Item title',
+            required: true,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension'],
+        },
+        {
+            key: 'progress_value',
+            label: 'Progress (value, or percent without a total)',
+            required: true,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'progress_total',
+            label: 'Total',
+            required: false,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'item_caption',
+            label: 'Caption',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension'],
+        },
+        {
+            key: 'row_key',
+            label: 'Row key',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['dimension', 'label', 'filter'],
+        },
+    ],
+    size: {
+        default_width: 4,
         min_width: 3,
         max_width: 6,
         default_height: 'medium',

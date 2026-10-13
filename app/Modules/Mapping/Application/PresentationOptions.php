@@ -21,7 +21,7 @@ final class PresentationOptions
     public function options(array $presentation, array $values, array $mapped): array
     {
         if ($presentation === []) {
-            return [];
+            return $this->progress([], $values);
         }
 
         $slots = is_array($presentation['slots'] ?? null) ? $presentation['slots'] : [];
@@ -99,7 +99,7 @@ final class PresentationOptions
         $columns = [];
 
         foreach ($slots as $key => $rules) {
-            if (str_starts_with((string) $key, 'col_') && is_array($rules)) {
+            if ((str_starts_with((string) $key, 'col_') || in_array($key, ['item_value', 'item_meta'], true)) && is_array($rules)) {
                 $columns[(string) $key] = array_intersect_key($rules, array_flip(['format', 'label', 'align', 'width', 'sortable']));
             }
         }
@@ -122,12 +122,53 @@ final class PresentationOptions
             }, $values[$highlight]);
         }
 
+        $options += $this->progress($presentation, $values);
+
         if (is_string($presentation['empty_display'] ?? null) && $presentation['empty_display'] !== '') {
             $options['emptyDisplay'] = $presentation['empty_display'];
             $options['emptySlots'] = array_values(array_filter(
                 $mapped,
                 fn (string $slot): bool => $slot !== KpiCardSlots::SLOT_HEADLINE_VALUE && ($values[$slot] ?? null) === null,
             ));
+        }
+
+        return $options;
+    }
+
+    /**
+     * A progress list (Story 5.13): the percent of each row, value over total (computed in decimal) or the value itself without a total, and the band
+     * each percent falls in, from the same bands a KPI card's headline is judged by.
+     *
+     * @param  array<string, mixed>  $presentation
+     * @param  array<string, mixed>  $values
+     * @return array<string, mixed>
+     */
+    private function progress(array $presentation, array $values): array
+    {
+        $progress = $values['progress_value'] ?? null;
+
+        if (! is_array($progress)) {
+            return [];
+        }
+
+        $totals = is_array($values['progress_total'] ?? null) ? array_values($values['progress_total']) : null;
+        $text = fn (mixed $v): ?string => is_int($v) ? (string) $v : (is_string($v) ? $v : null);
+        $percents = [];
+
+        foreach (array_values($progress) as $at => $value) {
+            $value = $text($value);
+            $total = $totals === null ? '100' : $text($totals[$at] ?? null);
+            $percents[] = $value === null || $total === null ? null : DecimalValue::percent($value, $total);
+        }
+
+        $options = ['percents' => $percents];
+
+        if (is_array($presentation['bands'] ?? null) && $presentation['bands'] !== []) {
+            $options['rowBands'] = array_map(function (?string $percent) use ($presentation): ?array {
+                $band = $percent === null ? null : $this->band($presentation['bands'], $percent);
+
+                return $band === null ? null : ['text' => $band['label'], 'color' => $band['color'], 'icon' => $band['icon']];
+            }, $percents);
         }
 
         return $options;

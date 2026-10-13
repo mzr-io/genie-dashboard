@@ -152,6 +152,16 @@ const TEXT_KEYS = [
     'footerAction',
 ] as const;
 
+// The texts of a list row and of a progress row that a template may have written.
+const ROW_TEXT_KEYS = [
+    'title',
+    'subtitle',
+    'caption',
+    'meta',
+    'status',
+    'value',
+] as const;
+
 // A KPI card's payload with the text slots expanded (only strings that carry a token change; a payload with none comes back as it was).
 export function expandKpiPayload(
     payload: KpiCardPayload,
@@ -195,6 +205,36 @@ export function expandKpiPayload(
             text: expandTemplate((badge as { text: string }).text, ctx),
         };
         changed = true;
+    }
+
+    // The rows of a list or a progress list (Story 5.13): a template of a `rows` slot is written once per row.
+    const rows = (payload as unknown as { rows?: unknown }).rows;
+
+    if (Array.isArray(rows)) {
+        const done = rows.map((row) => {
+            if (row === null || typeof row !== 'object') {
+                return row;
+            }
+
+            let touched = false;
+            const copy: Record<string, unknown> = { ...(row as object) };
+
+            for (const key of ROW_TEXT_KEYS) {
+                const value = copy[key];
+
+                if (typeof value === 'string' && value.includes('{')) {
+                    copy[key] = expandTemplate(value, ctx);
+                    touched = true;
+                }
+            }
+
+            return touched ? copy : row;
+        });
+
+        if (done.some((row, at) => row !== rows[at])) {
+            next.rows = done;
+            changed = true;
+        }
     }
 
     return changed ? (next as KpiCardPayload) : payload;

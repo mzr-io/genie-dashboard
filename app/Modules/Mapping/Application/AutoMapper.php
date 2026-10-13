@@ -74,7 +74,7 @@ final class AutoMapper implements AutoMapping
         $fields = $this->enrich($report, $fieldTypes);
         // Calculated fields are fields a slot may be pointed at by hand, never picked by the auto-mapper.
         $own = $fields;
-        $fields = [...$fields, ...$this->calcFields($transforms, $fields), ...$this->templateFields($templates)];
+        $fields = [...$fields, ...$this->calcFields($transforms, $fields), ...$this->templateFields($templates, $type)];
 
         $byPath = array_column($fields, null, 'path');
         $rows = [];
@@ -693,9 +693,15 @@ final class AutoMapper implements AutoMapping
      * @param  array<string, array<string, mixed>>  $templates
      * @return list<array<string, mixed>>
      */
-    private function templateFields(array $templates): array
+    private function templateFields(array $templates, BlockType $type): array
     {
         $out = [];
+        $rowSlots = [];
+
+        // A template of a `rows` slot is written once for every row (Story 5.13), so it is a list as the slot is.
+        foreach ($type->slots as $slot) {
+            $rowSlots[$slot->key] = $slot->cardinality === 'rows';
+        }
 
         foreach (array_keys($templates) as $slot) {
             $out[] = [
@@ -709,7 +715,7 @@ final class AutoMapper implements AutoMapping
                 'in_records' => false,
                 'suggestion' => null,
                 'key' => (string) $slot,
-                'single' => true,
+                'single' => ! ($rowSlots[(string) $slot] ?? false),
                 'forced' => false,
                 'inferred' => 'text',
                 'effective' => 'text',
