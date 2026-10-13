@@ -14,7 +14,7 @@ final class PresentationOptions
 {
     /**
      * @param  array<string, mixed>  $presentation  `config.presentation`, already validated when it was stored
-     * @param  array<string, string|bool|null>  $values  slot key => value the executor read
+     * @param  array<string, string|bool|list<string|bool|null>|null>  $values  slot key => value the executor read
      * @param  list<string>  $mapped  the slots the plan shapes
      * @return array<string, mixed> the Shaper's options
      */

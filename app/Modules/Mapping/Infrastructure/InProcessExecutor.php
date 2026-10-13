@@ -94,9 +94,11 @@ final class InProcessExecutor implements QueryExecutor
         }
 
         $valueTypes = [];
+        $lists = [];
 
         foreach ($type->slots as $slot) {
             $valueTypes[$slot->key] = $slot->valueType;
+            $lists[$slot->key] = $slot->cardinality === 'rows';
         }
 
         $slots = [];
@@ -138,7 +140,10 @@ final class InProcessExecutor implements QueryExecutor
                 continue;
             }
 
-            [$value, $reason] = self::slotValue($selected[$alias] ?? [], $valueTypes[$slot] ?? 'text');
+            // A `rows` slot (a chart's axis or series) is the list of the value of every row; a single slot is one scalar.
+            [$value, $reason] = ($lists[$slot] ?? false)
+                ? self::slotList($selected[$alias] ?? [], $valueTypes[$slot] ?? 'text')
+                : self::slotValue($selected[$alias] ?? [], $valueTypes[$slot] ?? 'text');
             $slots[(string) $slot] = $value;
 
             if ($reason !== null) {
@@ -890,6 +895,31 @@ final class InProcessExecutor implements QueryExecutor
         if (($this->clock)() - $started > $guards->maxWallMs) {
             throw new GuardExceeded(GuardExceeded::WALL_TIME);
         }
+    }
+
+    /**
+     * The value of every row for a `rows` slot (Story 5.8a): each selected node read as a scalar of the slot's type, a node that is not one a null
+     * beside the rest (partial data, never 0). Nothing selected, or no node that fits, is the slot unavailable.
+     *
+     * @param  list<mixed>  $nodes
+     * @return array{0: list<string|bool|null>|null, 1: string|null} the values and, when there are none, why
+     */
+    private static function slotList(array $nodes, string $valueType): array
+    {
+        if ($nodes === []) {
+            return [null, ExecutionResult::MISSING];
+        }
+
+        $values = [];
+        $reason = null;
+
+        foreach ($nodes as $node) {
+            [$value, $why] = self::slotValue([$node], $valueType);
+            $values[] = $value;
+            $reason ??= $value === null ? $why : null;
+        }
+
+        return array_filter($values, fn ($value): bool => $value !== null) === [] ? [null, $reason ?? ExecutionResult::MISSING] : [$values, null];
     }
 
     /**

@@ -2,7 +2,7 @@
 // The shape is what `GET /api/v1/block-types` returns.
 
 export type BlockTypeValueType = 'number' | 'text' | 'datetime' | 'boolean';
-export type BlockTypeCardinality = 'single';
+export type BlockTypeCardinality = 'single' | 'rows';
 export type BlockTypeFieldRole =
     | 'label'
     | 'value'

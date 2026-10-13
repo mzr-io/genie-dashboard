@@ -160,7 +160,7 @@ final class AutoMapper implements AutoMapping
         $enriched = $this->enrich($report, $fieldTypes);
 
         foreach ([...$enriched, ...$this->calcFields($transforms, $enriched)] as $field) {
-            $compatible = $field['single'] === true && $this->fits($definition->valueType, $field);
+            $compatible = $this->takes($definition, $field);
             $entry = [
                 'kind' => 'field',
                 'path' => (string) $field['path'],
@@ -268,6 +268,10 @@ final class AutoMapper implements AutoMapping
             return $this->headline($slot, $fields);
         }
 
+        if ($slot->cardinality === 'rows') {
+            return $this->rows($slot, $fields, $used);
+        }
+
         $words = self::TEXT_WORDS[$slot->key] ?? null;
 
         if ($words === null || $slot->valueType !== 'text') {
@@ -287,6 +291,38 @@ final class AutoMapper implements AutoMapping
         }
 
         return $this->nothing($slot, $fields);
+    }
+
+    /**
+     * A `rows` slot (a chart's axis or series, Story 5.8a): the first field of the rows that fits the type and has one of the slot's roles and that no
+     * slot has taken, in document order.
+     *
+     * @param  list<array<string, mixed>>  $fields
+     * @param  array<string, true>  $used
+     * @return array<string, mixed>
+     */
+    private function rows(BlockTypeSlot $slot, array $fields, array $used): array
+    {
+        $eligible = array_values(array_filter(
+            $fields,
+            fn (array $f): bool => $this->takes($slot, $f) && in_array((string) $f['role'], $slot->fieldRoles, true) && ! isset($used[(string) $f['path']]),
+        ));
+
+        if ($eligible === []) {
+            return $this->nothing($slot, $fields);
+        }
+
+        return $this->row($slot, SlotState::AutoMedium, 'medium', "The rows' \"{$eligible[0]['key']}\" fits this slot.", $eligible[0]);
+    }
+
+    /**
+     * Whether the field can fill the slot: a field of one value for a single slot, a field of the rows for a `rows` slot, in both the type fits.
+     *
+     * @param  array<string, mixed>  $field
+     */
+    private function takes(BlockTypeSlot $slot, array $field): bool
+    {
+        return (($field['single'] === true) !== ($slot->cardinality === 'rows')) && $this->fits($slot->valueType, $field);
     }
 
     /**
@@ -374,7 +410,7 @@ final class AutoMapper implements AutoMapping
         $suggestion = null;
 
         foreach ($fields as $field) {
-            if ($field['single'] === true && $this->fits($slot->valueType, $field)) {
+            if ($this->takes($slot, $field)) {
                 $suggestion = ['path' => (string) $field['path'], 'display' => (string) $field['display']];
 
                 break;
@@ -411,8 +447,8 @@ final class AutoMapper implements AutoMapping
             return $row;
         }
 
-        if ($field['single'] !== true || ! $this->fits($slot->valueType, $field)) {
-            $compatible = array_values(array_filter($byPath, fn (array $f): bool => $f['single'] === true && $this->fits($slot->valueType, $f)));
+        if (! $this->takes($slot, $field)) {
+            $compatible = array_values(array_filter($byPath, fn (array $f): bool => $this->takes($slot, $f)));
 
             return $this->row($slot, SlotState::TypeMismatch, null, $this->mismatch($slot, $field, true), $field, $compatible === [] ? null : ['path' => (string) $compatible[0]['path'], 'display' => (string) $compatible[0]['display']]);
         }
@@ -431,7 +467,7 @@ final class AutoMapper implements AutoMapping
     {
         $key = strtolower($this->key($path));
         $words = $this->split($this->key($path));
-        $single = array_values(array_filter($fields, fn (array $f): bool => $f['single'] === true));
+        $single = array_values(array_filter($fields, fn (array $f): bool => ($f['single'] === true) !== ($slot->cardinality === 'rows')));
         $same = array_values(array_filter($single, fn (array $f): bool => $key !== '' && strtolower((string) $f['key']) === $key));
         $fit = fn (array $f): bool => $this->fits($slot->valueType, $f);
         $found = array_values(array_filter($same, $fit))[0] ?? $same[0] ?? null;
@@ -458,7 +494,11 @@ final class AutoMapper implements AutoMapping
      */
     private function mismatch(BlockTypeSlot $slot, array $field, bool $quote): string
     {
-        if ($field['single'] !== true) {
+        if ($slot->cardinality === 'rows') {
+            if ($field['single'] === true) {
+                return 'This slot takes the value of every row; a single value does not fill it.';
+            }
+        } elseif ($field['single'] !== true) {
             return 'Needs aggregation (a later release).';
         }
 

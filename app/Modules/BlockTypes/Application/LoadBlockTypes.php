@@ -154,7 +154,29 @@ final class LoadBlockTypes implements BlockTypeRegistry
                 }
             }
 
-            $slots[$key] = new BlockTypeSlot($key, $label, $slot['required'], $valueType, $cardinality, $roles);
+            // `repeat` declares a slot that may be filled up to N times (a chart's series): it becomes the slots `key_1` ... `key_N`, the first
+            // as required as the declaration and the others optional, so the mapper and the wizard keep one field per slot.
+            $repeat = $slot['repeat'] ?? null;
+
+            if ($repeat !== null && (! is_int($repeat) || $repeat < 2 || $repeat > BlockTypeVocabulary::MAX_REPEAT)) {
+                throw InvalidBlockTypePackage::in($package, 'repeat must be a whole number from 2 to '.BlockTypeVocabulary::MAX_REPEAT, $key);
+            }
+
+            if ($repeat === null) {
+                $slots[$key] = new BlockTypeSlot($key, $label, $slot['required'], $valueType, $cardinality, $roles);
+
+                continue;
+            }
+
+            for ($n = 1; $n <= $repeat; $n++) {
+                $copy = "{$key}_{$n}";
+
+                if (isset($slots[$copy])) {
+                    throw InvalidBlockTypePackage::in($package, 'duplicate slot key', $copy);
+                }
+
+                $slots[$copy] = new BlockTypeSlot($copy, "{$label} {$n}", $slot['required'] && $n === 1, $valueType, $cardinality, $roles);
+            }
         }
 
         return array_values($slots);

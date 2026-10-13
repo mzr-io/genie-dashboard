@@ -147,7 +147,7 @@ final class PreviewDraft implements DraftPreviews
      * field's example. It is sample-derived, so it only goes to the Admin who is previewing.
      *
      * @param  array<string, mixed>  $plan
-     * @param  array<string, string|bool|null>  $values
+     * @param  array<string, string|bool|list<string|bool|null>|null>  $values
      * @param  array<string, string>  $unavailable
      * @return array<string, array<string, mixed>>
      */
@@ -158,6 +158,12 @@ final class PreviewDraft implements DraftPreviews
 
         foreach (is_array($plan['shape'] ?? null) ? $plan['shape'] : [] as $slot => $alias) {
             $value = $values[$slot] ?? null;
+
+            // A `rows` slot (Story 5.8a) is shown as its first values and how many there are.
+            if (is_array($value)) {
+                $shown = array_map(fn ($item): string => is_string($item) ? $item : ($item === null ? '—' : ($item ? 'true' : 'false')), array_slice($value, 0, 3));
+                $value = implode(', ', $shown).(count($value) > 3 ? ' … ('.count($value).' values)' : '');
+            }
 
             if (is_string($value) && mb_strlen($value) > SampleShape::EXAMPLE_CHARS) {
                 $value = mb_substr($value, 0, SampleShape::EXAMPLE_CHARS).'…';
