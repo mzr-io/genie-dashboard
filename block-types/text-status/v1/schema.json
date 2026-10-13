@@ -12,6 +12,14 @@
             "fieldRoles": ["label"]
         },
         {
+            "key": "subtitle",
+            "label": "Subtitle",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
             "key": "icon",
             "label": "Icon",
             "required": false,

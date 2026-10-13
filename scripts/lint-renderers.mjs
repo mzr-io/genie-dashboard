@@ -19,6 +19,54 @@ const RULES = [
     ],
 ];
 
+// Story 5.17: a package reaches the shared kit and nothing else of the core (NFR-12): no domain logic, no HTTP client, no other module's internals.
+const ALLOWED_ALIASES = [
+    '@/charts/',
+    '@/lib/format',
+    '@/lib/blockIcons',
+    '@/types/block-type-shape',
+    '@/locales/labels',
+    '@/components/ui/',
+];
+const STATES = ['loading', 'empty', 'stale', 'unavailable', 'error'];
+
+/** @returns {string[]} the states a Renderer neither draws itself nor leaves to the shared frame, which draws all of them */
+export function missingStates(text) {
+    if (/\bChartBlockFrame\b/.test(text)) {
+        return [];
+    }
+
+    return STATES.filter((state) => !new RegExp(`\\b${state}\\b`).test(text));
+}
+
+/** @returns {{line: number, message: string}[]} imports a package may not make */
+export function isolationViolations(text) {
+    const found = [];
+
+    text.split('\n').forEach((content, index) => {
+        const alias = /\bfrom\s+['"](@\/[^'"]+)['"]/.exec(content);
+
+        if (
+            alias !== null &&
+            !ALLOWED_ALIASES.some((prefix) => alias[1].startsWith(prefix))
+        ) {
+            found.push({
+                line: index + 1,
+                message: `import of ${alias[1]} is not allowed: a package uses the shared kit only`,
+            });
+        }
+
+        if (/\b(?:axios|inertia|@inertiajs)\b|\bfetch\s*\(/.test(content)) {
+            found.push({
+                line: index + 1,
+                message: 'a package does not make requests',
+            });
+        }
+    });
+
+    return found;
+}
+
 /** @returns {{line: number, message: string}[]} */
 export function findViolations(text) {
     const found = [];
@@ -72,14 +120,29 @@ export function lintTree(root) {
         }
     });
 
-    return [base, ...shared]
-        .flatMap(renderers)
-        .flatMap((file) =>
+    const name = (file) => relative(root, file).split(sep).join('/');
+    const inPackages = renderers(base);
+
+    return [
+        ...[...inPackages, ...shared.flatMap(renderers)].flatMap((file) =>
             findViolations(readFileSync(file, 'utf8')).map(
-                ({ line, message }) =>
-                    `${relative(root, file).split(sep).join('/')}:${line} ${message}`,
+                ({ line, message }) => `${name(file)}:${line} ${message}`,
             ),
-        );
+        ),
+        ...inPackages.flatMap((file) =>
+            isolationViolations(readFileSync(file, 'utf8')).map(
+                ({ line, message }) => `${name(file)}:${line} ${message}`,
+            ),
+        ),
+        ...inPackages
+            .filter((file) => file.endsWith('Renderer.vue'))
+            .flatMap((file) =>
+                missingStates(readFileSync(file, 'utf8')).map(
+                    (state) =>
+                        `${name(file)}: the Renderer has no ${state} state (draw it, or use the shared frame)`,
+                ),
+            ),
+    ];
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

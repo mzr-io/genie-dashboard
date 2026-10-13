@@ -1,15 +1,4 @@
-import {
-    activityFeedV1,
-    barV1,
-    calendarAgendaV1,
-    kpiCardV1,
-    kpiChartV1,
-    lineAreaV1,
-    listV1,
-    progressListV1,
-    tableV1,
-    textStatusV1,
-} from '@/types/block-types';
+import { LATEST_BLOCK_TYPES } from '@/types/block-types';
 import type { BlockType, BlockTypeHeight } from '@/types/block-types';
 import { DRAFT_BLOCKS_URL } from '@/lib/draftBlocks';
 import type { DraftBlock } from '@/lib/draftBlocks';
@@ -25,18 +14,7 @@ export const NAME_MAX = 120;
 export const DESCRIPTION_MAX = 500;
 
 // The Block Types the registry lists (`GET /api/v1/block-types` serves the same generated shapes).
-export const BLOCK_TYPES: BlockType[] = [
-    kpiCardV1,
-    lineAreaV1,
-    kpiChartV1,
-    barV1,
-    tableV1,
-    listV1,
-    progressListV1,
-    activityFeedV1,
-    calendarAgendaV1,
-    textStatusV1,
-];
+export const BLOCK_TYPES: BlockType[] = LATEST_BLOCK_TYPES;
 
 export type PeriodBehavior =
     | 'follow_dashboard'

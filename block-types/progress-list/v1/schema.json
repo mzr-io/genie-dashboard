@@ -84,5 +84,8 @@
         "minHeight": "small",
         "maxHeight": "large"
     },
-    "defaultAggregations": {}
+    "defaultAggregations": {
+        "progress_value": "sum",
+        "progress_total": "sum"
+    }
 }

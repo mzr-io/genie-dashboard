@@ -69,5 +69,12 @@
         "minHeight": "small",
         "maxHeight": "large"
     },
-    "defaultAggregations": {}
+    "defaultAggregations": {
+        "values_1": "sum",
+        "values_2": "sum",
+        "values_3": "sum",
+        "values_4": "sum",
+        "values_5": "sum",
+        "values_6": "sum"
+    }
 }

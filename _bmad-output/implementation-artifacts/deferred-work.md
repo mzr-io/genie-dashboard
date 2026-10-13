@@ -563,3 +563,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-9-view-as-table-expanded-view-and-the-rowset-endpoint.md`
   summary: Add column sort to the Expanded view's rows page and keep it across a live replacement.
   evidence: The endpoint pages the rows in the order the plan left them; a sort control and its server parameter are not built.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-17-add-a-block-type-with-only-a-package-and-versioned-contracts.md`
+  summary: Offer "upgrade the Block Type contract" on a Block pinned to an older contract, creating a Draft and never mutating the published version.
+  evidence: It needs a Draft made from a published Block (Story 6.1, `claimBlock` still says a Block keeps its type), so it is built with the edit-a-published-Block flow; `compute_ctx` already carries the shaper contract version.

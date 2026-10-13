@@ -34,6 +34,7 @@ final class Shaper
             'state' => $state,
             'mode' => $mode,
             'title' => $this->text($slots['title'] ?? null),
+            'subtitle' => $this->text($slots['subtitle'] ?? null),
             'icon' => $this->text($slots['icon'] ?? null),
             'footerAction' => $this->text($slots['footer_action'] ?? null),
             'text' => $text,

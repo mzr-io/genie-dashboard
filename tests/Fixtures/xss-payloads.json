@@ -793,11 +793,12 @@
         }
     },
     "text-status": {
-        "slots": ["title", "icon", "footer_action", "status_text"],
+        "slots": ["title", "subtitle", "icon", "footer_action", "status_text"],
         "payload": {
             "state": "normal",
             "mode": "text",
             "title": "\"><img src=x onerror=window.__xss=1>",
+            "subtitle": "\"><img src=x onerror=window.__xss=1>",
             "icon": "\"><img src=x onerror=window.__xss=1>",
             "footerAction": "\"><img src=x onerror=window.__xss=1>",
             "text": "\"><img src=x onerror=window.__xss=1>",

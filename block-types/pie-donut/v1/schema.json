@@ -68,5 +68,7 @@
         "minHeight": "small",
         "maxHeight": "large"
     },
-    "defaultAggregations": {}
+    "defaultAggregations": {
+        "pie_value": "sum"
+    }
 }

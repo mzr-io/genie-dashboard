@@ -105,7 +105,10 @@ it('keeps the generated files in step with schema.json, and names a stale one', 
     $generator = new BlockTypeGenerator;
     $files = $generator->render(BlockTypeGenerator::discover($base.'/block-types'));
 
-    expect(array_keys($files))->toBe([BlockTypeGenerator::PHP_DIR.'/ActivityFeedSlots.php', BlockTypeGenerator::PHP_DIR.'/BarSlots.php', BlockTypeGenerator::PHP_DIR.'/CalendarAgendaSlots.php', BlockTypeGenerator::PHP_DIR.'/KpiCardSlots.php', BlockTypeGenerator::PHP_DIR.'/KpiChartSlots.php', BlockTypeGenerator::PHP_DIR.'/LineAreaSlots.php', BlockTypeGenerator::PHP_DIR.'/ListSlots.php', BlockTypeGenerator::PHP_DIR.'/PieDonutSlots.php', BlockTypeGenerator::PHP_DIR.'/ProgressListSlots.php', BlockTypeGenerator::PHP_DIR.'/TableSlots.php', BlockTypeGenerator::PHP_DIR.'/TextStatusSlots.php', BlockTypeGenerator::TS_OUTPUT]);
+    $packages = array_map(fn (string $key): string => "block-types/{$key}/v1/".BlockTypeGenerator::PACKAGE_TS, ['activity-feed', 'bar', 'calendar-agenda', 'kpi-card', 'kpi-chart', 'line-area', 'list', 'pie-donut', 'progress-list', 'table', 'text-status']);
+
+    // Each package's TypeScript is generated inside the package; only the core's own Block Type has a PHP value object.
+    expect(array_keys($files))->toBe([BlockTypeGenerator::PHP_DIR.'/KpiCardSlots.php', ...$packages, BlockTypeGenerator::TS_OUTPUT]);
 
     foreach ($files as $path => $content) {
         expect(file_get_contents($base.'/'.$path))->toBe($content, "{$path} is stale");
@@ -118,7 +121,9 @@ it('keeps the generated files in step with schema.json, and names a stale one', 
         return $s;
     })));
 
-    expect($changed[BlockTypeGenerator::TS_OUTPUT])->not->toBe($files[BlockTypeGenerator::TS_OUTPUT])
+    $own = 'block-types/kpi-card/v1/'.BlockTypeGenerator::PACKAGE_TS;
+
+    expect($changed[$own])->not->toBe($files[$own])
         ->and(KpiCardSlots::DEFAULT_WIDTH)->toBe(3);
 });
 

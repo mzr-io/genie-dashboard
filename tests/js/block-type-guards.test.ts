@@ -6,7 +6,12 @@ import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error plain ESM script without type declarations
 import { missingPins } from '../../scripts/check-block-type-pins.mjs';
 // @ts-expect-error plain ESM script without type declarations
-import { findViolations, lintTree } from '../../scripts/lint-renderers.mjs';
+import {
+    findViolations,
+    isolationViolations,
+    lintTree,
+    missingStates,
+} from '../../scripts/lint-renderers.mjs';
 import { kpiCardV1 } from '../../resources/js/types/block-types';
 
 // Story 3.1: the Renderer lint, the pinned-directory guard and the generated type.
@@ -87,9 +92,9 @@ describe('renderer lint', () => {
 
         const failures = lintTree(root);
 
-        expect(failures).toEqual([
+        expect(failures[0]).toBe(
             'block-types/x/v1/Renderer.vue:1 v-html is banned',
-        ]);
+        );
     });
 
     it('exits non-zero from the CLI', () => {
@@ -167,5 +172,45 @@ describe('generated type', () => {
         expect(
             kpiCardV1.slots.filter((s) => s.required).map((s) => s.key),
         ).toEqual(['kpi_label', 'headline_value']);
+    });
+});
+
+// Story 5.17: a package is the shared kit and itself; its Renderer has every state.
+describe('package isolation and states', () => {
+    it('names a Renderer that lacks a state and accepts one on the shared frame', () => {
+        expect(
+            missingStates('<p v-if="state === \'loading\'"></p> empty stale'),
+        ).toEqual(['unavailable', 'error']);
+        expect(missingStates('<ChartBlockFrame :state="s" />')).toEqual([]);
+    });
+
+    it('fails an import of the core and a request, and allows the shared kit', () => {
+        const found = isolationViolations(
+            [
+                "import { fmt } from '@/lib/format';",
+                "import ChartBlockFrame from '@/charts/ChartBlockFrame.vue';",
+                "import { save } from '@/lib/blockWizard';",
+                "import Card from '@/components/BlockCard.vue';",
+                "const r = await fetch('/api/x');",
+            ].join('\n'),
+        );
+
+        expect(found.map((f: { line: number }) => f.line)).toEqual([3, 4, 5]);
+    });
+
+    it('fails a tree whose Renderer lacks a state or reaches the core', () => {
+        const root = tmp();
+
+        put(root, 'block-types/pins.json', '{"pins":[]}');
+        put(
+            root,
+            'block-types/x/v1/Renderer.vue',
+            "<script setup>import { go } from '@/lib/blockWizard';</script><template><p>loading</p></template>",
+        );
+
+        const failures = lintTree(root) as string[];
+
+        expect(failures.join('\n')).toContain('is not allowed');
+        expect(failures.join('\n')).toContain('has no empty state');
     });
 });

@@ -26,7 +26,9 @@ import PreviewHotspots from '@/components/wizard/PreviewHotspots.vue';
 import type { Hotspot, Region } from '@/components/wizard/PreviewHotspots.vue';
 import SourceLegend from '@/components/wizard/SourceLegend.vue';
 import { createPreviewRunner, fetchPreview } from '@/lib/blockPreview';
+import { rendererFor } from '@/lib/blockRenderers';
 import { expandKpiPayload } from '@/lib/textTemplate';
+import { blockTypeByKey } from '@/types/block-types';
 import type { PreviewProblem, PreviewResult } from '@/lib/blockPreview';
 import type { ChecklistSlot, RoleField } from '@/lib/blockMapping';
 import { WizardError, heightLabel, sizeText } from '@/lib/blockWizard';
@@ -249,7 +251,10 @@ const regionMap = computed(() =>
                     ? { ...REGIONS, ...chartRegions(CHART_SLOTS['kpi-chart']) }
                     : isChart.value
                       ? chartRegions(CHART_SLOTS[props.typeKey])
-                      : REGIONS,
+                      : props.typeKey === 'kpi-card'
+                        ? REGIONS
+                        : // A Block Type added as a package alone (Story 5.17) has no hotspots of its own: the whole card is its region.
+                          {},
 );
 // The slot a Block cannot be drawn without: the headline of a card, the axis (or the categories) of a chart.
 const primarySlot = computed(
@@ -264,7 +269,12 @@ const primarySlot = computed(
             'calendar-agenda': 'event_title',
             'text-status': 'status_text',
             'progress-list': 'progress_value',
-        })[props.typeKey] ?? 'headline_value',
+        })[props.typeKey] ??
+        // A package this file does not know: the first slot it cannot be drawn without.
+        (props.typeKey === 'kpi-card'
+            ? 'headline_value'
+            : (blockTypeByKey(props.typeKey)?.slots.find((s) => s.required)
+                  ?.key ?? 'headline_value')),
 );
 // Both are imported here, not loaded on demand: the regions are measured as soon as the card is drawn.
 const rendererOf = computed(
@@ -280,7 +290,10 @@ const rendererOf = computed(
             'calendar-agenda': CalendarAgendaRenderer,
             'text-status': TextStatusRenderer,
             'progress-list': ProgressListRenderer,
-        })[props.typeKey] ?? KpiRenderer,
+        })[props.typeKey] ??
+        (props.typeKey === 'kpi-card'
+            ? KpiRenderer
+            : (rendererFor(props.typeKey) ?? KpiRenderer)),
 );
 
 const result = ref<PreviewResult | null>(null);

@@ -32,7 +32,7 @@ const PILL: Record<string, string> = {
     <ChartBlockFrame
         :state="payload.state"
         :title="payload.title"
-        :subtitle="null"
+        :subtitle="payload.subtitle"
         :footer-action="payload.footerAction"
         :partial="payload.partial === true"
         :stale-since="payload.staleSince"

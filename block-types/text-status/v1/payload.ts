@@ -13,6 +13,7 @@ export type TextStatusPayload = {
     // Text: the text, up to three lines. Status: a pill.
     mode: 'text' | 'status';
     title: string | null;
+    subtitle: string | null;
     icon: string | null;
     footerAction: string | null;
     text: string | null;

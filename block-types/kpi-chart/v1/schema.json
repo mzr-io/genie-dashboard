@@ -111,7 +111,13 @@
     },
     "defaultAggregations": {
         "headline_value": "sum",
-        "comparison": "sum"
+        "comparison": "sum",
+        "series_1": "sum",
+        "series_2": "sum",
+        "series_3": "sum",
+        "series_4": "sum",
+        "series_5": "sum",
+        "series_6": "sum"
     },
     "presentation": {
         "headlineSlot": "headline_value",

@@ -70,13 +70,7 @@ function inert(root: ParentNode): void {
 
 describe('the fixtures', () => {
     it('cover every slot of every generated Block Type, naming the missing one', () => {
-        const types = Object.values(generated).filter(
-            (value): value is { key: string; slots: { key: string }[] } =>
-                typeof value === 'object' &&
-                value !== null &&
-                'slots' in value &&
-                'key' in value,
-        );
+        const types = generated.ALL_BLOCK_TYPES;
 
         expect(types.map((t) => t.key).sort()).toEqual(
             Object.keys(RENDERERS).sort(),
