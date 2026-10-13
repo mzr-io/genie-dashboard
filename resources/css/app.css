@@ -93,6 +93,7 @@
     --color-error-soft: var(--df-error-soft);
     --color-error-border: var(--df-error-border);
     --color-warning: var(--df-warning);
+    --color-warning-text: var(--df-warning);
     --color-warning-bar: var(--df-warning-bar);
     --color-warning-soft: var(--df-warning-soft);
     --color-warning-border: var(--df-warning-border);

@@ -52,7 +52,7 @@ final class PresentationOptions
             }
         }
 
-        $band = $this->band($presentation['bands'] ?? null, $values[KpiCardSlots::SLOT_HEADLINE_VALUE] ?? null);
+        $band = $this->firstBand($presentation['bands'] ?? null, $values[KpiCardSlots::SLOT_HEADLINE_VALUE] ?? null, $values[KpiCardSlots::SLOT_STATUS_BADGE] ?? null);
 
         if ($band !== null) {
             $options['statusBand'] = ['text' => $band['label'], 'color' => $band['color'], 'icon' => $band['icon']];
@@ -67,6 +67,42 @@ final class PresentationOptions
         }
 
         return $options;
+    }
+
+    /**
+     * The first band that matches, top to bottom (Story 5.7): a numeric band is judged on the headline value, an `equals` band on the text of the status
+     * badge slot (ignoring case and surrounding space). A subject with no value matches none of its bands, so the value renders neutral, never an error.
+     *
+     * @return array<string, mixed>|null
+     */
+    public function firstBand(mixed $bands, mixed $headline, mixed $statusText): ?array
+    {
+        if (! is_array($bands)) {
+            return null;
+        }
+
+        $headline = is_int($headline) ? (string) $headline : $headline;
+        $text = is_string($statusText) ? mb_strtolower(trim($statusText)) : null;
+
+        foreach ($bands as $band) {
+            if (! is_array($band)) {
+                continue;
+            }
+
+            if (($band['op'] ?? null) === 'equals') {
+                if ($text !== null && $text !== '' && is_string($band['value'] ?? null) && mb_strtolower(trim($band['value'])) === $text) {
+                    return $band;
+                }
+
+                continue;
+            }
+
+            if (is_string($headline) && DecimalValue::plain($headline) !== null && $this->matches($band, $headline)) {
+                return $band;
+            }
+        }
+
+        return null;
     }
 
     /**

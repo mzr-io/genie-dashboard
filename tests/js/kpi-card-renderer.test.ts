@@ -167,8 +167,8 @@ describe('kpi-card renderer', () => {
 
     describe('delta', () => {
         it.each([
-            ['up', '12.5', '▲'],
-            ['down', '-3.25', '▼'],
+            ['up', '12.5', '↗'],
+            ['down', '-3.25', '↘'],
         ] as const)(
             'shows an arrow and the value for %s',
             (direction, value, arrow) => {
@@ -208,7 +208,7 @@ describe('kpi-card renderer', () => {
             expect(w.get('[data-test=kpi-delta-visible]').text()).toContain(
                 '-10',
             );
-            expect(w.get('[data-test=kpi-delta-arrow]').text()).toBe('▼');
+            expect(w.get('[data-test=kpi-delta-arrow]').text()).toBe('↘');
             expect(w.get('[data-test=kpi-delta-spoken]').text()).not.toContain(
                 '-10',
             );

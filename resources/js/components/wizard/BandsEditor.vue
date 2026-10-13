@@ -64,6 +64,11 @@ function setOp(index: number, op: BandOp): void {
         next.to = '';
     }
 
+    // A number and a word do not convert: the value is asked for again.
+    if ((op === 'equals') !== (band.op === 'equals')) {
+        next.value = '';
+    }
+
     emit(
         'update',
         props.bands.map((entry, at) => (at === index ? next : entry)),
@@ -165,7 +170,11 @@ const rowErrors = (index: number): { part: string; message: string }[] =>
                                 <Input
                                     :id="`${id}-value-${index}`"
                                     :model-value="band.value"
-                                    inputmode="decimal"
+                                    :inputmode="
+                                        band.op === 'equals'
+                                            ? 'text'
+                                            : 'decimal'
+                                    "
                                     autocomplete="off"
                                     :disabled="disabled"
                                     :aria-invalid="
@@ -181,6 +190,13 @@ const rowErrors = (index: number): { part: string; message: string }[] =>
                                             })
                                     "
                                 />
+                                <p
+                                    v-if="band.op === 'equals'"
+                                    class="type-caption text-text-muted"
+                                    data-test="band-word-hint"
+                                >
+                                    {{ labels.bandWordHint }}
+                                </p>
                             </div>
                             <div
                                 v-if="band.op === 'between'"

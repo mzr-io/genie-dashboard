@@ -70,7 +70,7 @@ const headlineClass = computed(() => {
 
 const BAND_CLASS: Record<BandColor, string> = {
     success: 'bg-success-soft text-success-text',
-    warning: 'bg-warning-soft text-warning-text',
+    warning: 'bg-warning-soft text-warning',
     error: 'bg-error-soft text-error-text',
     info: 'bg-info-soft text-info-strong',
     neutral: 'bg-surface-muted text-text-primary',
@@ -171,7 +171,7 @@ const delta = computed(() => {
         value,
         judged,
         good,
-        arrow: direction === 'up' ? '▲' : direction === 'down' ? '▼' : '',
+        arrow: direction === 'up' ? '↗' : direction === 'down' ? '↘' : '',
         colour:
             good === null
                 ? 'text-text-secondary'

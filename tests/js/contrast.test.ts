@@ -155,3 +155,37 @@ describe('contrast pairs (UX-DR-1..6, 13)', () => {
         expect(contrastRatio('nope', '#ffffff')).toBe(0);
     });
 });
+
+// Story 5.7: every band colour on its soft fill, read from the Renderer's own classes so a change there is tested: the label meets 4.5:1 and the
+// icon (drawn in the same colour) 3:1.
+describe('threshold band colours', () => {
+    const source = readFileSync('block-types/kpi-card/v1/Renderer.vue', 'utf8');
+    const block = /const BAND_CLASS[^{]*\{([^}]*)\}/s.exec(source)?.[1] ?? '';
+    const bands = [
+        ...block.matchAll(/(\w+):\s*'bg-([\w-]+) text-([\w-]+)'/g),
+    ].map(([, color, fill, text]) => ({ color, fill, text }));
+
+    it('lists the five status colours and not the accent', () => {
+        expect(bands.map((band) => band.color).sort()).toEqual([
+            'error',
+            'info',
+            'neutral',
+            'success',
+            'warning',
+        ]);
+    });
+
+    it.each(['success', 'warning', 'error', 'info', 'neutral'])(
+        'keeps %s text at 4.5:1 and its icon at 3:1 on the soft fill',
+        (color) => {
+            const band = bands.find((entry) => entry.color === color)!;
+            const ratio = contrastRatio(t[band.text], t[band.fill]);
+
+            expect(
+                ratio,
+                `${color} text on ${band.fill}`,
+            ).toBeGreaterThanOrEqual(4.5);
+            expect(ratio).toBeGreaterThanOrEqual(3);
+        },
+    );
+});

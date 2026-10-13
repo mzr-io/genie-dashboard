@@ -37,7 +37,10 @@ final class Presentation
     /** Where a comparison's previous value comes from (Story 5.6): a field of the same response, or the same Endpoint called for a prior window. */
     public const SOURCES = ['mapped_previous', 'prior_period'];
 
-    public const OPS = ['>=', '<=', 'between'];
+    public const OPS = ['>=', '<=', 'between', 'equals'];
+
+    /** The longest text a band's `equals` value takes. */
+    public const MATCH_MAX = 40;
 
     /** The accent colour is the brand's, not a status: a band is never accent. */
     public const COLORS = ['success', 'warning', 'error', 'info', 'neutral'];
@@ -536,7 +539,10 @@ final class Presentation
             $out['op'] = $op;
         }
 
-        $value = self::decimal($band['value'] ?? null, "{$path}.value", $errors);
+        // `equals` is a value match on the status text (Story 5.7): its value is the word to match, not a number.
+        $value = $op === 'equals'
+            ? self::matchText($band['value'] ?? null, "{$path}.value", $errors)
+            : self::decimal($band['value'] ?? null, "{$path}.value", $errors);
         $to = null;
 
         if ($value !== null) {
@@ -589,6 +595,14 @@ final class Presentation
         }
 
         return count($errors) > $before ? null : $out;
+    }
+
+    /** @param  array<string, list<string>>  $errors */
+    private static function matchText(mixed $value, string $path, array &$errors): ?string
+    {
+        $text = is_string($value) ? trim($value) : null;
+
+        return $text === null ? self::text('', self::MATCH_MAX, $path, $errors) : self::text($text, self::MATCH_MAX, $path, $errors);
     }
 
     /** @param  array<string, list<string>>  $errors */

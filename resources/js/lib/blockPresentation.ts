@@ -70,7 +70,7 @@ export type PriorWindow = {
     amount?: number | string;
     unit?: (typeof WINDOW_UNITS)[number];
 };
-export const BAND_OPS = ['>=', '<=', 'between'] as const;
+export const BAND_OPS = ['>=', '<=', 'between', 'equals'] as const;
 export const BAND_COLORS = [
     'success',
     'warning',
@@ -89,6 +89,7 @@ export const LIMITS = {
     label: 80,
     empty: 32,
     bandLabel: 40,
+    match: 40,
     bands: 10,
     decimal: 64,
 } as const;
@@ -424,7 +425,18 @@ export function judge(
             value.length <= LIMITS.decimal &&
             DECIMAL.test(value.trim());
 
-        if (!decimal(band.value)) {
+        // `equals` matches the status text (Story 5.7): its value is a word, not a number.
+        if (band.op === 'equals') {
+            const word =
+                typeof band.value === 'string' ? band.value.trim() : '';
+
+            add(
+                bandPath(index, 'value'),
+                word === ''
+                    ? labels.bandWordNeeded
+                    : textFault(word, LIMITS.match),
+            );
+        } else if (!decimal(band.value)) {
             add(bandPath(index, 'value'), labels.decimalNeeded);
         }
 
