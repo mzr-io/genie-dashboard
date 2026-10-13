@@ -51,7 +51,10 @@ function renderers(dir) {
     });
 }
 
-/** @returns {string[]} `file:line message` for every violation under `{root}/block-types` */
+// Story 5.8: the shared chart wrapper is held to the same rules as the packages that use it.
+const SHARED = ['resources/js/charts'];
+
+/** @returns {string[]} `file:line message` for every violation under `{root}/block-types` and the shared chart code */
 export function lintTree(root) {
     const base = join(root, 'block-types');
 
@@ -61,12 +64,22 @@ export function lintTree(root) {
         return [`${base} is missing: there is nothing to lint`];
     }
 
-    return renderers(base).flatMap((file) =>
-        findViolations(readFileSync(file, 'utf8')).map(
-            ({ line, message }) =>
-                `${relative(root, file).split(sep).join('/')}:${line} ${message}`,
-        ),
-    );
+    const shared = SHARED.map((dir) => join(root, dir)).filter((dir) => {
+        try {
+            return statSync(dir).isDirectory();
+        } catch {
+            return false;
+        }
+    });
+
+    return [base, ...shared]
+        .flatMap(renderers)
+        .flatMap((file) =>
+            findViolations(readFileSync(file, 'utf8')).map(
+                ({ line, message }) =>
+                    `${relative(root, file).split(sep).join('/')}:${line} ${message}`,
+            ),
+        );
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
