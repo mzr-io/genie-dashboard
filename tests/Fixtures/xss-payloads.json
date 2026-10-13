@@ -1,0 +1,811 @@
+{
+    "activity-feed": {
+        "slots": [
+            "title",
+            "subtitle",
+            "icon",
+            "footer_action",
+            "actor",
+            "action",
+            "object",
+            "timestamp",
+            "avatar",
+            "row_key"
+        ],
+        "payload": {
+            "state": "normal",
+            "title": "\"><img src=x onerror=window.__xss=1>",
+            "subtitle": "\"><img src=x onerror=window.__xss=1>",
+            "icon": "\"><img src=x onerror=window.__xss=1>",
+            "footerAction": "\"><img src=x onerror=window.__xss=1>",
+            "rows": [
+                {
+                    "key": "k:\"><img src=x onerror=window.__xss=1>",
+                    "actor": "\"><img src=x onerror=window.__xss=1>",
+                    "action": "\"><img src=x onerror=window.__xss=1>",
+                    "object": "\"><img src=x onerror=window.__xss=1>",
+                    "timestamp": null,
+                    "avatar": {
+                        "initials": "\"X",
+                        "tint": 4
+                    }
+                },
+                {
+                    "key": "k:<script>window.__xss=1</script>",
+                    "actor": "<script>window.__xss=1</script>",
+                    "action": "<script>window.__xss=1</script>",
+                    "object": "<script>window.__xss=1</script>",
+                    "timestamp": null,
+                    "avatar": {
+                        "initials": "<X",
+                        "tint": 4
+                    }
+                },
+                {
+                    "key": "k:javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "actor": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "action": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "object": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "timestamp": null,
+                    "avatar": {
+                        "initials": "JN",
+                        "tint": 4
+                    }
+                }
+            ],
+            "partial": true,
+            "emptyDisplay": null,
+            "staleSince": null,
+            "errorMessage": null
+        }
+    },
+    "bar": {
+        "slots": [
+            "title",
+            "subtitle",
+            "icon",
+            "footer_action",
+            "category",
+            "values_1",
+            "values_2",
+            "values_3",
+            "values_4",
+            "values_5",
+            "values_6",
+            "series_key"
+        ],
+        "payload": {
+            "state": "normal",
+            "kind": "grouped",
+            "orientation": "vertical",
+            "valueLabels": false,
+            "title": "\"><img src=x onerror=window.__xss=1>",
+            "subtitle": "\"><img src=x onerror=window.__xss=1>",
+            "icon": "\"><img src=x onerror=window.__xss=1>",
+            "footerAction": "\"><img src=x onerror=window.__xss=1>",
+            "categories": [
+                "\"><img src=x onerror=window.__xss=1>",
+                "<script>window.__xss=1</script>",
+                "javascript:window.__xss=1//{{user.name}}‮\u0000"
+            ],
+            "categoryLabel": null,
+            "series": [
+                {
+                    "key": "values_1",
+                    "name": "\"><img src=x onerror=window.__xss=1>",
+                    "values": ["12.5", null, null]
+                },
+                {
+                    "key": "values_2",
+                    "name": "<script>window.__xss=1</script>",
+                    "values": [null, "12.5", null]
+                },
+                {
+                    "key": "values_3",
+                    "name": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "values": [null, null, "12.5"]
+                }
+            ],
+            "totals": [],
+            "partial": true,
+            "format": {
+                "kind": "number",
+                "decimalPlaces": null,
+                "thousandsSeparator": true,
+                "currencyCode": null,
+                "currencyDisplay": "symbol"
+            },
+            "emptyDisplay": null,
+            "staleSince": null,
+            "errorMessage": null
+        }
+    },
+    "calendar-agenda": {
+        "slots": [
+            "title",
+            "subtitle",
+            "icon",
+            "footer_action",
+            "event_date",
+            "start_time",
+            "event_title",
+            "event_subtitle",
+            "duration",
+            "category",
+            "row_key"
+        ],
+        "payload": {
+            "state": "normal",
+            "title": "\"><img src=x onerror=window.__xss=1>",
+            "subtitle": "\"><img src=x onerror=window.__xss=1>",
+            "icon": "\"><img src=x onerror=window.__xss=1>",
+            "footerAction": "\"><img src=x onerror=window.__xss=1>",
+            "rows": [
+                {
+                    "key": "k:\"><img src=x onerror=window.__xss=1>",
+                    "date": null,
+                    "time": null,
+                    "title": "\"><img src=x onerror=window.__xss=1>",
+                    "subtitle": "\"><img src=x onerror=window.__xss=1>",
+                    "duration": null,
+                    "category": "\"><img src=x onerror=window.__xss=1>",
+                    "tint": 4
+                },
+                {
+                    "key": "k:<script>window.__xss=1</script>",
+                    "date": null,
+                    "time": null,
+                    "title": "<script>window.__xss=1</script>",
+                    "subtitle": "<script>window.__xss=1</script>",
+                    "duration": null,
+                    "category": "<script>window.__xss=1</script>",
+                    "tint": 4
+                },
+                {
+                    "key": "k:javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "date": null,
+                    "time": null,
+                    "title": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "subtitle": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "duration": null,
+                    "category": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "tint": 5
+                }
+            ],
+            "weekStrip": false,
+            "partial": true,
+            "emptyDisplay": null,
+            "staleSince": null,
+            "errorMessage": null
+        }
+    },
+    "kpi-card": {
+        "slots": [
+            "title",
+            "subtitle",
+            "icon",
+            "footer_action",
+            "kpi_label",
+            "headline_value",
+            "comparison",
+            "comparison_label",
+            "secondary_note",
+            "status_badge"
+        ],
+        "payload": {
+            "state": "normal",
+            "title": "\"><img src=x onerror=window.__xss=1>",
+            "subtitle": "\"><img src=x onerror=window.__xss=1>",
+            "icon": "\"><img src=x onerror=window.__xss=1>",
+            "footerAction": "\"><img src=x onerror=window.__xss=1>",
+            "kpiLabel": "\"><img src=x onerror=window.__xss=1>",
+            "headline": {
+                "available": true,
+                "value": "12.5",
+                "format": {
+                    "kind": "number",
+                    "decimalPlaces": null,
+                    "thousandsSeparator": true,
+                    "currencyCode": null,
+                    "currencyDisplay": "symbol",
+                    "datePattern": "medium",
+                    "unitsSuffix": null
+                }
+            },
+            "comparison": {
+                "value": "12.5",
+                "format": {
+                    "kind": "number",
+                    "decimalPlaces": null,
+                    "thousandsSeparator": true,
+                    "currencyCode": null,
+                    "currencyDisplay": "symbol",
+                    "datePattern": "medium",
+                    "unitsSuffix": null
+                },
+                "direction": "up",
+                "lowerIsBetter": false
+            },
+            "comparisonLabel": "\"><img src=x onerror=window.__xss=1>",
+            "secondaryNote": "\"><img src=x onerror=window.__xss=1>",
+            "statusBadge": "\"><img src=x onerror=window.__xss=1>",
+            "prefix": null,
+            "suffix": null,
+            "emptyDisplay": null,
+            "emptySlots": [],
+            "staleSince": null,
+            "errorMessage": null
+        }
+    },
+    "kpi-chart": {
+        "slots": [
+            "title",
+            "subtitle",
+            "icon",
+            "footer_action",
+            "kpi_label",
+            "headline_value",
+            "comparison",
+            "comparison_label",
+            "secondary_note",
+            "status_badge",
+            "x",
+            "series_1",
+            "series_2",
+            "series_3",
+            "series_4",
+            "series_5",
+            "series_6"
+        ],
+        "payload": {
+            "state": "normal",
+            "title": "\"><img src=x onerror=window.__xss=1>",
+            "subtitle": "\"><img src=x onerror=window.__xss=1>",
+            "icon": "\"><img src=x onerror=window.__xss=1>",
+            "footerAction": "\"><img src=x onerror=window.__xss=1>",
+            "kpiLabel": "\"><img src=x onerror=window.__xss=1>",
+            "headline": {
+                "available": true,
+                "value": "12.5",
+                "format": {
+                    "kind": "number",
+                    "decimalPlaces": null,
+                    "thousandsSeparator": true,
+                    "currencyCode": null,
+                    "currencyDisplay": "symbol",
+                    "datePattern": "medium",
+                    "unitsSuffix": null
+                }
+            },
+            "comparison": {
+                "value": "12.5",
+                "format": {
+                    "kind": "number",
+                    "decimalPlaces": null,
+                    "thousandsSeparator": true,
+                    "currencyCode": null,
+                    "currencyDisplay": "symbol",
+                    "datePattern": "medium",
+                    "unitsSuffix": null
+                },
+                "direction": "up",
+                "lowerIsBetter": false
+            },
+            "comparisonLabel": "\"><img src=x onerror=window.__xss=1>",
+            "secondaryNote": "\"><img src=x onerror=window.__xss=1>",
+            "statusBadge": "\"><img src=x onerror=window.__xss=1>",
+            "prefix": null,
+            "suffix": null,
+            "emptyDisplay": null,
+            "emptySlots": [],
+            "staleSince": null,
+            "errorMessage": null,
+            "chart": {
+                "state": "normal",
+                "kind": "line",
+                "x": [
+                    "\"><img src=x onerror=window.__xss=1>",
+                    "<script>window.__xss=1</script>",
+                    "javascript:window.__xss=1//{{user.name}}‮\u0000"
+                ],
+                "xLabel": null,
+                "xPattern": null,
+                "series": [
+                    {
+                        "key": "series_1",
+                        "name": "Series 1",
+                        "values": ["12.5", "12.5", "12.5"]
+                    },
+                    {
+                        "key": "series_2",
+                        "name": "Series 2",
+                        "values": ["12.5", "12.5", "12.5"]
+                    },
+                    {
+                        "key": "series_3",
+                        "name": "Series 3",
+                        "values": ["12.5", "12.5", "12.5"]
+                    },
+                    {
+                        "key": "series_4",
+                        "name": "Series 4",
+                        "values": ["12.5", "12.5", "12.5"]
+                    },
+                    {
+                        "key": "series_5",
+                        "name": "Series 5",
+                        "values": ["12.5", "12.5", "12.5"]
+                    },
+                    {
+                        "key": "series_6",
+                        "name": "Series 6",
+                        "values": ["12.5", "12.5", "12.5"]
+                    }
+                ],
+                "partial": false,
+                "highlight": null,
+                "target": null,
+                "format": {
+                    "kind": "number",
+                    "decimalPlaces": null,
+                    "thousandsSeparator": true,
+                    "currencyCode": null,
+                    "currencyDisplay": "symbol"
+                },
+                "directLabels": true
+            }
+        }
+    },
+    "line-area": {
+        "slots": [
+            "title",
+            "subtitle",
+            "icon",
+            "footer_action",
+            "x",
+            "series_1",
+            "series_2",
+            "series_3",
+            "series_4",
+            "series_5",
+            "series_6",
+            "series_label_1",
+            "series_label_2",
+            "series_label_3",
+            "series_label_4",
+            "series_label_5",
+            "series_label_6",
+            "highlight_x",
+            "target_value",
+            "target_label"
+        ],
+        "payload": {
+            "state": "normal",
+            "kind": "line",
+            "title": "\"><img src=x onerror=window.__xss=1>",
+            "subtitle": "\"><img src=x onerror=window.__xss=1>",
+            "icon": "\"><img src=x onerror=window.__xss=1>",
+            "footerAction": "\"><img src=x onerror=window.__xss=1>",
+            "x": [
+                "\"><img src=x onerror=window.__xss=1>",
+                "<script>window.__xss=1</script>",
+                "javascript:window.__xss=1//{{user.name}}‮\u0000"
+            ],
+            "xLabel": null,
+            "xPattern": null,
+            "series": [
+                {
+                    "key": "series_1",
+                    "name": "\"><img src=x onerror=window.__xss=1>",
+                    "values": ["12.5", "12.5", "12.5"]
+                },
+                {
+                    "key": "series_2",
+                    "name": "\"><img src=x onerror=window.__xss=1>",
+                    "values": ["12.5", "12.5", "12.5"]
+                },
+                {
+                    "key": "series_3",
+                    "name": "\"><img src=x onerror=window.__xss=1>",
+                    "values": ["12.5", "12.5", "12.5"]
+                },
+                {
+                    "key": "series_4",
+                    "name": "\"><img src=x onerror=window.__xss=1>",
+                    "values": ["12.5", "12.5", "12.5"]
+                },
+                {
+                    "key": "series_5",
+                    "name": "\"><img src=x onerror=window.__xss=1>",
+                    "values": ["12.5", "12.5", "12.5"]
+                },
+                {
+                    "key": "series_6",
+                    "name": "\"><img src=x onerror=window.__xss=1>",
+                    "values": ["12.5", "12.5", "12.5"]
+                }
+            ],
+            "partial": false,
+            "highlight": 0,
+            "target": {
+                "value": "12.5",
+                "label": "\"><img src=x onerror=window.__xss=1>"
+            },
+            "format": {
+                "kind": "number",
+                "decimalPlaces": null,
+                "thousandsSeparator": true,
+                "currencyCode": null,
+                "currencyDisplay": "symbol"
+            },
+            "directLabels": true,
+            "emptyDisplay": null,
+            "staleSince": null,
+            "errorMessage": null
+        }
+    },
+    "list": {
+        "slots": [
+            "title",
+            "subtitle",
+            "icon",
+            "footer_action",
+            "item_title",
+            "item_subtitle",
+            "item_avatar",
+            "item_icon",
+            "item_value",
+            "item_meta",
+            "item_status",
+            "row_key"
+        ],
+        "payload": {
+            "state": "normal",
+            "title": "\"><img src=x onerror=window.__xss=1>",
+            "subtitle": "\"><img src=x onerror=window.__xss=1>",
+            "icon": "\"><img src=x onerror=window.__xss=1>",
+            "footerAction": "\"><img src=x onerror=window.__xss=1>",
+            "rows": [
+                {
+                    "key": "k:\"><img src=x onerror=window.__xss=1>",
+                    "title": "\"><img src=x onerror=window.__xss=1>",
+                    "subtitle": "\"><img src=x onerror=window.__xss=1>",
+                    "avatar": {
+                        "initials": "\"X",
+                        "tint": 4
+                    },
+                    "icon": null,
+                    "value": "\"><img src=x onerror=window.__xss=1>",
+                    "meta": "\"><img src=x onerror=window.__xss=1>",
+                    "status": "\"><img src=x onerror=window.__xss=1>"
+                },
+                {
+                    "key": "k:<script>window.__xss=1</script>",
+                    "title": "<script>window.__xss=1</script>",
+                    "subtitle": "<script>window.__xss=1</script>",
+                    "avatar": {
+                        "initials": "<X",
+                        "tint": 4
+                    },
+                    "icon": null,
+                    "value": "<script>window.__xss=1</script>",
+                    "meta": "<script>window.__xss=1</script>",
+                    "status": "<script>window.__xss=1</script>"
+                },
+                {
+                    "key": "k:javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "title": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "subtitle": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "avatar": {
+                        "initials": "JN",
+                        "tint": 4
+                    },
+                    "icon": null,
+                    "value": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "meta": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "status": "javascript:window.__xss=1//{{user.name}}‮\u0000"
+                }
+            ],
+            "partial": false,
+            "valueFormat": null,
+            "metaFormat": null,
+            "emptyDisplay": null,
+            "staleSince": null,
+            "errorMessage": null
+        }
+    },
+    "pie-donut": {
+        "slots": [
+            "title",
+            "subtitle",
+            "icon",
+            "footer_action",
+            "pie_category",
+            "pie_value",
+            "centre_label"
+        ],
+        "payload": {
+            "state": "normal",
+            "kind": "pie",
+            "title": "\"><img src=x onerror=window.__xss=1>",
+            "subtitle": "\"><img src=x onerror=window.__xss=1>",
+            "icon": "\"><img src=x onerror=window.__xss=1>",
+            "footerAction": "\"><img src=x onerror=window.__xss=1>",
+            "categories": [
+                "\"><img src=x onerror=window.__xss=1>",
+                "<script>window.__xss=1</script>",
+                "javascript:window.__xss=1//{{user.name}}‮\u0000"
+            ],
+            "categoryLabel": null,
+            "values": ["12.5", "12.5", "12.5"],
+            "valueLabel": null,
+            "folded": false,
+            "centre": null,
+            "partial": false,
+            "format": {
+                "kind": "number",
+                "decimalPlaces": null,
+                "thousandsSeparator": true,
+                "currencyCode": null,
+                "currencyDisplay": "symbol"
+            },
+            "emptyDisplay": null,
+            "staleSince": null,
+            "errorMessage": null
+        }
+    },
+    "progress-list": {
+        "slots": [
+            "title",
+            "subtitle",
+            "icon",
+            "footer_action",
+            "item_title",
+            "progress_value",
+            "progress_total",
+            "item_caption",
+            "row_key"
+        ],
+        "payload": {
+            "state": "normal",
+            "title": "\"><img src=x onerror=window.__xss=1>",
+            "subtitle": "\"><img src=x onerror=window.__xss=1>",
+            "icon": "\"><img src=x onerror=window.__xss=1>",
+            "footerAction": "\"><img src=x onerror=window.__xss=1>",
+            "rows": [
+                {
+                    "key": "k:\"><img src=x onerror=window.__xss=1>",
+                    "title": "\"><img src=x onerror=window.__xss=1>",
+                    "caption": "\"><img src=x onerror=window.__xss=1>",
+                    "percent": "100",
+                    "fill": "100",
+                    "band": null
+                },
+                {
+                    "key": "k:<script>window.__xss=1</script>",
+                    "title": "<script>window.__xss=1</script>",
+                    "caption": "<script>window.__xss=1</script>",
+                    "percent": "100",
+                    "fill": "100",
+                    "band": null
+                },
+                {
+                    "key": "k:javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "title": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "caption": "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "percent": "100",
+                    "fill": "100",
+                    "band": null
+                }
+            ],
+            "partial": false,
+            "emptyDisplay": null,
+            "staleSince": null,
+            "errorMessage": null
+        }
+    },
+    "table": {
+        "slots": [
+            "title",
+            "subtitle",
+            "icon",
+            "footer_action",
+            "row_key",
+            "col_1",
+            "col_2",
+            "col_3",
+            "col_4",
+            "col_5",
+            "col_6",
+            "col_7",
+            "col_8",
+            "col_9",
+            "col_10",
+            "col_11",
+            "col_12"
+        ],
+        "payload": {
+            "state": "normal",
+            "title": "\"><img src=x onerror=window.__xss=1>",
+            "subtitle": "\"><img src=x onerror=window.__xss=1>",
+            "icon": "\"><img src=x onerror=window.__xss=1>",
+            "footerAction": "\"><img src=x onerror=window.__xss=1>",
+            "columns": [
+                {
+                    "key": "col_1",
+                    "header": "Column 1",
+                    "align": "left",
+                    "width": null,
+                    "sortable": false,
+                    "format": null
+                },
+                {
+                    "key": "col_2",
+                    "header": "Column 2",
+                    "align": "left",
+                    "width": null,
+                    "sortable": false,
+                    "format": null
+                },
+                {
+                    "key": "col_3",
+                    "header": "Column 3",
+                    "align": "left",
+                    "width": null,
+                    "sortable": false,
+                    "format": null
+                },
+                {
+                    "key": "col_4",
+                    "header": "Column 4",
+                    "align": "left",
+                    "width": null,
+                    "sortable": false,
+                    "format": null
+                },
+                {
+                    "key": "col_5",
+                    "header": "Column 5",
+                    "align": "left",
+                    "width": null,
+                    "sortable": false,
+                    "format": null
+                },
+                {
+                    "key": "col_6",
+                    "header": "Column 6",
+                    "align": "left",
+                    "width": null,
+                    "sortable": false,
+                    "format": null
+                },
+                {
+                    "key": "col_7",
+                    "header": "Column 7",
+                    "align": "left",
+                    "width": null,
+                    "sortable": false,
+                    "format": null
+                },
+                {
+                    "key": "col_8",
+                    "header": "Column 8",
+                    "align": "left",
+                    "width": null,
+                    "sortable": false,
+                    "format": null
+                },
+                {
+                    "key": "col_9",
+                    "header": "Column 9",
+                    "align": "left",
+                    "width": null,
+                    "sortable": false,
+                    "format": null
+                },
+                {
+                    "key": "col_10",
+                    "header": "Column 10",
+                    "align": "left",
+                    "width": null,
+                    "sortable": false,
+                    "format": null
+                },
+                {
+                    "key": "col_11",
+                    "header": "Column 11",
+                    "align": "left",
+                    "width": null,
+                    "sortable": false,
+                    "format": null
+                },
+                {
+                    "key": "col_12",
+                    "header": "Column 12",
+                    "align": "left",
+                    "width": null,
+                    "sortable": false,
+                    "format": null
+                }
+            ],
+            "rows": [
+                {
+                    "key": "k:\"><img src=x onerror=window.__xss=1>",
+                    "cells": [
+                        "\"><img src=x onerror=window.__xss=1>",
+                        "\"><img src=x onerror=window.__xss=1>",
+                        "\"><img src=x onerror=window.__xss=1>",
+                        "\"><img src=x onerror=window.__xss=1>",
+                        "\"><img src=x onerror=window.__xss=1>",
+                        "\"><img src=x onerror=window.__xss=1>",
+                        "\"><img src=x onerror=window.__xss=1>",
+                        "\"><img src=x onerror=window.__xss=1>",
+                        "\"><img src=x onerror=window.__xss=1>",
+                        "\"><img src=x onerror=window.__xss=1>",
+                        "\"><img src=x onerror=window.__xss=1>",
+                        "\"><img src=x onerror=window.__xss=1>"
+                    ],
+                    "highlight": null
+                },
+                {
+                    "key": "k:<script>window.__xss=1</script>",
+                    "cells": [
+                        "<script>window.__xss=1</script>",
+                        "<script>window.__xss=1</script>",
+                        "<script>window.__xss=1</script>",
+                        "<script>window.__xss=1</script>",
+                        "<script>window.__xss=1</script>",
+                        "<script>window.__xss=1</script>",
+                        "<script>window.__xss=1</script>",
+                        "<script>window.__xss=1</script>",
+                        "<script>window.__xss=1</script>",
+                        "<script>window.__xss=1</script>",
+                        "<script>window.__xss=1</script>",
+                        "<script>window.__xss=1</script>"
+                    ],
+                    "highlight": null
+                },
+                {
+                    "key": "k:javascript:window.__xss=1//{{user.name}}‮\u0000",
+                    "cells": [
+                        "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                        "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                        "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                        "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                        "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                        "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                        "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                        "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                        "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                        "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                        "javascript:window.__xss=1//{{user.name}}‮\u0000",
+                        "javascript:window.__xss=1//{{user.name}}‮\u0000"
+                    ],
+                    "highlight": null
+                }
+            ],
+            "partial": false,
+            "pageSize": 10,
+            "periodKey": null,
+            "emptyDisplay": null,
+            "staleSince": null,
+            "errorMessage": null
+        }
+    },
+    "text-status": {
+        "slots": ["title", "icon", "footer_action", "status_text"],
+        "payload": {
+            "state": "normal",
+            "mode": "text",
+            "title": "\"><img src=x onerror=window.__xss=1>",
+            "icon": "\"><img src=x onerror=window.__xss=1>",
+            "footerAction": "\"><img src=x onerror=window.__xss=1>",
+            "text": "\"><img src=x onerror=window.__xss=1>",
+            "band": null,
+            "partial": false,
+            "emptyDisplay": null,
+            "staleSince": null,
+            "errorMessage": null
+        }
+    }
+}
