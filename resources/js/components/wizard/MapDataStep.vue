@@ -228,6 +228,22 @@ const slotGroups = computed(() =>
         ? applyOrder(read.value.checklist.groups, order.value)
         : [],
 );
+// The headline a comparison is made from (Story 5.5): a ratio when it reads a ratio calculated field or is shown as a percent.
+const headline = computed(() => {
+    const slot = treeSlots.value.find((s) => s.slot === 'headline_value');
+    const path = slot?.path ?? null;
+    const ratio =
+        rules.value.slots?.headline_value?.format?.kind === 'percent' ||
+        (path !== null &&
+            steps.value.some(
+                (step) =>
+                    step.type === 'calc' &&
+                    `calc:${step.name}` === path &&
+                    step.ratio !== undefined,
+            ));
+
+    return { ratio, example: slot?.example ?? null };
+});
 const blocking = computed(() =>
     read.value?.checklist
         ? blockingSlots(read.value.checklist, order.value)
@@ -1946,6 +1962,7 @@ onBeforeUnmount(() => {
                     :notes="notes"
                     :changes="changes"
                     :rules="rules"
+                    :headline="headline"
                     :presentation-errors="presentationErrors"
                     @presentation="savePresentation"
                     @calculated="onCalculated"

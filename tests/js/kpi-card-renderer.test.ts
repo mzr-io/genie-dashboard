@@ -195,6 +195,25 @@ describe('kpi-card renderer', () => {
             },
         );
 
+        it('writes the minus sign of an absolute or point change beside the arrow', () => {
+            const w = render(
+                payload({
+                    comparison: {
+                        ...comparison('-10', 'down'),
+                        signed: true,
+                    } as KpiCardPayload['comparison'],
+                }),
+            );
+
+            expect(w.get('[data-test=kpi-delta-visible]').text()).toContain(
+                '-10',
+            );
+            expect(w.get('[data-test=kpi-delta-arrow]').text()).toBe('▼');
+            expect(w.get('[data-test=kpi-delta-spoken]').text()).not.toContain(
+                '-10',
+            );
+        });
+
         it('says "No change" when flat', () => {
             const w = render(
                 payload({ comparison: comparison('0.00', 'flat') }),

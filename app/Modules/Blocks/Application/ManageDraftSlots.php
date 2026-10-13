@@ -398,6 +398,10 @@ final class ManageDraftSlots implements DraftSlots
             // Judged whole, against the Block Type's slots: nothing is stored when any part is faulty.
             $stored = DraftConfig::normalisePresentation($presentation, $type);
 
+            if (($stored['slots'][KpiCardSlots::SLOT_COMPARISON]['mode'] ?? null) === 'pp_delta' && ! self::headlineIsRatio($stored, $config, $now)) {
+                throw new InvalidDraft(['config.presentation.slots.comparison.mode' => ['Percentage points compare two ratios: map the headline to a ratio or show it as a percent.']], 'blocks.invalid_config');
+            }
+
             return self::withKey($config, Presentation::KEY, $stored);
         });
 
@@ -446,6 +450,34 @@ final class ManageDraftSlots implements DraftSlots
         });
 
         return new DraftTemplates($stored, $checklist->revision, $checklist->queryPlan);
+    }
+
+    /**
+     * A headline is a ratio when it reads a ratio calculated field (Story 5.3) or is shown as a percent (a percentage figure, 72 is 72%).
+     *
+     * @param  array<string, mixed>  $presentation
+     * @param  array<string, mixed>  $config
+     */
+    private static function headlineIsRatio(array $presentation, array $config, AutoMapResult $now): bool
+    {
+        if (($presentation['slots'][KpiCardSlots::SLOT_HEADLINE_VALUE]['format']['kind'] ?? null) === 'percent') {
+            return true;
+        }
+
+        $alias = $now->plan['shape'][KpiCardSlots::SLOT_HEADLINE_VALUE] ?? null;
+        $path = is_string($alias) ? ($now->plan['extract']['fields'][$alias] ?? null) : null;
+
+        if (! is_string($path) || ! str_starts_with($path, Transforms::CALC_PREFIX)) {
+            return false;
+        }
+
+        foreach (self::transforms($config) as $step) {
+            if (($step['type'] ?? null) === Transforms::CALC && Transforms::CALC_PREFIX.($step['name'] ?? '') === $path && isset($step['ratio'])) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

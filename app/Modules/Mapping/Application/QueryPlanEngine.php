@@ -4,12 +4,16 @@ namespace App\Modules\Mapping\Application;
 
 use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\BlockTypes\Contracts\BlockTypeShapers;
+use App\Modules\BlockTypes\Contracts\KpiCardSlots;
+use App\Modules\Mapping\Contracts\ExecutionResult;
 use App\Modules\Mapping\Contracts\InvalidPlan;
 use App\Modules\Mapping\Contracts\PlanGuards;
 use App\Modules\Mapping\Contracts\PlanResult;
+use App\Modules\Mapping\Contracts\Presentation;
 use App\Modules\Mapping\Contracts\QueryExecutor;
 use App\Modules\Mapping\Contracts\QueryPlan;
 use App\Modules\Mapping\Contracts\QueryPlans;
+use App\Modules\Mapping\Contracts\SettingNotConfigured;
 use App\Modules\Mapping\Infrastructure\PreviewSettings;
 
 /**
@@ -24,6 +28,7 @@ final class QueryPlanEngine implements QueryPlans
         private readonly BlockTypeShapers $shapers,
         private readonly PreviewSettings $settings,
         private readonly PresentationOptions $presentation = new PresentationOptions,
+        private readonly ?DecimalMath $math = null,
     ) {}
 
     public function guards(): PlanGuards
@@ -43,8 +48,43 @@ final class QueryPlanEngine implements QueryPlans
 
         // The presentation rules (Story 3.15a) become the Shaper's options; the bands are judged here, on the exact headline value.
         $mapped = array_map('strval', array_keys(is_array($plan['shape'] ?? null) ? $plan['shape'] : []));
-        $options = $this->presentation->options($presentation, $result->slots, $mapped);
+        $slots = $result->slots;
+        $unavailable = $result->unavailable;
+        $mode = $presentation['slots'][KpiCardSlots::SLOT_COMPARISON]['mode'] ?? null;
+        $compared = is_string($mode) && in_array($mode, Presentation::MODES, true) && in_array(KpiCardSlots::SLOT_COMPARISON, $mapped, true);
 
-        return new PlanResult($this->shapers->shape($type, $result->slots, $options), $result->unavailable, $result->slots, $result->rows, $result->columns);
+        // The comparison slot's mapped field is the previous value (Story 5.5): its slot value becomes the change from the headline, or nothing.
+        if ($compared) {
+            if ($this->math === null) {
+                throw new SettingNotConfigured('DASHFLOW_DECIMAL_SCALE');
+            }
+
+            $change = (new ComparisonChange($this->math))->change($mode, $slots[KpiCardSlots::SLOT_HEADLINE_VALUE] ?? null, $slots[KpiCardSlots::SLOT_COMPARISON] ?? null);
+            $slots[KpiCardSlots::SLOT_COMPARISON] = $change;
+
+            if ($change === null) {
+                $unavailable[KpiCardSlots::SLOT_COMPARISON] ??= ExecutionResult::MISSING;
+            }
+        }
+
+        $options = $this->presentation->options($presentation, $slots, $mapped);
+
+        if ($compared) {
+            $slotRules = $presentation['slots'][KpiCardSlots::SLOT_COMPARISON] ?? [];
+            $headlineFormat = $presentation['slots'][KpiCardSlots::SLOT_HEADLINE_VALUE]['format'] ?? null;
+
+            if (! is_array($slotRules['format'] ?? null)) {
+                $options['comparisonFormat'] = match ($mode) {
+                    'pct_change' => ['kind' => 'percent', 'decimalPlaces' => 1],
+                    'pp_delta' => ['kind' => 'number', 'decimalPlaces' => 1, 'unitsSuffix' => 'pp'],
+                    default => is_array($headlineFormat) ? $headlineFormat : [],
+                };
+            }
+
+            // The sign of an absolute change or a point change is part of its text; a percentage leans on the arrow.
+            $options['comparisonSigned'] = $mode !== 'pct_change';
+        }
+
+        return new PlanResult($this->shapers->shape($type, $slots, $options), $unavailable, $slots, $result->rows, $result->columns);
     }
 }

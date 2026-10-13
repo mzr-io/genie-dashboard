@@ -30,6 +30,9 @@ final class Presentation
 
     public const DIRECTIONS = ['higher_is_better', 'lower_is_better'];
 
+    /** How a comparison is expressed (Story 5.5): the change in percent, the difference, or the difference of two ratios in percentage points. */
+    public const MODES = ['pct_change', 'absolute_delta', 'pp_delta'];
+
     public const OPS = ['>=', '<=', 'between'];
 
     /** The accent colour is the brand's, not a status: a band is never accent. */
@@ -160,7 +163,7 @@ final class Presentation
             $clean = [];
 
             foreach (array_keys($entry) as $key) {
-                if (! in_array($key, ['format', 'emphasis', 'direction', 'label'], true)) {
+                if (! in_array($key, ['format', 'emphasis', 'direction', 'label', 'mode'], true)) {
                     $errors["{$at}.".self::name($key)] = ['This is not a slot setting.'];
                 }
             }
@@ -192,6 +195,17 @@ final class Presentation
                     $clean['direction'] = $entry['direction'];
                 } else {
                     $errors["{$at}.direction"] = ['Choose one of: '.implode(', ', self::DIRECTIONS).'.'];
+                }
+            }
+
+            // How the comparison reads its previous value (Story 5.5): the Slot's own mapped field is the previous value and the change is calculated.
+            if (($entry['mode'] ?? null) !== null) {
+                if ($slot !== KpiCardSlots::SLOT_COMPARISON) {
+                    $errors["{$at}.mode"] = ['A comparison mode applies to the comparison slot only.'];
+                } elseif (is_string($entry['mode']) && in_array($entry['mode'], self::MODES, true)) {
+                    $clean['mode'] = $entry['mode'];
+                } else {
+                    $errors["{$at}.mode"] = ['Choose one of: '.implode(', ', self::MODES).'.'];
                 }
             }
 

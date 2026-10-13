@@ -539,3 +539,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-4-text-templates-tokens-and-footer-action-target.md`
   summary: Show the template's own rendering (sample values) in the editor row, beside the live card.
   evidence: The live card on the right is the real result after each save; a client-side rendering of field tokens would duplicate the server's renderer.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-comparisons-from-a-mapped-previous-value-with-comparison-modes.md`
+  summary: Name the paused comparison by its mode in the API-changed message ("Comparison (% change) is paused too").
+  evidence: The notice uses the slot's checklist label; the mode is a presentation rule the message builder does not read yet.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-5-comparisons-from-a-mapped-previous-value-with-comparison-modes.md`
+  summary: Relabel the comparison slot as the previous value when a mode is chosen, and show the live caption from the real preview as well as the sample example.
+  evidence: The slot label is part of the kpi-card v1 contract; the editor's caption is computed from the slots' sample examples only.

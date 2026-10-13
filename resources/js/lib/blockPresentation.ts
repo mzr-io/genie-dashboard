@@ -41,6 +41,13 @@ export const EMPHASIS_ROLES = [
 export const EMPHASIS_SIZES = ['sm', 'md', 'lg'] as const;
 export const EMPHASIS_WEIGHTS = ['regular', 'medium', 'bold'] as const;
 export const DIRECTIONS = ['higher_is_better', 'lower_is_better'] as const;
+// How a comparison reads its previous value (Story 5.5); the Slot's mapped field is the previous value.
+export const COMPARISON_MODES = [
+    'pct_change',
+    'absolute_delta',
+    'pp_delta',
+] as const;
+export type ComparisonMode = (typeof COMPARISON_MODES)[number];
 export const BAND_OPS = ['>=', '<=', 'between'] as const;
 export const BAND_COLORS = [
     'success',
@@ -88,6 +95,7 @@ export type SlotPresentation = {
     format?: PresentationFormat;
     emphasis?: PresentationEmphasis;
     direction?: (typeof DIRECTIONS)[number];
+    mode?: ComparisonMode;
     label?: { text?: string; prefix?: string; suffix?: string };
 };
 
@@ -329,6 +337,10 @@ export function judge(
             add(slotPath(slot, 'direction'), labels.directionComparisonOnly);
         }
 
+        if (entry.mode !== undefined && slot !== SLOT_COMPARISON) {
+            add(slotPath(slot, 'mode'), labels.modeComparisonOnly);
+        }
+
         add(
             slotPath(slot, 'label.text'),
             textFault(entry.label?.text, LIMITS.label),
@@ -485,4 +497,63 @@ export function exampleFor(
     } catch {
         return null;
     }
+}
+
+const PLAIN_DECIMAL = /^([+-]?)(\d*)\.?(\d*)$/;
+
+// A plain decimal as an integer over a power of ten, so the example is exact: never a float.
+function scaled(value: string): { n: bigint; places: number } | null {
+    const match = PLAIN_DECIMAL.exec(value.trim());
+
+    if (match === null || match[2] + match[3] === '') {
+        return null;
+    }
+
+    const n = BigInt(match[2] + match[3]);
+
+    return { n: match[1] === '-' ? -n : n, places: match[3].length };
+}
+
+function plainOf(n: bigint, places: number): string {
+    const negative = n < 0n;
+    const digits = (negative ? -n : n).toString().padStart(places + 1, '0');
+    const whole = digits.slice(0, digits.length - places);
+    const fraction = digits.slice(digits.length - places).replace(/0+$/, '');
+
+    return `${negative && /[1-9]/.test(whole + fraction) ? '-' : ''}${whole}${fraction === '' ? '' : `.${fraction}`}`;
+}
+
+// The change a comparison mode makes (the server's own arithmetic, to six places), or null when there is none: a missing value, or a previous value of
+// 0 for a percentage.
+export function comparisonChange(
+    mode: ComparisonMode,
+    current: string | null | undefined,
+    previous: string | null | undefined,
+): string | null {
+    const a = scaled(current ?? '');
+    const b = scaled(previous ?? '');
+
+    if (a === null || b === null) {
+        return null;
+    }
+
+    const places = Math.max(a.places, b.places);
+    const x = a.n * 10n ** BigInt(places - a.places);
+    const y = b.n * 10n ** BigInt(places - b.places);
+
+    if (mode !== 'pct_change') {
+        return plainOf(x - y, places);
+    }
+
+    if (y === 0n) {
+        return null;
+    }
+
+    // (x - y) * 100 / y at six places, rounded half away from zero.
+    const numerator = (x - y) * 100n * 10n ** 6n;
+    const top = numerator < 0n ? -numerator : numerator;
+    const bottom = y < 0n ? -y : y;
+    const quotient = (2n * top + bottom) / (2n * bottom);
+
+    return plainOf(numerator < 0n !== y < 0n ? -quotient : quotient, 6);
 }

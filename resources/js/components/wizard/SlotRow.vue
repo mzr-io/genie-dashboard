@@ -48,6 +48,8 @@ const props = defineProps<{
     rules?: PresentationRules;
     presentationErrors?: Record<string, string>;
     open?: boolean;
+    // The headline a comparison is made from (Story 5.5).
+    headline?: { ratio: boolean; example: string | null };
 }>();
 
 const emit = defineEmits<{
@@ -400,6 +402,7 @@ defineExpose({ focusPicker: () => picker.value?.focus(), openPicker });
                 :item="item"
                 :rules="rules ?? {}"
                 :errors="presentationErrors ?? {}"
+                :headline="headline"
                 :disabled="!editable"
                 @change="(next) => emit('presentation', next)"
             />

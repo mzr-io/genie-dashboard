@@ -150,6 +150,13 @@ const delta = computed(() => {
         }
     }
 
+    // An absolute or point change carries its own minus sign beside the arrow; the spoken text names the direction in words instead.
+    const spokenValue = value;
+
+    if (comparison.signed === true && direction === 'down') {
+        value = `-${value}`;
+    }
+
     const good =
         direction === 'flat' ? null : (direction === 'down') === lowerIsBetter;
     const judged = lowerIsBetter && good !== null;
@@ -173,7 +180,7 @@ const delta = computed(() => {
                   : 'text-error-text',
         spoken: kpiCardLabels.deltaSpoken(
             word,
-            value,
+            spokenValue,
             props.payload.comparisonLabel,
             good === null
                 ? null

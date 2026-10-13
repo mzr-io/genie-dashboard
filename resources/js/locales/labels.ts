@@ -2400,6 +2400,27 @@ export const blockPresentationLabels = {
     worse: 'worse',
     directionComparisonOnly: 'Direction applies to the comparison slot only.',
     directionNotHere: 'Direction applies to the comparison slot only.',
+    // Comparison source and mode (Story 5.5).
+    comparisonTitle: 'Comparison',
+    sourceLabel: 'Source',
+    sourceMapped: 'Mapped previous value',
+    sourcePrior: 'Prior-period request',
+    sourcePriorReason: 'Prior-period requests arrive with sync groups.',
+    modeLabel: 'Mode',
+    modes: {
+        pct_change: '% change',
+        absolute_delta: 'Absolute delta',
+        pp_delta: 'Percentage-point delta',
+    } as Record<string, string>,
+    modeValue: 'Previous value as it is (no change calculated)',
+    modePpReason:
+        'Percentage points compare two ratios: map the headline to a ratio or show it as a percent.',
+    modeNote:
+        'The field mapped to this slot is the previous value; the change is calculated from the headline.',
+    modeExample: (shown: string) => `Example: ${shown}`,
+    modeNoExample: 'The example appears once both values have a sample.',
+    modeComparisonOnly:
+        'A comparison mode applies to the comparison slot only.',
     // Labels.
     labelText: 'Label text',
     labelHint: 'Shown with the value',

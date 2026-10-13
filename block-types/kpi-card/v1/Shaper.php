@@ -60,6 +60,11 @@ final class Shaper
             'lowerIsBetter' => ($options['lowerIsBetter'] ?? false) === true,
         ];
 
+        // An absolute or point change writes its own sign (Story 5.5); a percentage leans on the arrow.
+        if ($comparison !== null && ($options['comparisonSigned'] ?? false) === true) {
+            $comparison['signed'] = true;
+        }
+
         return [
             'state' => $state,
             'title' => $this->text($slots['title'] ?? null),

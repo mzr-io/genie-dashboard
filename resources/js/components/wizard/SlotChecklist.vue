@@ -42,6 +42,8 @@ const props = defineProps<{
     // The presentation rules and their faults (Story 3.15b).
     rules?: PresentationRules;
     presentationErrors?: Record<string, string>;
+    // The headline a comparison is made from (Story 5.5).
+    headline?: { ratio: boolean; example: string | null };
 }>();
 
 const emit = defineEmits<{
@@ -271,6 +273,7 @@ defineExpose({
                     @undo="emit('undo', $event)"
                     @treat="(key, path, type) => emit('treat', key, path, type)"
                     :rules="rules"
+                    :headline="headline"
                     :presentation-errors="presentationErrors"
                     :open="openRow === slot.slot"
                     @tree="emit('tree', $event)"

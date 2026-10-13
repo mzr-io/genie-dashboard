@@ -1068,6 +1068,22 @@ it('refuses an invalid presentation naming each path, and stores nothing', funct
     expect(bdRows())->toBe($before);
 });
 
+it('stores a comparison mode, and refuses percentage points when the headline is not a ratio (Story 5.5)', function () {
+    $id = dslDraft();
+    $before = bdRows();
+
+    $res = dslPresent($id, ['slots' => ['comparison' => ['mode' => 'pp_delta']]])->assertStatus(422)->assertJsonPath('error.code', 'blocks.invalid_config');
+
+    expect(array_keys($res->json('errors')))->toContain('config.presentation.slots.comparison.mode')
+        ->and(bdRows())->toBe($before);
+
+    dslPresent($id, ['slots' => ['comparison' => ['mode' => 'pct_change']]])->assertOk();
+    expect(dslConfig()['presentation']['slots']['comparison']['mode'])->toBe('pct_change');
+
+    dslPresent($id, ['slots' => ['headline_value' => ['format' => ['kind' => 'percent']], 'comparison' => ['mode' => 'pp_delta']]])->assertOk();
+    expect(dslConfig()['presentation']['slots']['comparison']['mode'])->toBe('pp_delta');
+});
+
 it('refuses a second headline with the reason, on the second slot', function () {
     $id = dslDraft();
     $before = bdRows();

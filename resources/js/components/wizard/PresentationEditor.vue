@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, useId } from 'vue';
+import { computed, ref, useId } from 'vue';
 import BandsEditor from '@/components/wizard/BandsEditor.vue';
 import NativeSelect from '@/components/NativeSelect.vue';
+import SegmentedControl from '@/components/SegmentedControl.vue';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import type { ChecklistSlot } from '@/lib/blockMapping';
 import {
+    COMPARISON_MODES,
     DATE_PATTERNS,
     DIRECTIONS,
     EMPHASIS_ROLES,
@@ -17,12 +19,14 @@ import {
     SLOT_HEADLINE,
     choiceOf,
     clean,
+    comparisonChange,
     exampleFor,
     setSlot,
     slotPath,
     withChoice,
 } from '@/lib/blockPresentation';
 import type {
+    ComparisonMode,
     FormatChoice,
     PresentationBand,
     PresentationRules,
@@ -40,6 +44,8 @@ const props = defineProps<{
     // Faults by `config.presentation.<path>`.
     errors: Record<string, string>;
     disabled?: boolean;
+    // The headline the comparison is made from (Story 5.5): whether it is a ratio (percentage points compare two ratios) and its sample value.
+    headline?: { ratio: boolean; example: string | null };
 }>();
 
 const emit = defineEmits<{ (e: 'change', rules: PresentationRules): void }>();
@@ -97,6 +103,63 @@ const example = computed(() => {
         ? `${label?.prefix ?? ''}${shown}${label?.suffix ?? ''}`
         : shown;
 });
+
+// The comparison source (Story 5.5): only the mapped previous value exists until prior-period requests (sync groups) do.
+const priorPicked = ref(false);
+const mode = computed<ComparisonMode | ''>(() => mine.value.mode ?? '');
+const ratio = computed(() => props.headline?.ratio === true);
+const modeExample = computed(() => {
+    if (mode.value === '') {
+        return null;
+    }
+
+    const change = comparisonChange(
+        mode.value,
+        props.headline?.example,
+        props.item.example,
+    );
+
+    if (change === null) {
+        return null;
+    }
+
+    const places = mode.value === 'absolute_delta' ? null : 1;
+    const descriptor =
+        mine.value.format ??
+        (mode.value === 'pct_change'
+            ? { kind: 'percent' as const, decimalPlaces: places }
+            : mode.value === 'pp_delta'
+              ? {
+                    kind: 'number' as const,
+                    decimalPlaces: places,
+                    unitsSuffix: 'pp',
+                }
+              : undefined);
+    const shown = exampleFor(
+        descriptor,
+        change.replace(/^-/, ''),
+        locale.value,
+    );
+
+    if (shown === null) {
+        return null;
+    }
+
+    const flat = !/[1-9]/.test(change);
+    const arrow = flat ? '' : change.startsWith('-') ? '↘ ' : '↗ ';
+    const sign =
+        mode.value !== 'pct_change' && change.startsWith('-') ? '-' : '';
+
+    return `${arrow}${flat ? '' : sign}${shown}`;
+});
+
+function setSource(next: string): void {
+    priorPicked.value = next === 'prior';
+}
+
+function setMode(next: string): void {
+    patch({ mode: next === '' ? undefined : (next as ComparisonMode) });
+}
 
 const err = (part: string): string | undefined =>
     props.errors[slotPath(key.value, part)];
@@ -569,6 +632,85 @@ const field = 'grid gap-1 [&>label]:type-caption [&>label]:text-text-secondary';
                 </p>
             </section>
         </div>
+
+        <!-- Comparison source and mode (Story 5.5) -->
+        <section
+            v-if="isComparison"
+            class="grid min-w-0 content-start gap-2"
+            :aria-label="labels.comparisonTitle"
+            data-test="comparison-source"
+        >
+            <h4 class="type-label-caps text-text-muted">
+                {{ labels.comparisonTitle }}
+            </h4>
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div :class="field">
+                    <span :id="`${id}-source`">{{ labels.sourceLabel }}</span>
+                    <SegmentedControl
+                        :model-value="priorPicked ? 'prior' : 'mapped'"
+                        :options="[
+                            { value: 'mapped', label: labels.sourceMapped },
+                            { value: 'prior', label: labels.sourcePrior },
+                        ]"
+                        :label="labels.sourceLabel"
+                        data-test="comparison-source-control"
+                        @update:model-value="setSource"
+                    />
+                </div>
+                <div :class="field">
+                    <label :for="`${id}-mode`">{{ labels.modeLabel }}</label>
+                    <NativeSelect
+                        :id="`${id}-mode`"
+                        :model-value="mode"
+                        :disabled="disabled || priorPicked"
+                        :aria-invalid="err('mode') ? 'true' : undefined"
+                        data-test="comparison-mode"
+                        @update:model-value="(v) => setMode(String(v))"
+                    >
+                        <option value="">{{ labels.modeValue }}</option>
+                        <option
+                            v-for="option in COMPARISON_MODES"
+                            :key="option"
+                            :value="option"
+                            :disabled="option === 'pp_delta' && !ratio"
+                        >
+                            {{ labels.modes[option] }}
+                        </option>
+                    </NativeSelect>
+                </div>
+            </div>
+            <p
+                v-if="priorPicked"
+                class="type-caption text-text-secondary"
+                data-test="comparison-prior-note"
+            >
+                {{ labels.sourcePriorReason }}
+            </p>
+            <p
+                v-if="!ratio"
+                class="type-caption text-text-muted"
+                data-test="comparison-pp-reason"
+            >
+                {{ labels.modePpReason }}
+            </p>
+            <p class="type-caption text-text-secondary">
+                {{ labels.modeNote }}
+            </p>
+            <p
+                v-if="mode !== ''"
+                class="type-caption text-text-secondary"
+                data-test="comparison-example"
+            >
+                {{
+                    modeExample === null
+                        ? labels.modeNoExample
+                        : labels.modeExample(modeExample)
+                }}
+            </p>
+            <p v-if="err('mode')" class="type-caption text-error-text">
+                {{ err('mode') }}
+            </p>
+        </section>
 
         <!-- Labels -->
         <div class="grid gap-3 sm:grid-cols-3">

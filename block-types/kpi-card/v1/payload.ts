@@ -75,6 +75,8 @@ export type KpiCardPayload = {
         format: FormatDescriptor;
         direction: DeltaDirection;
         lowerIsBetter: boolean;
+        // The change writes its own minus sign (an absolute or point change), beside the arrow.
+        signed?: boolean;
     } | null;
     comparisonLabel: string | null;
     secondaryNote: string | null;
