@@ -72,6 +72,9 @@ const isColumn = computed(() => /^col_\d+$/.test(key.value));
 const isFirstColumn = computed(() => key.value === 'col_1');
 // A progress list's colour rule sits on its progress row (Story 5.13).
 const isProgress = computed(() => key.value === 'progress_value');
+// A calendar's week strip sits on its date row, a text Block's mode and colour rule on its value row (Story 5.14).
+const isAgendaDate = computed(() => key.value === 'event_date');
+const isStatusText = computed(() => key.value === 'status_text');
 const COLUMN_KEYS = Array.from({ length: 12 }, (_, n) => `col_${n + 1}`);
 const numeric = computed(
     () =>
@@ -241,6 +244,23 @@ function setHighlight(next: string): void {
         clean({
             ...props.rules,
             highlight_column: next === '' ? undefined : next,
+        }),
+    );
+}
+
+function setWeekStrip(next: boolean): void {
+    emit(
+        'change',
+        clean({ ...props.rules, week_strip: next ? true : undefined }),
+    );
+}
+
+function setTextMode(next: string): void {
+    emit(
+        'change',
+        clean({
+            ...props.rules,
+            text_mode: next === 'status' ? 'status' : undefined,
         }),
     );
 }
@@ -1112,6 +1132,51 @@ const field = 'grid gap-1 [&>label]:type-caption [&>label]:text-text-secondary';
             </div>
         </section>
 
+        <!-- A calendar's week strip (Story 5.14) -->
+        <section
+            v-if="isAgendaDate"
+            class="grid min-w-0 content-start gap-2"
+            :aria-label="labels.agendaTitle"
+            data-test="agenda-settings"
+        >
+            <h4 class="type-label-caps text-text-muted">
+                {{ labels.agendaTitle }}
+            </h4>
+            <label class="type-body-sm flex items-center gap-2">
+                <Checkbox
+                    :model-value="rules.week_strip === true"
+                    :disabled="disabled"
+                    data-test="agenda-week-strip"
+                    @update:model-value="(v) => setWeekStrip(v === true)"
+                />
+                {{ labels.agendaWeekStrip }}
+            </label>
+        </section>
+
+        <!-- A text Block's mode (Story 5.14) -->
+        <section
+            v-if="isStatusText"
+            class="grid min-w-0 content-start gap-2"
+            :aria-label="labels.textModeTitle"
+            data-test="text-mode-settings"
+        >
+            <div :class="field">
+                <label :for="`${id}-text-mode`">{{
+                    labels.textModeTitle
+                }}</label>
+                <NativeSelect
+                    :id="`${id}-text-mode`"
+                    :model-value="rules.text_mode ?? 'text'"
+                    :disabled="disabled"
+                    data-test="text-mode"
+                    @update:model-value="(v) => setTextMode(String(v))"
+                >
+                    <option value="text">{{ labels.textModeText }}</option>
+                    <option value="status">{{ labels.textModeStatus }}</option>
+                </NativeSelect>
+            </div>
+        </section>
+
         <!-- A table column (Story 5.12) -->
         <section
             v-if="isColumn"
@@ -1327,7 +1392,7 @@ const field = 'grid gap-1 [&>label]:type-caption [&>label]:text-text-secondary';
 
         <!-- Bands (on the headline value) -->
         <BandsEditor
-            v-if="isHeadline || isFirstColumn || isProgress"
+            v-if="isHeadline || isFirstColumn || isProgress || isStatusText"
             :bands="rules.bands ?? []"
             :errors="errors"
             :disabled="disabled"

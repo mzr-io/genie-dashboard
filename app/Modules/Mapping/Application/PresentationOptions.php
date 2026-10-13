@@ -95,6 +95,23 @@ final class PresentationOptions
             $options['statusBand'] = ['text' => $band['label'], 'color' => $band['color'], 'icon' => $band['icon']];
         }
 
+        // A text or status Block (Story 5.14): its value is judged by the same bands, by value or by match.
+        if ($band === null && is_string($values['status_text'] ?? null)) {
+            $band = $this->firstBand($presentation['bands'] ?? null, $values['status_text'], $values['status_text']);
+
+            if ($band !== null) {
+                $options['statusBand'] = ['text' => $band['label'], 'color' => $band['color'], 'icon' => $band['icon']];
+            }
+        }
+
+        if (is_bool($presentation['week_strip'] ?? null)) {
+            $options['weekStrip'] = $presentation['week_strip'];
+        }
+
+        if (is_string($presentation['text_mode'] ?? null)) {
+            $options['textMode'] = $presentation['text_mode'];
+        }
+
         // A table (Story 5.12): the rules of each column, the page size and, per row, the band the highlight column's value falls in.
         $columns = [];
 

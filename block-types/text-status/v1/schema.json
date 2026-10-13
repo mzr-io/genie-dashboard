@@ -1,0 +1,48 @@
+{
+    "key": "text-status",
+    "contractVersion": 1,
+    "title": "Text and status",
+    "slots": [
+        {
+            "key": "title",
+            "label": "Title",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "icon",
+            "label": "Icon",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label", "filter"]
+        },
+        {
+            "key": "footer_action",
+            "label": "Footer action",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "status_text",
+            "label": "Text or status value",
+            "required": true,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label", "dimension", "filter"]
+        }
+    ],
+    "size": {
+        "defaultWidth": 3,
+        "minWidth": 3,
+        "maxWidth": 6,
+        "defaultHeight": "small",
+        "minHeight": "small",
+        "maxHeight": "medium"
+    },
+    "defaultAggregations": {}
+}

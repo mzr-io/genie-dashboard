@@ -142,7 +142,7 @@ development_status:
   5-11-bar-and-pie-donut-block-types: review
   5-12-table-block-type-with-sort-pagination-and-stable-row-keys: review
   5-13-list-and-progress-list-block-types: review
-  5-14-activity-feed-calendar-agenda-and-text-status-block-types: backlog
+  5-14-activity-feed-calendar-agenda-and-text-status-block-types: review
   5-15-change-block-type-while-keeping-same-name-slots: backlog
   5-16-xss-fixtures-through-every-slot-of-every-block-type: backlog
   5-17-add-a-block-type-with-only-a-package-and-versioned-contracts: backlog

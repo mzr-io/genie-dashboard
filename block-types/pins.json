@@ -31,6 +31,18 @@
         {
             "key": "progress-list",
             "contractVersion": 1
+        },
+        {
+            "key": "activity-feed",
+            "contractVersion": 1
+        },
+        {
+            "key": "calendar-agenda",
+            "contractVersion": 1
+        },
+        {
+            "key": "text-status",
+            "contractVersion": 1
         }
     ]
 }

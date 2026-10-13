@@ -94,6 +94,87 @@ defineProps<{ type: string }>();
                 stroke-dasharray="26 88"
             />
         </template>
+        <template v-else-if="type === 'activity-feed'">
+            <circle cx="12" cy="13" r="3" class="fill-chart-1" />
+            <rect
+                x="20"
+                y="10"
+                width="34"
+                height="3"
+                class="fill-text-secondary"
+            />
+            <rect
+                x="20"
+                y="15"
+                width="20"
+                height="2"
+                class="fill-surface-muted"
+            />
+            <circle cx="12" cy="30" r="3" class="fill-chart-2" />
+            <rect
+                x="20"
+                y="27"
+                width="30"
+                height="3"
+                class="fill-text-secondary"
+            />
+            <rect
+                x="20"
+                y="32"
+                width="16"
+                height="2"
+                class="fill-surface-muted"
+            />
+        </template>
+        <template v-else-if="type === 'calendar-agenda'">
+            <rect
+                x="8"
+                y="8"
+                width="48"
+                height="6"
+                class="fill-surface-muted"
+            />
+            <rect x="10" y="20" width="2" height="8" class="fill-chart-1" />
+            <rect
+                x="16"
+                y="21"
+                width="36"
+                height="3"
+                class="fill-text-secondary"
+            />
+            <rect x="10" y="32" width="2" height="8" class="fill-chart-3" />
+            <rect
+                x="16"
+                y="33"
+                width="28"
+                height="3"
+                class="fill-text-secondary"
+            />
+        </template>
+        <template v-else-if="type === 'text-status'">
+            <rect
+                x="12"
+                y="14"
+                width="40"
+                height="3"
+                class="fill-text-secondary"
+            />
+            <rect
+                x="12"
+                y="21"
+                width="32"
+                height="3"
+                class="fill-surface-muted"
+            />
+            <rect
+                x="12"
+                y="31"
+                width="22"
+                height="9"
+                rx="4"
+                class="fill-chart-2"
+            />
+        </template>
         <template v-else-if="type === 'list'">
             <circle cx="14" cy="13" r="4" class="fill-chart-1" />
             <rect

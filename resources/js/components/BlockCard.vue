@@ -283,7 +283,20 @@ const aboutRows = computed(() => {
 
     const asOf = props.result?.data_as_of ?? null;
 
+    // A text Block clamps its text to three lines; the whole of it is here (Story 5.14).
+    const shown = payload.value as unknown as {
+        mode?: unknown;
+        text?: unknown;
+    } | null;
+    const full: Array<[string, string]> =
+        shown !== null &&
+        shown.mode === 'text' &&
+        typeof shown.text === 'string'
+            ? [[labels.about.fullText, shown.text]]
+            : [];
+
     return [
+        ...full,
         [labels.about.description, about.description ?? labels.about.none],
         [labels.about.source, about.source_name ?? labels.about.none],
         [labels.about.interval, intervalText(about.refresh_interval)],

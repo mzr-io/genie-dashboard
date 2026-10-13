@@ -1,0 +1,104 @@
+{
+    "key": "calendar-agenda",
+    "contractVersion": 1,
+    "title": "Calendar and agenda",
+    "slots": [
+        {
+            "key": "title",
+            "label": "Title",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "subtitle",
+            "label": "Subtitle",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "icon",
+            "label": "Icon",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label", "filter"]
+        },
+        {
+            "key": "footer_action",
+            "label": "Footer action",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "event_date",
+            "label": "Date",
+            "required": true,
+            "valueType": "datetime",
+            "cardinality": "rows",
+            "fieldRoles": ["time"]
+        },
+        {
+            "key": "start_time",
+            "label": "Start time",
+            "required": true,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["label", "dimension", "time"]
+        },
+        {
+            "key": "event_title",
+            "label": "Title of the event",
+            "required": true,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["label", "dimension"]
+        },
+        {
+            "key": "event_subtitle",
+            "label": "Subtitle or location",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["label", "dimension"]
+        },
+        {
+            "key": "duration",
+            "label": "Duration in minutes",
+            "required": false,
+            "valueType": "number",
+            "cardinality": "rows",
+            "fieldRoles": ["value", "measure"]
+        },
+        {
+            "key": "category",
+            "label": "Category",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["label", "dimension", "filter"]
+        },
+        {
+            "key": "row_key",
+            "label": "Row key",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["dimension", "label", "filter"]
+        }
+    ],
+    "size": {
+        "defaultWidth": 4,
+        "minWidth": 3,
+        "maxWidth": 6,
+        "defaultHeight": "medium",
+        "minHeight": "small",
+        "maxHeight": "large"
+    },
+    "defaultAggregations": {}
+}

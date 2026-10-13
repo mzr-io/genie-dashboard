@@ -1,0 +1,96 @@
+{
+    "key": "activity-feed",
+    "contractVersion": 1,
+    "title": "Activity feed",
+    "slots": [
+        {
+            "key": "title",
+            "label": "Title",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "subtitle",
+            "label": "Subtitle",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "icon",
+            "label": "Icon",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label", "filter"]
+        },
+        {
+            "key": "footer_action",
+            "label": "Footer action",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "actor",
+            "label": "Actor",
+            "required": true,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["label", "dimension"]
+        },
+        {
+            "key": "action",
+            "label": "Action",
+            "required": true,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["label", "dimension"]
+        },
+        {
+            "key": "object",
+            "label": "Object",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["label", "dimension"]
+        },
+        {
+            "key": "timestamp",
+            "label": "Timestamp",
+            "required": true,
+            "valueType": "datetime",
+            "cardinality": "rows",
+            "fieldRoles": ["time"]
+        },
+        {
+            "key": "avatar",
+            "label": "Avatar name",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["label", "dimension"]
+        },
+        {
+            "key": "row_key",
+            "label": "Row key",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["dimension", "label", "filter"]
+        }
+    ],
+    "size": {
+        "defaultWidth": 4,
+        "minWidth": 3,
+        "maxWidth": 6,
+        "defaultHeight": "medium",
+        "minHeight": "small",
+        "maxHeight": "large"
+    },
+    "defaultAggregations": {}
+}

@@ -1,5 +1,7 @@
 import { defineAsyncComponent } from 'vue';
 import type { Component } from 'vue';
+import * as activityTable from '@block-types/activity-feed/v1/table';
+import * as agendaTable from '@block-types/calendar-agenda/v1/table';
 import * as barTable from '@block-types/bar/v1/table';
 import * as lineAreaTable from '@block-types/line-area/v1/table';
 import * as listTable from '@block-types/list/v1/table';
@@ -25,6 +27,15 @@ export const blockRenderers: Record<string, Component> = {
     ),
     table: defineAsyncComponent(
         () => import('@block-types/table/v1/Renderer.vue'),
+    ),
+    'activity-feed': defineAsyncComponent(
+        () => import('@block-types/activity-feed/v1/Renderer.vue'),
+    ),
+    'calendar-agenda': defineAsyncComponent(
+        () => import('@block-types/calendar-agenda/v1/Renderer.vue'),
+    ),
+    'text-status': defineAsyncComponent(
+        () => import('@block-types/text-status/v1/Renderer.vue'),
     ),
     list: defineAsyncComponent(
         () => import('@block-types/list/v1/Renderer.vue'),
@@ -65,6 +76,18 @@ export const tableBuilders: Record<string, TableBuilder> = {
             tableTable.tableOf(payload as never, locale),
         cell: (key, value, payload, locale) =>
             tableTable.cell(key, value, payload as never, locale),
+    },
+    'activity-feed': {
+        table: (payload, locale) =>
+            activityTable.tableOf(payload as never, locale),
+        cell: (key, value, payload, locale) =>
+            activityTable.cell(key, value, payload, locale),
+    },
+    'calendar-agenda': {
+        table: (payload, locale) =>
+            agendaTable.tableOf(payload as never, locale),
+        cell: (key, value, payload, locale) =>
+            agendaTable.cell(key, value, payload, locale),
     },
     list: {
         table: (payload, locale) => listTable.tableOf(payload as never, locale),

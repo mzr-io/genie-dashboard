@@ -186,6 +186,9 @@ export type PresentationRules = {
     // A table (Story 5.12): rows per page (text while it is being typed) and the column its highlight bands read.
     page_size?: number | string;
     highlight_column?: string;
+    // A calendar's week strip and a text Block's mode (Story 5.14).
+    week_strip?: boolean;
+    text_mode?: 'text' | 'status';
 };
 
 // What `PUT .../mapping/presentation` answers.
@@ -279,6 +282,8 @@ export function clean(rules: PresentationRules): PresentationRules {
         'centre_label',
         'page_size',
         'highlight_column',
+        'week_strip',
+        'text_mode',
     ] as const) {
         if (rules[key] !== undefined && rules[key] !== '') {
             (out as Record<string, unknown>)[key] = rules[key];

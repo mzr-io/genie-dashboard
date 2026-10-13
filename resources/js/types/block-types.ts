@@ -52,6 +52,115 @@ export interface BlockType {
     default_aggregations: Record<string, BlockTypeAggregation>;
 }
 
+export type ActivityFeedSlotKey =
+    | 'title'
+    | 'subtitle'
+    | 'icon'
+    | 'footer_action'
+    | 'actor'
+    | 'action'
+    | 'object'
+    | 'timestamp'
+    | 'avatar'
+    | 'row_key';
+
+export const activityFeedV1: BlockType = {
+    key: 'activity-feed',
+    contract_version: 1,
+    title: 'Activity feed',
+    slots: [
+        {
+            key: 'title',
+            label: 'Title',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'subtitle',
+            label: 'Subtitle',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'icon',
+            label: 'Icon',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label', 'filter'],
+        },
+        {
+            key: 'footer_action',
+            label: 'Footer action',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'actor',
+            label: 'Actor',
+            required: true,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension'],
+        },
+        {
+            key: 'action',
+            label: 'Action',
+            required: true,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension'],
+        },
+        {
+            key: 'object',
+            label: 'Object',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension'],
+        },
+        {
+            key: 'timestamp',
+            label: 'Timestamp',
+            required: true,
+            value_type: 'datetime',
+            cardinality: 'rows',
+            field_roles: ['time'],
+        },
+        {
+            key: 'avatar',
+            label: 'Avatar name',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension'],
+        },
+        {
+            key: 'row_key',
+            label: 'Row key',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['dimension', 'label', 'filter'],
+        },
+    ],
+    size: {
+        default_width: 4,
+        min_width: 3,
+        max_width: 6,
+        default_height: 'medium',
+        min_height: 'small',
+        max_height: 'large',
+    },
+    default_aggregations: {},
+};
+
 export type BarSlotKey =
     | 'title'
     | 'subtitle'
@@ -162,6 +271,124 @@ export const barV1: BlockType = {
         {
             key: 'series_key',
             label: 'Series key',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['dimension', 'label', 'filter'],
+        },
+    ],
+    size: {
+        default_width: 4,
+        min_width: 3,
+        max_width: 6,
+        default_height: 'medium',
+        min_height: 'small',
+        max_height: 'large',
+    },
+    default_aggregations: {},
+};
+
+export type CalendarAgendaSlotKey =
+    | 'title'
+    | 'subtitle'
+    | 'icon'
+    | 'footer_action'
+    | 'event_date'
+    | 'start_time'
+    | 'event_title'
+    | 'event_subtitle'
+    | 'duration'
+    | 'category'
+    | 'row_key';
+
+export const calendarAgendaV1: BlockType = {
+    key: 'calendar-agenda',
+    contract_version: 1,
+    title: 'Calendar and agenda',
+    slots: [
+        {
+            key: 'title',
+            label: 'Title',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'subtitle',
+            label: 'Subtitle',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'icon',
+            label: 'Icon',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label', 'filter'],
+        },
+        {
+            key: 'footer_action',
+            label: 'Footer action',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'event_date',
+            label: 'Date',
+            required: true,
+            value_type: 'datetime',
+            cardinality: 'rows',
+            field_roles: ['time'],
+        },
+        {
+            key: 'start_time',
+            label: 'Start time',
+            required: true,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension', 'time'],
+        },
+        {
+            key: 'event_title',
+            label: 'Title of the event',
+            required: true,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension'],
+        },
+        {
+            key: 'event_subtitle',
+            label: 'Subtitle or location',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension'],
+        },
+        {
+            key: 'duration',
+            label: 'Duration in minutes',
+            required: false,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'category',
+            label: 'Category',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['label', 'dimension', 'filter'],
+        },
+        {
+            key: 'row_key',
+            label: 'Row key',
             required: false,
             value_type: 'text',
             cardinality: 'rows',
@@ -1226,6 +1453,61 @@ export const tableV1: BlockType = {
         default_height: 'large',
         min_height: 'medium',
         max_height: 'large',
+    },
+    default_aggregations: {},
+};
+
+export type TextStatusSlotKey =
+    | 'title'
+    | 'icon'
+    | 'footer_action'
+    | 'status_text';
+
+export const textStatusV1: BlockType = {
+    key: 'text-status',
+    contract_version: 1,
+    title: 'Text and status',
+    slots: [
+        {
+            key: 'title',
+            label: 'Title',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'icon',
+            label: 'Icon',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label', 'filter'],
+        },
+        {
+            key: 'footer_action',
+            label: 'Footer action',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'status_text',
+            label: 'Text or status value',
+            required: true,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label', 'dimension', 'filter'],
+        },
+    ],
+    size: {
+        default_width: 3,
+        min_width: 3,
+        max_width: 6,
+        default_height: 'small',
+        min_height: 'small',
+        max_height: 'medium',
     },
     default_aggregations: {},
 };

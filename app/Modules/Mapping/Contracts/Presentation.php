@@ -55,6 +55,8 @@ final class Presentation
 
     public const SORTS = ['data', 'value'];
 
+    public const TEXT_MODES = ['text', 'status'];
+
     public const CENTRES = ['value', 'total', 'none'];
 
     public const OPS = ['>=', '<=', 'between', 'equals'];
@@ -121,7 +123,7 @@ final class Presentation
         $out = [];
 
         foreach (array_keys($input) as $key) {
-            if (! in_array($key, ['slots', 'bands', 'empty_display', 'chart_kind', 'direct_labels', 'orientation', 'value_labels', 'sort', 'centre', 'centre_label', 'page_size', 'highlight_column'], true)) {
+            if (! in_array($key, ['slots', 'bands', 'empty_display', 'chart_kind', 'direct_labels', 'orientation', 'value_labels', 'sort', 'centre', 'centre_label', 'page_size', 'highlight_column', 'week_strip', 'text_mode'], true)) {
                 $errors[self::ROOT.'.'.self::name($key)] = ['This is not a presentation setting.'];
             }
         }
@@ -177,6 +179,23 @@ final class Presentation
                 $out['highlight_column'] = $input['highlight_column'];
             } else {
                 $errors[self::ROOT.'.highlight_column'] = ['Choose a column of the table.'];
+            }
+        }
+
+        // A calendar's week strip and whether a text Block is its text or a status pill (Story 5.14).
+        if (array_key_exists('week_strip', $input) && $input['week_strip'] !== null) {
+            if (is_bool($input['week_strip'])) {
+                $out['week_strip'] = $input['week_strip'];
+            } else {
+                $errors[self::ROOT.'.week_strip'] = ['The week strip is on or off.'];
+            }
+        }
+
+        if (array_key_exists('text_mode', $input) && $input['text_mode'] !== null) {
+            if (is_string($input['text_mode']) && in_array($input['text_mode'], self::TEXT_MODES, true)) {
+                $out['text_mode'] = $input['text_mode'];
+            } else {
+                $errors[self::ROOT.'.text_mode'] = ['Choose one of: '.implode(', ', self::TEXT_MODES).'.'];
             }
         }
 

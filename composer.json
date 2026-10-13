@@ -52,6 +52,9 @@
             "BlockTypes\\Table\\V1\\": "block-types/table/v1/",
             "BlockTypes\\ItemList\\V1\\": "block-types/list/v1/",
             "BlockTypes\\ProgressList\\V1\\": "block-types/progress-list/v1/",
+            "BlockTypes\\ActivityFeed\\V1\\": "block-types/activity-feed/v1/",
+            "BlockTypes\\CalendarAgenda\\V1\\": "block-types/calendar-agenda/v1/",
+            "BlockTypes\\TextStatus\\V1\\": "block-types/text-status/v1/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         }

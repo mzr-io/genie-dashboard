@@ -2464,6 +2464,12 @@ export const blockPresentationLabels = {
     tableHighlight: 'Highlight rows by',
     tableNoHighlight: 'No highlight',
     tableColumn: 'Column',
+    // Calendars and text Blocks (Story 5.14).
+    agendaTitle: 'Agenda',
+    agendaWeekStrip: 'Show the week strip',
+    textModeTitle: 'Show the value as',
+    textModeText: 'Text',
+    textModeStatus: 'Status pill',
     // Comparison source and mode (Story 5.5).
     comparisonTitle: 'Comparison',
     sourceLabel: 'Source',
@@ -3040,6 +3046,7 @@ export const dashboardLabels = {
     menuRemove: 'Remove from dashboard',
     about: {
         title: 'About this block',
+        fullText: 'Full text',
         description: 'Description',
         source: 'Data source',
         interval: 'Refresh interval',

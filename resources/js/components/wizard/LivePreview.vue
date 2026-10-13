@@ -5,6 +5,9 @@ import BarRenderer from '@block-types/bar/v1/Renderer.vue';
 import KpiChartRenderer from '@block-types/kpi-chart/v1/Renderer.vue';
 import LineAreaRenderer from '@block-types/line-area/v1/Renderer.vue';
 import PieDonutRenderer from '@block-types/pie-donut/v1/Renderer.vue';
+import ActivityFeedRenderer from '@block-types/activity-feed/v1/Renderer.vue';
+import CalendarAgendaRenderer from '@block-types/calendar-agenda/v1/Renderer.vue';
+import TextStatusRenderer from '@block-types/text-status/v1/Renderer.vue';
 import ListRenderer from '@block-types/list/v1/Renderer.vue';
 import ProgressListRenderer from '@block-types/progress-list/v1/Renderer.vue';
 import TableRenderer from '@block-types/table/v1/Renderer.vue';
@@ -197,6 +200,29 @@ const LIST_REGIONS: Record<string, { selector: string; text?: string }> = {
     item_status: { selector: '[data-test=list-status]' },
     row_key: { selector: '[data-test=list-block]' },
 };
+const ACTIVITY_REGIONS: Record<string, { selector: string; text?: string }> = {
+    actor: { selector: '[data-test=activity-actor]' },
+    action: { selector: '[data-test=activity-action]' },
+    object: { selector: '[data-test=activity-object]' },
+    timestamp: { selector: '[data-test=activity-time]' },
+    avatar: { selector: '[data-test=avatar-initials]' },
+    row_key: { selector: '[data-test=activity-feed-block]' },
+};
+const AGENDA_REGIONS: Record<string, { selector: string; text?: string }> = {
+    event_date: { selector: '[data-test=agenda-day]' },
+    start_time: { selector: '[data-test=agenda-time]' },
+    event_title: { selector: '[data-test=agenda-title]' },
+    event_subtitle: { selector: '[data-test=agenda-subtitle]' },
+    duration: { selector: '[data-test=agenda-subtitle]' },
+    category: { selector: '[data-test=agenda-category]' },
+    row_key: { selector: '[data-test=calendar-block]' },
+};
+const TEXT_STATUS_REGIONS: Record<string, { selector: string; text?: string }> =
+    {
+        status_text: {
+            selector: '[data-test=text-body],[data-test=status-pill]',
+        },
+    };
 const PROGRESS_REGIONS: Record<string, { selector: string; text?: string }> = {
     item_title: { selector: '[data-test=progress-title]' },
     progress_value: { selector: '[data-test=progress-percent]' },
@@ -207,17 +233,23 @@ const PROGRESS_REGIONS: Record<string, { selector: string; text?: string }> = {
 const isChart = computed(() => props.typeKey in CHART_SLOTS);
 // A KPI & Chart has the card's regions and the chart's (Story 5.10).
 const regionMap = computed(() =>
-    props.typeKey === 'list'
-        ? LIST_REGIONS
-        : props.typeKey === 'progress-list'
-          ? PROGRESS_REGIONS
-          : props.typeKey === 'table'
-            ? TABLE_REGIONS
-            : props.typeKey === 'kpi-chart'
-              ? { ...REGIONS, ...chartRegions(CHART_SLOTS['kpi-chart']) }
-              : isChart.value
-                ? chartRegions(CHART_SLOTS[props.typeKey])
-                : REGIONS,
+    props.typeKey === 'activity-feed'
+        ? ACTIVITY_REGIONS
+        : props.typeKey === 'calendar-agenda'
+          ? AGENDA_REGIONS
+          : props.typeKey === 'text-status'
+            ? TEXT_STATUS_REGIONS
+            : props.typeKey === 'list'
+              ? LIST_REGIONS
+              : props.typeKey === 'progress-list'
+                ? PROGRESS_REGIONS
+                : props.typeKey === 'table'
+                  ? TABLE_REGIONS
+                  : props.typeKey === 'kpi-chart'
+                    ? { ...REGIONS, ...chartRegions(CHART_SLOTS['kpi-chart']) }
+                    : isChart.value
+                      ? chartRegions(CHART_SLOTS[props.typeKey])
+                      : REGIONS,
 );
 // The slot a Block cannot be drawn without: the headline of a card, the axis (or the categories) of a chart.
 const primarySlot = computed(
@@ -228,6 +260,9 @@ const primarySlot = computed(
             'pie-donut': 'pie_category',
             table: 'col_1',
             list: 'item_title',
+            'activity-feed': 'actor',
+            'calendar-agenda': 'event_title',
+            'text-status': 'status_text',
             'progress-list': 'progress_value',
         })[props.typeKey] ?? 'headline_value',
 );
@@ -241,6 +276,9 @@ const rendererOf = computed(
             'pie-donut': PieDonutRenderer,
             table: TableRenderer,
             list: ListRenderer,
+            'activity-feed': ActivityFeedRenderer,
+            'calendar-agenda': CalendarAgendaRenderer,
+            'text-status': TextStatusRenderer,
             'progress-list': ProgressListRenderer,
         })[props.typeKey] ?? KpiRenderer,
 );

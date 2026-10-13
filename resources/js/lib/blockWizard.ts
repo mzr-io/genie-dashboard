@@ -1,11 +1,14 @@
 import {
+    activityFeedV1,
     barV1,
+    calendarAgendaV1,
     kpiCardV1,
     kpiChartV1,
     lineAreaV1,
     listV1,
     progressListV1,
     tableV1,
+    textStatusV1,
 } from '@/types/block-types';
 import type { BlockType, BlockTypeHeight } from '@/types/block-types';
 import { DRAFT_BLOCKS_URL } from '@/lib/draftBlocks';
@@ -30,6 +33,9 @@ export const BLOCK_TYPES: BlockType[] = [
     tableV1,
     listV1,
     progressListV1,
+    activityFeedV1,
+    calendarAgendaV1,
+    textStatusV1,
 ];
 
 export type PeriodBehavior =

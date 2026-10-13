@@ -150,6 +150,8 @@ const TEXT_KEYS = [
     'comparisonLabel',
     'secondaryNote',
     'footerAction',
+    // A text Block's text (Story 5.14).
+    'text',
 ] as const;
 
 // The texts of a list row and of a progress row that a template may have written.
@@ -181,7 +183,7 @@ export function expandKpiPayload(
     let changed = false;
 
     for (const key of TEXT_KEYS) {
-        const value = payload[key];
+        const value = (payload as unknown as Record<string, unknown>)[key];
 
         if (typeof value === 'string' && value.includes('{')) {
             next[key] = expandTemplate(value, ctx);
