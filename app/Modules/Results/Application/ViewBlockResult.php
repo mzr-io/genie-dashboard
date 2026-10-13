@@ -7,6 +7,7 @@ use App\Modules\Access\Contracts\MembershipNotFound;
 use App\Modules\Access\Contracts\UserContext;
 use App\Modules\Blocks\Contracts\PublishedConfig;
 use App\Modules\Blocks\Contracts\PublishedConfigs;
+use App\Modules\BlockTypes\Contracts\KpiCardSlots;
 use App\Modules\Ingestion\Contracts\ComputeSources;
 use App\Modules\Ingestion\Contracts\EndpointUserBindings;
 use App\Modules\Ingestion\Contracts\RefreshIntervals;
@@ -24,6 +25,7 @@ use App\Platform\Period\InvalidPeriodInput;
 use App\Platform\Period\PeriodBehaviour;
 use App\Platform\Period\PeriodPreset;
 use App\Platform\Period\PeriodResolver;
+use App\Platform\Period\PriorWindow;
 use App\Platform\Period\ResolvedPeriod;
 use App\Platform\Tenancy\TenantCache;
 use App\Platform\Tenancy\WorkspaceSettings;
@@ -75,9 +77,10 @@ final class ViewBlockResult implements ViewedResults
 
         $now = $this->now();
         $period = $this->period($config, $request, $now);
+        $window = $this->priorWindow($config, $period);
         $context = ComputeContext::of(
             $period === null ? null : ['start' => $period->start, 'end' => $period->lastDay()],
-            null,
+            $window === null ? null : ['start' => $window['start'], 'end' => self::lastDay($window['end'])],
             $this->settings->timezone(),
             $this->settings->revision(),
             $config->contractVersion,
@@ -90,7 +93,7 @@ final class ViewBlockResult implements ViewedResults
             return new ViewedResult(ResultState::Unavailable, null, null, null, self::CONTEXT_MISSING);
         }
 
-        [$hotUntil, $refusal] = $this->keepHot($config, $request, $period, $context, $bound);
+        [$hotUntil, $refusal] = $this->keepHot($config, $request, $period, $context, $bound, $window);
         $watching = $this->sources->watching($workspaceId, $config->versionId, $context);
 
         if ($watching === null) {
@@ -111,7 +114,18 @@ final class ViewBlockResult implements ViewedResults
         }
 
         $interval = $watching->subscription->refreshIntervalSeconds;
-        $lastSuccess = $watching->target->lastSuccessAt === null ? null : new DateTimeImmutable($watching->target->lastSuccessAt);
+        $lastSuccessAt = $watching->target->lastSuccessAt;
+
+        // A comparison Block is as fresh as the older of its two requests; a comparison that has never succeeded has no time, so it reads Stale.
+        if ($window !== null) {
+            $linked = $this->sources->comparisonOf($workspaceId, $targetId);
+
+            if ($linked !== null) {
+                $lastSuccessAt = $lastSuccessAt === null || $linked->lastSuccessAt === null ? null : min($lastSuccessAt, $linked->lastSuccessAt);
+            }
+        }
+
+        $lastSuccess = $lastSuccessAt === null ? null : new DateTimeImmutable($lastSuccessAt);
         $stale = $lastSuccess === null || $interval < 1 || Freshness::isStale($lastSuccess, $interval, $now);
         $hot = $watching->subscription->hotUntil !== null && new DateTimeImmutable($watching->subscription->hotUntil) > $now;
         $staleAt = $lastSuccess === null || $interval < 1 ? null : Freshness::staleAt($lastSuccess, $interval)->format('Y-m-d\TH:i:s\Z');
@@ -170,9 +184,10 @@ final class ViewBlockResult implements ViewedResults
 
     /**
      * @param  array<string, mixed>  $bound
+     * @param  array{start: string, end: string}|null  $window  the prior window of a prior-period comparison, half-open
      * @return array{0: ?string, 1: ?string} hot until, and why the Block is not kept hot
      */
-    private function keepHot(PublishedConfig $config, ViewRequest $request, ?ResolvedPeriod $period, string $context, array $bound): array
+    private function keepHot(PublishedConfig $config, ViewRequest $request, ?ResolvedPeriod $period, string $context, array $bound, ?array $window = null): array
     {
         if ($config->dataSourceId === null || $config->endpointId === null) {
             return [null, self::NO_SOURCE];
@@ -203,7 +218,55 @@ final class ViewBlockResult implements ViewedResults
             $request->membershipId,
         ));
 
+        // The comparison request is a second subscription of the same Block, linked to the primary's target so both are fetched as one group (Story
+        // 5.6). Its refusal never fails the read: the comparison is then unavailable and the primary renders.
+        if ($result->ok() && $window !== null) {
+            $this->subscribe->subscribe(new SubscribeInput(
+                $request->workspaceId,
+                $config->dataSourceId,
+                $config->endpointId,
+                $config->versionId,
+                'comparison',
+                $interval,
+                $context,
+                $window['start'],
+                self::lastDay($window['end']),
+                $bound,
+                $request->membershipId,
+                $result->syncTargetId,
+            ));
+        }
+
         return [$result->hotUntil, $result->ok() ? null : $result->reason];
+    }
+
+    /**
+     * The prior window of a prior-period comparison from the active period (the kernel's {@see PriorWindow}), or null for a Block without one.
+     *
+     * @return array{start: string, end: string}|null
+     */
+    private function priorWindow(PublishedConfig $config, ?ResolvedPeriod $period): ?array
+    {
+        $rules = $config->presentation['slots'][KpiCardSlots::SLOT_COMPARISON] ?? null;
+
+        if ($period === null || ! is_array($rules) || ($rules['source'] ?? null) !== 'prior_period' || ! is_array($rules['window'] ?? null)) {
+            return null;
+        }
+
+        $window = $rules['window'];
+
+        return PriorWindow::of(
+            $period->start,
+            $period->end,
+            is_string($window['kind'] ?? null) ? $window['kind'] : '',
+            is_int($window['amount'] ?? null) ? $window['amount'] : null,
+            is_string($window['unit'] ?? null) ? $window['unit'] : null,
+        );
+    }
+
+    private static function lastDay(string $exclusiveEnd): string
+    {
+        return (new DateTimeImmutable($exclusiveEnd))->modify('-1 day')->format('Y-m-d');
     }
 
     private function now(): DateTimeImmutable

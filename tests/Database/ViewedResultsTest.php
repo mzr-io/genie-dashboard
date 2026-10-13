@@ -46,6 +46,7 @@ beforeEach(function () {
         'dashflow.preview.max_evaluations.value' => '1000',
         'dashflow.preview.max_wall_ms.value' => '5000',
         'dashflow.results.ttl.value' => '600',
+        'dashflow.tunables.numbers.decimal_scale.value' => '6',
     ]);
 });
 
@@ -79,7 +80,7 @@ function vrWorld(array $display = [], array $endpoint = [], array $source = []):
         'schema_version' => 1, 'type_key' => 'kpi-card', 'contract_version' => 1,
         'source' => $source + ['data_source_id' => $dataSource, 'endpoint_id' => $endpointId, 'bindings' => [], 'refresh_interval' => 60, 'default_date_range' => ['preset' => 'this_month']],
         'query_plan' => ['v' => 1, 'extract' => ['fields' => ['rev' => '$.data.revenue']], 'shape' => ['headline_value' => 'rev']],
-        'presentation' => [], 'fields' => ['record_path' => null, 'items' => []], 'refresh_interval' => 60,
+        'presentation' => $display['presentation'] ?? [], 'fields' => ['record_path' => null, 'items' => []], 'refresh_interval' => 60,
     ] + ['period' => $display['period'] ?? 'follow_dashboard'];
     $version = Cluster::seedBlockVersion($ws, ['state' => $display['state'] ?? 'published', 'config' => json_encode($config), 'prepared_at' => '2026-10-12 09:00:00+00']
         + (($display['state'] ?? 'published') === 'published' ? ['published_at' => '2026-10-12 09:00:01+00'] : []));
@@ -207,4 +208,88 @@ it('never calls the source on the read path, even when every call would fail', f
     $view = vrView($w);
 
     expect($view->state)->toBe(ResultState::Ok)->and($curl->calls)->toBe(0);
+});
+
+// Story 5.6: a prior-period comparison subscribes a second, linked target for the prior window, computes only from a complete generation, is as fresh
+// as the older request, and is unavailable (the headline still shown) while the newest generation's comparison side failed.
+function vrGeneration(array $w, string $primary, string $comparison, int $seq, bool $comparisonOk, ?string $primaryBody, ?string $comparisonBody, int $primaryAgo = 10, int $comparisonAgo = 100): void
+{
+    $db = Cluster::superuser();
+    $primaryPayload = $primaryBody === null ? null : Cluster::seedRawBody($w['ws'], $primary, $primaryBody);
+    $comparisonPayload = $comparisonBody === null || ! $comparisonOk ? null : Cluster::seedRawBody($w['ws'], $comparison, $comparisonBody);
+
+    $db->prepare('UPDATE sync_targets SET current_payload_id = ?, payload_seq = ?, last_success_at = now() - make_interval(secs => ?), payload_changed_at = now() - make_interval(secs => ?) WHERE id = ?')
+        ->execute([$primaryPayload, $seq, $primaryAgo, $primaryAgo, $primary]);
+
+    if ($comparisonPayload !== null) {
+        $db->prepare('UPDATE sync_targets SET current_payload_id = ?, payload_seq = ?, last_success_at = now() - make_interval(secs => ?), payload_changed_at = now() - make_interval(secs => ?) WHERE id = ?')
+            ->execute([$comparisonPayload, $seq, $comparisonAgo, $comparisonAgo, $comparison]);
+    }
+
+    $db->prepare('UPDATE sync_targets SET last_success_at = now() - make_interval(secs => ?) WHERE id = ?')->execute([$comparisonAgo, $comparison]);
+    $group = Cluster::rows($db, 'select sync_group_id from sync_targets where id = ?', [$primary])[0]['sync_group_id'];
+    $db->prepare(
+        'INSERT INTO sync_generations (id, workspace_id, sync_group_id, primary_target_id, comparison_target_id, dispatch_seq, primary_ok, comparison_ok, complete, primary_payload_id, comparison_payload_id, primary_payload_seq, comparison_payload_seq) '
+        .'VALUES (?, ?, ?, ?, ?, ?, true, ?, ?, ?, ?, ?, ?)',
+    )->execute([(string) Str::uuid7(), $w['ws'], $group, $primary, $comparison, $seq, $comparisonOk ? 'true' : 'false', $comparisonOk ? 'true' : 'false', $primaryPayload, $comparisonPayload, $seq, $comparisonOk ? $seq : 0]);
+
+    app(WorkspaceTransaction::class)->run($w['ws'], fn () => app(ComputeResults::class)->forTarget($w['ws'], $primary));
+}
+
+it('subscribes the comparison request for the prior window, links it to the primary, and serves the change from one complete generation', function () {
+    $w = vrWorld(['presentation' => ['slots' => ['comparison' => ['source' => 'prior_period', 'window' => ['kind' => 'previous_period']]]]]);
+
+    expect(vrView($w)->state)->toBe(ResultState::Pending);
+
+    $subs = Cluster::rows(Cluster::superuser(), 'select * from sync_subscriptions order by role desc');
+    $start = new DateTimeImmutable(gmdate('Y-m-01'));
+    $end = $start->modify('first day of next month');
+    $days = (int) $start->diff($end)->days;
+
+    expect($subs)->toHaveCount(2)
+        ->and($subs[0]['role'])->toBe('primary')
+        ->and($subs[1]['role'])->toBe('comparison')
+        ->and($subs[1]['period_start'])->toBe($start->modify("-{$days} days")->format('Y-m-d'))
+        ->and($subs[1]['period_end'])->toBe($start->modify('-1 day')->format('Y-m-d'))
+        ->and($subs[1]['compute_context'])->toBe($subs[0]['compute_context']);
+
+    $targets = Cluster::rows(Cluster::superuser(), 'select id, group_primary_target_id, sync_group_id from sync_targets order by group_primary_target_id nulls first');
+    [$primary, $comparison] = [$subs[0]['sync_target_id'], $subs[1]['sync_target_id']];
+
+    expect($targets)->toHaveCount(2)
+        ->and($targets[1]['group_primary_target_id'])->toBe($primary)
+        ->and($targets[1]['id'])->toBe($comparison)
+        ->and($targets[1]['sync_group_id'])->toBe($targets[0]['sync_group_id']);
+
+    vrGeneration($w, $primary, $comparison, 1, true, '{"data":{"revenue":284680}}', '{"data":{"revenue":249195}}');
+    $viewed = vrView($w);
+
+    expect($viewed->state)->toBe(ResultState::Ok)
+        ->and($viewed->result->renderPayload['headline']['value'])->toBe('284680')
+        ->and($viewed->result->renderPayload['comparison']['value'])->toBe('14.239852')
+        ->and($viewed->result->slotStates['comparison'])->toBe(['state' => 'ok']);
+
+    // The newest generation's comparison side failed: the primary renders from its new payload, the comparison is unavailable, and the result is
+    // only as fresh as the older request (the comparison has never succeeded since, so it reads Stale).
+    vrGeneration($w, $primary, $comparison, 2, false, '{"data":{"revenue":300000}}', null, primaryAgo: 5, comparisonAgo: 400);
+    $failed = vrView($w);
+
+    expect($failed->result->renderPayload['headline']['value'])->toBe('300000')
+        ->and($failed->result->renderPayload['comparison'])->toBeNull()
+        ->and($failed->result->slotStates['comparison']['state'])->toBe('unavailable')
+        ->and($failed->result->lastSuccessAt)->not->toBe(null)
+        ->and($failed->result->stale)->toBeTrue();
+});
+
+it('gives the comparison window its own compute context, so the result of another window is never served', function () {
+    $plain = vrWorld();
+    $prior = vrWorld(['presentation' => ['slots' => ['comparison' => ['source' => 'prior_period', 'window' => ['kind' => 'same_period_last_year']]]]]);
+
+    vrView($plain);
+    vrView($prior);
+
+    $contexts = Cluster::rows(Cluster::superuser(), "select workspace_id, compute_context from sync_subscriptions where role = 'primary'");
+
+    expect($contexts)->toHaveCount(2)
+        ->and($contexts[0]['compute_context'])->not->toBe($contexts[1]['compute_context']);
 });

@@ -171,6 +171,7 @@ use App\Modules\Ingestion\Infrastructure\SyncSettings;
 use App\Modules\Mapping\Application\AutoMapper;
 use App\Modules\Mapping\Application\DecimalMath;
 use App\Modules\Mapping\Application\FieldRoleInference;
+use App\Modules\Mapping\Application\PresentationOptions;
 use App\Modules\Mapping\Application\PreviewRateLimit;
 use App\Modules\Mapping\Application\QueryPlanEngine;
 use App\Modules\Mapping\Contracts\AutoMapping;
@@ -179,6 +180,7 @@ use App\Modules\Mapping\Contracts\PreviewThrottle;
 use App\Modules\Mapping\Contracts\QueryExecutor;
 use App\Modules\Mapping\Contracts\QueryPlans;
 use App\Modules\Mapping\Infrastructure\InProcessExecutor;
+use App\Modules\Mapping\Infrastructure\PreviewSettings;
 use App\Modules\RawStore\Contracts\RawStore;
 use App\Modules\RawStore\Contracts\RawTierSweep;
 use App\Modules\RawStore\Infrastructure\PostgresRawStore;
@@ -271,7 +273,14 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(BlockTypeShapers::class, PackageShapers::class);
         // The arithmetic of SUM and AVG (Story 5.2) is the platform's one decimal scale.
         $this->app->bind(QueryExecutor::class, fn ($app): InProcessExecutor => new InProcessExecutor(null, new DecimalMath($app->make('config'))));
-        $this->app->bind(QueryPlans::class, QueryPlanEngine::class);
+        // The engine's decimal arithmetic (comparison changes, Stories 5.5 and 5.6) is built here: an optional class parameter is not auto-wired.
+        $this->app->bind(QueryPlans::class, fn ($app): QueryPlanEngine => new QueryPlanEngine(
+            $app->make(QueryExecutor::class),
+            $app->make(BlockTypeShapers::class),
+            $app->make(PreviewSettings::class),
+            new PresentationOptions,
+            new DecimalMath($app->make('config')),
+        ));
         $this->app->bind(FieldRoles::class, FieldRoleInference::class);
         $this->app->bind(DraftFieldRoles::class, ReadDraftFieldRoles::class);
         $this->app->bind(AutoMapping::class, AutoMapper::class);

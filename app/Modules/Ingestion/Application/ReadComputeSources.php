@@ -2,6 +2,7 @@
 
 namespace App\Modules\Ingestion\Application;
 
+use App\Modules\Ingestion\Contracts\ComparisonTarget;
 use App\Modules\Ingestion\Contracts\ComputeSources;
 use App\Modules\Ingestion\Contracts\ComputeSubscription;
 use App\Modules\Ingestion\Contracts\ComputeTarget;
@@ -61,6 +62,25 @@ final class ReadComputeSources implements ComputeSources
         );
 
         return $row === null ? null : strtolower((string) $row->id);
+    }
+
+    public function comparisonOf(string $workspaceId, string $primaryTargetId): ?ComparisonTarget
+    {
+        if (! Str::isUuid($primaryTargetId)) {
+            return null;
+        }
+
+        /** @var \stdClass|null $row */
+        $row = DB::selectOne(
+            'select id, sync_group_id, last_success_at from sync_targets where workspace_id = ? and group_primary_target_id = ? and retired_at is null',
+            [$workspaceId, strtolower($primaryTargetId)],
+        );
+
+        return $row === null ? null : new ComparisonTarget(
+            strtolower((string) $row->id),
+            strtolower((string) $row->sync_group_id),
+            $row->last_success_at === null ? null : CarbonImmutable::parse((string) $row->last_success_at)->utc()->format('Y-m-d\TH:i:s\Z'),
+        );
     }
 
     public function subscriptions(string $workspaceId, string $syncTargetId): array

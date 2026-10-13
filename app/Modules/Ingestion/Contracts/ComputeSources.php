@@ -22,6 +22,9 @@ interface ComputeSources
      */
     public function subscribedTarget(string $workspaceId, string $blockVersionId, string $computeContext): ?string;
 
+    /** The live comparison target linked to a primary (Story 5.6), or null while none is. */
+    public function comparisonOf(string $workspaceId, string $primaryTargetId): ?ComparisonTarget;
+
     /** @return list<ComputeSubscription> the target's primary subscriptions, one per Block version and compute context */
     public function subscriptions(string $workspaceId, string $syncTargetId): array;
 

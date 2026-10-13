@@ -4,6 +4,7 @@ namespace App\Modules\Mapping\Contracts;
 
 use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\BlockTypes\Contracts\KpiCardSlots;
+use App\Platform\Period\PriorWindow;
 
 /**
  * Presentation rules of a Block (Story 3.15a), `config.presentation`: per slot a format descriptor, emphasis, direction and label; threshold `bands`; and
@@ -32,6 +33,9 @@ final class Presentation
 
     /** How a comparison is expressed (Story 5.5): the change in percent, the difference, or the difference of two ratios in percentage points. */
     public const MODES = ['pct_change', 'absolute_delta', 'pp_delta'];
+
+    /** Where a comparison's previous value comes from (Story 5.6): a field of the same response, or the same Endpoint called for a prior window. */
+    public const SOURCES = ['mapped_previous', 'prior_period'];
 
     public const OPS = ['>=', '<=', 'between'];
 
@@ -163,7 +167,7 @@ final class Presentation
             $clean = [];
 
             foreach (array_keys($entry) as $key) {
-                if (! in_array($key, ['format', 'emphasis', 'direction', 'label', 'mode'], true)) {
+                if (! in_array($key, ['format', 'emphasis', 'direction', 'label', 'mode', 'source', 'window'], true)) {
                     $errors["{$at}.".self::name($key)] = ['This is not a slot setting.'];
                 }
             }
@@ -209,6 +213,35 @@ final class Presentation
                 }
             }
 
+            // The prior-period source and its window (Story 5.6).
+            if (($entry['source'] ?? null) !== null) {
+                if ($slot !== KpiCardSlots::SLOT_COMPARISON) {
+                    $errors["{$at}.source"] = ['A comparison source applies to the comparison slot only.'];
+                } elseif (is_string($entry['source']) && in_array($entry['source'], self::SOURCES, true)) {
+                    $clean['source'] = $entry['source'];
+                } else {
+                    $errors["{$at}.source"] = ['Choose one of: '.implode(', ', self::SOURCES).'.'];
+                }
+            }
+
+            if (($entry['window'] ?? null) !== null) {
+                $window = $slot === KpiCardSlots::SLOT_COMPARISON ? self::window($entry['window'], "{$at}.window", $errors) : null;
+
+                if ($slot !== KpiCardSlots::SLOT_COMPARISON) {
+                    $errors["{$at}.window"] = ['A prior window applies to the comparison slot only.'];
+                } elseif ($window !== null) {
+                    $clean['window'] = $window;
+                }
+            }
+
+            if ($slot === KpiCardSlots::SLOT_COMPARISON && ($clean['source'] ?? null) === 'prior_period' && ! isset($clean['window']) && ! isset($errors["{$at}.window"])) {
+                $errors["{$at}.window"] = ['Choose the prior window: the previous period, the same period last year, or an offset.'];
+            }
+
+            if ($slot === KpiCardSlots::SLOT_COMPARISON && isset($clean['window']) && ($clean['source'] ?? null) !== 'prior_period') {
+                $errors["{$at}.window"] = ['A prior window belongs to the prior-period source.'];
+            }
+
             if (($entry['label'] ?? null) !== null) {
                 $label = self::label($entry['label'], "{$at}.label", $errors);
 
@@ -228,6 +261,58 @@ final class Presentation
         }
 
         return $out;
+    }
+
+    /**
+     * The prior window of a comparison: a kind, and for a custom offset a whole number and a unit.
+     *
+     * @param  array<string, list<string>>  $errors
+     * @return array{kind: string, amount?: int, unit?: string}|null
+     */
+    private static function window(mixed $window, string $path, array &$errors): ?array
+    {
+        if (! is_array($window) || ($window !== [] && array_is_list($window))) {
+            $errors[$path] = ['A prior window must be an object.'];
+
+            return null;
+        }
+
+        foreach (array_keys($window) as $key) {
+            if (! in_array($key, ['kind', 'amount', 'unit'], true)) {
+                $errors["{$path}.".self::name($key)] = ['This is not a window setting.'];
+            }
+        }
+
+        $kind = $window['kind'] ?? null;
+
+        if (! is_string($kind) || ! in_array($kind, PriorWindow::KINDS, true)) {
+            $errors["{$path}.kind"] = ['Choose one of: '.implode(', ', PriorWindow::KINDS).'.'];
+
+            return null;
+        }
+
+        if ($kind !== PriorWindow::CUSTOM_OFFSET) {
+            if (isset($window['amount']) || isset($window['unit'])) {
+                $errors["{$path}.amount"] = ['Only a custom offset has a number and a unit.'];
+
+                return null;
+            }
+
+            return ['kind' => $kind];
+        }
+
+        $amount = $window['amount'] ?? null;
+        $unit = $window['unit'] ?? null;
+
+        if (! is_int($amount) || $amount < 1 || $amount > PriorWindow::MAX_AMOUNT) {
+            $errors["{$path}.amount"] = ['Use a whole number from 1 to '.PriorWindow::MAX_AMOUNT.'.'];
+        }
+
+        if (! is_string($unit) || ! in_array($unit, PriorWindow::UNITS, true)) {
+            $errors["{$path}.unit"] = ['Choose one of: '.implode(', ', PriorWindow::UNITS).'.'];
+        }
+
+        return isset($errors["{$path}.amount"]) || isset($errors["{$path}.unit"]) ? null : ['kind' => $kind, 'amount' => $amount, 'unit' => $unit];
     }
 
     /**

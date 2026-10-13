@@ -6,6 +6,7 @@ use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\BlockTypes\Contracts\BlockTypeShapers;
 use App\Modules\BlockTypes\Contracts\KpiCardSlots;
 use App\Modules\Mapping\Contracts\ExecutionResult;
+use App\Modules\Mapping\Contracts\GuardExceeded;
 use App\Modules\Mapping\Contracts\InvalidPlan;
 use App\Modules\Mapping\Contracts\PlanGuards;
 use App\Modules\Mapping\Contracts\PlanResult;
@@ -36,7 +37,7 @@ final class QueryPlanEngine implements QueryPlans
         return $this->settings->guards();
     }
 
-    public function run(BlockType $type, array $plan, mixed $document, PlanGuards $guards, array $presentation = [], ?array $period = null): PlanResult
+    public function run(BlockType $type, array $plan, mixed $document, PlanGuards $guards, array $presentation = [], ?array $period = null, mixed $comparisonDocument = null): PlanResult
     {
         $errors = QueryPlan::validate($plan, $type);
 
@@ -50,8 +51,25 @@ final class QueryPlanEngine implements QueryPlans
         $mapped = array_map('strval', array_keys(is_array($plan['shape'] ?? null) ? $plan['shape'] : []));
         $slots = $result->slots;
         $unavailable = $result->unavailable;
-        $mode = $presentation['slots'][KpiCardSlots::SLOT_COMPARISON]['mode'] ?? null;
-        $compared = is_string($mode) && in_array($mode, Presentation::MODES, true) && in_array(KpiCardSlots::SLOT_COMPARISON, $mapped, true);
+        $rules = is_array($presentation['slots'][KpiCardSlots::SLOT_COMPARISON] ?? null) ? $presentation['slots'][KpiCardSlots::SLOT_COMPARISON] : [];
+        $prior = ($rules['source'] ?? null) === 'prior_period';
+        $mode = $rules['mode'] ?? ($prior ? 'pct_change' : null);
+        $compared = is_string($mode) && in_array($mode, Presentation::MODES, true) && ($prior || in_array(KpiCardSlots::SLOT_COMPARISON, $mapped, true));
+
+        // A prior-period comparison (Story 5.6): the previous value is the headline of the same plan run on the response for the prior window. With no
+        // such response (or one the guards stop) the comparison is unavailable: nothing is made up and the headline still renders.
+        if ($prior) {
+            $slots[KpiCardSlots::SLOT_COMPARISON] = null;
+            $mapped[] = KpiCardSlots::SLOT_COMPARISON;
+
+            if ($comparisonDocument !== null) {
+                try {
+                    $slots[KpiCardSlots::SLOT_COMPARISON] = $this->executor->execute($plan, $comparisonDocument, $type, $guards, $period)->slots[KpiCardSlots::SLOT_HEADLINE_VALUE] ?? null;
+                } catch (GuardExceeded) {
+                    $slots[KpiCardSlots::SLOT_COMPARISON] = null;
+                }
+            }
+        }
 
         // The comparison slot's mapped field is the previous value (Story 5.5): its slot value becomes the change from the headline, or nothing.
         if ($compared) {
@@ -64,6 +82,9 @@ final class QueryPlanEngine implements QueryPlans
 
             if ($change === null) {
                 $unavailable[KpiCardSlots::SLOT_COMPARISON] ??= ExecutionResult::MISSING;
+            } elseif ($prior) {
+                // The executor reports a slot the plan does not shape as missing; the prior window gave it its value.
+                unset($unavailable[KpiCardSlots::SLOT_COMPARISON]);
             }
         }
 

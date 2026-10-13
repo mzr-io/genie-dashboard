@@ -5,11 +5,13 @@ namespace App\Modules\Results\Application;
 use App\Modules\Blocks\Contracts\PublishedConfig;
 use App\Modules\Blocks\Contracts\PublishedConfigs;
 use App\Modules\BlockTypes\Contracts\BlockTypeRegistry;
+use App\Modules\BlockTypes\Contracts\KpiCardSlots;
 use App\Modules\BlockTypes\Contracts\UnknownBlockType;
 use App\Modules\Ingestion\Contracts\ComputeSources;
 use App\Modules\Ingestion\Contracts\ComputeSubscription;
 use App\Modules\Ingestion\Contracts\ComputeTarget;
 use App\Modules\Ingestion\Contracts\EndpointUserBindings;
+use App\Modules\Ingestion\Contracts\SyncGenerations;
 use App\Modules\Mapping\Contracts\GuardExceeded;
 use App\Modules\Mapping\Contracts\InvalidPlan;
 use App\Modules\Mapping\Contracts\PlanGuards;
@@ -58,6 +60,7 @@ final class ComputeResults
         private readonly WorkspaceSettings $settings,
         private readonly TenantCache $cache,
         private readonly EndpointUserBindings $bindings,
+        private readonly SyncGenerations $generations,
     ) {}
 
     /** @return int how many results were written (a kept newer result is not counted) */
@@ -114,8 +117,23 @@ final class ComputeResults
 
         $context = ResultContexts::of($subscription, $config->contractVersion, $this->settings);
 
+        // A prior-period comparison (Story 5.6) reads the primary and the comparison payloads of one complete generation, never a newer primary beside
+        // an older comparison; its freshness is the older of the two requests.
+        $prior = $this->prior($workspaceId, $target, $config, $document);
+
+        if ($prior !== null) {
+            [$target, $document, $comparisonDocument] = [$prior['target'], $prior['document'], $prior['comparison']];
+        } else {
+            $comparisonDocument = null;
+        }
+
         $key = ResultKey::of($workspaceId, $config->versionId, $target->fetchKey, $context);
         $slots = array_keys(is_array($config->queryPlan['shape'] ?? null) ? $config->queryPlan['shape'] : []);
+
+        // A prior-period comparison is a slot of the result though the plan maps no field to it.
+        if ($prior !== null && ! in_array(KpiCardSlots::SLOT_COMPARISON, $slots, true)) {
+            $slots[] = KpiCardSlots::SLOT_COMPARISON;
+        }
         $previous = $this->store->payloadSeq($workspaceId, $key);
         $failed = [];
 
@@ -124,7 +142,7 @@ final class ComputeResults
             $built = $this->errored($key, $target, $slots);
         } else {
             try {
-                $result = $this->plans->run($type, $config->queryPlan, $document, $guards, $config->presentation, self::inclusivePeriod($subscription->periodStart, $subscription->periodEnd));
+                $result = $this->plans->run($type, $config->queryPlan, $document, $guards, $config->presentation, self::inclusivePeriod($subscription->periodStart, $subscription->periodEnd), $comparisonDocument);
                 $built = $this->build($key, $target, $result, $slots);
                 $failed = $result->unavailable;
             } catch (GuardExceeded|InvalidPlan) {
@@ -141,6 +159,74 @@ final class ComputeResults
         }
 
         return $applied;
+    }
+
+    /**
+     * The pair a prior-period comparison is computed from, or null when the Block has no such comparison. Without a complete generation, or while the
+     * newest generation has its comparison side failed, the primary renders from its current payload and the comparison is unavailable (no document).
+     * The target it returns carries the generation (its ID, and the two payload sequences added up, so a change on either side is a new result) and
+     * the older of the two last good responses.
+     *
+     * @param  mixed  $document  the target's own decoded payload, kept when there is no complete pair
+     * @return array{target: ComputeTarget, document: mixed, comparison: mixed}|null
+     */
+    private function prior(string $workspaceId, ComputeTarget $target, PublishedConfig $config, mixed $document): ?array
+    {
+        if (($config->presentation['slots'][KpiCardSlots::SLOT_COMPARISON]['source'] ?? null) !== 'prior_period') {
+            return null;
+        }
+
+        $linked = $this->sources->comparisonOf($workspaceId, $target->id);
+        $none = ['target' => $target, 'document' => $document, 'comparison' => null];
+
+        if ($linked === null) {
+            return $none;
+        }
+
+        // The result is as fresh as its older request; a comparison that never succeeded has no time, which reads as Stale.
+        $older = $linked->lastSuccessAt === null || $target->lastSuccessAt === null
+            ? null
+            : min($linked->lastSuccessAt, $target->lastSuccessAt);
+        $none['target'] = new ComputeTarget($target->id, $target->fetchKey, $target->endpointId, $target->payloadId, $target->payloadSeq, $older, $target->payloadChangedAt, $target->ownerMembershipId);
+
+        if ($this->generations->comparisonUnavailable($workspaceId, $linked->syncGroupId)) {
+            return $none;
+        }
+
+        $generation = $this->generations->latestComplete($workspaceId, $linked->syncGroupId);
+
+        if ($generation === null || $generation->primaryTargetId !== $target->id) {
+            return $none;
+        }
+
+        $primary = $this->raw->get($workspaceId, $target->id, $generation->primaryPayloadId);
+        $other = $this->raw->get($workspaceId, $linked->id, $generation->comparisonPayloadId);
+
+        if ($primary === null || $other === null) {
+            return $none;
+        }
+
+        try {
+            $document = LosslessJson::decode($primary, LosslessJson::configuredDepthLimit());
+            $comparison = LosslessJson::decode($other, LosslessJson::configuredDepthLimit());
+        } catch (JsonDepthExceeded|JsonParseFailed) {
+            return $none;
+        }
+
+        return [
+            'target' => new ComputeTarget(
+                $target->id,
+                $target->fetchKey,
+                $target->endpointId,
+                $generation->id,
+                $generation->primaryPayloadSeq + $generation->comparisonPayloadSeq,
+                $older,
+                $target->payloadChangedAt,
+                $target->ownerMembershipId,
+            ),
+            'document' => $document,
+            'comparison' => $comparison,
+        ];
     }
 
     /**
