@@ -36,7 +36,7 @@ final class RunEndpointValidation implements EndpointValidations
         private readonly SampleBlobStore $blobs,
     ) {}
 
-    public function prepare(DataSourceActor $actor, string $dataSourceId, string $endpointId, array $bindings, ?array $range, ?array $period): PreparedEndpointValidation
+    public function prepare(DataSourceActor $actor, string $dataSourceId, string $endpointId, array $bindings, ?array $range, ?array $period, ?array $comparisonRange = null, ?array $comparisonPeriod = null): PreparedEndpointValidation
     {
         $this->sources->find($actor->workspaceId, $dataSourceId);
         $endpoint = $this->endpoints->find($actor->workspaceId, $dataSourceId, $endpointId);
@@ -46,6 +46,9 @@ final class RunEndpointValidation implements EndpointValidations
         }
 
         $values = $this->renderer->values($endpoint, $this->renderer->given($endpoint, $bindings, $range, $period));
+        $comparison = $comparisonRange === null && $comparisonPeriod === null
+            ? null
+            : $this->renderer->values($endpoint, $this->renderer->given($endpoint, $bindings, $comparisonRange, $comparisonPeriod));
         $missing = $this->settings->missingForDraftFetch();
 
         if ($missing !== null) {
@@ -54,7 +57,7 @@ final class RunEndpointValidation implements EndpointValidations
 
         $this->limits->hit($actor);
 
-        return new PreparedEndpointValidation($endpoint->dataSourceId, $endpoint->id, $endpoint->revision, $values, $endpoint->requiresUserContext);
+        return new PreparedEndpointValidation($endpoint->dataSourceId, $endpoint->id, $endpoint->revision, $values, $endpoint->requiresUserContext, $comparison);
     }
 
     public function release(DataSourceActor $actor): void

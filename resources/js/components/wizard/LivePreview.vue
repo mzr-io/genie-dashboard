@@ -51,6 +51,8 @@ const props = withDefaults(
         roles?: RoleField[];
         // Why nothing can be changed (read-only, offline, published): hotspots are then not buttons.
         blocked?: string;
+        // The comparison is a prior-period request (Story 5.6): the sample has no value for it.
+        priorComparison?: boolean;
     }>(),
     {
         live: false,
@@ -61,6 +63,7 @@ const props = withDefaults(
         slots: () => [],
         roles: () => [],
         blocked: undefined,
+        priorComparison: false,
     },
 );
 
@@ -597,6 +600,13 @@ const notices = computed<string[]>(() => {
             :rendered="rendered"
             :endpoint="endpoint"
         />
+        <p
+            v-if="live && priorComparison"
+            class="type-caption text-text-secondary"
+            data-test="prior-checked"
+        >
+            {{ blockPreviewLabels.priorChecked }}
+        </p>
         <p class="type-caption text-text-muted" data-test="version-safe">
             {{ t('version-safe', { version }) }}
         </p>

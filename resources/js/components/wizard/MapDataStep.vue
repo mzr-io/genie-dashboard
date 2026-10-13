@@ -118,6 +118,8 @@ const emit = defineEmits<{
             checklist: NonNullable<MappingRead['checklist']>;
             roles: MappingRead['roles'];
             sampleRevision: number | null;
+            // The comparison is a prior-period request (Story 5.6).
+            priorComparison: boolean;
         } | null,
     ): void;
 }>();
@@ -1676,8 +1678,8 @@ const showSmallBanner = computed(() => small.value && !bannerDismissed.value);
 
 // The preview reads the checklist and roles from here (Story 3.14): sent on every change, and cleared when the step goes.
 watch(
-    read,
-    (next) =>
+    [read, rules],
+    ([next, current]) =>
         emit(
             'view',
             next?.checklist
@@ -1685,6 +1687,8 @@ watch(
                       checklist: next.checklist,
                       roles: next.roles,
                       sampleRevision: next.sample_revision,
+                      priorComparison:
+                          current.slots?.comparison?.source === 'prior_period',
                   }
                 : null,
         ),

@@ -7,11 +7,13 @@ use App\Modules\Blocks\Contracts\Drafts;
 use App\Modules\Blocks\Contracts\ValidationReport;
 use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\BlockTypes\Contracts\BlockTypeRegistry;
+use App\Modules\BlockTypes\Contracts\KpiCardSlots;
 use App\Modules\BlockTypes\Contracts\UnknownBlockType;
 use App\Modules\Connector\Contracts\ConnectionTestCode;
 use App\Modules\Connector\Contracts\EndpointValidations;
 use App\Modules\Mapping\Contracts\GuardExceeded;
 use App\Modules\Mapping\Contracts\InvalidPlan;
+use App\Modules\Mapping\Contracts\PlanGuards;
 use App\Modules\Mapping\Contracts\QueryPlans;
 use App\Modules\Mapping\Contracts\SettingNotConfigured;
 use App\Platform\Audit\Audit;
@@ -103,8 +105,21 @@ final class RunDraftValidation implements OperationHandler
             }
         }
 
+        // The comparison request of a prior-period comparison (Story 5.6b): the same Endpoint with the prior window's values.
+        $comparisonValues = null;
+
+        if (is_array($input['comparison_values'] ?? null)) {
+            $comparisonValues = [];
+
+            foreach ($input['comparison_values'] as $name => $value) {
+                if (is_string($name) && is_string($value)) {
+                    $comparisonValues[$name] = $value;
+                }
+            }
+        }
+
         try {
-            return $this->validate($operation, $draft->blockId, $draft->config, $type, $dataSourceId, $endpointId, $endpointRevision, $values, ($input['user_bound'] ?? false) === true);
+            return $this->validate($operation, $draft->blockId, $draft->config, $type, $dataSourceId, $endpointId, $endpointRevision, $values, ($input['user_bound'] ?? false) === true, $comparisonValues);
         } finally {
             $this->validations->discard($operation);
         }
@@ -119,8 +134,9 @@ final class RunDraftValidation implements OperationHandler
     /**
      * @param  array<string, mixed>  $config
      * @param  array<string, string>  $values
+     * @param  array<string, string>|null  $comparisonValues  the prior window's values of a prior-period comparison
      */
-    private function validate(Operation $operation, string $blockId, array $config, BlockType $type, string $dataSourceId, string $endpointId, int $endpointRevision, array $values, bool $userBound): OperationOutcome
+    private function validate(Operation $operation, string $blockId, array $config, BlockType $type, string $dataSourceId, string $endpointId, int $endpointRevision, array $values, bool $userBound, ?array $comparisonValues = null): OperationOutcome
     {
         try {
             $guards = $this->plans->guards();
@@ -212,7 +228,75 @@ final class RunDraftValidation implements OperationHandler
             }
         }
 
+        // The comparison request is checked with the first, once the primary is sound: it must be reachable and the headline must resolve in it.
+        if ($mismatches === [] && $comparisonValues !== null) {
+            $checked = $this->comparison($operation, $blockId, $type, $plan, $guards, $dataSourceId, $endpointId, $endpointRevision, $comparisonValues, $userBound, $mismatches);
+
+            if ($checked !== null) {
+                return $checked;
+            }
+        }
+
         return $this->store($operation, $blockId, $mismatches === [] ? ValidationReport::PASSED : ValidationReport::FAILED, $mismatches === [] ? null : 'shape_mismatch', $mismatches, $endpointId, $endpointRevision);
+    }
+
+    /**
+     * Fetches the prior window and runs the Draft's plan over it. Returns the outcome when the report is decided here (the request failed), or null
+     * with any mismatch of the headline added to `$mismatches`.
+     *
+     * @param  array<string, mixed>  $plan
+     * @param  array<string, string>  $values
+     * @param  list<array{path: string|null, slot: string|null, type: string, expected: string|null}>  $mismatches
+     */
+    private function comparison(Operation $operation, string $blockId, BlockType $type, array $plan, PlanGuards $guards, string $dataSourceId, string $endpointId, int $endpointRevision, array $values, bool $userBound, array &$mismatches): ?OperationOutcome
+    {
+        $run = $this->validations->run($operation, $dataSourceId, $endpointId, $endpointRevision, $values, $userBound);
+        $outcome = $run->outcome;
+
+        if ($outcome->stale) {
+            return $this->store($operation, $blockId, ValidationReport::STALE, 'endpoint_changed', [], $endpointId, $endpointRevision);
+        }
+
+        if (! $outcome->succeeded) {
+            $code = is_string($outcome->summary['code'] ?? null) ? $outcome->summary['code'] : 'fetch-failed';
+
+            return $code === ConnectionTestCode::ContextMissing->value
+                ? $this->store($operation, $blockId, ValidationReport::FAILED, 'context_missing', [], $endpointId, $endpointRevision)
+                : $this->store($operation, $blockId, ValidationReport::UNREACHABLE, 'comparison_'.$code, [], $endpointId, $endpointRevision);
+        }
+
+        $body = $this->validations->take($operation, $endpointId, $endpointRevision);
+
+        if ($body === null) {
+            return $this->store($operation, $blockId, ValidationReport::UNREACHABLE, 'comparison_blob_unavailable', [], $endpointId, $endpointRevision);
+        }
+
+        try {
+            $document = LosslessJson::decode($body, LosslessJson::configuredDepthLimit());
+        } catch (JsonDepthExceeded|JsonParseFailed|InvalidLimitSetting) {
+            return $this->store($operation, $blockId, ValidationReport::UNREACHABLE, 'comparison_not-json', [], $endpointId, $endpointRevision);
+        } finally {
+            unset($body);
+        }
+
+        try {
+            $result = $this->plans->run($type, $plan, $document, $guards);
+        } catch (GuardExceeded) {
+            return $this->store($operation, $blockId, ValidationReport::FAILED, 'guard_exceeded', [], $endpointId, $endpointRevision);
+        } catch (InvalidPlan) {
+            return $this->store($operation, $blockId, ValidationReport::FAILED, 'strict_schema', [['path' => 'config.query_plan', 'slot' => null, 'type' => 'invalid_plan', 'expected' => null]], $endpointId, $endpointRevision);
+        }
+
+        $reason = $result->unavailable[KpiCardSlots::SLOT_HEADLINE_VALUE] ?? null;
+
+        if ($reason !== null) {
+            $fields = is_array($plan['extract']['fields'] ?? null) ? $plan['extract']['fields'] : [];
+            $alias = $plan['shape'][KpiCardSlots::SLOT_HEADLINE_VALUE] ?? null;
+            $path = is_string($alias) ? ($fields[$alias] ?? null) : null;
+            $mismatches[] = ['path' => is_string($path) ? mb_substr($path, 0, 200) : null, 'slot' => KpiCardSlots::SLOT_COMPARISON, 'type' => $reason, 'expected' => 'number'];
+        }
+
+        return null;
     }
 
     /**

@@ -48,6 +48,28 @@ export const COMPARISON_MODES = [
     'pp_delta',
 ] as const;
 export type ComparisonMode = (typeof COMPARISON_MODES)[number];
+// Where a comparison's previous value comes from (Story 5.6): the mapped field, or the same Endpoint called for a prior window.
+export const COMPARISON_SOURCES = ['mapped_previous', 'prior_period'] as const;
+export type ComparisonSource = (typeof COMPARISON_SOURCES)[number];
+export const WINDOW_KINDS = [
+    'previous_period',
+    'same_period_last_year',
+    'custom_offset',
+] as const;
+export const WINDOW_UNITS = [
+    'day',
+    'week',
+    'month',
+    'quarter',
+    'year',
+] as const;
+export const WINDOW_MAX_AMOUNT = 366;
+export type PriorWindow = {
+    kind?: (typeof WINDOW_KINDS)[number];
+    // A typed value that is not a whole number stays as text so its error can be shown.
+    amount?: number | string;
+    unit?: (typeof WINDOW_UNITS)[number];
+};
 export const BAND_OPS = ['>=', '<=', 'between'] as const;
 export const BAND_COLORS = [
     'success',
@@ -96,6 +118,8 @@ export type SlotPresentation = {
     emphasis?: PresentationEmphasis;
     direction?: (typeof DIRECTIONS)[number];
     mode?: ComparisonMode;
+    source?: ComparisonSource;
+    window?: PriorWindow;
     label?: { text?: string; prefix?: string; suffix?: string };
 };
 
@@ -339,6 +363,39 @@ export function judge(
 
         if (entry.mode !== undefined && slot !== SLOT_COMPARISON) {
             add(slotPath(slot, 'mode'), labels.modeComparisonOnly);
+        }
+
+        if (slot !== SLOT_COMPARISON) {
+            if (entry.source !== undefined) {
+                add(slotPath(slot, 'source'), labels.sourceComparisonOnly);
+            }
+
+            if (entry.window !== undefined) {
+                add(slotPath(slot, 'window'), labels.sourceComparisonOnly);
+            }
+        } else if (entry.source === 'prior_period') {
+            const window = entry.window;
+            const amount = window?.amount;
+
+            if (window?.kind === undefined) {
+                add(slotPath(slot, 'window'), labels.windowNeeded);
+            } else if (window.kind === 'custom_offset') {
+                if (
+                    typeof amount !== 'number' ||
+                    !Number.isInteger(amount) ||
+                    amount < 1 ||
+                    amount > WINDOW_MAX_AMOUNT
+                ) {
+                    add(
+                        slotPath(slot, 'window.amount'),
+                        labels.windowAmountRange(WINDOW_MAX_AMOUNT),
+                    );
+                }
+
+                if (window.unit === undefined) {
+                    add(slotPath(slot, 'window.unit'), labels.windowUnitNeeded);
+                }
+            }
         }
 
         add(

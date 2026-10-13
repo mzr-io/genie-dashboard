@@ -549,9 +549,9 @@
   evidence: The slot label is part of the kpi-card v1 contract; the editor's caption is computed from the slots' sample examples only.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-6a-prior-period-comparison-requests-backend.md`
-  summary: Story 5.6b: the prior-window picker, the "Checked against the live API before publish" preview note, the step 5 live check of both requests, and the enabled "Prior-period request" source in the comparison editor.
-  evidence: The backend stores and computes `source: prior_period` and its window; the wizard still only explains that the source is coming.
-
-- source_spec: `_bmad-output/implementation-artifacts/spec-5-6a-prior-period-comparison-requests-backend.md`
   summary: Let two Blocks with different prior windows share one primary target by giving the second comparison its own group.
   evidence: A primary has one comparison target (Story 2.20); the second Block's link is refused and its comparison reads unavailable.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-6b-prior-period-comparison-admin-controls.md`
+  summary: Give step 5 its own line for the comparison request ("Checked the primary and the comparison request") beside the report.
+  evidence: The report already carries a comparison failure as its reason and a missing headline as a mismatch on the comparison slot; the step shows no separate line.

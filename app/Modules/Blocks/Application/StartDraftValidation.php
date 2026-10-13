@@ -108,10 +108,13 @@ final class StartDraftValidation implements DraftValidations
             // The Draft's own default range and period behaviour, resolved by the platform's period resolver, never client dates.
             [$range, $period] = DraftPeriod::dates($draft->config, null, $this->settings->timezone(), now());
 
+            // A prior-period comparison is a second request, for the prior window of the same range (Story 5.6b): checked with the first.
+            $prior = DraftPeriod::priorDates($draft->config, $this->settings->timezone(), now());
+
             $bound = new DataSourceActor($actor->membershipId, $actor->workspaceId);
 
             try {
-                $prepared = $this->validations->prepare($bound, $dataSourceId, $endpointId, $bindings, $range, $period);
+                $prepared = $this->validations->prepare($bound, $dataSourceId, $endpointId, $bindings, $range, $period, $prior[0] ?? null, $prior[1] ?? null);
             } catch (SampleFetchNotConfigured $e) {
                 throw new ValidationRefused(ValidationRefused::SETTING_NOT_CONFIGURED, $e->setting);
             } catch (DataSourceNotFound|EndpointNotFound) {
@@ -251,6 +254,7 @@ final class StartDraftValidation implements DraftValidations
             'endpoint_revision' => $prepared->endpointRevision,
             'values' => $prepared->values,
             'user_bound' => $prepared->userBound,
+            'comparison_values' => $prepared->comparisonValues,
         ];
     }
 

@@ -8,12 +8,16 @@ namespace App\Modules\Connector\Contracts;
  */
 final readonly class PreparedEndpointValidation
 {
-    /** @param  array<string, string>  $values  parameter name (`header:{name}` for a header) => value */
+    /**
+     * @param  array<string, string>  $values  parameter name (`header:{name}` for a header) => value
+     * @param  array<string, string>|null  $comparisonValues  the same for the prior window of a prior-period comparison (Story 5.6b), null when there is none
+     */
     public function __construct(
         public string $dataSourceId,
         public string $endpointId,
         public int $endpointRevision,
         public array $values,
         public bool $userBound,
+        public ?array $comparisonValues = null,
     ) {}
 }

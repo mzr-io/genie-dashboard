@@ -2286,6 +2286,8 @@ export const blockMapLabels = {
 // The live preview on the Map Data step (Story 3.14, UI stage 4): the preview region, its hotspots, the source legend and the notices.
 export const blockPreviewLabels = {
     region: 'Live preview, sample data',
+    // A prior-period comparison has no value in the sample (Story 5.6).
+    priorChecked: 'Comparison: checked against the live API before publish',
     skipToChecklist: 'Skip to slot checklist',
     sampleLabel: 'Sample data',
     // A hotspot over a mapped region of the card.
@@ -2405,7 +2407,28 @@ export const blockPresentationLabels = {
     sourceLabel: 'Source',
     sourceMapped: 'Mapped previous value',
     sourcePrior: 'Prior-period request',
-    sourcePriorReason: 'Prior-period requests arrive with sync groups.',
+    windowLabel: 'Prior window',
+    windowKinds: {
+        previous_period: 'Previous period of equal length',
+        same_period_last_year: 'Same period last year',
+        custom_offset: 'Custom offset',
+    } as Record<string, string>,
+    windowAmount: 'Offset',
+    windowUnit: 'Unit',
+    windowUnits: {
+        day: 'days',
+        week: 'weeks',
+        month: 'months',
+        quarter: 'quarters',
+        year: 'years',
+    } as Record<string, string>,
+    windowNote:
+        'The same Endpoint is called for the prior window of the active period. The sample is never used for it: it is checked against the live API before publish.',
+    windowNeeded: 'Choose the prior window.',
+    windowAmountRange: (max: number) => `Use a whole number from 1 to ${max}.`,
+    windowUnitNeeded: 'Choose a unit.',
+    sourceComparisonOnly:
+        'A comparison source applies to the comparison slot only.',
     modeLabel: 'Mode',
     modes: {
         pct_change: '% change',
@@ -2413,6 +2436,7 @@ export const blockPresentationLabels = {
         pp_delta: 'Percentage-point delta',
     } as Record<string, string>,
     modeValue: 'Previous value as it is (no change calculated)',
+    modePrior: '% change (the default)',
     modePpReason:
         'Percentage points compare two ratios: map the headline to a ratio or show it as a percent.',
     modeNote:

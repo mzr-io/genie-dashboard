@@ -4,6 +4,7 @@ namespace App\Modules\Blocks\Application;
 
 use App\Platform\Period\PeriodBehaviour;
 use App\Platform\Period\PeriodResolver;
+use App\Platform\Period\PriorWindow;
 use App\Platform\Period\ResolvedPeriod;
 use DateTimeInterface;
 
@@ -56,6 +57,48 @@ final class DraftPeriod
             ['from' => $resolved->start, 'to' => $resolved->lastDay()],
             $own ? ['start' => $resolved->start, 'end' => $resolved->lastDay()] : null,
         ];
+    }
+
+    /**
+     * The dates of the comparison request of a prior-period comparison (Story 5.6): the prior window of the same Default date range, in the shape of
+     * {@see self::dates()}. Null when the Draft's comparison is not a prior-period one, or no range is chosen.
+     *
+     * @param  array<string, mixed>  $config  the Draft's stored `config`
+     * @return array{0: array{from: string, to: string}|null, 1: array{start: string, end: string}|null}|null
+     */
+    public static function priorDates(array $config, string $workspaceTimezone, DateTimeInterface $now): ?array
+    {
+        $rules = $config['presentation']['slots']['comparison'] ?? null;
+
+        if (! is_array($rules) || ($rules['source'] ?? null) !== 'prior_period' || ! is_array($rules['window'] ?? null)) {
+            return null;
+        }
+
+        $display = is_array($config['display'] ?? null) ? $config['display'] : [];
+        $stored = is_array($config['source']['default_date_range'] ?? null) ? $config['source']['default_date_range'] : null;
+        $resolved = self::of($stored, 'follow_dashboard', $workspaceTimezone, $now);
+
+        if ($resolved === null) {
+            return null;
+        }
+
+        $window = $rules['window'];
+        $prior = PriorWindow::of(
+            $resolved->start,
+            $resolved->end,
+            is_string($window['kind'] ?? null) ? $window['kind'] : '',
+            is_int($window['amount'] ?? null) ? $window['amount'] : null,
+            is_string($window['unit'] ?? null) ? $window['unit'] : null,
+        );
+
+        if ($prior === null) {
+            return null;
+        }
+
+        $last = (new \DateTimeImmutable($prior['end']))->modify('-1 day')->format('Y-m-d');
+        $own = ($display['period'] ?? null) === PeriodBehaviour::OwnSelector->value;
+
+        return [['from' => $prior['start'], 'to' => $last], $own ? ['start' => $prior['start'], 'end' => $last] : null];
     }
 
     /** @param  array<string, mixed>|null  $range  a `{preset, from?, to?}` choice */

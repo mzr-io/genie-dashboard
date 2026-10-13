@@ -18,6 +18,8 @@ interface EndpointValidations
      * @param  array<string, string|null>  $bindings  the Fixed parameters' own values
      * @param  array{from: string, to: string}|null  $range
      * @param  array{start: string, end: string}|null  $period
+     * @param  array{from: string, to: string}|null  $comparisonRange  the prior window of a prior-period comparison (Story 5.6b): its request is checked too
+     * @param  array{start: string, end: string}|null  $comparisonPeriod
      *
      * @throws DataSourceNotFound
      * @throws EndpointNotFound
@@ -25,7 +27,7 @@ interface EndpointValidations
      * @throws SampleFetchNotConfigured
      * @throws SampleFetchThrottled
      */
-    public function prepare(DataSourceActor $actor, string $dataSourceId, string $endpointId, array $bindings, ?array $range, ?array $period): PreparedEndpointValidation;
+    public function prepare(DataSourceActor $actor, string $dataSourceId, string $endpointId, array $bindings, ?array $range, ?array $period, ?array $comparisonRange = null, ?array $comparisonPeriod = null): PreparedEndpointValidation;
 
     /** Gives back the rate-limit slot {@see self::prepare()} took, when the validation it counted was not queued. */
     public function release(DataSourceActor $actor): void;

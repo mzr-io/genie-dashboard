@@ -177,6 +177,7 @@ type MapView = {
     checklist: NonNullable<MappingRead['checklist']>;
     roles: MappingRead['roles'];
     sampleRevision: number | null;
+    priorComparison: boolean;
 };
 const mapView = ref<MapView | null>(null);
 const mapRef = ref<InstanceType<typeof MapDataStep> | null>(null);
@@ -1814,6 +1815,7 @@ onBeforeUnmount(() => {
                         :slots="previewSlots"
                         :roles="mapView?.roles?.fields ?? []"
                         :blocked="mapBlocked"
+                        :prior-comparison="mapView?.priorComparison ?? false"
                         @change="
                             (slot, opener) => mapRef?.openSlot(slot, opener)
                         "

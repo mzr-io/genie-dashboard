@@ -9,6 +9,9 @@ import type { ChecklistSlot } from '@/lib/blockMapping';
 import {
     COMPARISON_MODES,
     DATE_PATTERNS,
+    WINDOW_KINDS,
+    WINDOW_MAX_AMOUNT,
+    WINDOW_UNITS,
     DIRECTIONS,
     EMPHASIS_ROLES,
     EMPHASIS_SIZES,
@@ -28,6 +31,7 @@ import {
 import type {
     ComparisonMode,
     FormatChoice,
+    PriorWindow,
     PresentationBand,
     PresentationRules,
     SlotPresentation,
@@ -105,7 +109,9 @@ const example = computed(() => {
 });
 
 // The comparison source (Story 5.5): only the mapped previous value exists until prior-period requests (sync groups) do.
-const priorPicked = ref(false);
+const priorPicked = computed(() => mine.value.source === 'prior_period');
+const priorWindow = computed<PriorWindow>(() => mine.value.window ?? {});
+type PriorWindowKind = NonNullable<PriorWindow['kind']>;
 const mode = computed<ComparisonMode | ''>(() => mine.value.mode ?? '');
 const ratio = computed(() => props.headline?.ratio === true);
 const modeExample = computed(() => {
@@ -154,7 +160,38 @@ const modeExample = computed(() => {
 });
 
 function setSource(next: string): void {
-    priorPicked.value = next === 'prior';
+    patch(
+        next === 'prior'
+            ? {
+                  source: 'prior_period',
+                  window: mine.value.window ?? { kind: 'previous_period' },
+              }
+            : { source: undefined, window: undefined },
+    );
+}
+
+function setWindowKind(next: string): void {
+    patch({
+        window:
+            next === 'custom_offset'
+                ? {
+                      kind: 'custom_offset',
+                      amount: priorWindow.value.amount ?? 1,
+                      unit: priorWindow.value.unit ?? 'month',
+                  }
+                : { kind: next as PriorWindowKind },
+    });
+}
+
+function setWindowAmount(raw: string): void {
+    const value = raw.trim();
+
+    patch({
+        window: {
+            ...priorWindow.value,
+            amount: /^\d+$/.test(value) ? Number(value) : value,
+        },
+    });
 }
 
 function setMode(next: string): void {
@@ -662,12 +699,18 @@ const field = 'grid gap-1 [&>label]:type-caption [&>label]:text-text-secondary';
                     <NativeSelect
                         :id="`${id}-mode`"
                         :model-value="mode"
-                        :disabled="disabled || priorPicked"
+                        :disabled="disabled"
                         :aria-invalid="err('mode') ? 'true' : undefined"
                         data-test="comparison-mode"
                         @update:model-value="(v) => setMode(String(v))"
                     >
-                        <option value="">{{ labels.modeValue }}</option>
+                        <option value="">
+                            {{
+                                priorPicked
+                                    ? labels.modePrior
+                                    : labels.modeValue
+                            }}
+                        </option>
                         <option
                             v-for="option in COMPARISON_MODES"
                             :key="option"
@@ -679,12 +722,98 @@ const field = 'grid gap-1 [&>label]:type-caption [&>label]:text-text-secondary';
                     </NativeSelect>
                 </div>
             </div>
+            <div
+                v-if="priorPicked"
+                class="grid gap-3 sm:grid-cols-3"
+                data-test="comparison-window"
+            >
+                <div :class="field">
+                    <label :for="`${id}-window`">{{
+                        labels.windowLabel
+                    }}</label>
+                    <NativeSelect
+                        :id="`${id}-window`"
+                        :model-value="priorWindow.kind ?? ''"
+                        :disabled="disabled"
+                        :aria-invalid="err('window') ? 'true' : undefined"
+                        data-test="window-kind"
+                        @update:model-value="(v) => setWindowKind(String(v))"
+                    >
+                        <option
+                            v-for="kind in WINDOW_KINDS"
+                            :key="kind"
+                            :value="kind"
+                        >
+                            {{ labels.windowKinds[kind] }}
+                        </option>
+                    </NativeSelect>
+                </div>
+                <template v-if="priorWindow.kind === 'custom_offset'">
+                    <div :class="field">
+                        <label :for="`${id}-window-amount`">{{
+                            labels.windowAmount
+                        }}</label>
+                        <Input
+                            :id="`${id}-window-amount`"
+                            :model-value="String(priorWindow.amount ?? '')"
+                            inputmode="numeric"
+                            autocomplete="off"
+                            :disabled="disabled"
+                            :max="WINDOW_MAX_AMOUNT"
+                            :aria-invalid="
+                                err('window.amount') ? 'true' : undefined
+                            "
+                            data-test="window-amount"
+                            @change="(e: Event) => setWindowAmount(text(e))"
+                        />
+                    </div>
+                    <div :class="field">
+                        <label :for="`${id}-window-unit`">{{
+                            labels.windowUnit
+                        }}</label>
+                        <NativeSelect
+                            :id="`${id}-window-unit`"
+                            :model-value="priorWindow.unit ?? ''"
+                            :disabled="disabled"
+                            data-test="window-unit"
+                            @update:model-value="
+                                (v) =>
+                                    patch({
+                                        window: {
+                                            ...priorWindow,
+                                            unit: String(v) as never,
+                                        },
+                                    })
+                            "
+                        >
+                            <option
+                                v-for="unit in WINDOW_UNITS"
+                                :key="unit"
+                                :value="unit"
+                            >
+                                {{ labels.windowUnits[unit] }}
+                            </option>
+                        </NativeSelect>
+                    </div>
+                </template>
+            </div>
             <p
                 v-if="priorPicked"
                 class="type-caption text-text-secondary"
                 data-test="comparison-prior-note"
             >
-                {{ labels.sourcePriorReason }}
+                {{ labels.windowNote }}
+            </p>
+            <p
+                v-if="
+                    err('window') || err('window.amount') || err('window.unit')
+                "
+                class="type-caption text-error-text"
+                data-test="window-error"
+            >
+                {{
+                    err('window') ?? err('window.amount') ?? err('window.unit')
+                }}
             </p>
             <p
                 v-if="!ratio"
@@ -693,7 +822,7 @@ const field = 'grid gap-1 [&>label]:type-caption [&>label]:text-text-secondary';
             >
                 {{ labels.modePpReason }}
             </p>
-            <p class="type-caption text-text-secondary">
+            <p v-if="!priorPicked" class="type-caption text-text-secondary">
                 {{ labels.modeNote }}
             </p>
             <p

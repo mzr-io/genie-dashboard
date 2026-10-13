@@ -302,9 +302,9 @@ it('stores stale, never passed, when the revision moves while the live request i
     {
         public function __construct(private EndpointValidations $inner, private string $draft) {}
 
-        public function prepare($actor, string $dataSourceId, string $endpointId, array $bindings, ?array $range, ?array $period): PreparedEndpointValidation
+        public function prepare($actor, string $dataSourceId, string $endpointId, array $bindings, ?array $range, ?array $period, ?array $comparisonRange = null, ?array $comparisonPeriod = null): PreparedEndpointValidation
         {
-            return $this->inner->prepare($actor, $dataSourceId, $endpointId, $bindings, $range, $period);
+            return $this->inner->prepare($actor, $dataSourceId, $endpointId, $bindings, $range, $period, $comparisonRange, $comparisonPeriod);
         }
 
         public function release($actor): void
@@ -485,7 +485,7 @@ it('fails an Endpoint that could be published unbound: the negative check was no
     [, , , , $draft] = pvWorld();
     app()->instance(EndpointValidations::class, new class implements EndpointValidations
     {
-        public function prepare($actor, string $dataSourceId, string $endpointId, array $bindings, ?array $range, ?array $period): PreparedEndpointValidation
+        public function prepare($actor, string $dataSourceId, string $endpointId, array $bindings, ?array $range, ?array $period, ?array $comparisonRange = null, ?array $comparisonPeriod = null): PreparedEndpointValidation
         {
             return new PreparedEndpointValidation($dataSourceId, $endpointId, 1, [], true);
         }
@@ -596,7 +596,7 @@ it('truncates a long reason to the column width', function () {
     $this->curl->queue = [FakeCurl::answer(200, PV_BODY)];
     app()->instance(EndpointValidations::class, new class implements EndpointValidations
     {
-        public function prepare($actor, string $dataSourceId, string $endpointId, array $bindings, ?array $range, ?array $period): PreparedEndpointValidation
+        public function prepare($actor, string $dataSourceId, string $endpointId, array $bindings, ?array $range, ?array $period, ?array $comparisonRange = null, ?array $comparisonPeriod = null): PreparedEndpointValidation
         {
             return new PreparedEndpointValidation($dataSourceId, $endpointId, 1, [], false);
         }
@@ -695,4 +695,70 @@ it('keeps the pre-existing callers\' unbound refusal of a user-context Endpoint 
     expect($this->curl->calls)->toBe([])
         ->and($outcome->summary['code'])->toBe('fetch-failed')
         ->and($outcome->summary['reason'])->toBe('user_context_required');
+});
+
+// Story 5.6b: a prior-period comparison is a second request, for the prior window of the Default date range, checked with the first.
+function pvPriorWorld(array $window = ['kind' => 'previous_period']): array
+{
+    $workspace = Cluster::workspace('Acme');
+    sfAdmin($workspace, ['data_sources.manage', 'blocks.edit']);
+    $source = Cluster::seedDataSource($workspace, 'Sales API', 'api.example.com');
+    $endpoint = sfEndpoint($source, ['path' => '/revenue', 'params' => [['name' => 'from', 'binding' => 'date_range_from'], ['name' => 'to', 'binding' => 'date_range_to']], 'headers' => []]);
+    $draft = bdCreate()->assertCreated()->json('data.draft_id');
+    pvConfigure($draft, dpPlan(['rev' => '$.data.revenue', 'name' => '$.data.label'], ['headline_value' => 'rev', 'kpi_label' => 'name']), $source, $endpoint);
+
+    $db = Cluster::superuser();
+    $db->prepare("UPDATE block_versions SET config = jsonb_set(config, '{source,default_date_range}', ?::jsonb, true) WHERE id = ?")
+        ->execute([json_encode(['preset' => 'last_month']), $draft]);
+    $db->prepare("UPDATE block_versions SET config = config || jsonb_build_object('presentation', ?::jsonb) WHERE id = ?")
+        ->execute([json_encode(['slots' => ['comparison' => ['source' => 'prior_period', 'window' => $window]]]), $draft]);
+
+    return [$workspace, $source, $endpoint, $draft];
+}
+
+it('checks the comparison request with the first: both calls, the prior window in the second', function () {
+    [, , , $draft] = pvPriorWorld();
+    $this->curl->queue = [FakeCurl::answer(200, PV_BODY), FakeCurl::answer(200, '{"data":{"revenue":10000.25,"label":"Revenue"}}')];
+
+    $id = pvRun($draft);
+    $report = pvReport($draft)->assertOk()->json('data');
+
+    $first = new DateTimeImmutable('first day of last month');
+    $last = $first->modify('last day of this month');
+    $days = (int) $first->diff($last)->days + 1;
+    $priorFrom = $first->modify("-{$days} days");
+
+    expect(sfPoll($id)->json('data.status'))->toBe('succeeded')
+        ->and($report)->toMatchArray(['status' => 'passed', 'can_publish' => true, 'mismatches' => []])
+        ->and($this->curl->calls)->toHaveCount(2)
+        ->and($this->curl->calls[0][CURLOPT_URL])->toContain('from='.$first->format('Y-m-d'))
+        ->and($this->curl->calls[1][CURLOPT_URL])->toContain('from='.$priorFrom->format('Y-m-d'))
+        ->and($this->curl->calls[1][CURLOPT_URL])->toContain('to='.$first->modify('-1 day')->format('Y-m-d'));
+});
+
+it('is unreachable when the comparison request fails, and fails with the comparison slot when its headline is missing', function () {
+    [, , , $draft] = pvPriorWorld();
+    $this->curl->queue = [FakeCurl::answer(200, PV_BODY), FakeCurl::answer(500, '{"error":"x"}')];
+
+    pvRun($draft);
+
+    expect(pvReport($draft)->json('data'))->toMatchArray(['status' => 'unreachable', 'reason' => 'comparison_fetch-failed', 'can_publish' => false]);
+
+    bdSave($draft, 2, 1, ['name' => 'Again'])->assertOk();
+    $this->curl->queue = [FakeCurl::answer(200, PV_BODY), FakeCurl::answer(200, '{"data":{"label":"Revenue"}}')];
+
+    pvRun($draft);
+    $report = pvReport($draft)->json('data');
+
+    expect($report)->toMatchArray(['status' => 'failed', 'reason' => 'shape_mismatch', 'can_publish' => false])
+        ->and($report['mismatches'])->toBe([['path' => '$.data.revenue', 'slot' => 'comparison', 'type' => 'missing', 'expected' => 'number']]);
+});
+
+it('makes a single request for a Block with no prior-period comparison', function () {
+    [, , , , $draft] = pvWorld();
+    $this->curl->queue = [FakeCurl::answer(200, PV_BODY)];
+
+    pvRun($draft);
+
+    expect($this->curl->calls)->toHaveCount(1);
 });
