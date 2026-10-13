@@ -95,6 +95,33 @@ final class PresentationOptions
             $options['statusBand'] = ['text' => $band['label'], 'color' => $band['color'], 'icon' => $band['icon']];
         }
 
+        // A table (Story 5.12): the rules of each column, the page size and, per row, the band the highlight column's value falls in.
+        $columns = [];
+
+        foreach ($slots as $key => $rules) {
+            if (str_starts_with((string) $key, 'col_') && is_array($rules)) {
+                $columns[(string) $key] = array_intersect_key($rules, array_flip(['format', 'label', 'align', 'width', 'sortable']));
+            }
+        }
+
+        if ($columns !== []) {
+            $options['columnRules'] = $columns;
+        }
+
+        if (is_int($presentation['page_size'] ?? null)) {
+            $options['pageSize'] = $presentation['page_size'];
+        }
+
+        $highlight = $presentation['highlight_column'] ?? null;
+
+        if (is_string($highlight) && is_array($values[$highlight] ?? null) && is_array($presentation['bands'] ?? null)) {
+            $options['rowBands'] = array_map(function (mixed $value) use ($presentation): ?array {
+                $band = $this->firstBand($presentation['bands'], $value, $value);
+
+                return $band === null ? null : ['text' => $band['label'], 'color' => $band['color'], 'icon' => $band['icon']];
+            }, $values[$highlight]);
+        }
+
         if (is_string($presentation['empty_display'] ?? null) && $presentation['empty_display'] !== '') {
             $options['emptyDisplay'] = $presentation['empty_display'];
             $options['emptySlots'] = array_values(array_filter(

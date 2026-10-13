@@ -94,6 +94,30 @@ defineProps<{ type: string }>();
                 stroke-dasharray="26 88"
             />
         </template>
+        <template v-else-if="type === 'table'">
+            <rect x="8" y="8" width="48" height="6" class="fill-chart-1" />
+            <rect
+                x="8"
+                y="19"
+                width="48"
+                height="4"
+                class="fill-surface-muted"
+            />
+            <rect
+                x="8"
+                y="27"
+                width="48"
+                height="4"
+                class="fill-surface-muted"
+            />
+            <rect
+                x="8"
+                y="35"
+                width="48"
+                height="4"
+                class="fill-surface-muted"
+            />
+        </template>
         <template v-else-if="type === 'line-area'">
             <polyline
                 points="6,34 18,26 28,30 40,16 58,10"

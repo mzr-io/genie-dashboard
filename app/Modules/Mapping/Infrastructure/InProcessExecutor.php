@@ -1113,7 +1113,7 @@ final class InProcessExecutor implements QueryExecutor
         $wrong = [null, ExecutionResult::WRONG_TYPE];
 
         if (is_bool($node)) {
-            return $valueType === 'boolean' ? [$node, null] : $wrong;
+            return $valueType === 'boolean' || $valueType === 'any' ? [$node, null] : $wrong;
         }
 
         if ($node instanceof DecimalLiteral) {

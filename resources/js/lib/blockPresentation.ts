@@ -100,7 +100,32 @@ export const LIMITS = {
     match: 40,
     bands: 10,
     decimal: 64,
+    widthMin: 40,
+    widthMax: 800,
+    pageMin: 5,
+    pageMax: 100,
 } as const;
+
+// A whole number in a range, whether typed (text) or stored (number); empty is fine.
+const wholeFault = (
+    value: number | string | undefined,
+    min: number,
+    max: number,
+): string | null => {
+    if (value === undefined || value === '') {
+        return null;
+    }
+
+    const whole =
+        typeof value === 'number'
+            ? Number.isInteger(value)
+            : /^\d+$/.test(value.trim());
+    const number = Number(value);
+
+    return whole && number >= min && number <= max
+        ? null
+        : labels.wholeRange(min, max);
+};
 
 export const SLOT_HEADLINE = 'headline_value';
 export const SLOT_COMPARISON = 'comparison';
@@ -130,6 +155,10 @@ export type SlotPresentation = {
     source?: ComparisonSource;
     window?: PriorWindow;
     label?: { text?: string; prefix?: string; suffix?: string };
+    // A table column (Story 5.12); a width is text while it is being typed.
+    align?: 'left' | 'right' | 'center';
+    width?: number | string;
+    sortable?: boolean;
 };
 
 export type PresentationBand = {
@@ -154,6 +183,9 @@ export type PresentationRules = {
     sort?: 'data' | 'value';
     centre?: 'value' | 'total' | 'none';
     centre_label?: string;
+    // A table (Story 5.12): rows per page (text while it is being typed) and the column its highlight bands read.
+    page_size?: number | string;
+    highlight_column?: string;
 };
 
 // What `PUT .../mapping/presentation` answers.
@@ -245,6 +277,8 @@ export function clean(rules: PresentationRules): PresentationRules {
         'sort',
         'centre',
         'centre_label',
+        'page_size',
+        'highlight_column',
     ] as const) {
         if (rules[key] !== undefined && rules[key] !== '') {
             (out as Record<string, unknown>)[key] = rules[key];
@@ -395,6 +429,11 @@ export function judge(
             );
         }
 
+        add(
+            slotPath(slot, 'width'),
+            wholeFault(entry.width, LIMITS.widthMin, LIMITS.widthMax),
+        );
+
         if (entry.direction !== undefined && slot !== SLOT_COMPARISON) {
             add(slotPath(slot, 'direction'), labels.directionComparisonOnly);
         }
@@ -502,6 +541,10 @@ export function judge(
     });
 
     add(EMPTY_PATH, textFault(rules.empty_display, LIMITS.empty));
+    add(
+        `${ROOT}.page_size`,
+        wholeFault(rules.page_size, LIMITS.pageMin, LIMITS.pageMax),
+    );
     add(
         `${ROOT}.centre_label`,
         textFault(rules.centre_label, LIMITS.bandLabel),

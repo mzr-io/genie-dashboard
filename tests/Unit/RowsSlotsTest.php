@@ -54,7 +54,7 @@ it('expands a repeated slot into numbered slots, the first as required as the de
         ->and($slots[2]['cardinality'])->toBe('rows');
 });
 
-it('refuses a repeat that is not a whole number from 2 to 6', function (mixed $repeat) {
+it('refuses a repeat that is not a whole number from 2 to 12', function (mixed $repeat) {
     $root = rsRoot(function (array $schema) use ($repeat): array {
         $schema['slots'][2]['repeat'] = $repeat;
 
@@ -62,7 +62,7 @@ it('refuses a repeat that is not a whole number from 2 to 6', function (mixed $r
     });
 
     expect(fn () => (new LoadBlockTypes($root))->resolve('chart-test', 1))->toThrow(InvalidBlockTypePackage::class);
-})->with([1, 7, '3', 2.5]);
+})->with([1, 13, '3', 2.5]);
 
 function rsRun(array $plan, string $json): ExecutionResult
 {

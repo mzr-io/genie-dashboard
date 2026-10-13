@@ -1,4 +1,10 @@
-import { barV1, kpiCardV1, kpiChartV1, lineAreaV1 } from '@/types/block-types';
+import {
+    barV1,
+    kpiCardV1,
+    kpiChartV1,
+    lineAreaV1,
+    tableV1,
+} from '@/types/block-types';
 import type { BlockType, BlockTypeHeight } from '@/types/block-types';
 import { DRAFT_BLOCKS_URL } from '@/lib/draftBlocks';
 import type { DraftBlock } from '@/lib/draftBlocks';
@@ -19,6 +25,7 @@ export const BLOCK_TYPES: BlockType[] = [
     lineAreaV1,
     kpiChartV1,
     barV1,
+    tableV1,
 ];
 
 export type PeriodBehavior =

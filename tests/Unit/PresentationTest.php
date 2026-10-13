@@ -83,3 +83,28 @@ it('compares decimals exactly, lexemes by value, and gives no value to junk or h
         ->and(DecimalValue::plain('.5'))->toBe('0.5')
         ->and(DecimalValue::plain('5.'))->toBe('5');
 });
+
+// Story 5.12: a table column's alignment, width and sortable flag, the page size and the highlight column.
+it('judges a table column, the page size and the highlight column', function () {
+    $type = (new LoadBlockTypes(dirname(__DIR__, 2).'/block-types'))->resolve('table', 1);
+    $errors = [];
+    $out = Presentation::check([
+        'slots' => ['col_2' => ['align' => 'right', 'width' => 120, 'sortable' => true]],
+        'page_size' => 25,
+        'highlight_column' => 'col_2',
+    ], $type, $errors);
+
+    expect($errors)->toBe([])
+        ->and($out['slots']['col_2'])->toBe(['align' => 'right', 'width' => 120, 'sortable' => true])
+        ->and($out['page_size'])->toBe(25)
+        ->and($out['highlight_column'])->toBe('col_2');
+
+    $errors = [];
+    Presentation::check([
+        'slots' => ['col_1' => ['align' => 'middle', 'width' => 10, 'sortable' => 'yes']],
+        'page_size' => 3,
+        'highlight_column' => 'nope',
+    ], $type, $errors);
+
+    expect(array_keys($errors))->toContain('config.presentation.slots.col_1.align', 'config.presentation.slots.col_1.width', 'config.presentation.slots.col_1.sortable', 'config.presentation.page_size', 'config.presentation.highlight_column');
+});

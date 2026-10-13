@@ -26,7 +26,7 @@ it('fails --check with "stale" when a generated file differs, and the file is re
 
 it('binds the registry to base_path(block-types) and throws on an invalid root', function () {
     expect(app(BlockTypeRegistry::class))->toBeInstanceOf(LoadBlockTypes::class)
-        ->and(app(BlockTypeRegistry::class)->all())->toHaveCount(5);
+        ->and(app(BlockTypeRegistry::class)->all())->toHaveCount(6);
 
     $root = sys_get_temp_dir().'/bt-bad-'.bin2hex(random_bytes(4));
     mkdir("{$root}/kpi-card/v1", 0777, true);

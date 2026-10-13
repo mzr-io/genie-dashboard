@@ -91,6 +91,11 @@ final class QueryPlanEngine implements QueryPlans
 
         $options = $this->presentation->options($presentation, $slots, $mapped);
 
+        // The period the result is for (Story 5.12): a table starts again at its first page when it changes.
+        if ($period !== null) {
+            $options['period'] = $period;
+        }
+
         // The name of each mapped field (the last member of its stored path): a series without a label of its own, and a table's axis column, are named by it.
         $fields = is_array($plan['extract']['fields'] ?? null) ? $plan['extract']['fields'] : [];
 

@@ -19,6 +19,10 @@
         {
             "key": "pie-donut",
             "contractVersion": 1
+        },
+        {
+            "key": "table",
+            "contractVersion": 1
         }
     ]
 }

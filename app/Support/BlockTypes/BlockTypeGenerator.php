@@ -167,7 +167,21 @@ final class BlockTypeGenerator
                 $lines[] = '            required: '.($slot['required'] ? 'true' : 'false').',';
                 $lines[] = "            value_type: '{$slot['value_type']}',";
                 $lines[] = "            cardinality: '{$slot['cardinality']}',";
-                $lines[] = '            field_roles: ['.implode(', ', array_map(fn (string $r): string => "'{$r}'", $slot['field_roles'])).'],';
+                $roles = array_map(fn (string $r): string => "'{$r}'", $slot['field_roles']);
+                $line = '            field_roles: ['.implode(', ', $roles).'],';
+
+                // Wrapped as the formatter does past 80 columns, so the committed file is the generated file.
+                if (strlen($line) > 80) {
+                    $lines[] = '            field_roles: [';
+
+                    foreach ($roles as $role) {
+                        $lines[] = "                {$role},";
+                    }
+
+                    $lines[] = '            ],';
+                } else {
+                    $lines[] = $line;
+                }
                 $lines[] = '        },';
             }
             $lines[] = '    ],';

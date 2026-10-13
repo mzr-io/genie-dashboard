@@ -37,7 +37,7 @@ it('lists kpi-card, kpi-chart and line-area v1 for an Admin with blocks.edit', f
 
     $response = $this->getJson('/api/v1/block-types', BT_HEADERS);
 
-    $response->assertOk()->assertJsonCount(5, 'data')
+    $response->assertOk()->assertJsonCount(6, 'data')
         ->assertJsonPath('data.1.key', 'kpi-card')
         ->assertJsonPath('data.1.contract_version', 1)
         ->assertJsonPath('data.1.size.default_width', 3)

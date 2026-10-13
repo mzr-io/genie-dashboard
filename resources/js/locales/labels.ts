@@ -2450,6 +2450,20 @@ export const blockPresentationLabels = {
     centreValue: 'Largest slice',
     centreTotal: 'Slice total',
     pieCentreLabel: 'Centre label',
+    // Tables (Story 5.12).
+    columnTitle: 'Column',
+    columnAlign: 'Alignment',
+    alignAuto: 'Automatic',
+    alignLeft: 'Left',
+    alignRight: 'Right',
+    alignCenter: 'Centre',
+    columnWidth: 'Width in pixels',
+    columnSortable: 'Readers can sort by this column',
+    tableTitle: 'Table',
+    tablePageSize: 'Rows per page',
+    tableHighlight: 'Highlight rows by',
+    tableNoHighlight: 'No highlight',
+    tableColumn: 'Column',
     // Comparison source and mode (Story 5.5).
     comparisonTitle: 'Comparison',
     sourceLabel: 'Source',
@@ -2545,6 +2559,8 @@ export const blockPresentationLabels = {
     textLimit: (max: number) =>
         `Use 1 to ${max} characters, with no control characters.`,
     placesRange: (max: number) => `Use a whole number from 0 to ${max}.`,
+    wholeRange: (min: number, max: number) =>
+        `Use a whole number from ${min} to ${max}.`,
     currencyShape: 'Use a three-letter currency code, such as USD.',
     currencyNeeded: 'A currency format needs a currency code.',
     unknownSlot: 'This slot is not part of the block.',

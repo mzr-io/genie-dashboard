@@ -43,6 +43,16 @@ final class Presentation
 
     public const ORIENTATIONS = ['vertical', 'horizontal'];
 
+    public const ALIGNMENTS = ['left', 'right', 'center'];
+
+    public const WIDTH_MIN = 40;
+
+    public const WIDTH_MAX = 800;
+
+    public const PAGE_SIZE_MIN = 5;
+
+    public const PAGE_SIZE_MAX = 100;
+
     public const SORTS = ['data', 'value'];
 
     public const CENTRES = ['value', 'total', 'none'];
@@ -111,7 +121,7 @@ final class Presentation
         $out = [];
 
         foreach (array_keys($input) as $key) {
-            if (! in_array($key, ['slots', 'bands', 'empty_display', 'chart_kind', 'direct_labels', 'orientation', 'value_labels', 'sort', 'centre', 'centre_label'], true)) {
+            if (! in_array($key, ['slots', 'bands', 'empty_display', 'chart_kind', 'direct_labels', 'orientation', 'value_labels', 'sort', 'centre', 'centre_label', 'page_size', 'highlight_column'], true)) {
                 $errors[self::ROOT.'.'.self::name($key)] = ['This is not a presentation setting.'];
             }
         }
@@ -148,6 +158,25 @@ final class Presentation
                 } else {
                     $errors[self::ROOT.'.'.$setting] = ['Choose one of: '.implode(', ', $choices).'.'];
                 }
+            }
+        }
+
+        // A table's page size and the column its row highlight rule reads (Story 5.12).
+        if (array_key_exists('page_size', $input) && $input['page_size'] !== null) {
+            if (is_int($input['page_size']) && $input['page_size'] >= self::PAGE_SIZE_MIN && $input['page_size'] <= self::PAGE_SIZE_MAX) {
+                $out['page_size'] = $input['page_size'];
+            } else {
+                $errors[self::ROOT.'.page_size'] = ['Use a whole number from '.self::PAGE_SIZE_MIN.' to '.self::PAGE_SIZE_MAX.'.'];
+            }
+        }
+
+        if (array_key_exists('highlight_column', $input) && $input['highlight_column'] !== null) {
+            $known = array_map(fn ($slot): string => $slot->key, $type->slots);
+
+            if (is_string($input['highlight_column']) && in_array($input['highlight_column'], $known, true)) {
+                $out['highlight_column'] = $input['highlight_column'];
+            } else {
+                $errors[self::ROOT.'.highlight_column'] = ['Choose a column of the table.'];
             }
         }
 
@@ -223,7 +252,7 @@ final class Presentation
             $clean = [];
 
             foreach (array_keys($entry) as $key) {
-                if (! in_array($key, ['format', 'emphasis', 'direction', 'label', 'mode', 'source', 'window'], true)) {
+                if (! in_array($key, ['format', 'emphasis', 'direction', 'label', 'mode', 'source', 'window', 'align', 'width', 'sortable'], true)) {
                     $errors["{$at}.".self::name($key)] = ['This is not a slot setting.'];
                 }
             }
@@ -266,6 +295,31 @@ final class Presentation
                     $clean['mode'] = $entry['mode'];
                 } else {
                     $errors["{$at}.mode"] = ['Choose one of: '.implode(', ', self::MODES).'.'];
+                }
+            }
+
+            // A table column (Story 5.12): alignment, width in pixels and whether a reader may sort by it.
+            if (($entry['align'] ?? null) !== null) {
+                if (is_string($entry['align']) && in_array($entry['align'], self::ALIGNMENTS, true)) {
+                    $clean['align'] = $entry['align'];
+                } else {
+                    $errors["{$at}.align"] = ['Choose one of: '.implode(', ', self::ALIGNMENTS).'.'];
+                }
+            }
+
+            if (($entry['width'] ?? null) !== null) {
+                if (is_int($entry['width']) && $entry['width'] >= self::WIDTH_MIN && $entry['width'] <= self::WIDTH_MAX) {
+                    $clean['width'] = $entry['width'];
+                } else {
+                    $errors["{$at}.width"] = ['Use a whole number from '.self::WIDTH_MIN.' to '.self::WIDTH_MAX.' pixels.'];
+                }
+            }
+
+            if (($entry['sortable'] ?? null) !== null) {
+                if (is_bool($entry['sortable'])) {
+                    $clean['sortable'] = $entry['sortable'];
+                } else {
+                    $errors["{$at}.sortable"] = ['Sortable is on or off.'];
                 }
             }
 

@@ -18,6 +18,7 @@ import {
     EMPHASIS_WEIGHTS,
     EMPTY_PATH,
     FORMAT_CHOICES,
+    ROOT,
     SLOT_COMPARISON,
     SLOT_HEADLINE,
     choiceOf,
@@ -66,6 +67,10 @@ const isAxis = computed(() => key.value === 'x');
 // A bar's and a pie's own settings sit on their category row (Story 5.11).
 const isBarAxis = computed(() => key.value === 'category');
 const isPieAxis = computed(() => key.value === 'pie_category');
+// A table's columns (Story 5.12): each one's alignment, width and sort; the page size, the highlight column and its bands sit on the first.
+const isColumn = computed(() => /^col_\d+$/.test(key.value));
+const isFirstColumn = computed(() => key.value === 'col_1');
+const COLUMN_KEYS = Array.from({ length: 12 }, (_, n) => `col_${n + 1}`);
 const numeric = computed(
     () =>
         props.item.value_type === 'number' ||
@@ -185,6 +190,53 @@ function setRule(
         clean({
             ...props.rules,
             [rule]: value === byDefault || value === '' ? undefined : value,
+        }),
+    );
+}
+
+// A column's own setting (Story 5.12): written on the slot, a default clears it.
+function setColumn(
+    patch: Partial<Pick<SlotPresentation, 'align' | 'width' | 'sortable'>>,
+): void {
+    emit('change', clean(setSlot(props.rules, key.value, patch)));
+}
+
+function setWidth(raw: string): void {
+    const text = raw.trim();
+
+    setColumn({
+        width:
+            text === ''
+                ? undefined
+                : /^\d+$/.test(text)
+                  ? Number(text)
+                  : (text as never),
+    });
+}
+
+function setPageSize(raw: string): void {
+    const text = raw.trim();
+
+    emit(
+        'change',
+        clean({
+            ...props.rules,
+            page_size:
+                text === ''
+                    ? undefined
+                    : /^\d+$/.test(text)
+                      ? Number(text)
+                      : (text as never),
+        }),
+    );
+}
+
+function setHighlight(next: string): void {
+    emit(
+        'change',
+        clean({
+            ...props.rules,
+            highlight_column: next === '' ? undefined : next,
         }),
     );
 }
@@ -1056,6 +1108,132 @@ const field = 'grid gap-1 [&>label]:type-caption [&>label]:text-text-secondary';
             </div>
         </section>
 
+        <!-- A table column (Story 5.12) -->
+        <section
+            v-if="isColumn"
+            class="grid min-w-0 content-start gap-2"
+            :aria-label="labels.columnTitle"
+            data-test="column-settings"
+        >
+            <h4 class="type-label-caps text-text-muted">
+                {{ labels.columnTitle }}
+            </h4>
+            <div class="grid gap-3 sm:grid-cols-3">
+                <div :class="field">
+                    <label :for="`${id}-align`">{{ labels.columnAlign }}</label>
+                    <NativeSelect
+                        :id="`${id}-align`"
+                        :model-value="mine.align ?? ''"
+                        :disabled="disabled"
+                        data-test="column-align"
+                        @update:model-value="
+                            (v) =>
+                                setColumn({
+                                    align:
+                                        v === ''
+                                            ? undefined
+                                            : (String(v) as never),
+                                })
+                        "
+                    >
+                        <option value="">{{ labels.alignAuto }}</option>
+                        <option value="left">{{ labels.alignLeft }}</option>
+                        <option value="right">{{ labels.alignRight }}</option>
+                        <option value="center">{{ labels.alignCenter }}</option>
+                    </NativeSelect>
+                </div>
+                <div :class="field">
+                    <label :for="`${id}-width`">{{ labels.columnWidth }}</label>
+                    <Input
+                        :id="`${id}-width`"
+                        :model-value="mine.width ?? ''"
+                        inputmode="numeric"
+                        autocomplete="off"
+                        :disabled="disabled"
+                        data-test="column-width"
+                        @change="(e: Event) => setWidth(text(e))"
+                    />
+                    <p
+                        v-if="errors[slotPath(key, 'width')]"
+                        class="type-caption text-text-error"
+                        data-test="column-width-error"
+                    >
+                        {{ errors[slotPath(key, 'width')] }}
+                    </p>
+                </div>
+                <label class="type-body-sm flex items-center gap-2 self-end">
+                    <Checkbox
+                        :model-value="mine.sortable === true"
+                        :disabled="disabled"
+                        data-test="column-sortable"
+                        @update:model-value="
+                            (v) =>
+                                setColumn({
+                                    sortable: v === true ? true : undefined,
+                                })
+                        "
+                    />
+                    {{ labels.columnSortable }}
+                </label>
+            </div>
+        </section>
+
+        <!-- The table's own settings (Story 5.12) -->
+        <section
+            v-if="isFirstColumn"
+            class="grid min-w-0 content-start gap-2"
+            :aria-label="labels.tableTitle"
+            data-test="table-settings"
+        >
+            <h4 class="type-label-caps text-text-muted">
+                {{ labels.tableTitle }}
+            </h4>
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div :class="field">
+                    <label :for="`${id}-page-size`">{{
+                        labels.tablePageSize
+                    }}</label>
+                    <Input
+                        :id="`${id}-page-size`"
+                        :model-value="rules.page_size ?? ''"
+                        inputmode="numeric"
+                        autocomplete="off"
+                        :disabled="disabled"
+                        data-test="table-page-size"
+                        @change="(e: Event) => setPageSize(text(e))"
+                    />
+                    <p
+                        v-if="errors[`${ROOT}.page_size`]"
+                        class="type-caption text-text-error"
+                        data-test="table-page-size-error"
+                    >
+                        {{ errors[`${ROOT}.page_size`] }}
+                    </p>
+                </div>
+                <div :class="field">
+                    <label :for="`${id}-highlight`">{{
+                        labels.tableHighlight
+                    }}</label>
+                    <NativeSelect
+                        :id="`${id}-highlight`"
+                        :model-value="rules.highlight_column ?? ''"
+                        :disabled="disabled"
+                        data-test="table-highlight-column"
+                        @update:model-value="(v) => setHighlight(String(v))"
+                    >
+                        <option value="">{{ labels.tableNoHighlight }}</option>
+                        <option
+                            v-for="(column, at) in COLUMN_KEYS"
+                            :key="column"
+                            :value="column"
+                        >
+                            {{ labels.tableColumn }} {{ at + 1 }}
+                        </option>
+                    </NativeSelect>
+                </div>
+            </div>
+        </section>
+
         <!-- Labels -->
         <div class="grid gap-3 sm:grid-cols-3">
             <div :class="field">
@@ -1145,7 +1323,7 @@ const field = 'grid gap-1 [&>label]:type-caption [&>label]:text-text-secondary';
 
         <!-- Bands (on the headline value) -->
         <BandsEditor
-            v-if="isHeadline"
+            v-if="isHeadline || isFirstColumn"
             :bands="rules.bands ?? []"
             :errors="errors"
             :disabled="disabled"

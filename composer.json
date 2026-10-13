@@ -49,6 +49,7 @@
             "BlockTypes\\KpiChart\\V1\\": "block-types/kpi-chart/v1/",
             "BlockTypes\\Bar\\V1\\": "block-types/bar/v1/",
             "BlockTypes\\PieDonut\\V1\\": "block-types/pie-donut/v1/",
+            "BlockTypes\\Table\\V1\\": "block-types/table/v1/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         }

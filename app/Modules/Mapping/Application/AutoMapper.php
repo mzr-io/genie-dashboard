@@ -1010,6 +1010,7 @@ final class AutoMapper implements AutoMapping
         $effective = (string) ($field['effective'] ?? $this->inferredType($field));
 
         return match ($valueType) {
+            'any' => true,
             'number' => $effective === 'number' && ($this->present($field) !== [] && array_diff($this->present($field), ['integer', 'decimal']) === [] || $this->decimalShaped($field)),
             'boolean' => $effective === 'boolean' && $this->present($field) === ['boolean'],
             default => $effective === 'text' || $effective === 'date',

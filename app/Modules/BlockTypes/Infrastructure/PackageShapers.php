@@ -10,6 +10,7 @@ use BlockTypes\KpiCard\V1\Shaper as KpiCardV1;
 use BlockTypes\KpiChart\V1\Shaper as KpiChartV1;
 use BlockTypes\LineArea\V1\Shaper as LineAreaV1;
 use BlockTypes\PieDonut\V1\Shaper as PieDonutV1;
+use BlockTypes\Table\V1\Shaper as TableV1;
 
 /** The Shapers of the packages under `block-types/`, by pinned `(key, contractVersion)`: never "latest". */
 final class PackageShapers implements BlockTypeShapers
@@ -21,6 +22,7 @@ final class PackageShapers implements BlockTypeShapers
         'kpi-chart@1' => KpiChartV1::class,
         'bar@1' => BarV1::class,
         'pie-donut@1' => PieDonutV1::class,
+        'table@1' => TableV1::class,
     ];
 
     public function shape(BlockType $type, array $slots, array $options = []): array

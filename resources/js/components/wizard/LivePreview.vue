@@ -5,6 +5,7 @@ import BarRenderer from '@block-types/bar/v1/Renderer.vue';
 import KpiChartRenderer from '@block-types/kpi-chart/v1/Renderer.vue';
 import LineAreaRenderer from '@block-types/line-area/v1/Renderer.vue';
 import PieDonutRenderer from '@block-types/pie-donut/v1/Renderer.vue';
+import TableRenderer from '@block-types/table/v1/Renderer.vue';
 import {
     computed,
     nextTick,
@@ -171,14 +172,28 @@ const CHART_SLOTS: Record<string, string[]> = {
     ],
     'pie-donut': ['pie_category', 'pie_value'],
 };
+// A table's regions (Story 5.12): the header cell of each column, else the table itself.
+const TABLE_REGIONS: Record<string, { selector: string; text?: string }> = {
+    row_key: { selector: '[data-test=table-region]' },
+    ...Object.fromEntries(
+        Array.from({ length: 12 }, (_, n) => [
+            `col_${n + 1}`,
+            {
+                selector: `[data-test=table-region] thead th:nth-child(${n + 1})`,
+            },
+        ]),
+    ),
+};
 const isChart = computed(() => props.typeKey in CHART_SLOTS);
 // A KPI & Chart has the card's regions and the chart's (Story 5.10).
 const regionMap = computed(() =>
-    props.typeKey === 'kpi-chart'
-        ? { ...REGIONS, ...chartRegions(CHART_SLOTS['kpi-chart']) }
-        : isChart.value
-          ? chartRegions(CHART_SLOTS[props.typeKey])
-          : REGIONS,
+    props.typeKey === 'table'
+        ? TABLE_REGIONS
+        : props.typeKey === 'kpi-chart'
+          ? { ...REGIONS, ...chartRegions(CHART_SLOTS['kpi-chart']) }
+          : isChart.value
+            ? chartRegions(CHART_SLOTS[props.typeKey])
+            : REGIONS,
 );
 // The slot a Block cannot be drawn without: the headline of a card, the axis (or the categories) of a chart.
 const primarySlot = computed(
@@ -187,6 +202,7 @@ const primarySlot = computed(
             'line-area': 'x',
             bar: 'category',
             'pie-donut': 'pie_category',
+            table: 'col_1',
         })[props.typeKey] ?? 'headline_value',
 );
 // Both are imported here, not loaded on demand: the regions are measured as soon as the card is drawn.
@@ -197,6 +213,7 @@ const rendererOf = computed(
             'kpi-chart': KpiChartRenderer,
             bar: BarRenderer,
             'pie-donut': PieDonutRenderer,
+            table: TableRenderer,
         })[props.typeKey] ?? KpiRenderer,
 );
 

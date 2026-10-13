@@ -1,0 +1,72 @@
+{
+    "key": "table",
+    "contractVersion": 1,
+    "title": "Table",
+    "slots": [
+        {
+            "key": "title",
+            "label": "Title",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "subtitle",
+            "label": "Subtitle",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "icon",
+            "label": "Icon",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label", "filter"]
+        },
+        {
+            "key": "footer_action",
+            "label": "Footer action",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "row_key",
+            "label": "Row key",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["dimension", "label", "filter"]
+        },
+        {
+            "key": "col",
+            "label": "Column",
+            "required": true,
+            "valueType": "any",
+            "cardinality": "rows",
+            "repeat": 12,
+            "fieldRoles": [
+                "label",
+                "dimension",
+                "value",
+                "measure",
+                "time",
+                "filter"
+            ]
+        }
+    ],
+    "size": {
+        "defaultWidth": 6,
+        "minWidth": 4,
+        "maxWidth": 6,
+        "defaultHeight": "large",
+        "minHeight": "medium",
+        "maxHeight": "large"
+    },
+    "defaultAggregations": {}
+}

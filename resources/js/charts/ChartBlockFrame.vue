@@ -27,7 +27,9 @@ const props = withDefaults(
         errorMessage: string | null;
         emptyDisplay?: string | null;
         // What is drawn; null when there is nothing to draw.
-        input: ChartInput | null;
+        input?: ChartInput | null;
+        // The body is the default slot (a table, Story 5.12) instead of a plot, shown whenever the state has data.
+        custom?: boolean;
         fallbackTitle: string;
         // The name an Admin is told is missing when the chart is unavailable.
         field: string;
@@ -37,6 +39,8 @@ const props = withDefaults(
     }>(),
     {
         partial: false,
+        input: null,
+        custom: false,
         emptyDisplay: null,
         audience: 'user',
         workspaceLocale: null,
@@ -53,9 +57,10 @@ const heading = computed(() => props.title ?? props.fallbackTitle);
 const plotted = computed(
     () =>
         (props.state === 'normal' || props.state === 'stale') &&
-        props.input !== null &&
-        props.input.x.length > 0 &&
-        props.input.series.length > 0,
+        (props.custom ||
+            (props.input !== null &&
+                props.input.x.length > 0 &&
+                props.input.series.length > 0)),
 );
 
 const staleMessage = computed(() => {
@@ -159,8 +164,9 @@ const staleMessage = computed(() => {
                 }}</span>
             </p>
 
-            <template v-else-if="input !== null">
-                <ChartPlot :input="input" />
+            <template v-else>
+                <slot v-if="custom" />
+                <ChartPlot v-else-if="input !== null" :input="input" />
                 <p
                     v-if="partial"
                     class="type-caption w-fit rounded-sm bg-surface-muted px-2 py-0.5 text-text-primary"
