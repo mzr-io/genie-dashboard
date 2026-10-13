@@ -161,7 +161,8 @@ export function expandKpiPayload(
     const ctx: TemplateContext = {
         profile,
         emptyDisplay: payload.emptyDisplay,
-        currencyCode: payload.headline.available
+        // Another Block Type's payload has no headline (Story 5.8c).
+        currencyCode: payload.headline?.available
             ? payload.headline.format.currencyCode
             : null,
         locale,

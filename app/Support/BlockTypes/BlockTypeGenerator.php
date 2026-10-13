@@ -176,11 +176,18 @@ final class BlockTypeGenerator
                 $lines[] = "        {$field}: ".(is_int($value) ? $value : "'{$value}'").',';
             }
             $lines[] = '    },';
-            $lines[] = '    default_aggregations: {';
-            foreach ($this->aggregations($schema) as $slot => $aggregation) {
-                $lines[] = "        {$slot}: '{$aggregation}',";
+            $aggregations = $this->aggregations($schema);
+
+            if ($aggregations === []) {
+                // The formatter keeps an empty object on one line.
+                $lines[] = '    default_aggregations: {},';
+            } else {
+                $lines[] = '    default_aggregations: {';
+                foreach ($aggregations as $slot => $aggregation) {
+                    $lines[] = "        {$slot}: '{$aggregation}',";
+                }
+                $lines[] = '    },';
             }
-            $lines[] = '    },';
             $lines[] = '};';
         }
 
@@ -224,14 +231,19 @@ final class BlockTypeGenerator
         $slots = [];
 
         foreach ((array) ($schema['slots'] ?? []) as $slot) {
-            $slots[] = [
-                'key' => (string) $slot['key'],
-                'label' => (string) $slot['label'],
-                'required' => (bool) $slot['required'],
-                'value_type' => (string) $slot['valueType'],
-                'cardinality' => (string) $slot['cardinality'],
-                'field_roles' => array_values(array_map('strval', (array) $slot['fieldRoles'])),
-            ];
+            // A repeated slot (Story 5.8a) is the numbered slots the registry makes of it: `key_1` to `key_N`, the first as required as the declaration.
+            $repeat = isset($slot['repeat']) && is_int($slot['repeat']) ? $slot['repeat'] : 1;
+
+            for ($n = 1; $n <= $repeat; $n++) {
+                $slots[] = [
+                    'key' => (string) $slot['key'].(isset($slot['repeat']) ? "_{$n}" : ''),
+                    'label' => (string) $slot['label'].(isset($slot['repeat']) ? " {$n}" : ''),
+                    'required' => (bool) $slot['required'] && $n === 1,
+                    'value_type' => (string) $slot['valueType'],
+                    'cardinality' => (string) $slot['cardinality'],
+                    'field_roles' => array_values(array_map('strval', (array) $slot['fieldRoles'])),
+                ];
+            }
         }
 
         return $slots;

@@ -158,3 +158,202 @@ export const kpiCardV1: BlockType = {
         comparison: 'sum',
     },
 };
+
+export type LineAreaSlotKey =
+    | 'title'
+    | 'subtitle'
+    | 'icon'
+    | 'footer_action'
+    | 'x'
+    | 'series_1'
+    | 'series_2'
+    | 'series_3'
+    | 'series_4'
+    | 'series_5'
+    | 'series_6'
+    | 'series_label_1'
+    | 'series_label_2'
+    | 'series_label_3'
+    | 'series_label_4'
+    | 'series_label_5'
+    | 'series_label_6'
+    | 'highlight_x'
+    | 'target_value'
+    | 'target_label';
+
+export const lineAreaV1: BlockType = {
+    key: 'line-area',
+    contract_version: 1,
+    title: 'Line / Area',
+    slots: [
+        {
+            key: 'title',
+            label: 'Title',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'subtitle',
+            label: 'Subtitle',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'icon',
+            label: 'Icon',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label', 'filter'],
+        },
+        {
+            key: 'footer_action',
+            label: 'Footer action',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'x',
+            label: 'X axis',
+            required: true,
+            value_type: 'datetime',
+            cardinality: 'rows',
+            field_roles: ['time', 'dimension', 'label'],
+        },
+        {
+            key: 'series_1',
+            label: 'Series 1',
+            required: true,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'series_2',
+            label: 'Series 2',
+            required: false,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'series_3',
+            label: 'Series 3',
+            required: false,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'series_4',
+            label: 'Series 4',
+            required: false,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'series_5',
+            label: 'Series 5',
+            required: false,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'series_6',
+            label: 'Series 6',
+            required: false,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'series_label_1',
+            label: 'Series label 1',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'series_label_2',
+            label: 'Series label 2',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'series_label_3',
+            label: 'Series label 3',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'series_label_4',
+            label: 'Series label 4',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'series_label_5',
+            label: 'Series label 5',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'series_label_6',
+            label: 'Series label 6',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'highlight_x',
+            label: 'Highlighted point',
+            required: false,
+            value_type: 'datetime',
+            cardinality: 'single',
+            field_roles: ['time', 'dimension', 'label'],
+        },
+        {
+            key: 'target_value',
+            label: 'Target line value',
+            required: false,
+            value_type: 'number',
+            cardinality: 'single',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'target_label',
+            label: 'Target line label',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+    ],
+    size: {
+        default_width: 4,
+        min_width: 3,
+        max_width: 6,
+        default_height: 'medium',
+        min_height: 'small',
+        max_height: 'large',
+    },
+    default_aggregations: {},
+};

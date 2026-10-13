@@ -37,6 +37,8 @@ final class Presentation
     /** Where a comparison's previous value comes from (Story 5.6): a field of the same response, or the same Endpoint called for a prior window. */
     public const SOURCES = ['mapped_previous', 'prior_period'];
 
+    public const CHART_KINDS = ['line', 'area'];
+
     public const OPS = ['>=', '<=', 'between', 'equals'];
 
     /** The longest text a band's `equals` value takes. */
@@ -101,7 +103,7 @@ final class Presentation
         $out = [];
 
         foreach (array_keys($input) as $key) {
-            if (! in_array($key, ['slots', 'bands', 'empty_display'], true)) {
+            if (! in_array($key, ['slots', 'bands', 'empty_display', 'chart_kind', 'direct_labels'], true)) {
                 $errors[self::ROOT.'.'.self::name($key)] = ['This is not a presentation setting.'];
             }
         }
@@ -119,6 +121,23 @@ final class Presentation
 
             if ($bands !== []) {
                 $out['bands'] = $bands;
+            }
+        }
+
+        // A chart's own settings (Story 5.8c): line or area, and the direct labels at the line ends.
+        if (array_key_exists('chart_kind', $input) && $input['chart_kind'] !== null) {
+            if (is_string($input['chart_kind']) && in_array($input['chart_kind'], self::CHART_KINDS, true)) {
+                $out['chart_kind'] = $input['chart_kind'];
+            } else {
+                $errors[self::ROOT.'.chart_kind'] = ['Choose one of: '.implode(', ', self::CHART_KINDS).'.'];
+            }
+        }
+
+        if (array_key_exists('direct_labels', $input) && $input['direct_labels'] !== null) {
+            if (is_bool($input['direct_labels'])) {
+                $out['direct_labels'] = $input['direct_labels'];
+            } else {
+                $errors[self::ROOT.'.direct_labels'] = ['Direct labels are on or off.'];
             }
         }
 

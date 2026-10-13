@@ -61,6 +61,8 @@ const mine = computed<SlotPresentation>(
 );
 const isHeadline = computed(() => key.value === SLOT_HEADLINE);
 const isComparison = computed(() => key.value === SLOT_COMPARISON);
+// The chart's own settings (Story 5.8c) sit on its X axis row.
+const isAxis = computed(() => key.value === 'x');
 const numeric = computed(
     () =>
         props.item.value_type === 'number' ||
@@ -158,6 +160,23 @@ const modeExample = computed(() => {
 
     return `${arrow}${flat ? '' : sign}${shown}`;
 });
+
+function setChartKind(next: string): void {
+    emit(
+        'change',
+        clean({
+            ...props.rules,
+            chart_kind: next === 'area' ? 'area' : undefined,
+        }),
+    );
+}
+
+function setDirectLabels(next: boolean): void {
+    emit(
+        'change',
+        clean({ ...props.rules, direct_labels: next ? undefined : false }),
+    );
+}
 
 function setSource(next: string): void {
     patch(
@@ -839,6 +858,42 @@ const field = 'grid gap-1 [&>label]:type-caption [&>label]:text-text-secondary';
             <p v-if="err('mode')" class="type-caption text-error-text">
                 {{ err('mode') }}
             </p>
+        </section>
+
+        <!-- Chart settings (Story 5.8c) -->
+        <section
+            v-if="isAxis"
+            class="grid min-w-0 content-start gap-2"
+            :aria-label="labels.chartTitle"
+            data-test="chart-settings"
+        >
+            <h4 class="type-label-caps text-text-muted">
+                {{ labels.chartTitle }}
+            </h4>
+            <div class="grid gap-3 sm:grid-cols-2">
+                <div :class="field">
+                    <label :for="`${id}-kind`">{{ labels.chartKind }}</label>
+                    <NativeSelect
+                        :id="`${id}-kind`"
+                        :model-value="rules.chart_kind ?? 'line'"
+                        :disabled="disabled"
+                        data-test="chart-kind"
+                        @update:model-value="(v) => setChartKind(String(v))"
+                    >
+                        <option value="line">{{ labels.chartLine }}</option>
+                        <option value="area">{{ labels.chartArea }}</option>
+                    </NativeSelect>
+                </div>
+                <label class="type-body-sm flex items-center gap-2">
+                    <Checkbox
+                        :model-value="rules.direct_labels !== false"
+                        :disabled="disabled"
+                        data-test="chart-direct-labels"
+                        @update:model-value="(v) => setDirectLabels(v === true)"
+                    />
+                    {{ labels.chartDirectLabels }}
+                </label>
+            </div>
         </section>
 
         <!-- Labels -->

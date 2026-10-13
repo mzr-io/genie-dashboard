@@ -7,6 +7,9 @@ export const blockRenderers: Record<string, Component> = {
     'kpi-card': defineAsyncComponent(
         () => import('@block-types/kpi-card/v1/Renderer.vue'),
     ),
+    'line-area': defineAsyncComponent(
+        () => import('@block-types/line-area/v1/Renderer.vue'),
+    ),
 };
 
 export const rendererFor = (type: string): Component | null =>

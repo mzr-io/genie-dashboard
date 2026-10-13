@@ -555,3 +555,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-6b-prior-period-comparison-admin-controls.md`
   summary: Give step 5 its own line for the comparison request ("Checked the primary and the comparison request") beside the report.
   evidence: The report already carries a comparison failure as its reason and a missing headline as a mismatch on the comparison slot; the step shows no separate line.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-8c-line-area-block-type.md`
+  summary: Guard a mapped Draft against a change of Block Type in step 1 until slots are carried over by name.
+  evidence: A draft save can change the type; the stored mapping and plan are for the old type's slots. Story 5.15 keeps same-name slots.

@@ -137,6 +137,9 @@ export type PresentationRules = {
     slots?: Record<string, SlotPresentation>;
     bands?: PresentationBand[];
     empty_display?: string;
+    // A chart's own settings (Story 5.8c).
+    chart_kind?: 'line' | 'area';
+    direct_labels?: boolean;
 };
 
 // What `PUT .../mapping/presentation` answers.
@@ -212,6 +215,14 @@ export function clean(rules: PresentationRules): PresentationRules {
 
     if (rules.empty_display) {
         out.empty_display = rules.empty_display;
+    }
+
+    if (rules.chart_kind !== undefined) {
+        out.chart_kind = rules.chart_kind;
+    }
+
+    if (rules.direct_labels !== undefined) {
+        out.direct_labels = rules.direct_labels;
     }
 
     return out;

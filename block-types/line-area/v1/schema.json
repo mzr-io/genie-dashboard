@@ -1,0 +1,101 @@
+{
+    "key": "line-area",
+    "contractVersion": 1,
+    "title": "Line / Area",
+    "slots": [
+        {
+            "key": "title",
+            "label": "Title",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "subtitle",
+            "label": "Subtitle",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "icon",
+            "label": "Icon",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label", "filter"]
+        },
+        {
+            "key": "footer_action",
+            "label": "Footer action",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "x",
+            "label": "X axis",
+            "required": true,
+            "valueType": "datetime",
+            "cardinality": "rows",
+            "fieldRoles": ["time", "dimension", "label"]
+        },
+        {
+            "key": "series",
+            "label": "Series",
+            "required": true,
+            "valueType": "number",
+            "cardinality": "rows",
+            "repeat": 6,
+            "fieldRoles": ["value", "measure"]
+        },
+        {
+            "key": "series_label",
+            "label": "Series label",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "repeat": 6,
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "highlight_x",
+            "label": "Highlighted point",
+            "required": false,
+            "valueType": "datetime",
+            "cardinality": "single",
+            "fieldRoles": ["time", "dimension", "label"]
+        },
+        {
+            "key": "target_value",
+            "label": "Target line value",
+            "required": false,
+            "valueType": "number",
+            "cardinality": "single",
+            "fieldRoles": ["value", "measure"]
+        },
+        {
+            "key": "target_label",
+            "label": "Target line label",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        }
+    ],
+    "size": {
+        "defaultWidth": 4,
+        "minWidth": 3,
+        "maxWidth": 6,
+        "defaultHeight": "medium",
+        "minHeight": "small",
+        "maxHeight": "large"
+    },
+    "defaultAggregations": {},
+    "presentation": {
+        "directLabels": true
+    }
+}

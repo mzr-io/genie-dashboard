@@ -43,6 +43,23 @@ defineProps<{ type: string }>();
                 opacity="0.8"
             />
         </template>
+        <template v-else-if="type === 'line-area'">
+            <polyline
+                points="6,34 18,26 28,30 40,16 58,10"
+                fill="none"
+                class="stroke-chart-1-stroke"
+                stroke-width="2"
+                stroke-linejoin="round"
+            />
+            <polyline
+                points="6,38 18,33 28,35 40,28 58,24"
+                fill="none"
+                class="stroke-chart-2"
+                stroke-width="2"
+                stroke-dasharray="4 3"
+                stroke-linejoin="round"
+            />
+        </template>
         <template v-else>
             <rect
                 x="8"

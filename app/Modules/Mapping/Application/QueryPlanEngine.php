@@ -16,6 +16,7 @@ use App\Modules\Mapping\Contracts\QueryPlan;
 use App\Modules\Mapping\Contracts\QueryPlans;
 use App\Modules\Mapping\Contracts\SettingNotConfigured;
 use App\Modules\Mapping\Infrastructure\PreviewSettings;
+use App\Platform\Json\SamplePath;
 
 /**
  * The one Query Plan engine (AD-11): it judges the plan (it runs plan `v` 1 forever and refuses any other), has the {@see QueryExecutor} run the
@@ -90,6 +91,17 @@ final class QueryPlanEngine implements QueryPlans
 
         $options = $this->presentation->options($presentation, $slots, $mapped);
 
+        // The name of each mapped field (the last member of its stored path): a series without a label of its own is named by it.
+        $fields = is_array($plan['extract']['fields'] ?? null) ? $plan['extract']['fields'] : [];
+
+        foreach (is_array($plan['shape'] ?? null) ? $plan['shape'] : [] as $slot => $alias) {
+            $name = is_string($fields[$alias] ?? null) ? self::fieldName($fields[$alias]) : null;
+
+            if ($name !== null && str_starts_with((string) $slot, 'series_')) {
+                $options['seriesFields'][(string) $slot] = $name;
+            }
+        }
+
         if ($compared) {
             $slotRules = $presentation['slots'][KpiCardSlots::SLOT_COMPARISON] ?? [];
             $headlineFormat = $presentation['slots'][KpiCardSlots::SLOT_HEADLINE_VALUE]['format'] ?? null;
@@ -107,5 +119,19 @@ final class QueryPlanEngine implements QueryPlans
         }
 
         return new PlanResult($this->shapers->shape($type, $slots, $options), $unavailable, $slots, $result->rows, $result->columns);
+    }
+
+    /** The last member name of a stored path, or null for one that ends in a wildcard or is not a path. */
+    private static function fieldName(string $path): ?string
+    {
+        try {
+            $segments = SamplePath::parse($path);
+        } catch (\InvalidArgumentException) {
+            return null;
+        }
+
+        $last = end($segments);
+
+        return is_string($last) && $last !== '' ? $last : null;
     }
 }

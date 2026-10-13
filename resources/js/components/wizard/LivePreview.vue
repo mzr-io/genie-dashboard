@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import Renderer from '@block-types/kpi-card/v1/Renderer.vue';
+import KpiRenderer from '@block-types/kpi-card/v1/Renderer.vue';
 import type { KpiCardPayload } from '@block-types/kpi-card/v1/payload';
+import LineAreaRenderer from '@block-types/line-area/v1/Renderer.vue';
 import {
     computed,
     nextTick,
@@ -51,6 +52,8 @@ const props = withDefaults(
         roles?: RoleField[];
         // Why nothing can be changed (read-only, offline, published): hotspots are then not buttons.
         blocked?: string;
+        // The Block Type being drawn (Story 5.8c): its Renderer and the regions of its slots.
+        typeKey?: string;
         // The comparison is a prior-period request (Story 5.6): the sample has no value for it.
         priorComparison?: boolean;
     }>(),
@@ -63,6 +66,7 @@ const props = withDefaults(
         slots: () => [],
         roles: () => [],
         blocked: undefined,
+        typeKey: 'kpi-card',
         priorComparison: false,
     },
 );
@@ -107,6 +111,31 @@ const REGIONS: Record<string, { selector: string; text?: string }> = {
     status_badge: { selector: '[data-test=kpi-badge]' },
 };
 const BODY = '__body';
+
+// A chart's regions (Story 5.8c): the plot for the axis, the target and the highlight, and the legend entry (else the plot) for each series.
+const CHART_REGIONS: Record<string, { selector: string; text?: string }> = {
+    x: { selector: '[data-test=chart-plot]' },
+    highlight_x: { selector: '[data-test=chart-plot]' },
+    target_value: { selector: '[data-test=chart-plot]' },
+    series_1: {
+        selector:
+            '[data-test=chart-legend] li:nth-child(1), [data-test=chart-plot]',
+    },
+    ...Object.fromEntries(
+        [2, 3, 4, 5, 6].map((n) => [
+            `series_${n}`,
+            { selector: `[data-test=chart-legend] li:nth-child(${n})` },
+        ]),
+    ),
+};
+const isChart = computed(() => props.typeKey === 'line-area');
+const regionMap = computed(() => (isChart.value ? CHART_REGIONS : REGIONS));
+// The slot a Block cannot be drawn without: the headline of a card, the axis of a chart.
+const primarySlot = computed(() => (isChart.value ? 'x' : 'headline_value'));
+// Both are imported here, not loaded on demand: the regions are measured as soon as the card is drawn.
+const rendererOf = computed(() =>
+    isChart.value ? LineAreaRenderer : KpiRenderer,
+);
 
 const result = ref<PreviewResult | null>(null);
 const problem = ref<PreviewProblem | null>(null);
@@ -343,7 +372,7 @@ function measure(): void {
         };
     };
 
-    for (const [slot, region] of Object.entries(REGIONS)) {
+    for (const [slot, region] of Object.entries(regionMap.value)) {
         const el = box.querySelector(region.selector);
 
         put(
@@ -355,7 +384,7 @@ function measure(): void {
         );
     }
 
-    put(BODY, box.querySelector('[data-test=kpi-body]'));
+    put(BODY, box.querySelector('[data-test=kpi-body],[data-test=chart-body]'));
     regions.value = found;
 }
 
@@ -403,7 +432,7 @@ const hotspots = computed<Hotspot[]>(() => {
         return [];
     }
 
-    return Object.keys(REGIONS).flatMap((key) => {
+    return Object.keys(regionMap.value).flatMap((key) => {
         const item = slotOf(key);
         const region = regions.value[key];
 
@@ -433,7 +462,7 @@ const hotspots = computed<Hotspot[]>(() => {
 
 // A required headline with nothing mapped: the placeholder sits over the headline's region (or the card's body when the card shows none).
 const missing = computed<Region | null>(() => {
-    const item = slotOf('headline_value');
+    const item = slotOf(primarySlot.value);
 
     if (!active.value || !item || item.path || !item.required) {
         return null;
@@ -443,7 +472,7 @@ const missing = computed<Region | null>(() => {
         return null;
     }
 
-    const at = regions.value.headline_value ?? regions.value[BODY];
+    const at = regions.value[primarySlot.value] ?? regions.value[BODY];
 
     return at ? { slot: item.slot, label: item.label, rect: at.rect } : null;
 });
@@ -549,7 +578,11 @@ const notices = computed<string[]>(() => {
                     :data-height="display.height"
                     :title="heightLabel(display.height)"
                 >
-                    <Renderer :payload="shownPayload" audience="admin" />
+                    <component
+                        :is="rendererOf"
+                        :payload="shownPayload"
+                        audience="admin"
+                    />
                 </div>
                 <PreviewHotspots
                     v-if="live"

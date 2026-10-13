@@ -45,6 +45,7 @@
         "psr-4": {
             "App\\": "app/",
             "BlockTypes\\KpiCard\\V1\\": "block-types/kpi-card/v1/",
+            "BlockTypes\\LineArea\\V1\\": "block-types/line-area/v1/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         }

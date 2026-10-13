@@ -32,6 +32,17 @@ final class PresentationOptions
 
         if (is_array($headline['format'] ?? null)) {
             $options['headlineFormat'] = $headline['format'];
+        } elseif (is_array($slots['series_1']['format'] ?? null)) {
+            // A chart's series share the first series' format (Story 5.8c).
+            $options['headlineFormat'] = $slots['series_1']['format'];
+        }
+
+        if (in_array($presentation['chart_kind'] ?? null, ['line', 'area'], true)) {
+            $options['chartKind'] = $presentation['chart_kind'];
+        }
+
+        if (is_bool($presentation['direct_labels'] ?? null)) {
+            $options['directLabels'] = $presentation['direct_labels'];
         }
 
         if (is_array($comparison['format'] ?? null)) {

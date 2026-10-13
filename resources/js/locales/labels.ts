@@ -63,6 +63,15 @@ export const kpiCardLabels = {
         ].join(''),
 } as const;
 
+// The line-area Renderer's own copy (Story 5.8c); the shared states come from the message catalogue.
+export const lineAreaLabels = {
+    fallbackTitle: 'Line chart',
+    errorMessage: "This block couldn't load.",
+    chartField: 'Chart data',
+    staleGeneric: 'Stale: last update time unknown',
+    partial: 'Partial data: some points have no value',
+} as const;
+
 // Labels of dialogs, toasts, banners and landmarks (Story 1.9). Buttons repeat across screens,
 // so they live here once.
 export const overlayLabels = {
@@ -844,7 +853,10 @@ export const draftBlockLabels = {
     noOwner: '—',
     open: (name: string) => `Open ${name}`,
     // The Block Type keys the registry lists, by their display name; an unknown key shows as it is.
-    types: { 'kpi-card': 'KPI card' } as Record<string, string>,
+    types: { 'kpi-card': 'KPI card', 'line-area': 'Line / Area' } as Record<
+        string,
+        string
+    >,
     // Discard.
     discard: 'Discard',
     discardAria: (name: string) => `Discard ${name}`,
@@ -943,7 +955,10 @@ export const blockWizardLabels = {
     descriptionTooLong: (max: number) => `Use up to ${max} characters.`,
     category: 'Category',
     type: 'Block type',
-    typeNames: { 'kpi-card': 'KPI card' } as Record<string, string>,
+    typeNames: { 'kpi-card': 'KPI card', 'line-area': 'Line / Area' } as Record<
+        string,
+        string
+    >,
     icon: 'Icon',
     iconChange: 'Change',
     iconUseCategory: 'Use category icon',
@@ -2402,6 +2417,12 @@ export const blockPresentationLabels = {
     worse: 'worse',
     directionComparisonOnly: 'Direction applies to the comparison slot only.',
     directionNotHere: 'Direction applies to the comparison slot only.',
+    // A chart's own settings (Story 5.8c).
+    chartTitle: 'Chart',
+    chartKind: 'Chart type',
+    chartLine: 'Line',
+    chartArea: 'Area',
+    chartDirectLabels: 'Label each line at its end',
     // Comparison source and mode (Story 5.5).
     comparisonTitle: 'Comparison',
     sourceLabel: 'Source',
@@ -2706,7 +2727,10 @@ export const publishedBlockLabels = {
     status: 'Published',
     noCategory: '—',
     noOwner: '—',
-    types: { 'kpi-card': 'KPI card' } as Record<string, string>,
+    types: { 'kpi-card': 'KPI card', 'line-area': 'Line / Area' } as Record<
+        string,
+        string
+    >,
     highlighted: (name: string) => `${name} is now published.`,
 } as const;
 
@@ -2811,7 +2835,10 @@ export const addBlocksLabels = {
         `${n} available ${n === 1 ? 'block' : 'blocks'}`,
     countFiltered: (shown: number, total: number): string =>
         `${shown} of ${total} blocks`,
-    types: { 'kpi-card': 'KPI card' } as Record<string, string>,
+    types: { 'kpi-card': 'KPI card', 'line-area': 'Line / Area' } as Record<
+        string,
+        string
+    >,
 } as const;
 
 // Manage my dashboards (Story 4.16; UX-DR-84, 163, 166): the header switcher and the My dashboards page.

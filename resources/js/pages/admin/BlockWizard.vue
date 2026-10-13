@@ -1815,6 +1815,7 @@ onBeforeUnmount(() => {
                         :slots="previewSlots"
                         :roles="mapView?.roles?.fields ?? []"
                         :blocked="mapBlocked"
+                        :type-key="form.type"
                         :prior-comparison="mapView?.priorComparison ?? false"
                         @change="
                             (slot, opener) => mapRef?.openSlot(slot, opener)
