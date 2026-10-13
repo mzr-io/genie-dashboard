@@ -1248,3 +1248,45 @@ it('refuses a stale revision and a Draft save that carries the steps', function 
     test()->putJson(BD_URL."/{$id}", ['config' => ['transforms' => [['type' => 'top_n', 'count' => 3]]], 'draft_revision' => dslRev(), 'lock_epoch' => 1], BD_HEADERS)
         ->assertStatus(422);
 });
+
+it('stores group and aggregate steps in the fixed order, counts the rows and names an aggregate the field cannot take', function () {
+    config(['dashflow.tunables.numbers.decimal_scale.value' => '6']);
+    $id = dslRowsDraft();
+
+    $saved = dslTransforms($id, [
+        ['type' => 'top_n', 'count' => 2],
+        ['type' => 'sort', 'field' => '$.data[*].revenue', 'direction' => 'desc'],
+        ['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].revenue'],
+        ['type' => 'group', 'fields' => ['$.data[*].status']],
+    ])->assertOk()->json('data');
+
+    expect(array_column($saved['transforms'], 'type'))->toBe(['group', 'aggregate', 'sort', 'top_n'])
+        ->and($saved['query_plan']['group'])->toBe(['fields' => ['$.data[*].status']])
+        ->and($saved['query_plan']['aggregate'])->toBe([['function' => 'sum', 'field' => '$.data[*].revenue']])
+        ->and($saved['transform_faults'])->toBe([]);
+
+    // 36 rows in two statuses.
+    expect(dslPreview($id)->assertOk()->json('data.rows'))->toBe(['input' => 36, 'steps' => [2, 2, 2, 2]]);
+
+    $bad = dslTransforms($id, [
+        ['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].status'],
+        ['type' => 'group', 'fields' => ['$.data[*].gone']],
+    ])->assertOk()->json('data.transform_faults');
+
+    expect($bad)->toBe([
+        ['field' => '$.data[*].gone', 'reason' => 'field_missing', 'index' => 0, 'type' => 'group', 'function' => null, 'field_type' => null],
+        ['field' => '$.data[*].status', 'reason' => 'not_numeric', 'function' => 'sum', 'field_type' => 'text', 'index' => 1, 'type' => 'aggregate'],
+    ]);
+});
+
+it('refuses a field both grouped and aggregated, naming it, and stores nothing', function () {
+    $id = dslRowsDraft();
+    $revision = dslRev();
+
+    $errors = dslTransforms($id, [
+        ['type' => 'group', 'fields' => ['$.data[*].status']],
+        ['type' => 'aggregate', 'function' => 'count', 'field' => '$.data[*].status'],
+    ])->assertStatus(422)->json('errors');
+
+    expect(array_keys($errors))->toBe(['config.transforms.1.field'])->and(dslRev())->toBe($revision);
+});

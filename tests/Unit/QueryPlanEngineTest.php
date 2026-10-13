@@ -149,7 +149,7 @@ it('refuses a plan of another version, an unknown stage, a bad path, a bad alias
     expect(QueryPlan::validate($base, $type))->toBe([])
         ->and(array_keys(QueryPlan::validate(['v' => 2] + $base, $type)))->toBe(['config.query_plan.v'])
         ->and(array_keys(QueryPlan::validate(['v' => '1'] + $base, $type)))->toBe(['config.query_plan.v'])
-        ->and(array_keys(QueryPlan::validate(['group' => []] + $base, $type)))->toBe(['config.query_plan.group'])
+        ->and(array_keys(QueryPlan::validate(['row_calc' => []] + $base, $type)))->toBe(['config.query_plan.row_calc'])
         ->and(array_keys(QueryPlan::validate(qpPlan(['a' => '$..x'], []), $type)))->toBe(['config.query_plan.extract.fields.a'])
         ->and(array_keys(QueryPlan::validate(qpPlan(['1a' => '$.x'], []), $type)))->toBe(['config.query_plan.extract.fields'])
         ->and(array_keys(QueryPlan::validate(qpPlan(['a' => '$.x'], ['nope' => 'a']), $type)))->toBe(['config.query_plan.shape.nope'])
@@ -162,7 +162,7 @@ it('refuses a plan of another version, an unknown stage, a bad path, a bad alias
 
 it('keeps the stage order fixed with extract first and shape last', function () {
     expect(QueryPlan::STAGE_ORDER)->toBe(['extract', 'filter', 'row_calc', 'group', 'aggregate', 'aggregate_calc', 'sort', 'top_n', 'shape'])
-        ->and(QueryPlan::STAGES_V1)->toBe(['extract', 'filter', 'sort', 'top_n', 'shape']);
+        ->and(QueryPlan::STAGES_V1)->toBe(['extract', 'filter', 'group', 'aggregate', 'sort', 'top_n', 'shape']);
 });
 
 it('aborts, with no partial result, when a guard is passed', function () {

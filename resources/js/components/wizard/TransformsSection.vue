@@ -6,19 +6,23 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { announce } from '@/lib/announce';
 import {
+    FUNCTIONS,
+    MAX_GROUP_FIELDS,
     OPERATORS,
     canAdd,
     inStageOrder,
     shortName,
 } from '@/lib/blockTransforms';
 import type {
+    AggregateFunction,
+    AggregateStep,
     FilterStep,
+    GroupStep,
     Operator,
     RowCounts,
     SortStep,
     StepType,
     TopNStep,
-    TransformFault,
     TransformStep,
 } from '@/lib/blockTransforms';
 import {
@@ -35,7 +39,15 @@ const props = defineProps<{
     // The row fields of the sample a step can use: stored path and the name shown.
     fields: { path: string; display: string }[];
     // What the server (and the client) say is wrong, by step position.
-    faults: Record<number, { reason: string; field: string | null }>;
+    faults: Record<
+        number,
+        {
+            reason: string;
+            field: string | null;
+            function?: string | null;
+            field_type?: string | null;
+        }
+    >;
     counts: RowCounts | null;
     // Why nothing can be changed now (read-only, offline, published).
     blocked?: string;
@@ -51,6 +63,23 @@ const uid = useId();
 const disabled = computed(() => props.blocked !== undefined);
 const noFields = computed(() => props.fields.length === 0);
 
+// Once rows are grouped or aggregated only those fields are left, so a Sort offers only them.
+const sortFields = computed(() => {
+    const left = new Set<string>();
+
+    for (const step of props.steps) {
+        if (step.type === 'group') {
+            step.fields.forEach((f) => left.add(f));
+        } else if (step.type === 'aggregate') {
+            left.add(step.field);
+        }
+    }
+
+    return left.size === 0
+        ? props.fields
+        : props.fields.filter((f) => left.has(f.path));
+});
+
 const nameOf = (path: string): string => {
     const found = props.fields.find((f) => f.path === path);
 
@@ -63,6 +92,17 @@ function sentence(step: TransformStep): string {
             nameOf(step.field),
             labels.operators[step.operator],
             step.value,
+        );
+    }
+
+    if (step.type === 'group') {
+        return labels.groupSentence(step.fields.map(nameOf).join(', '));
+    }
+
+    if (step.type === 'aggregate') {
+        return labels.aggregateSentence(
+            labels.functions[step.function],
+            nameOf(step.field),
         );
     }
 
@@ -96,6 +136,15 @@ function faultText(index: number): string | null {
         return null;
     }
 
+    // "Can't SUM a text field": the function and the kind of field the aggregate met.
+    if (fault.function !== undefined && fault.function !== null) {
+        return labels.cantAggregate(
+            labels.functions[fault.function as AggregateFunction] ??
+                fault.function.toUpperCase(),
+            fault.field_type ?? 'text',
+        );
+    }
+
     const make = (labels.faults as Record<string, unknown>)[fault.reason];
 
     return typeof make === 'function'
@@ -121,9 +170,21 @@ function addStep(type: StepType): void {
     const step: TransformStep =
         type === 'filter'
             ? { type, field, operator: 'is', value: '' }
-            : type === 'sort'
-              ? { type, field, direction: 'desc' }
-              : { type, count: 5 };
+            : type === 'group'
+              ? { type, fields: [field] }
+              : type === 'aggregate'
+                ? {
+                      type,
+                      function: 'sum',
+                      field: props.fields[1]?.path ?? field,
+                  }
+                : type === 'sort'
+                  ? {
+                        type,
+                        field: sortFields.value[0]?.path ?? field,
+                        direction: 'desc',
+                    }
+                  : { type, count: 5 };
 
     open.value = true;
     put([...props.steps, step]);
@@ -157,6 +218,32 @@ function remove(index: number): void {
             (addButton.value?.$el as HTMLElement | undefined)
         )?.focus();
     });
+}
+
+function setGroupField(
+    index: number,
+    step: GroupStep,
+    at: number,
+    path: string,
+): void {
+    replace(index, {
+        ...step,
+        fields: step.fields.map((f, i) => (i === at ? path : f)),
+    });
+}
+
+function addGroupField(index: number, step: GroupStep): void {
+    const next = props.fields.find((f) => !step.fields.includes(f.path));
+
+    if (next !== undefined && step.fields.length < MAX_GROUP_FIELDS) {
+        replace(index, { ...step, fields: [...step.fields, next.path] });
+    }
+}
+
+function removeGroupField(index: number, step: GroupStep): void {
+    if (step.fields.length > 1) {
+        replace(index, { ...step, fields: step.fields.slice(0, -1) });
+    }
 }
 
 function setOperator(index: number, step: FilterStep, value: string): void {
@@ -226,6 +313,8 @@ const typeOf = (step: TransformStep): StepType => step.type;
 const asFilter = (s: TransformStep): FilterStep => s as FilterStep;
 const asSort = (s: TransformStep): SortStep => s as SortStep;
 const asTopN = (s: TransformStep): TopNStep => s as TopNStep;
+const asGroup = (s: TransformStep): GroupStep => s as GroupStep;
+const asAggregate = (s: TransformStep): AggregateStep => s as AggregateStep;
 </script>
 
 <template>
@@ -379,6 +468,131 @@ const asTopN = (s: TransformStep): TopNStep => s as TopNStep;
                             />
                         </template>
 
+                        <template v-else-if="typeOf(step) === 'group'">
+                            <NativeSelect
+                                v-for="(path, at) in asGroup(step).fields"
+                                :key="at"
+                                class="w-auto min-w-32"
+                                :model-value="path"
+                                :aria-label="labels.groupFieldName(at + 1)"
+                                :aria-describedby="help(index, 'group')"
+                                :aria-invalid="
+                                    faults[index] !== undefined
+                                        ? 'true'
+                                        : undefined
+                                "
+                                :disabled="disabled"
+                                data-test="group-field"
+                                @update:model-value="
+                                    (v?: string) =>
+                                        setGroupField(
+                                            index,
+                                            asGroup(step),
+                                            at,
+                                            v ?? '',
+                                        )
+                                "
+                            >
+                                <option
+                                    v-for="f in fields"
+                                    :key="f.path"
+                                    :value="f.path"
+                                >
+                                    {{ shortName(f.display) }}
+                                </option>
+                            </NativeSelect>
+                            <Button
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                :aria-disabled="
+                                    disabled ||
+                                    asGroup(step).fields.length >=
+                                        fields.length ||
+                                    asGroup(step).fields.length >=
+                                        MAX_GROUP_FIELDS
+                                        ? 'true'
+                                        : undefined
+                                "
+                                data-test="group-add-field"
+                                @click="
+                                    !disabled &&
+                                    addGroupField(index, asGroup(step))
+                                "
+                            >
+                                {{ labels.addGroupField }}
+                            </Button>
+                            <Button
+                                v-if="asGroup(step).fields.length > 1"
+                                type="button"
+                                variant="secondary"
+                                size="sm"
+                                :aria-disabled="disabled ? 'true' : undefined"
+                                data-test="group-remove-field"
+                                @click="
+                                    !disabled &&
+                                    removeGroupField(index, asGroup(step))
+                                "
+                            >
+                                {{ labels.removeGroupField }}
+                            </Button>
+                        </template>
+
+                        <template v-else-if="typeOf(step) === 'aggregate'">
+                            <NativeSelect
+                                class="w-auto min-w-28"
+                                :model-value="asAggregate(step).function"
+                                :aria-label="labels.functionName"
+                                :aria-describedby="help(index, 'function')"
+                                :disabled="disabled"
+                                data-test="aggregate-function"
+                                @update:model-value="
+                                    (v?: string) =>
+                                        replace(index, {
+                                            ...asAggregate(step),
+                                            function: (v ??
+                                                'sum') as AggregateFunction,
+                                        })
+                                "
+                            >
+                                <option
+                                    v-for="fn in FUNCTIONS"
+                                    :key="fn"
+                                    :value="fn"
+                                >
+                                    {{ labels.functions[fn] }}
+                                </option>
+                            </NativeSelect>
+                            <NativeSelect
+                                class="w-auto min-w-32"
+                                :model-value="asAggregate(step).field"
+                                :aria-label="labels.aggregateFieldName"
+                                :aria-describedby="help(index, 'aggregate')"
+                                :aria-invalid="
+                                    faults[index] !== undefined
+                                        ? 'true'
+                                        : undefined
+                                "
+                                :disabled="disabled"
+                                data-test="aggregate-field"
+                                @update:model-value="
+                                    (v?: string) =>
+                                        replace(index, {
+                                            ...asAggregate(step),
+                                            field: v ?? '',
+                                        })
+                                "
+                            >
+                                <option
+                                    v-for="f in fields"
+                                    :key="f.path"
+                                    :value="f.path"
+                                >
+                                    {{ shortName(f.display) }}
+                                </option>
+                            </NativeSelect>
+                        </template>
+
                         <template v-else-if="typeOf(step) === 'sort'">
                             <NativeSelect
                                 class="w-auto min-w-32"
@@ -412,7 +626,7 @@ const asTopN = (s: TransformStep): TopNStep => s as TopNStep;
                                     {{ shortName(asSort(step).field) }}
                                 </option>
                                 <option
-                                    v-for="f in fields"
+                                    v-for="f in sortFields"
                                     :key="f.path"
                                     :value="f.path"
                                 >
@@ -496,7 +710,13 @@ const asTopN = (s: TransformStep): TopNStep => s as TopNStep;
                                 ? labels.valueHelp
                                 : part === 'direction'
                                   ? labels.directionHelp
-                                  : labels.countHelp
+                                  : part === 'group'
+                                    ? labels.groupHelp
+                                    : part === 'function'
+                                      ? labels.functionHelp
+                                      : part === 'aggregate'
+                                        ? labels.aggregateFieldHelp
+                                        : labels.countHelp
                     }}</span
                 >
 
@@ -552,7 +772,13 @@ const asTopN = (s: TransformStep): TopNStep => s as TopNStep;
             </Button>
             <template v-if="adding">
                 <Button
-                    v-for="type in ['filter', 'sort', 'top_n'] as StepType[]"
+                    v-for="type in [
+                        'filter',
+                        'group',
+                        'aggregate',
+                        'sort',
+                        'top_n',
+                    ] as StepType[]"
                     :key="type"
                     type="button"
                     variant="secondary"
@@ -564,9 +790,13 @@ const asTopN = (s: TransformStep): TopNStep => s as TopNStep;
                     {{
                         type === 'filter'
                             ? labels.addFilter
-                            : type === 'sort'
-                              ? labels.addSort
-                              : labels.addTopN
+                            : type === 'group'
+                              ? labels.addGroup
+                              : type === 'aggregate'
+                                ? labels.addAggregate
+                                : type === 'sort'
+                                  ? labels.addSort
+                                  : labels.addTopN
                     }}
                 </Button>
             </template>

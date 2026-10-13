@@ -1875,11 +1875,19 @@ export const blockSampleLabels = {
 // the rest is control vocabulary. Nothing here ever quotes the sample.
 // The Transforms section of Map Data (Story 5.1; UX-DR-131, 198, 205): Filter, Sort and Top-N steps, in the fixed stage order.
 export const blockTransformLabels = {
-    stage: { filter: 'FILTER', sort: 'SORT', top_n: 'TOP N' },
+    stage: {
+        filter: 'FILTER',
+        group: 'GROUP',
+        aggregate: 'AGGREGATE',
+        sort: 'SORT',
+        top_n: 'TOP N',
+    },
     addStep: '+ Add step',
     addFilter: 'Filter',
     addSort: 'Sort',
     addTopN: 'Top N',
+    addGroup: 'Group',
+    addAggregate: 'Aggregate',
     addDisabledNoField: 'The sample has no row fields to use yet.',
     addDisabledLimit: 'This kind of step is at its limit.',
     fieldName: { filter: 'Filter field', sort: 'Sort field' },
@@ -1892,6 +1900,25 @@ export const blockTransformLabels = {
     valueHelp: 'The value to compare with. Numbers are compared as numbers.',
     directionHelp: 'Ascending is smallest first. Ties keep their order.',
     countHelp: 'How many rows to keep, from the top, after sorting.',
+    groupFieldName: (n: number) => `Group by field ${n}`,
+    groupHelp: 'Rows with the same value in these fields become one row.',
+    addGroupField: '+ Field',
+    removeGroupField: 'Remove last field',
+    functionName: 'Aggregate function',
+    functionHelp: 'How the values of each group are combined into one.',
+    aggregateFieldName: 'Aggregate field',
+    aggregateFieldHelp:
+        'The field whose values are combined. SUM and AVG need numbers.',
+    functions: {
+        sum: 'SUM',
+        count: 'COUNT',
+        avg: 'AVG',
+        min: 'MIN',
+        max: 'MAX',
+    },
+    groupSentence: (fields: string) => `Group by ${fields}`,
+    aggregateSentence: (fn: string, field: string) => `${fn} of ${field}`,
+    cantAggregate: (fn: string, type: string) => `Can't ${fn} a ${type} field`,
     operators: {
         is: 'is',
         is_not: 'isn’t',
@@ -1921,6 +1948,7 @@ export const blockTransformLabels = {
         unsortable: (field: string) =>
             `${field} can’t be sorted. Choose a text, number or date field.`,
         not_numeric_value: 'Enter a number to compare with.',
+        group_fields: 'Choose each field to group by once.',
         value_long: 'Use 200 characters or fewer.',
         count: 'Enter a whole number from 1 to 1000.',
     },

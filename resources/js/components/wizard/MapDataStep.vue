@@ -827,12 +827,25 @@ const transformFields = computed(() => {
 });
 // Faults by the step's position: what the client can tell, and what the sample says of the steps that are stored.
 const transformFaults = computed(() => {
-    const out: Record<number, { reason: string; field: string | null }> = {};
+    const out: Record<
+        number,
+        {
+            reason: string;
+            field: string | null;
+            function?: string | null;
+            field_type?: string | null;
+        }
+    > = {};
     const stored = read.value?.transforms ?? [];
 
     if (sameSteps(steps.value, stored)) {
         for (const fault of read.value?.checklist?.transform_faults ?? []) {
-            out[fault.index] = { reason: fault.reason, field: fault.field };
+            out[fault.index] = {
+                reason: fault.reason,
+                field: fault.field,
+                function: fault.function,
+                field_type: fault.field_type,
+            };
         }
     }
 

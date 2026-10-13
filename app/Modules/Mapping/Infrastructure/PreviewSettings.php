@@ -19,6 +19,7 @@ final class PreviewSettings
         'max_extracted_values' => 'DASHFLOW_PREVIEW_MAX_EXTRACTED_VALUES',
         'max_evaluations' => 'DASHFLOW_PREVIEW_MAX_EVALUATIONS',
         'max_wall_ms' => 'DASHFLOW_PREVIEW_MAX_WALL_MS',
+        'max_groups' => 'DASHFLOW_PREVIEW_MAX_GROUPS',
     ];
 
     public function __construct(private readonly Repository $config) {}
@@ -27,7 +28,10 @@ final class PreviewSettings
     public function require(): void
     {
         foreach (array_keys(self::ENV) as $name) {
-            $this->value($name);
+            // `max_groups` (Story 5.2) may stay unset: the extracted-values guard bounds the groups then.
+            if ($name !== 'max_groups') {
+                $this->value($name);
+            }
         }
     }
 
@@ -45,7 +49,17 @@ final class PreviewSettings
     {
         $this->require();
 
-        return new PlanGuards($this->value('max_extracted_values'), $this->value('max_evaluations'), $this->value('max_wall_ms'));
+        return new PlanGuards($this->value('max_extracted_values'), $this->value('max_evaluations'), $this->value('max_wall_ms'), $this->optional('max_groups'));
+    }
+
+    /** A setting that may stay unset (the guards then fall back): null when it is not a positive whole number. */
+    private function optional(string $name): ?int
+    {
+        try {
+            return $this->value($name);
+        } catch (SettingNotConfigured) {
+            return null;
+        }
     }
 
     private function value(string $name): int

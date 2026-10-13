@@ -5,11 +5,13 @@ use App\Modules\Blocks\Contracts\InvalidDraft;
 use App\Modules\BlockTypes\Application\LoadBlockTypes;
 use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\BlockTypes\Infrastructure\PackageShapers;
+use App\Modules\Mapping\Application\DecimalMath;
 use App\Modules\Mapping\Application\QueryPlanEngine;
 use App\Modules\Mapping\Contracts\GuardExceeded;
 use App\Modules\Mapping\Contracts\InvalidPlan;
 use App\Modules\Mapping\Contracts\PlanGuards;
 use App\Modules\Mapping\Contracts\QueryPlan;
+use App\Modules\Mapping\Contracts\SettingNotConfigured;
 use App\Modules\Mapping\Contracts\Transforms;
 use App\Modules\Mapping\Infrastructure\InProcessExecutor;
 use App\Modules\Mapping\Infrastructure\PreviewSettings;
@@ -22,7 +24,7 @@ function qtType(): BlockType
     return (new LoadBlockTypes(dirname(__DIR__, 2).'/block-types'))->resolve('kpi-card', 1);
 }
 
-function qtEngine(array $settings = []): QueryPlanEngine
+function qtEngine(array $settings = [], string $scale = '6'): QueryPlanEngine
 {
     $preview = [];
 
@@ -30,7 +32,9 @@ function qtEngine(array $settings = []): QueryPlanEngine
         $preview[$name] = ['value' => $value];
     }
 
-    return new QueryPlanEngine(new InProcessExecutor, new PackageShapers, new PreviewSettings(new Repository(['dashflow' => ['preview' => $preview]])));
+    $config = new Repository(['dashflow' => ['preview' => $preview, 'tunables' => ['numbers' => ['decimal_scale' => ['value' => $scale]]]]]);
+
+    return new QueryPlanEngine(new InProcessExecutor(null, new DecimalMath($config)), new PackageShapers, new PreviewSettings($config));
 }
 
 /** @param  list<array<string, mixed>>  $rows */
@@ -174,4 +178,131 @@ it('aborts with a guard error when the rows are too many, and never truncates', 
     $plan = qtPlan([['type' => 'top_n', 'count' => 1]]);
 
     expect(fn () => $engine->run(qtType(), $plan, qtDocument($rows), $engine->guards()))->toThrow(GuardExceeded::class);
+});
+
+// Story 5.2: Group and Aggregate, in the fixed order filter, group, aggregate, sort, top-N.
+function qgRows(): array
+{
+    $regions = ['EU', 'US', 'APAC', 'EU', 'US', 'EU', 'APAC', 'LATAM'];
+
+    return array_map(fn (string $r, int $i): array => ['region' => $r, 'revenue' => ($i + 1) * 10, 'status' => $i % 4 === 0 ? 'Rejected' : 'Approved'], $regions, array_keys($regions));
+}
+
+function qgPlan(array $steps, array $shape = ['headline_value' => 'rev']): array
+{
+    return qtPlan($steps, ['rev' => '$.data[*].revenue', 'region' => '$.data[*].region'], $shape);
+}
+
+it('groups by a field, sums per group, sorts descending and keeps the top 2, in the fixed order', function () {
+    $steps = [
+        ['type' => 'top_n', 'count' => 2],
+        ['type' => 'sort', 'field' => '$.data[*].revenue', 'direction' => 'desc'],
+        ['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].revenue'],
+        ['type' => 'group', 'fields' => ['$.data[*].region']],
+    ];
+    [$ordered] = Transforms::check($steps);
+
+    expect(array_column($ordered, 'type'))->toBe(['group', 'aggregate', 'sort', 'top_n']);
+
+    $result = qtRun(qgPlan($steps), qtDocument(qgRows()));
+
+    // EU 10+40+60=110, US 20+50=70, APAC 30+70=100, LATAM 80; by revenue descending: EU 110, APAC 100, LATAM 80, US 70.
+    expect($result->columns['region'])->toBe(['EU', 'APAC'])
+        ->and($result->columns['rev'])->toBe(['110', '100'])
+        ->and($result->rows)->toBe(['input' => 8, 'steps' => [4, 4, 4, 2]]);
+});
+
+it('offers exactly sum, count, avg, min and max and computes each per group', function () {
+    expect(Transforms::FUNCTIONS)->toBe(['sum', 'count', 'avg', 'min', 'max']);
+
+    $expect = ['sum' => ['110', '70', '100', '80'], 'count' => ['3', '2', '2', '1'], 'avg' => ['36.666666', '35', '50', '80'], 'min' => ['10', '20', '30', '80'], 'max' => ['60', '50', '70', '80']];
+
+    foreach ($expect as $function => $values) {
+        $result = qtRun(qgPlan([
+            ['type' => 'group', 'fields' => ['$.data[*].region']],
+            ['type' => 'aggregate', 'function' => $function, 'field' => '$.data[*].revenue'],
+        ]), qtDocument(qgRows()));
+
+        expect($result->columns['rev'])->toBe($values, $function)->and($result->columns['region'])->toBe(['EU', 'US', 'APAC', 'LATAM']);
+    }
+});
+
+it('filters first and counts the rows of each stage', function () {
+    $result = qtRun(qgPlan([
+        ['type' => 'filter', 'field' => '$.data[*].status', 'operator' => 'is', 'value' => 'Approved'],
+        ['type' => 'group', 'fields' => ['$.data[*].region']],
+        ['type' => 'aggregate', 'function' => 'count', 'field' => '$.data[*].revenue'],
+    ]), qtDocument(qgRows()));
+
+    // Rejected are rows 1 and 5 (EU and US); the Approved 6 rows make 4 regions.
+    expect($result->rows)->toBe(['input' => 8, 'steps' => [6, 4, 4]]);
+});
+
+it('sums digits no float can hold exactly and sends them as a decimal string', function () {
+    $document = LosslessJson::decode('{"data":[{"region":"EU","revenue":12345678901234567.89},{"region":"EU","revenue":0.01},{"region":"EU","revenue":1e2}]}');
+    $result = qtRun(qgPlan([
+        ['type' => 'group', 'fields' => ['$.data[*].region']],
+        ['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].revenue'],
+    ]), $document);
+
+    // 12345678901234567.89 + 0.01 + 100 = 12345678901234667.90, written without the zero the scale padded.
+    expect($result->columns['rev'])->toBe(['12345678901234667.9'])->and($result->slots['headline_value'])->toBe('12345678901234667.9');
+});
+
+it('aggregates the whole table when nothing is grouped, and makes an empty table unavailable', function () {
+    $whole = qtRun(qgPlan([['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].revenue']]), qtDocument(qgRows()));
+    $none = qtRun(qgPlan([
+        ['type' => 'filter', 'field' => '$.data[*].status', 'operator' => 'is', 'value' => 'Nothing'],
+        ['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].revenue'],
+    ]), qtDocument(qgRows()));
+
+    expect($whole->slots['headline_value'])->toBe('360')
+        ->and($whole->rows)->toBe(['input' => 8, 'steps' => [1]])
+        ->and($none->slots['headline_value'])->toBeNull()->and($none->unavailable['headline_value'])->toBe('missing');
+});
+
+it('makes slots unavailable when a column cannot be summed, and never reads a missing value as 0', function () {
+    $text = qtRun(qgPlan([
+        ['type' => 'group', 'fields' => ['$.data[*].status']],
+        ['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].region'],
+    ], ['headline_value' => 'rev']), qtDocument(qgRows()));
+    $gone = qtRun(qgPlan([['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].gone']]), qtDocument(qgRows()));
+    $nulls = qtRun(qgPlan([['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].revenue']]), LosslessJson::decode('{"data":[{"region":"EU","revenue":null},{"region":"US","revenue":null}]}'));
+
+    foreach ([$text, $gone, $nulls] as $result) {
+        expect($result->slots['headline_value'])->toBeNull()->and($result->unavailable['headline_value'])->toBe('missing');
+    }
+});
+
+it('judges group and aggregate steps whole and refuses a field both grouped and aggregated, or a sort on a dropped field', function () {
+    [, $errors] = Transforms::check([
+        ['type' => 'group', 'fields' => ['$.data[*].region', '$.data[*].region']],
+        ['type' => 'aggregate', 'function' => 'median', 'field' => '$.data[*].revenue'],
+    ]);
+
+    expect(array_keys($errors))->toBe(['config.transforms.0.fields', 'config.transforms.1.function']);
+
+    [, $both] = Transforms::check([
+        ['type' => 'group', 'fields' => ['$.data[*].region']],
+        ['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].region'],
+        ['type' => 'sort', 'field' => '$.data[*].other', 'direction' => 'asc'],
+    ]);
+
+    expect(array_keys($both))->toBe(['config.transforms.1.field', 'config.transforms.2.field']);
+    expect(QueryPlan::validate(qgPlan([['type' => 'group', 'fields' => ['$.data[*].region']]]), qtType()))->toBe([]);
+});
+
+it('aborts with a guard error when grouping makes more groups than the limit, and never truncates', function () {
+    $rows = array_map(fn (int $i): array => ['region' => 'r'.$i, 'revenue' => $i, 'status' => 'a'], range(1, 20));
+    $engine = qtEngine(['max_groups' => '5']);
+    $plan = qgPlan([['type' => 'group', 'fields' => ['$.data[*].region']], ['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].revenue']]);
+
+    expect(fn () => $engine->run(qtType(), $plan, qtDocument($rows), $engine->guards()))->toThrow(GuardExceeded::class);
+});
+
+it('refuses SUM and AVG while the decimal scale is not configured, naming it', function () {
+    $engine = qtEngine([], '');
+    $plan = qgPlan([['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].revenue']]);
+
+    expect(fn () => $engine->run(qtType(), $plan, qtDocument(qgRows()), $engine->guards()))->toThrow(SettingNotConfigured::class);
 });

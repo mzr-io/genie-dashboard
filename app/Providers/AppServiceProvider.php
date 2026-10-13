@@ -169,6 +169,7 @@ use App\Modules\Ingestion\Infrastructure\IngestionAuditSerializer;
 use App\Modules\Ingestion\Infrastructure\KeyFileContextDigest;
 use App\Modules\Ingestion\Infrastructure\SyncSettings;
 use App\Modules\Mapping\Application\AutoMapper;
+use App\Modules\Mapping\Application\DecimalMath;
 use App\Modules\Mapping\Application\FieldRoleInference;
 use App\Modules\Mapping\Application\PreviewRateLimit;
 use App\Modules\Mapping\Application\QueryPlanEngine;
@@ -268,7 +269,8 @@ class AppServiceProvider extends ServiceProvider
         $this->app->singleton(DraftPreviews::class, PreviewDraft::class);
         $this->app->bind(DraftUserSamples::class, ManageUserSamples::class);
         $this->app->bind(BlockTypeShapers::class, PackageShapers::class);
-        $this->app->bind(QueryExecutor::class, InProcessExecutor::class);
+        // The arithmetic of SUM and AVG (Story 5.2) is the platform's one decimal scale.
+        $this->app->bind(QueryExecutor::class, fn ($app): InProcessExecutor => new InProcessExecutor(null, new DecimalMath($app->make('config'))));
         $this->app->bind(QueryPlans::class, QueryPlanEngine::class);
         $this->app->bind(FieldRoles::class, FieldRoleInference::class);
         $this->app->bind(DraftFieldRoles::class, ReadDraftFieldRoles::class);

@@ -8,9 +8,10 @@ use InvalidArgumentException;
 
 /**
  * Query Plan version 1 (AD-11): `{"v":1,"extract":{"fields":{"<alias>":"<stored path>"}},"shape":{"<slot key>":"<alias>"}}`, with the row stages
- * `filter` (a list of `{field, operator, value}`), `sort` (a list of `{field, direction}`) and `top_n` (`{count}`) of Story 5.1 between them. The stage
- * order is fixed (extract, filter, row calc, group, aggregate, aggregate calc, sort, top-N, shape) and plan `v` 1 runs forever; `extract`, `filter`,
- * `sort`, `top_n` and `shape` exist so far. A stored path is the RFC 9535 subset {@see SamplePath} reads. This class only judges the document: it never runs it.
+ * `filter` (a list of `{field, operator, value}`), `group` (`{fields}`), `aggregate` (a list of `{function, field}`), `sort` (a list of
+ * `{field, direction}`) and `top_n` (`{count}`) of Stories 5.1 and 5.2 between them. The stage order is fixed (extract, filter, row calc, group,
+ * aggregate, aggregate calc, sort, top-N, shape) and plan `v` 1 runs forever; `extract`, `filter`, `group`, `aggregate`, `sort`, `top_n` and `shape`
+ * exist so far. A stored path is the RFC 9535 subset {@see SamplePath} reads. This class only judges the document: it never runs it.
  */
 final class QueryPlan
 {
@@ -20,7 +21,7 @@ final class QueryPlan
     public const STAGE_ORDER = ['extract', 'filter', 'row_calc', 'group', 'aggregate', 'aggregate_calc', 'sort', 'top_n', 'shape'];
 
     /** The stages plan v1 carries. */
-    public const STAGES_V1 = ['extract', 'filter', 'sort', 'top_n', 'shape'];
+    public const STAGES_V1 = ['extract', 'filter', 'group', 'aggregate', 'sort', 'top_n', 'shape'];
 
     private const ALIAS = '/\A[A-Za-z_][A-Za-z0-9_]{0,63}\z/D';
 

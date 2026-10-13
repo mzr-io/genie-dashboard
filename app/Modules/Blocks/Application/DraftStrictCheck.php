@@ -70,6 +70,11 @@ final class DraftStrictCheck
                 $faults[] = self::fault("config.transforms.{$index}.value", null, 'invalid_transform');
             }
 
+            // An aggregate that reads numbers on a field the Admin has told the platform to read as something else.
+            if (($step['type'] ?? null) === Transforms::AGGREGATE && in_array($step['function'] ?? null, Transforms::NUMERIC_FUNCTIONS, true) && $forced !== null && $forced !== 'number') {
+                $faults[] = self::fault("config.transforms.{$index}.field", null, 'invalid_transform');
+            }
+
             if (($step['type'] ?? null) === Transforms::SORT && $forced === 'boolean') {
                 $faults[] = self::fault("config.transforms.{$index}.field", null, 'invalid_transform');
             }

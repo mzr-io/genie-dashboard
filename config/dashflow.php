@@ -251,6 +251,8 @@ return [
         'max_extracted_values' => $tunable('DASHFLOW_PREVIEW_MAX_EXTRACTED_VALUES'),
         'max_evaluations' => $tunable('DASHFLOW_PREVIEW_MAX_EVALUATIONS'),
         'max_wall_ms' => $tunable('DASHFLOW_PREVIEW_MAX_WALL_MS'),
+        // Story 5.2: the most groups a Group step may make. Optional: while unset the extracted-values limit bounds them.
+        'max_groups' => $tunable('DASHFLOW_PREVIEW_MAX_GROUPS'),
         'p95_target_ms' => $tunable('DASHFLOW_PREVIEW_P95_TARGET_MS'),
     ],
 

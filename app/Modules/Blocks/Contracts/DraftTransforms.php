@@ -11,7 +11,7 @@ final readonly class DraftTransforms
     /**
      * @param  list<array<string, mixed>>  $steps
      * @param  array<string, mixed>|null  $queryPlan
-     * @param  list<array{index: int, type: string, field: string|null, reason: string}>  $faults
+     * @param  list<array{index: int, type: string, field: string|null, reason: string, function: string|null, field_type: string|null}>  $faults
      */
     public function __construct(public array $steps, public int $revision, public ?array $queryPlan = null, public array $faults = []) {}
 }

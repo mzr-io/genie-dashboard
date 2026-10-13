@@ -59,6 +59,48 @@ describe('transform helpers', () => {
     });
 });
 
+describe('group and aggregate helpers', () => {
+    it('orders filter, group, aggregate, sort, top-N and limits each kind', () => {
+        const steps: TransformStep[] = [
+            { type: 'top_n', count: 5 },
+            { type: 'sort', field: '$.a', direction: 'desc' },
+            { type: 'aggregate', function: 'sum', field: '$.b' },
+            { type: 'group', fields: ['$.a'] },
+            filter,
+        ];
+
+        expect(inStageOrder(steps).map((s) => s.type)).toEqual([
+            'filter',
+            'group',
+            'aggregate',
+            'sort',
+            'top_n',
+        ]);
+        expect(canAdd([{ type: 'group', fields: ['$.a'] }], 'group')).toBe(
+            false,
+        );
+        expect(
+            canAdd(
+                Array.from({ length: 5 }, () => ({
+                    type: 'aggregate' as const,
+                    function: 'sum' as const,
+                    field: '$.b',
+                })),
+                'aggregate',
+            ),
+        ).toBe(false);
+    });
+
+    it('judges a group with a repeated or no field', () => {
+        expect(
+            judge([
+                { type: 'group', fields: [] },
+                { type: 'group', fields: ['$.a', '$.a'] },
+            ]),
+        ).toEqual({ 0: 'group_fields', 1: 'group_fields' });
+    });
+});
+
 describe('TransformsSection', () => {
     let wrapper: VueWrapper | null = null;
 
@@ -240,5 +282,115 @@ describe('TransformsSection', () => {
                 ?.getAttribute('aria-disabled'),
         ).toBe('true');
         expect(document.querySelector('[data-test=add-reason]')).not.toBeNull();
+    });
+});
+
+describe('TransformsSection: group and aggregate', () => {
+    let wrapper: VueWrapper | null = null;
+
+    afterEach(() => {
+        wrapper?.unmount();
+        wrapper = null;
+        document.body.innerHTML = '';
+        resetAnnouncer();
+    });
+
+    const steps: TransformStep[] = [
+        { type: 'group', fields: ['$.data[*].status'] },
+        { type: 'aggregate', function: 'sum', field: '$.data[*].revenue' },
+        { type: 'sort', field: '$.data[*].revenue', direction: 'desc' },
+        { type: 'top_n', count: 5 },
+    ];
+
+    function mountSection(props: Record<string, unknown> = {}): VueWrapper {
+        wrapper = mount(TransformsSection as never, {
+            props: { steps, fields, faults: {}, counts: null, ...props },
+            attachTo: document.body,
+        });
+
+        return wrapper;
+    }
+
+    it('says what a group and an aggregate do and counts 36 → 12 rows', async () => {
+        mountSection({ counts: { input: 36, steps: [12, 12, 12, 5] } });
+        await flushPromises();
+
+        const sentences = Array.from(
+            document.querySelectorAll('[data-test=step-sentence]'),
+        ).map((e) => e.textContent?.trim());
+        const counts = Array.from(
+            document.querySelectorAll('[data-test=step-counts]'),
+        ).map((e) => e.textContent?.trim());
+
+        expect(sentences).toEqual([
+            'Group by status',
+            'SUM of revenue',
+            'Sort by revenue descending',
+            'Keep the top 5 rows',
+        ]);
+        expect(counts[0]).toBe('36 → 12 rows');
+        expect(
+            Array.from(
+                document.querySelectorAll(
+                    '[data-test=aggregate-function] option',
+                ),
+            ).map((o) => o.textContent?.trim()),
+        ).toEqual(['SUM', 'COUNT', 'AVG', 'MIN', 'MAX']);
+    });
+
+    it('shows "Can\'t SUM a text field" on the aggregate and offers a Sort only the grouped and aggregated fields', async () => {
+        mountSection({
+            faults: {
+                1: {
+                    reason: 'not_numeric',
+                    field: '$.data[*].status',
+                    function: 'sum',
+                    field_type: 'text',
+                },
+            },
+        });
+        await flushPromises();
+
+        const row = document.querySelectorAll('[data-test=transform-row]')[1];
+
+        expect(
+            row.querySelector('[data-test=step-fault]')?.textContent?.trim(),
+        ).toBe("Can't SUM a text field");
+        expect(
+            Array.from(
+                document.querySelectorAll('[data-test=sort-field] option'),
+            ).map((o) => o.textContent?.trim()),
+        ).toEqual(['status', 'revenue']);
+    });
+
+    it('adds a Group and an Aggregate in their stage position and the group takes up to three fields', async () => {
+        const w = mountSection({ steps: [{ type: 'top_n', count: 5 }] });
+
+        (document.querySelector('[data-test=add-step]') as HTMLElement).click();
+        await flushPromises();
+        (
+            document.querySelector('[data-test=add-aggregate]') as HTMLElement
+        ).click();
+        await flushPromises();
+
+        const added = w.emitted('change')![0][0] as TransformStep[];
+
+        expect(added.map((s) => s.type)).toEqual(['aggregate', 'top_n']);
+
+        await w.setProps({
+            steps: [{ type: 'group', fields: ['$.data[*].status'] }],
+        });
+        await flushPromises();
+        (
+            document.querySelector('[data-test=group-add-field]') as HTMLElement
+        ).click();
+        await flushPromises();
+
+        expect(
+            (w.emitted('change')![1][0] as TransformStep[])[0],
+        ).toMatchObject({
+            type: 'group',
+            fields: ['$.data[*].status', '$.data[*].revenue'],
+        });
     });
 });

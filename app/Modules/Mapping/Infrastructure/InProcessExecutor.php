@@ -3,10 +3,12 @@
 namespace App\Modules\Mapping\Infrastructure;
 
 use App\Modules\BlockTypes\Contracts\BlockType;
+use App\Modules\Mapping\Application\DecimalMath;
 use App\Modules\Mapping\Contracts\ExecutionResult;
 use App\Modules\Mapping\Contracts\GuardExceeded;
 use App\Modules\Mapping\Contracts\PlanGuards;
 use App\Modules\Mapping\Contracts\QueryExecutor;
+use App\Modules\Mapping\Contracts\SettingNotConfigured;
 use App\Modules\Mapping\Contracts\Transforms;
 use App\Platform\Json\DecimalLiteral;
 use App\Platform\Json\SamplePath;
@@ -30,8 +32,11 @@ final class InProcessExecutor implements QueryExecutor
     /** @var Closure(): float */
     private readonly Closure $clock;
 
-    /** @param  (Closure(): float)|null  $clock  milliseconds, monotonic; for tests */
-    public function __construct(?Closure $clock = null)
+    /**
+     * @param  (Closure(): float)|null  $clock  milliseconds, monotonic; for tests
+     * @param  DecimalMath|null  $math  the arithmetic of SUM and AVG, at the one decimal scale of the platform; without it those two are refused
+     */
+    public function __construct(?Closure $clock = null, private readonly ?DecimalMath $math = null)
     {
         $this->clock = $clock ?? static fn (): float => hrtime(true) / 1_000_000;
     }
@@ -66,7 +71,7 @@ final class InProcessExecutor implements QueryExecutor
         $rows = null;
         $columns = [];
 
-        if (isset($plan[Transforms::FILTER]) || isset($plan[Transforms::SORT]) || isset($plan[Transforms::TOP_N])) {
+        if (array_intersect_key($plan, array_flip([Transforms::FILTER, Transforms::GROUP, Transforms::AGGREGATE, Transforms::SORT, Transforms::TOP_N])) !== []) {
             [$selected, $rows, $columns] = $this->transform($plan, $document, $selected, $guards, $started, $evaluations, $extracted);
         }
 
@@ -105,16 +110,22 @@ final class InProcessExecutor implements QueryExecutor
     }
 
     /**
+     * The row stages in their fixed order: filter, group, aggregate, sort, top-N. The rows are a table of columns by stored path; the first stage that
+     * cannot be run on them (a field the rows do not all have, a value the stage cannot read) empties every column, so the slots that read rows are
+     * unavailable. After a group or an aggregate the table holds only the grouped and the aggregated fields.
+     *
      * @param  array<string, mixed>  $plan
      * @param  array<string, list<mixed>>  $selected  the values each alias selected
      * @return array{0: array<string, list<mixed>>, 1: array{input: int, steps: list<int>}, 2: array<string, list<string|bool|null>>}
      */
     private function transform(array $plan, mixed $document, array $selected, PlanGuards $guards, float $started, int &$evaluations, int &$extracted): array
     {
-        $columns = [];
-        $fieldOf = function (string $path) use ($document, $guards, $started, &$evaluations, &$extracted, &$columns): array {
-            if (isset($columns[$path])) {
-                return $columns[$path];
+        /** @var array<string, string> $paths */
+        $paths = (array) ($plan['extract']['fields'] ?? []);
+        $cache = [];
+        $fieldOf = function (string $path) use ($document, $guards, $started, &$evaluations, &$extracted, &$cache): array {
+            if (isset($cache[$path])) {
+                return $cache[$path];
             }
 
             if (++$evaluations > $guards->maxEvaluations) {
@@ -129,8 +140,19 @@ final class InProcessExecutor implements QueryExecutor
                 throw new GuardExceeded(GuardExceeded::EXTRACTED_VALUES);
             }
 
-            return $columns[$path] = $nodes;
+            return $cache[$path] = $nodes;
         };
+
+        $filters = (array) ($plan[Transforms::FILTER] ?? []);
+        $groupFields = array_map('strval', (array) ($plan[Transforms::GROUP]['fields'] ?? []));
+        $aggregates = (array) ($plan[Transforms::AGGREGATE] ?? []);
+        $sorts = (array) ($plan[Transforms::SORT] ?? []);
+        $stageFields = [
+            ...array_map(fn (array $s): string => (string) $s['field'], $filters),
+            ...$groupFields,
+            ...array_map(fn (array $s): string => (string) $s['field'], $aggregates),
+            ...array_map(fn (array $s): string => (string) $s['field'], $sorts),
+        ];
 
         // The rows are as many as the longest list any path selected, the stage fields included; a list of that length is a column of them.
         $rowCount = 0;
@@ -139,74 +161,163 @@ final class InProcessExecutor implements QueryExecutor
             $rowCount = max($rowCount, count($nodes));
         }
 
-        foreach ([...(array) ($plan[Transforms::FILTER] ?? []), ...(array) ($plan[Transforms::SORT] ?? [])] as $step) {
-            $rowCount = max($rowCount, count($fieldOf((string) $step['field'])));
+        $stageNodes = [];
+
+        foreach (array_unique($stageFields) as $path) {
+            $stageNodes[$path] = $fieldOf($path);
+            $rowCount = max($rowCount, count($stageNodes[$path]));
         }
 
-        $aligned = [];
-
-        foreach ($selected as $alias => $nodes) {
-            if (count($nodes) === $rowCount) {
-                $aligned[] = (string) $alias;
+        /** @var array<string, list<mixed>> $table */
+        $table = [];
+        foreach ($paths as $alias => $path) {
+            if (count($selected[(string) $alias] ?? []) === $rowCount) {
+                $table[$path] = $selected[(string) $alias];
             }
         }
 
-        $keep = $rowCount === 0 ? [] : range(0, $rowCount - 1);
+        foreach ($stageNodes as $path => $nodes) {
+            if (count($nodes) === $rowCount) {
+                $table[$path] = $nodes;
+            }
+        }
+
+        $rows = $rowCount;
         $counts = [];
         $broken = false;
+        $take = static fn (array $table, array $indexes): array => array_map(
+            fn (array $column): array => array_map(fn (int $i): mixed => $column[$i], $indexes),
+            $table,
+        );
 
-        $steps = [];
-
-        foreach ((array) ($plan[Transforms::FILTER] ?? []) as $step) {
-            $steps[] = [Transforms::FILTER, $step];
-        }
-
-        foreach ((array) ($plan[Transforms::SORT] ?? []) as $step) {
-            $steps[] = [Transforms::SORT, $step];
-        }
-
-        if (isset($plan[Transforms::TOP_N])) {
-            $steps[] = [Transforms::TOP_N, $plan[Transforms::TOP_N]];
-        }
-
-        foreach ($steps as [$kind, $step]) {
+        foreach ($filters as $step) {
             if (! $broken) {
-                if ($kind === Transforms::TOP_N) {
-                    $keep = array_slice($keep, 0, (int) $step['count']);
+                /** @var list<mixed>|null $values */
+                $values = $table[(string) $step['field']] ?? null;
+                $kept = $values === null ? null : self::filter(self::indexes($rows), $values, (string) $step['operator'], (string) $step['value']);
+
+                if ($kept === null) {
+                    $broken = true;
                 } else {
-                    $values = $fieldOf((string) $step['field']);
+                    $table = $take($table, $kept);
+                    $rows = count($kept);
+                }
+            }
 
-                    // A field the rows do not all have (absent, or on a different list) cannot be read per row.
-                    if (count($values) !== $rowCount) {
+            $counts[] = $broken ? 0 : $rows;
+        }
+
+        // The rows each group holds, by the position of the row now; null while the rows are not grouped.
+        /** @var list<list<int>>|null $members */
+        $members = null;
+        $source = $table;
+
+        if ($groupFields !== []) {
+            if (! $broken) {
+                foreach ($groupFields as $field) {
+                    if (! isset($table[$field])) {
                         $broken = true;
-                    } elseif ($kind === Transforms::FILTER) {
-                        $kept = self::filter($keep, $values, (string) $step['operator'], (string) $step['value']);
-
-                        if ($kept === null) {
-                            $broken = true;
-                        } else {
-                            $keep = $kept;
-                        }
-                    } else {
-                        $sorted = self::sort($keep, $values, (string) $step['direction'], $guards, fn () => $this->checkTime($started, $guards));
-
-                        if ($sorted === null) {
-                            $broken = true;
-                        } else {
-                            $keep = $sorted;
-                        }
                     }
                 }
             }
 
-            $counts[] = $broken ? 0 : count($keep);
+            if (! $broken) {
+                $index = [];
+                $members = [];
+
+                for ($i = 0; $i < $rows; $i++) {
+                    $key = '';
+
+                    foreach ($groupFields as $field) {
+                        $key .= self::keyPart($table[$field][$i]).'|';
+                    }
+
+                    if (! isset($index[$key])) {
+                        if (count($index) >= $guards->maxGroups) {
+                            throw new GuardExceeded(GuardExceeded::GROUPS);
+                        }
+
+                        $index[$key] = count($index);
+                        $members[$index[$key]] = [];
+                    }
+
+                    $members[$index[$key]][] = $i;
+                }
+
+                $this->checkTime($started, $guards);
+                $source = $table;
+                $table = [];
+
+                foreach ($groupFields as $field) {
+                    $table[$field] = array_map(fn (array $group): mixed => $source[$field][$group[0]], $members);
+                }
+
+                $rows = count($members);
+            }
+
+            $counts[] = $broken ? 0 : $rows;
+        }
+
+        foreach ($aggregates as $step) {
+            if (! $broken) {
+                if ($members === null) {
+                    // Without a group the whole table is one group, and only the aggregates are left of it.
+                    $members = $rows === 0 ? [] : [self::indexes($rows)];
+                    $source = $table;
+                    $table = [];
+                    $rows = count($members);
+                }
+
+                /** @var list<mixed>|null $column */
+                $column = $source[(string) $step['field']] ?? null;
+                $made = $column === null ? null : $this->aggregate((string) $step['function'], $column, array_values($members));
+
+                if ($made === null) {
+                    $broken = true;
+                } else {
+                    $table[(string) $step['field']] = $made;
+                }
+            }
+
+            $counts[] = $broken ? 0 : $rows;
+        }
+
+        foreach ($sorts as $step) {
+            if (! $broken) {
+                /** @var list<mixed>|null $values */
+                $values = $table[(string) $step['field']] ?? null;
+                $order = $values === null ? null : self::sort(self::indexes($rows), $values, (string) $step['direction'], $guards, fn () => $this->checkTime($started, $guards));
+
+                if ($order === null) {
+                    $broken = true;
+                } else {
+                    $table = $take($table, $order);
+                }
+            }
+
+            $counts[] = $broken ? 0 : $rows;
+        }
+
+        if (isset($plan[Transforms::TOP_N])) {
+            if (! $broken) {
+                $rows = min($rows, (int) $plan[Transforms::TOP_N]['count']);
+                $table = $take($table, self::indexes($rows));
+            }
+
+            $counts[] = $broken ? 0 : $rows;
         }
 
         $left = [];
 
-        foreach ($aligned as $alias) {
-            $nodes = $selected[$alias];
-            $selected[$alias] = $broken ? [] : array_map(fn (int $i): mixed => $nodes[$i], $keep);
+        foreach ($paths as $alias => $path) {
+            $alias = (string) $alias;
+
+            // A list of another length than the rows (a single value beside them) is not a column and is left as it is.
+            if (count($selected[$alias] ?? []) !== $rowCount) {
+                continue;
+            }
+
+            $selected[$alias] = $broken ? [] : array_values($table[$path] ?? []);
             $left[$alias] = array_map(
                 fn (mixed $node): string|bool|null => match (true) {
                     $node instanceof DecimalLiteral => $node->lexeme,
@@ -218,6 +329,116 @@ final class InProcessExecutor implements QueryExecutor
         }
 
         return [$selected, ['input' => $rowCount, 'steps' => $counts], $left];
+    }
+
+    /** @return list<int> */
+    private static function indexes(int $count): array
+    {
+        return $count > 0 ? range(0, $count - 1) : [];
+    }
+
+    /** What a value is, for grouping: a number by its value (1.10 and 1.1 are one group), text as it is, and an empty value on its own. */
+    private static function keyPart(mixed $node): string
+    {
+        return match (true) {
+            $node === null => 'z:',
+            $node instanceof DecimalLiteral => 'n:'.(str_contains($plain = self::plain($node->lexeme), '.') ? rtrim(rtrim($plain, '0'), '.') : $plain),
+            is_bool($node) => 'b:'.($node ? '1' : '0'),
+            is_string($node) => 's:'.$node,
+            default => 'o:'.md5(serialize($node)),
+        };
+    }
+
+    /**
+     * One aggregate over a column, per group. COUNT counts the rows of the group; SUM, AVG, MIN and MAX read numbers (an empty value is left out, and a
+     * group of nothing but empty values has no value). A value that is not a number, or is the wrong kind, makes the whole column unreadable.
+     *
+     * @param  list<mixed>  $column
+     * @param  list<list<int>>  $members
+     * @return list<mixed>|null
+     */
+    private function aggregate(string $function, array $column, array $members): ?array
+    {
+        $out = [];
+
+        foreach ($members as $group) {
+            if ($function === 'count') {
+                $out[] = new DecimalLiteral((string) count($group));
+
+                continue;
+            }
+
+            $numbers = [];
+            $texts = [];
+
+            foreach ($group as $i) {
+                $node = $column[$i];
+
+                if ($node === null) {
+                    continue;
+                }
+
+                if ($node instanceof DecimalLiteral) {
+                    $numbers[] = $node;
+                } elseif (is_string($node) && $function !== 'sum' && $function !== 'avg') {
+                    $texts[] = $node;
+                } else {
+                    return null;
+                }
+            }
+
+            if ($numbers !== [] && $texts !== []) {
+                return null;
+            }
+
+            if ($numbers === [] && $texts === []) {
+                $out[] = null;
+
+                continue;
+            }
+
+            if ($function === 'min' || $function === 'max') {
+                if ($texts !== []) {
+                    $out[] = $function === 'min' ? min($texts) : max($texts);
+
+                    continue;
+                }
+
+                $best = $numbers[0];
+
+                foreach ($numbers as $candidate) {
+                    $order = self::compare($candidate->lexeme, $best->lexeme);
+
+                    if (($function === 'min' && $order < 0) || ($function === 'max' && $order > 0)) {
+                        $best = $candidate;
+                    }
+                }
+
+                $out[] = $best;
+
+                continue;
+            }
+
+            if ($this->math === null) {
+                throw new SettingNotConfigured('DASHFLOW_DECIMAL_SCALE');
+            }
+
+            $total = null;
+
+            foreach ($numbers as $number) {
+                $plain = self::plain($number->lexeme);
+                /** @var numeric-string $total */
+                $total = $total === null ? $plain : $this->math->add($total, $plain);
+            }
+
+            if ($function === 'avg' && $total !== null) {
+                $total = $this->math->div($total, (string) count($numbers));
+            }
+
+            $out[] = new DecimalLiteral(self::trimmed((string) $total));
+        }
+
+        return $out;
     }
 
     /**
@@ -336,15 +557,26 @@ final class InProcessExecutor implements QueryExecutor
     /** Exact decimal comparison of two JSON or decimal-shaped lexemes: no float is made. */
     private static function compare(string $a, string $b): int
     {
-        /** @var numeric-string $left */
-        $left = self::plain($a);
-        /** @var numeric-string $right */
-        $right = self::plain($b);
-
-        return bccomp($left, $right, 400);
+        return bccomp(self::plain($a), self::plain($b), 400);
     }
 
-    /** A lexeme with its exponent written out. */
+    /** A computed decimal without the zeros the internal scale padded it with: `110.000000` is `110`, `0.500000` is `0.5`. */
+    private static function trimmed(string $decimal): string
+    {
+        if (! str_contains($decimal, '.')) {
+            return $decimal;
+        }
+
+        $trimmed = rtrim(rtrim($decimal, '0'), '.');
+
+        return $trimmed === '' || $trimmed === '-' ? '0' : $trimmed;
+    }
+
+    /**
+     * A lexeme with its exponent written out.
+     *
+     * @return numeric-string
+     */
     private static function plain(string $lexeme): string
     {
         if (preg_match('/\A([+-]?)(\d*)\.?(\d*)(?:[eE]([+-]?\d+))?\z/', $lexeme, $m) !== 1) {
@@ -365,7 +597,10 @@ final class InProcessExecutor implements QueryExecutor
 
         $text = substr($digits, 0, $point).(strlen($digits) > $point ? '.'.substr($digits, $point) : '');
 
-        return ($sign === '-' ? '-' : '').$text;
+        /** @var numeric-string $plain */
+        $plain = ($sign === '-' ? '-' : '').$text;
+
+        return $plain;
     }
 
     private function checkTime(float $started, PlanGuards $guards): void

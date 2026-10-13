@@ -13,6 +13,8 @@ final class GuardExceeded extends RuntimeException
 
     public const WALL_TIME = 'max_wall_ms';
 
+    public const GROUPS = 'max_groups';
+
     public function __construct(public readonly string $guard)
     {
         parent::__construct("The run passed the {$guard} guard.");

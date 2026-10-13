@@ -17,7 +17,7 @@ final readonly class AutoMapResult
      * @param  list<array{slot: string, reason: string}>  $blockers
      * @param  list<array{path: string, display: string}>  $baseline
      * @param  array<string, mixed>  $plan
-     * @param  list<array{index: int, type: string, field: string|null, reason: string}>  $transformFaults  a transform step the sample cannot satisfy (Story 5.1): `reason` is `field_missing`, `not_numeric` or `unsortable`; each one blocks Continue
+     * @param  list<array{index: int, type: string, field: string|null, reason: string, function: string|null, field_type: string|null}>  $transformFaults  a transform step the sample cannot satisfy (Story 5.1): `reason` is `field_missing`, `not_numeric` or `unsortable`; each one blocks Continue
      * @param  list<array<string, mixed>>  $apiChanged  `{slot, path, display, state, match}`: a decided slot whose path left the sample; `state` is `required_missing` or `optional_empty`, `match` null or `{path, display}`, only reported
      */
     public function __construct(

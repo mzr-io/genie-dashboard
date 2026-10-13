@@ -519,3 +519,11 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-4-13-receive-live-updates-through-reverb-with-a-polling-fallback.md`
   summary: Add an end-to-end socket test (Reverb in `compose.test.yaml`) and a Database test for the member-scope `results.result.updated` path.
   evidence: The relay and the browser client are tested apart; nothing exercises a real Reverb server, and the bound-data event needs a user-attribute fixture.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-group-and-aggregate-transforms-and-aggregate-rows-by-flattening.md`
+  summary: Add the "Aggregate rows by..." control above the sample table for a flattened nested array, kept in sync with the Group and Aggregate steps.
+  evidence: The flatten action and the sample table of a nested array belong to the chart Block Types (5.8 onwards); Map Data has no flatten control or per-row chart slot to attach it to yet. The Group and Aggregate steps it must write already exist.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-2-group-and-aggregate-transforms-and-aggregate-rows-by-flattening.md`
+  summary: Block Continue for a flattened array used by a per-row chart slot with no aggregation, and apply a chart slot's declared default aggregation.
+  evidence: No Block Type declares a per-row chart slot or a default aggregation (the KPI card's slots take one value); this arrives with the line/area block type of Story 5.8.

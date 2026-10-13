@@ -550,7 +550,7 @@ final class AutoMapper implements AutoMapping
      *
      * @param  list<array<string, mixed>>  $steps
      * @param  list<array<string, mixed>>  $fields  the enriched fields of the sample
-     * @return list<array{index: int, type: string, field: string|null, reason: string}>
+     * @return list<array{index: int, type: string, field: string|null, reason: string, function: string|null, field_type: string|null}>
      */
     private function transformFaults(array $steps, array $fields): array
     {
@@ -564,22 +564,40 @@ final class AutoMapper implements AutoMapping
                 continue;
             }
 
-            $path = (string) $step['field'];
-            $field = $byPath[$path] ?? null;
-            $reason = null;
+            $fault = null;
 
-            if ($field === null) {
-                $reason = 'field_missing';
-            } elseif ($type === Transforms::FILTER && in_array($step['operator'], Transforms::NUMERIC_OPERATORS, true)) {
-                $numericValue = preg_match(ExecutionResult::DECIMAL, trim((string) $step['value'])) === 1;
+            if ($type === Transforms::GROUP) {
+                foreach ($step['fields'] as $path) {
+                    if (! isset($byPath[(string) $path])) {
+                        $fault = ['field' => (string) $path, 'reason' => 'field_missing'];
 
-                $reason = $field['effective'] !== 'number' || ! $numericValue ? 'not_numeric' : null;
-            } elseif ($type === Transforms::SORT && $field['effective'] === 'boolean') {
-                $reason = 'unsortable';
+                        break;
+                    }
+                }
+            } else {
+                $path = (string) $step['field'];
+                $field = $byPath[$path] ?? null;
+                $effective = $field === null ? null : (string) $field['effective'];
+
+                if ($field === null) {
+                    $fault = ['field' => $path, 'reason' => 'field_missing'];
+                } elseif ($type === Transforms::FILTER && in_array($step['operator'], Transforms::NUMERIC_OPERATORS, true)) {
+                    $numericValue = preg_match(ExecutionResult::DECIMAL, trim((string) $step['value'])) === 1;
+
+                    $fault = $effective !== 'number' || ! $numericValue ? ['field' => $path, 'reason' => 'not_numeric'] : null;
+                } elseif ($type === Transforms::SORT && $effective === 'boolean') {
+                    $fault = ['field' => $path, 'reason' => 'unsortable'];
+                } elseif ($type === Transforms::AGGREGATE) {
+                    $needsNumber = in_array($step['function'], Transforms::NUMERIC_FUNCTIONS, true);
+
+                    if (($needsNumber && $effective !== 'number') || ($step['function'] !== 'count' && $effective === 'boolean')) {
+                        $fault = ['field' => $path, 'reason' => 'not_numeric', 'function' => (string) $step['function'], 'field_type' => $effective];
+                    }
+                }
             }
 
-            if ($reason !== null) {
-                $out[] = ['index' => $index, 'type' => $type, 'field' => $path, 'reason' => $reason];
+            if ($fault !== null) {
+                $out[] = $fault + ['index' => $index, 'type' => $type, 'function' => null, 'field_type' => null];
             }
         }
 

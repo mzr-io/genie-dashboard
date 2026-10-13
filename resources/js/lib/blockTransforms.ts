@@ -27,13 +27,27 @@ export type FilterStep = {
     operator: Operator;
     value: string;
 };
+export const FUNCTIONS = ['sum', 'count', 'avg', 'min', 'max'] as const;
+export type AggregateFunction = (typeof FUNCTIONS)[number];
+
+export type GroupStep = { type: 'group'; fields: string[] };
+export type AggregateStep = {
+    type: 'aggregate';
+    function: AggregateFunction;
+    field: string;
+};
 export type SortStep = {
     type: 'sort';
     field: string;
     direction: 'asc' | 'desc';
 };
 export type TopNStep = { type: 'top_n'; count: number };
-export type TransformStep = FilterStep | SortStep | TopNStep;
+export type TransformStep =
+    | FilterStep
+    | GroupStep
+    | AggregateStep
+    | SortStep
+    | TopNStep;
 export type StepType = TransformStep['type'];
 
 // A step the sample cannot satisfy, as the server reports it: `index` is the position in the stored (stage) order.
@@ -42,6 +56,9 @@ export type TransformFault = {
     type: StepType;
     field: string | null;
     reason: 'field_missing' | 'not_numeric' | 'unsortable';
+    // An aggregate that cannot read the field (Story 5.2): which function, and what kind of field it met.
+    function?: string | null;
+    field_type?: string | null;
 };
 
 // How many rows were before the steps and after each of them.
@@ -56,12 +73,20 @@ export type TransformWrite = {
 
 export const MAX_FILTERS = 5;
 export const MAX_SORTS = 3;
+export const MAX_GROUP_FIELDS = 3;
+export const MAX_AGGREGATES = 5;
 export const MAX_TOP_N = 1000;
 export const VALUE_MAX = 200;
 export const ROOT = 'config.transforms';
 
 const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
-const ORDER: Record<StepType, number> = { filter: 0, sort: 1, top_n: 2 };
+const ORDER: Record<StepType, number> = {
+    filter: 0,
+    group: 1,
+    aggregate: 2,
+    sort: 3,
+    top_n: 4,
+};
 
 // The fixed stage order, each stage keeping the order steps were added in: what the server stores and runs.
 export function inStageOrder(steps: TransformStep[]): TransformStep[] {
@@ -78,10 +103,16 @@ export function inStageOrder(steps: TransformStep[]): TransformStep[] {
 export function canAdd(steps: TransformStep[], type: StepType): boolean {
     const used = steps.filter((s) => s.type === type).length;
 
-    return (
-        used <
-        (type === 'filter' ? MAX_FILTERS : type === 'sort' ? MAX_SORTS : 1)
-    );
+    const limit =
+        type === 'filter'
+            ? MAX_FILTERS
+            : type === 'sort'
+              ? MAX_SORTS
+              : type === 'aggregate'
+                ? MAX_AGGREGATES
+                : 1;
+
+    return used < limit;
 }
 
 // The last name of a stored path: `$.data[*].status` is `status`.
@@ -109,6 +140,13 @@ export function judge(steps: TransformStep[]): Record<number, string> {
                 !DECIMAL.test(step.value.trim())
             ) {
                 out[index] = 'not_numeric_value';
+            }
+        } else if (step.type === 'group') {
+            if (
+                step.fields.length === 0 ||
+                new Set(step.fields).size !== step.fields.length
+            ) {
+                out[index] = 'group_fields';
             }
         } else if (step.type === 'top_n') {
             if (
