@@ -38,6 +38,8 @@ export enum ErrorCode {
     DashboardsOverviewUndeletable = 'dashboards.overview_undeletable',
     DashboardsRefreshLimited = 'dashboards.refresh_limited',
     DashboardsRevisionConflict = 'dashboards.revision_conflict',
+    DashboardsRowsUnavailable = 'dashboards.rows_unavailable',
+    DashboardsRowsetExpired = 'dashboards.rowset_expired',
     IdentityInvitationDeliveryFailed = 'identity.invitation_delivery_failed',
     IdentityInvitationInvalid = 'identity.invitation_invalid',
     MappingBlockTypeUnavailable = 'mapping.block_type_unavailable',

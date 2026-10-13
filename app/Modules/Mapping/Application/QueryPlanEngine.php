@@ -91,14 +91,14 @@ final class QueryPlanEngine implements QueryPlans
 
         $options = $this->presentation->options($presentation, $slots, $mapped);
 
-        // The name of each mapped field (the last member of its stored path): a series without a label of its own is named by it.
+        // The name of each mapped field (the last member of its stored path): a series without a label of its own, and a table's axis column, are named by it.
         $fields = is_array($plan['extract']['fields'] ?? null) ? $plan['extract']['fields'] : [];
 
         foreach (is_array($plan['shape'] ?? null) ? $plan['shape'] : [] as $slot => $alias) {
             $name = is_string($fields[$alias] ?? null) ? self::fieldName($fields[$alias]) : null;
 
-            if ($name !== null && str_starts_with((string) $slot, 'series_')) {
-                $options['seriesFields'][(string) $slot] = $name;
+            if ($name !== null) {
+                $options['fieldNames'][(string) $slot] = $name;
             }
         }
 
@@ -118,7 +118,7 @@ final class QueryPlanEngine implements QueryPlans
             $options['comparisonSigned'] = $mode !== 'pct_change';
         }
 
-        return new PlanResult($this->shapers->shape($type, $slots, $options), $unavailable, $slots, $result->rows, $result->columns);
+        return new PlanResult($this->shapers->shape($type, $slots, $options), $unavailable, $slots, $result->rows, $result->columns, $result->rowset);
     }
 
     /** The last member name of a stored path, or null for one that ends in a wildcard or is not a path. */

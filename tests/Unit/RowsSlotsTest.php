@@ -4,12 +4,15 @@ use App\Modules\BlockTypes\Application\LoadBlockTypes;
 use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\BlockTypes\Contracts\InvalidBlockTypePackage;
 use App\Modules\Mapping\Application\AutoMapper;
+use App\Modules\Mapping\Application\DecimalMath;
 use App\Modules\Mapping\Application\FieldRoleInference;
 use App\Modules\Mapping\Contracts\ExecutionResult;
 use App\Modules\Mapping\Contracts\PlanGuards;
+use App\Modules\Mapping\Contracts\Transforms;
 use App\Modules\Mapping\Infrastructure\InProcessExecutor;
 use App\Platform\Json\LosslessJson;
 use App\Platform\Json\SampleShape;
+use Illuminate\Config\Repository;
 
 // Story 5.8a: a `rows` slot is the value of every row, and `repeat` declares a slot that may be filled up to N times (a chart's series).
 function rsRoot(?Closure $change = null): string
@@ -107,4 +110,28 @@ it('maps the axis and the series from the rows, one field to one slot, and offer
 
     expect($decided->slot('series_1')['state'])->toBe('type_mismatch')
         ->and($decided->slot('series_1')['reason'])->toContain('every row');
+});
+
+// Story 5.9: the rows behind a rows slot are kept before the top-N stage, in the order the stages left them.
+it('keeps the rows before top-N, sorted, while the slot holds only the cut', function () {
+    [$steps] = Transforms::check([
+        ['type' => 'sort', 'field' => '$.rows[*].revenue', 'direction' => 'desc'],
+        ['type' => 'top_n', 'count' => 2],
+    ]);
+    $plan = Transforms::apply(
+        ['v' => 1, 'extract' => ['fields' => ['d' => '$.rows[*].day', 'a' => '$.rows[*].revenue']], 'shape' => ['x' => 'd', 'series_1' => 'a']],
+        $steps,
+    );
+    $executor = new InProcessExecutor(null, new DecimalMath(new Repository(['dashflow' => ['tunables' => ['numbers' => ['decimal_scale' => ['value' => '6']]]]])));
+    $result = $executor->execute(
+        $plan,
+        LosslessJson::decode('{"rows":[{"day":"a","revenue":5},{"day":"b","revenue":9},{"day":"c","revenue":1},{"day":"d","revenue":7}]}'),
+        rsType(),
+        new PlanGuards(1000, 1000, 1000),
+    );
+
+    expect($result->slots['x'])->toBe(['b', 'd'])
+        ->and($result->slots['series_1'])->toBe(['9', '7'])
+        ->and($result->rowset['x'])->toBe(['b', 'd', 'a', 'c'])
+        ->and($result->rowset['series_1'])->toBe(['9', '7', '5', '1']);
 });

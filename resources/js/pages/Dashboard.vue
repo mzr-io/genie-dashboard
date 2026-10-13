@@ -2075,6 +2075,7 @@ onBeforeUnmount(() => {
 
             <DashboardGrid
                 v-else
+                :dashboard-id="props.dashboard_id"
                 :items="items"
                 :results="results"
                 :minimized="minimized"

@@ -35,6 +35,8 @@ const props = defineProps<{
     order?: string[] | null;
     // The dashboard Date Range's token, for the Blocks that state a period of their own.
     dateRange?: string | null;
+    // The dashboard these Blocks are on (the rows of an Expanded view are read through it).
+    dashboardId?: string | null;
     // Where the next Block would go, shown while "+ Add" is hovered or focused: a dashed free-space hint.
     hint?: {
         col: number;
@@ -270,6 +272,7 @@ const placement = (item: DashboardItem): Record<string, string> => ({
                 :picked-up="pickedUp === item.item_id"
                 :compact="compact"
                 :date-range="dateRange ?? null"
+                :dashboard-id="dashboardId ?? null"
                 :can-move-up="canMoveUp(item)"
                 :can-move-down="canMoveDown(item)"
                 @movekey="(id, event) => $emit('movekey', id, event)"

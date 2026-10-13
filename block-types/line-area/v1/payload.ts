@@ -33,6 +33,8 @@ export type LineAreaPayload = {
     footerAction: string | null;
     // The axis values as received (an ISO date, a date-time or a label), one per row.
     x: string[];
+    // The axis column's name in a table (the X slot's label).
+    xLabel?: string | null;
     series: LineAreaSeries[];
     // At least one row of at least one series has no value.
     partial: boolean;

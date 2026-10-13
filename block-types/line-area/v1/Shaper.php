@@ -19,14 +19,14 @@ final class Shaper
 
     /**
      * @param  array<string, mixed>  $slots  slot key => value (`x` and `series_n` are lists, one entry per row)
-     * @param  array<string, mixed>  $options  state, `headlineFormat` (the series format descriptor), `directLabels`, `seriesFields` (slot => the field's name), staleSince, errorMessage, emptyDisplay
+     * @param  array<string, mixed>  $options  state, `headlineFormat` (the series format descriptor), `directLabels`, `fieldNames` (slot => the mapped field's name), staleSince, errorMessage, emptyDisplay
      * @return array<string, mixed>
      */
     public function shape(array $slots, array $options = []): array
     {
         $state = in_array($options['state'] ?? null, self::STATES, true) ? $options['state'] : 'normal';
         $x = $this->texts($slots['x'] ?? null);
-        $fields = is_array($options['seriesFields'] ?? null) ? $options['seriesFields'] : [];
+        $fields = is_array($options['fieldNames'] ?? null) ? $options['fieldNames'] : [];
         $series = [];
         $partial = false;
         $any = false;
@@ -64,6 +64,7 @@ final class Shaper
             'icon' => $this->text($slots['icon'] ?? null),
             'footerAction' => $this->text($slots['footer_action'] ?? null),
             'x' => $x ?? [],
+            'xLabel' => $this->text($fields['x'] ?? null),
             'series' => $series,
             'partial' => $partial,
             'highlight' => $at === false ? null : $at,

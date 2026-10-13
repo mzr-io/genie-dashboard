@@ -2896,6 +2896,22 @@ export const manageDashboardLabels = {
 } as const;
 
 export const dashboardLabels = {
+    // The Expanded view and View as table (Story 5.9).
+    menuViewAsTable: 'View as table',
+    menuExpandedView: 'Expanded view',
+    expanded: {
+        tableTitle: (title: string) => `${title}: data table`,
+        asOf: (time: string) => `Data as of ${time}`,
+        noAsOf: 'Data time unknown',
+        loading: 'Loading rows',
+        retry: 'Retry',
+        previous: 'Previous',
+        next: 'Next',
+        range: (from: number, to: number, total: number) =>
+            `${from}–${to} of ${total}`,
+        lastPage: (page: number, pages: number) =>
+            `That page no longer exists. Showing the last page, ${page} of ${pages}.`,
+    },
     addBlock: '+ Add block',
     editLayout: '✎ Edit layout',
     dateRange: 'Date range',

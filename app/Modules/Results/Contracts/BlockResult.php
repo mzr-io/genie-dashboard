@@ -31,6 +31,8 @@ final readonly class BlockResult
         public array $renderPayload,
         public string $resultEtag,
         public string $computedAt,
+        /** Story 5.9: the name of the stored set of rows behind this result (see {@see RowsetStore}); null when the Block has none. */
+        public ?string $rowsetRef = null,
     ) {}
 
     public static function etag(string $key, string $generationId, int $v = self::VERSION): string
@@ -41,7 +43,13 @@ final readonly class BlockResult
     /** The same result judged by the read path (Freshness): the flags are the only fields it changes. */
     public function withFreshness(bool $stale, bool $refreshing): self
     {
-        return new self($this->v, $this->generationId, $this->payloadSeq, $this->dataAsOf, $this->lastSuccessAt, $this->state, $stale, $refreshing, $this->slotStates, $this->renderPayload, $this->resultEtag, $this->computedAt);
+        return new self($this->v, $this->generationId, $this->payloadSeq, $this->dataAsOf, $this->lastSuccessAt, $this->state, $stale, $refreshing, $this->slotStates, $this->renderPayload, $this->resultEtag, $this->computedAt, $this->rowsetRef);
+    }
+
+    /** The same result naming the set of rows behind it (Story 5.9). */
+    public function withRowset(string $ref): self
+    {
+        return new self($this->v, $this->generationId, $this->payloadSeq, $this->dataAsOf, $this->lastSuccessAt, $this->state, $this->stale, $this->refreshing, $this->slotStates, $this->renderPayload, $this->resultEtag, $this->computedAt, $ref);
     }
 
     /** Some slots are unavailable while others hold a value: derived, never stored. */
@@ -68,6 +76,7 @@ final readonly class BlockResult
             'render_payload' => $this->renderPayload,
             'result_etag' => $this->resultEtag,
             'computed_at' => $this->computedAt,
+            'rowset_ref' => $this->rowsetRef,
         ];
     }
 
@@ -87,6 +96,7 @@ final readonly class BlockResult
             is_string($data['last_success_at'] ?? null) ? $data['last_success_at'] : null,
             $state, ($data['stale'] ?? false) === true, ($data['refreshing'] ?? false) === true,
             $data['slot_states'], $data['render_payload'], $data['result_etag'], $data['computed_at'],
+            is_string($data['rowset_ref'] ?? null) ? $data['rowset_ref'] : null,
         );
     }
 }

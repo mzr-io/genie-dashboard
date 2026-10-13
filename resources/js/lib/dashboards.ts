@@ -196,6 +196,71 @@ export type ItemResult = {
     render_payload: Record<string, unknown> | null;
 };
 
+// One page of the rows behind a Block (Story 5.9): values only, in `columns` order; measures are decimal strings.
+export type RowsPage = {
+    status: 'ok' | 'empty';
+    columns: { key: string; label: string }[];
+    rows: (string | boolean | null)[][];
+    total: number;
+    page: number;
+    page_size: number;
+    pages: number;
+    // The page asked for no longer exists: this is the last one.
+    clamped: boolean;
+    data_as_of: string | null;
+    result_etag: string | null;
+};
+
+export async function fetchRows(
+    dashboardId: string,
+    itemId: string,
+    page: number,
+    pageSize: number,
+    signal?: AbortSignal,
+): Promise<RowsPage> {
+    let response: Response;
+
+    try {
+        response = await fetch(
+            `/api/v1/dashboards/${dashboardId}/items/${itemId}/rows?page=${page}&page_size=${pageSize}`,
+            {
+                method: 'GET',
+                credentials: 'same-origin',
+                signal,
+                headers: {
+                    Accept: 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-XSRF-TOKEN': xsrfToken(),
+                },
+            },
+        );
+    } catch (error) {
+        if (signal?.aborted) {
+            throw error;
+        }
+
+        throw new DashboardError(0);
+    }
+
+    let json: { data?: RowsPage } | null = null;
+
+    try {
+        json = (await response.json()) as { data?: RowsPage };
+    } catch {
+        json = null;
+    }
+
+    if (!response.ok) {
+        throw new DashboardError(response.status);
+    }
+
+    if (!json?.data || !Array.isArray(json.data.rows)) {
+        throw new DashboardError(500);
+    }
+
+    return json.data;
+}
+
 export async function fetchResults(
     id: string,
     range: string | null,

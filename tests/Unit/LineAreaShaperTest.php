@@ -29,7 +29,7 @@ it('shapes the axis, the series with their names, the gaps, the highlight and th
         'target_value' => '9000000000000000001.5',
         'target_label' => 'Goal',
         'title' => 'Sales',
-    ], ['seriesFields' => ['series_2' => 'cost'], 'chartKind' => 'area', 'directLabels' => false]);
+    ], ['fieldNames' => ['series_2' => 'cost', 'x' => 'day'], 'chartKind' => 'area', 'directLabels' => false]);
 
     expect($payload['state'])->toBe('normal')
         ->and($payload['kind'])->toBe('area')
@@ -38,6 +38,7 @@ it('shapes the axis, the series with their names, the gaps, the highlight and th
             ['key' => 'series_1', 'name' => 'Revenue', 'values' => ['10.5', null, '12']],
             ['key' => 'series_2', 'name' => 'cost', 'values' => ['4', '5', '6']],
         ])
+        ->and($payload['xLabel'])->toBe('day')
         ->and($payload['partial'])->toBeTrue()
         ->and($payload['highlight'])->toBe(1)
         ->and($payload['target'])->toBe(['value' => '9000000000000000001.5', 'label' => 'Goal'])

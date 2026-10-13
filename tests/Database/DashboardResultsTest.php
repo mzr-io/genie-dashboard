@@ -3,6 +3,7 @@
 use App\Models\User;
 use App\Modules\Connector\Infrastructure\CurlClient;
 use App\Modules\Connector\Infrastructure\CurlResult;
+use App\Modules\Mapping\Contracts\Transforms;
 use App\Modules\Results\Application\BroadcastResultUpdated;
 use App\Modules\Results\Application\ComputeResults;
 use App\Modules\Results\Application\ComputeResultsJob;
@@ -59,7 +60,7 @@ afterEach(fn () => @unlink($this->digestFile));
  *
  * @return array{ws: string, membership: string, dashboard: string, block: string, version: string, item: string}
  */
-function dr5World(bool $userBound = false, bool $visible = true): array
+function dr5World(bool $userBound = false, bool $visible = true, array $configOver = []): array
 {
     $ws = Cluster::workspace('Acme');
     $user = Cluster::user('ada-'.Str::random(6).'@example.test');
@@ -96,6 +97,7 @@ function dr5World(bool $userBound = false, bool $visible = true): array
         'chrome' => ['show_header' => true],
         'sizes' => ['min_width' => 3, 'max_width' => 12, 'width' => 3, 'min_height' => 'small', 'max_height' => 'large', 'height' => 'small'],
     ];
+    $config = array_replace($config, $configOver);
     $version = Cluster::seedBlockVersion($ws, [
         'block_id' => $block, 'state' => 'published', 'name' => 'Revenue', 'config' => json_encode($config),
         'prepared_at' => '2026-10-12 09:00:00+00', 'published_at' => '2026-10-12 09:00:01+00',
@@ -479,4 +481,119 @@ it('tells the browser how to stay current: the socket details and the poll inter
     config(['dashflow.live.poll_interval.value' => null, 'broadcasting.default' => 'null']);
 
     expect(test()->getJson("/api/v1/dashboards/{$w['dashboard']}", DR5_HEADERS)->json('data.live'))->toBe(['poll_interval_seconds' => null, 'realtime' => null]);
+});
+
+// Story 5.9: the rows behind a chart Block, before top-N, server-paginated, with access judged on every request and no source called.
+function dr5ChartWorld(array $rules = []): array
+{
+    return dr5World(configOver: [
+        'type_key' => 'line-area',
+        'query_plan' => ['v' => 1, 'extract' => ['fields' => ['d' => '$.rows[*].day', 'a' => '$.rows[*].revenue', 'b' => '$.rows[*].cost']], 'shape' => ['x' => 'd', 'series_1' => 'a', 'series_2' => 'b']],
+        'presentation' => $rules,
+    ]);
+}
+
+function dr5Rows(array $w, string $query = ''): TestResponse
+{
+    return test()->getJson("/api/v1/dashboards/{$w['dashboard']}/items/{$w['item']}/rows".$query, DR5_HEADERS);
+}
+
+function dr5ChartBody(int $count = 30): string
+{
+    $rows = [];
+
+    for ($i = 1; $i <= $count; $i++) {
+        $rows[] = ['day' => sprintf('2026-01-%02d', $i), 'revenue' => $i * 10 + 0.5, 'cost' => $i === 3 ? '<img src=x onerror=alert(1)>' : $i];
+    }
+
+    return json_encode(['rows' => $rows], JSON_THROW_ON_ERROR);
+}
+
+it('pages the rows of a chart Block with the total, the mapped columns and decimal strings, and never calls the source', function () {
+    $w = dr5ChartWorld();
+    dr5Results($w)->assertOk();
+    dr5Hold($w, dr5ChartBody());
+
+    $data = dr5Rows($w, '?page=2&page_size=10')->assertOk()->assertHeader('Cache-Control', 'no-store, private')->json('data');
+
+    expect($data['status'])->toBe('ok')
+        ->and($data['total'])->toBe(30)
+        ->and($data['page'])->toBe(2)
+        ->and($data['pages'])->toBe(3)
+        ->and($data['clamped'])->toBeFalse()
+        ->and(array_column($data['columns'], 'key'))->toBe(['x', 'series_1', 'series_2'])
+        ->and(array_column($data['columns'], 'label'))->toBe(['X axis', 'revenue', 'cost'])
+        ->and($data['rows'])->toHaveCount(10)
+        ->and($data['rows'][0])->toBe(['2026-01-11', '110.5', '11']);
+
+    // A page past the end is the last page, and says so.
+    $last = dr5Rows($w, '?page=9&page_size=10')->assertOk()->json('data');
+    expect($last['page'])->toBe(3)->and($last['clamped'])->toBeTrue()->and($last['rows'])->toHaveCount(10);
+
+    // Hostile text is only ever data.
+    $first = dr5Rows($w, '?page=1&page_size=5')->json('data.rows');
+    expect($first[2][2])->toBe('<img src=x onerror=alert(1)>');
+});
+
+it('keeps the rows before top-N in the set while the card shows only the cut', function () {
+    [$steps] = Transforms::check([['type' => 'top_n', 'count' => 5]]);
+    $plan = Transforms::apply(
+        ['v' => 1, 'extract' => ['fields' => ['d' => '$.rows[*].day', 'a' => '$.rows[*].revenue']], 'shape' => ['x' => 'd', 'series_1' => 'a']],
+        $steps,
+    );
+    $w = dr5World(configOver: ['type_key' => 'line-area', 'query_plan' => $plan]);
+    dr5Results($w)->assertOk();
+    dr5Hold($w, dr5ChartBody());
+
+    expect(dr5Results($w)->json('data.items.0.render_payload.x'))->toHaveCount(5)
+        ->and(dr5Rows($w)->json('data.total'))->toBe(30);
+});
+
+it('answers a retryable 503 and queues a compute, calling no source, when the set has left the cache', function () {
+    $w = dr5ChartWorld();
+    dr5Results($w)->assertOk();
+    dr5Hold($w, dr5ChartBody());
+    dr5Rows($w)->assertOk();
+
+    Cache::flush();
+    Queue::fake();
+
+    $curl = new class implements CurlClient
+    {
+        public int $calls = 0;
+
+        public function execute(array $options, ?int $maxBytes = null): CurlResult
+        {
+            $this->calls++;
+
+            throw new RuntimeException('the source is down');
+        }
+    };
+    app()->instance(CurlClient::class, $curl);
+
+    $response = dr5Rows($w)->assertStatus(503);
+
+    expect($response->json('error.code'))->toBe('dashboards.rowset_expired')
+        ->and($response->headers->get('Retry-After'))->toBe('2')
+        ->and($curl->calls)->toBe(0);
+    Queue::assertPushed(ComputeResultsJob::class, 1);
+});
+
+it('is 403 with no rows once the member has lost access, 404 for another item, and empty for a Block with no rows', function () {
+    $w = dr5ChartWorld();
+    dr5Results($w)->assertOk();
+    dr5Hold($w, dr5ChartBody());
+    dr5Rows($w)->assertOk();
+
+    Cluster::superuser()->prepare('DELETE FROM access_subjects WHERE subject_id = ?')->execute([$w['block']]);
+    $gone = dr5Rows($w)->assertForbidden();
+
+    expect($gone->json('error.code'))->toBe('dashboards.rows_unavailable')->and($gone->json('data'))->toBeNull();
+    test()->getJson("/api/v1/dashboards/{$w['dashboard']}/items/".Str::uuid7().'/rows', DR5_HEADERS)->assertNotFound();
+
+    $kpi = dr5World();
+    dr5Results($kpi)->assertOk();
+    dr5Hold($kpi, '{"data":{"revenue":12}}');
+
+    expect(dr5Rows($kpi)->assertOk()->json('data'))->toMatchArray(['status' => 'empty', 'total' => 0, 'rows' => []]);
 });

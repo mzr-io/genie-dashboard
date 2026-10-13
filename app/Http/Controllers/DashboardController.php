@@ -17,6 +17,7 @@ use App\Modules\Dashboards\Contracts\ItemNotFound;
 use App\Modules\Dashboards\Contracts\OverviewUndeletable;
 use App\Modules\Dashboards\Contracts\RevisionConflict;
 use App\Modules\Results\Contracts\RefreshOutcome;
+use App\Modules\Results\Contracts\RowsPage;
 use App\Platform\Period\InvalidPeriodInput;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -459,6 +460,49 @@ final class DashboardController extends Controller
         }
 
         return response()->json(['data' => ['item_id' => strtolower($item), 'status' => $outcome->status]], 202, ['Cache-Control' => 'no-store, private']);
+    }
+
+    /**
+     * The rows behind an item's Block (Story 5.9), server-paginated: `?page=2&page_size=25`. Only mapped fields, measures as decimal strings; access to
+     * the published Block is judged on every request and no source API is called. A set that left the cache is a retryable 503 (a compute is queued).
+     */
+    public function rows(Request $request, string $dashboard, string $item): JsonResponse
+    {
+        [$workspaceId, $membershipId] = $this->membership($request, $this->memberships);
+        $data = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1', 'max:100000'],
+            'page_size' => ['sometimes', 'integer', 'min:1', 'max:100'],
+        ]);
+
+        try {
+            $outcome = $this->dashboards->rows($workspaceId, $membershipId, $dashboard, $item, (int) ($data['page'] ?? 1), (int) ($data['page_size'] ?? 25));
+        } catch (DashboardNotFound|ItemNotFound) {
+            abort(404);
+        }
+
+        $page = $outcome['page'];
+
+        if ($page === null) {
+            return $this->error($request, ErrorCode::RowsUnavailable->value, 403, 'This block is no longer available to you.', ['reason' => $outcome['status']]);
+        }
+
+        if ($page->status === RowsPage::EXPIRED) {
+            return $this->error($request, ErrorCode::RowsetExpired->value, 503, 'The rows are being prepared. Try again.', ['retry_after' => 2])
+                ->header('Retry-After', '2');
+        }
+
+        return response()->json(['data' => [
+            'status' => $page->status,
+            'columns' => $page->columns,
+            'rows' => $page->rows,
+            'total' => $page->total,
+            'page' => $page->page,
+            'page_size' => $page->pageSize,
+            'pages' => $page->pages,
+            'clamped' => $page->clamped,
+            'data_as_of' => $page->dataAsOf,
+            'result_etag' => $page->resultEtag,
+        ]], 200, ['Cache-Control' => 'no-store, private']);
     }
 
     /**

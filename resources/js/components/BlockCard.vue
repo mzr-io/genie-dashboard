@@ -8,6 +8,7 @@ import {
 } from '@lucide/vue';
 import { computed, ref, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
+import ExpandedView from '@/components/ExpandedView.vue';
 import { Button } from '@/components/ui/button';
 import {
     Dialog,
@@ -25,7 +26,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { iconFor } from '@/lib/blockIcons';
 import { NO_LIMITS, canNarrow, canWiden } from '@/lib/layout';
-import { rendererFor } from '@/lib/blockRenderers';
+import { rendererFor, tableFor } from '@/lib/blockRenderers';
 import { expandKpiPayload, expandTemplate } from '@/lib/textTemplate';
 import { kpiPayloadOf } from '@/lib/dashboards';
 import type { DashboardItem, ItemResult } from '@/lib/dashboards';
@@ -67,6 +68,8 @@ const props = withDefaults(
         profile?: FooterProfile;
         // The dashboard Date Range's token (Story 4.15), to say when this Block's own period differs from it.
         dateRange?: string | null;
+        // The dashboard this Block is on: the rows of its Expanded view are read through it (Story 5.9).
+        dashboardId?: string | null;
     }>(),
     {
         result: null,
@@ -82,6 +85,7 @@ const props = withDefaults(
         canMoveDown: true,
         profile: () => ({}),
         dateRange: null,
+        dashboardId: null,
     },
 );
 
@@ -104,6 +108,9 @@ const { t } = useI18n();
 const headingId = useId();
 const limitedId = useId();
 const aboutOpen = ref(false);
+// The panel open over the card (Story 5.9): the chart's data as a table, or the full rows.
+const viewOpen = ref<'table' | 'rows' | null>(null);
+const menuButton = ref<HTMLElement | null>(null);
 
 // The state to show: the layout's unless the results say the Block has since become unavailable.
 const state = computed(() =>
@@ -189,6 +196,35 @@ const payload = computed(() => {
     return made === null ? null : expandKpiPayload(made, props.profile);
 });
 
+// A chart Block can always be read as a table, whatever its Expanded view setting; the table is built from what it displays.
+const canViewAsTable = computed(
+    () =>
+        !unavailable.value &&
+        props.item.block !== null &&
+        tableFor(props.item.block.type) !== null &&
+        payload.value !== null &&
+        payload.value.state !== 'loading',
+);
+// The Expanded view is the footer action's target: a full-size table of the rows behind the Block.
+const expandedFooter = computed(() => {
+    const configured = props.item.block?.footer ?? null;
+
+    return configured !== null &&
+        configured.target === 'expanded_view' &&
+        !unavailable.value &&
+        chrome.value?.show_footer_action === true
+        ? expandTemplate(configured.label, { profile: props.profile })
+        : null;
+});
+
+function closeView(open: boolean): void {
+    if (!open) {
+        viewOpen.value = null;
+        // The panel returns focus to what opened it: the menu button, which the menu item cannot keep.
+        void Promise.resolve().then(() => menuButton.value?.focus());
+    }
+}
+
 const footer = computed(() => {
     const configured = props.item.block?.footer ?? null;
 
@@ -200,7 +236,7 @@ const footer = computed(() => {
         return null;
     }
 
-    // The Expanded view is built with the table Blocks (Story 5.9); until then its footer link is inert, so there is none to draw.
+    // The Expanded view target is a button of its own (`expandedFooter`), not a link.
     if (
         configured.target !== 'external' ||
         configured.url === null ||
@@ -452,6 +488,7 @@ function refresh(): void {
                 <DropdownMenu v-if="showMenu">
                     <DropdownMenuTrigger as-child>
                         <button
+                            ref="menuButton"
                             type="button"
                             class="flex size-7 items-center justify-center rounded-md text-text-secondary hover:bg-surface-muted focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
                             :aria-label="labels.moreActions(title)"
@@ -525,6 +562,13 @@ function refresh(): void {
                                 </span>
                             </DropdownMenuItem>
                         </template>
+                        <DropdownMenuItem
+                            v-if="canViewAsTable"
+                            data-slot="menu-view-as-table"
+                            @select="viewOpen = 'table'"
+                        >
+                            {{ labels.menuViewAsTable }}
+                        </DropdownMenuItem>
                         <DropdownMenuItem @select="aboutOpen = true">
                             {{ labels.menuAbout }}
                         </DropdownMenuItem>
@@ -628,6 +672,36 @@ function refresh(): void {
                 aria-hidden="true"
             />
         </button>
+
+        <footer
+            v-if="expandedFooter !== null && !isMinimized"
+            class="px-4 pb-3 text-center"
+            data-slot="block-footer-expanded"
+        >
+            <button
+                type="button"
+                class="type-caption inline-flex items-center gap-1 font-semibold text-accent-ink hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
+                data-slot="footer-expanded"
+                @click="viewOpen = 'rows'"
+            >
+                {{ expandedFooter }}
+            </button>
+        </footer>
+
+        <ExpandedView
+            v-if="viewOpen !== null && item.block !== null"
+            :open="viewOpen !== null"
+            :mode="viewOpen"
+            :title="title"
+            :type="item.block.type"
+            :icon="icon"
+            :dashboard-id="dashboardId"
+            :item-id="item.item_id"
+            :payload="payload as Record<string, unknown> | null"
+            :data-as-of="result?.data_as_of ?? null"
+            :result-etag="result?.result_etag ?? null"
+            @update:open="closeView"
+        />
 
         <footer
             v-if="footer && !isMinimized"

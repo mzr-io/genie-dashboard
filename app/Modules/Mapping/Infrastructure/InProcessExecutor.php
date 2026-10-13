@@ -84,13 +84,15 @@ final class InProcessExecutor implements QueryExecutor
         $columns = [];
         $table = [];
         $rowsLeft = 0;
+        // The table as it was before the top-N stage (Story 5.9), by stored path: the rows an Expanded view browses.
+        $beforeTop = null;
 
         foreach ($selected as $nodes) {
             $rowsLeft = max($rowsLeft, count($nodes));
         }
 
         if (array_intersect_key($plan, array_flip([Transforms::FILTER, Transforms::ROW_CALC, Transforms::GROUP, Transforms::AGGREGATE, Transforms::AGGREGATE_CALC, Transforms::SORT, Transforms::TOP_N])) !== []) {
-            [$selected, $rows, $columns, $table, $rowsLeft] = $this->transform($plan, $document, $selected, $guards, $started, $evaluations, $extracted);
+            [$selected, $rows, $columns, $table, $rowsLeft, $beforeTop] = $this->transform($plan, $document, $selected, $guards, $started, $evaluations, $extracted);
         }
 
         $valueTypes = [];
@@ -159,9 +161,32 @@ final class InProcessExecutor implements QueryExecutor
             }
         }
 
+        // The rows behind a `rows` slot, before top-N and in the order the stages left them (Story 5.9): the same values the slot holds, uncut.
+        $rowset = [];
+
+        foreach ($shape as $slot => $alias) {
+            if (! ($lists[$slot] ?? false)) {
+                continue;
+            }
+
+            $path = $fields[$alias] ?? null;
+            $nodes = $beforeTop !== null && is_string($path) && isset($beforeTop[$path])
+                ? array_values($beforeTop[$path])
+                : ($selected[$alias] ?? []);
+
+            $rowset[(string) $slot] = array_map(
+                fn (mixed $node): string|bool|null => match (true) {
+                    $node instanceof DecimalLiteral => $node->lexeme,
+                    is_string($node), is_bool($node) => $node,
+                    default => null,
+                },
+                $nodes,
+            );
+        }
+
         $this->checkTime($started, $guards);
 
-        return new ExecutionResult($slots, $unavailable, $rows, $columns);
+        return new ExecutionResult($slots, $unavailable, $rows, $columns, $rowset);
     }
 
     /**
@@ -171,7 +196,7 @@ final class InProcessExecutor implements QueryExecutor
      *
      * @param  array<string, mixed>  $plan
      * @param  array<string, list<mixed>>  $selected  the values each alias selected
-     * @return array{0: array<string, list<mixed>>, 1: array{input: int, steps: list<int>}, 2: array<string, list<string|bool|null>>, 3: array<string, array<mixed>>, 4: int}
+     * @return array{0: array<string, list<mixed>>, 1: array{input: int, steps: list<int>}, 2: array<string, list<string|bool|null>>, 3: array<string, array<mixed>>, 4: int, 5: array<string, array<mixed>>}
      */
     private function transform(array $plan, mixed $document, array $selected, PlanGuards $guards, float $started, int &$evaluations, int &$extracted): array
     {
@@ -410,6 +435,8 @@ final class InProcessExecutor implements QueryExecutor
             $counts[] = $broken ? 0 : $rows;
         }
 
+        $beforeTop = $broken ? [] : $table;
+
         if (isset($plan[Transforms::TOP_N])) {
             if (! $broken) {
                 $rows = min($rows, (int) $plan[Transforms::TOP_N]['count']);
@@ -440,7 +467,7 @@ final class InProcessExecutor implements QueryExecutor
             );
         }
 
-        return [$selected, ['input' => $rowCount, 'steps' => $counts], $left, $broken ? [] : $table, $broken ? 0 : $rows];
+        return [$selected, ['input' => $rowCount, 'steps' => $counts], $left, $broken ? [] : $table, $broken ? 0 : $rows, $beforeTop];
     }
 
     /**

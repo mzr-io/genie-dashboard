@@ -559,3 +559,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-8c-line-area-block-type.md`
   summary: Guard a mapped Draft against a change of Block Type in step 1 until slots are carried over by name.
   evidence: A draft save can change the type; the stored mapping and plan are for the old type's slots. Story 5.15 keeps same-name slots.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-9-view-as-table-expanded-view-and-the-rowset-endpoint.md`
+  summary: Add column sort to the Expanded view's rows page and keep it across a live replacement.
+  evidence: The endpoint pages the rows in the order the plan left them; a sort control and its server parameter are not built.

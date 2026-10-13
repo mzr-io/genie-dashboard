@@ -3,6 +3,7 @@
 namespace App\Modules\Dashboards\Contracts;
 
 use App\Modules\Results\Contracts\RefreshOutcome;
+use App\Modules\Results\Contracts\RowsPage;
 use App\Platform\Period\InvalidPeriodInput;
 
 /**
@@ -178,4 +179,15 @@ interface Dashboards
      * @throws InvalidPeriodInput a range the Blocks do not offer (422)
      */
     public function results(string $workspaceId, string $membershipId, string $dashboardId, ?string $range, ?array $items = null): array;
+
+    /**
+     * One page of the rows behind an item's Block (Story 5.9): the member's own item, access to the published Block judged on this request, the period the
+     * item shows, and what Results holds. No source is called. `status` is the {@see RowsPage} status, or `access_removed` or `unpublished` in place of rows.
+     *
+     * @return array{status: string, page: RowsPage|null}
+     *
+     * @throws DashboardNotFound
+     * @throws ItemNotFound
+     */
+    public function rows(string $workspaceId, string $membershipId, string $dashboardId, string $itemId, int $page, int $pageSize): array;
 }

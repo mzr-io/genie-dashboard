@@ -22,6 +22,10 @@ enum ErrorCode: string
     case InvalidPeriod = 'dashboards.invalid_period';
     /** A dashboard name is empty, longer than 120 characters or holds a control character (Story 4.16): HTTP 422 with the field error `name`. */
     case InvalidName = 'dashboards.invalid_name';
+    /** The rows of a Block are no longer cached (Story 5.9): HTTP 503, retryable; a compute is queued and no source is called. */
+    case RowsetExpired = 'dashboards.rowset_expired';
+    /** The rows of a Block cannot be read: the member lost access to it or it is unpublished (Story 5.9): HTTP 403, no rows. */
+    case RowsUnavailable = 'dashboards.rows_unavailable';
     /** `DeleteDashboard` of the Overview (Story 4.16): HTTP 422, with `msg:overview-delete`. */
     case OverviewUndeletable = 'dashboards.overview_undeletable';
 }

@@ -187,12 +187,16 @@ use App\Modules\RawStore\Infrastructure\PostgresRawStore;
 use App\Modules\RawStore\Infrastructure\PostgresRawTierSweep;
 use App\Modules\Results\Application\BroadcastResultUpdated;
 use App\Modules\Results\Application\ComputeOnPayloadChanged;
+use App\Modules\Results\Application\ReadRowset;
 use App\Modules\Results\Application\RefreshBlock;
 use App\Modules\Results\Application\TrackBlockViewers;
 use App\Modules\Results\Application\ViewBlockResult;
 use App\Modules\Results\Contracts\ManualRefresh;
 use App\Modules\Results\Contracts\ResultStore;
+use App\Modules\Results\Contracts\RowsetReads;
+use App\Modules\Results\Contracts\RowsetStore;
 use App\Modules\Results\Contracts\ViewedResults;
+use App\Modules\Results\Infrastructure\CacheRowsetStore;
 use App\Modules\Results\Infrastructure\LaravelValkeyCommands;
 use App\Modules\Results\Infrastructure\ValkeyCommands;
 use App\Modules\Results\Infrastructure\ValkeyResultStore;
@@ -347,6 +351,11 @@ class AppServiceProvider extends ServiceProvider
             $app->make(ValkeyCommands::class),
             fn (): ?int => LimitSetting::positive('results.ttl', $app['config']->get('dashflow.results.ttl.value')),
         ));
+        $this->app->bind(RowsetStore::class, fn ($app) => new CacheRowsetStore(
+            $app->make(TenantCache::class),
+            fn (): ?int => LimitSetting::positive('results.ttl', $app['config']->get('dashflow.results.ttl.value')),
+        ));
+        $this->app->bind(RowsetReads::class, ReadRowset::class);
         $this->app->bind(SourceHealths::class, ReadSourceHealths::class);
         $this->app->bind(RefreshIntervals::class, SyncSettings::class);
         $this->app->bind(SourceProbe::class, ProbeDataSource::class);

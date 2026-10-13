@@ -4,6 +4,7 @@ namespace App\Modules\Results\Application;
 
 use App\Modules\Blocks\Contracts\PublishedConfig;
 use App\Modules\Blocks\Contracts\PublishedConfigs;
+use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\BlockTypes\Contracts\BlockTypeRegistry;
 use App\Modules\BlockTypes\Contracts\KpiCardSlots;
 use App\Modules\BlockTypes\Contracts\UnknownBlockType;
@@ -22,6 +23,7 @@ use App\Modules\Results\Contracts\BlockResult;
 use App\Modules\Results\Contracts\ResultKey;
 use App\Modules\Results\Contracts\ResultState;
 use App\Modules\Results\Contracts\ResultStore;
+use App\Modules\Results\Contracts\RowsetStore;
 use App\Platform\Audit\AuditAction;
 use App\Platform\Json\JsonDepthExceeded;
 use App\Platform\Json\JsonParseFailed;
@@ -61,6 +63,7 @@ final class ComputeResults
         private readonly TenantCache $cache,
         private readonly EndpointUserBindings $bindings,
         private readonly SyncGenerations $generations,
+        private readonly RowsetStore $rowsets,
     ) {}
 
     /** @return int how many results were written (a kept newer result is not counted) */
@@ -143,7 +146,7 @@ final class ComputeResults
         } else {
             try {
                 $result = $this->plans->run($type, $config->queryPlan, $document, $guards, $config->presentation, self::inclusivePeriod($subscription->periodStart, $subscription->periodEnd), $comparisonDocument);
-                $built = $this->build($key, $target, $result, $slots);
+                $built = $this->withRowset($workspaceId, $key, $type, $result, $this->build($key, $target, $result, $slots));
                 $failed = $result->unavailable;
             } catch (GuardExceeded|InvalidPlan) {
                 $built = $this->errored($key, $target, $slots);
@@ -227,6 +230,41 @@ final class ComputeResults
             'document' => $document,
             'comparison' => $comparison,
         ];
+    }
+
+    /**
+     * Keeps the rows behind a `rows` slot (before top-N) under a name derived from the result's key and generation, and names it in the result. Without
+     * rows, or with no TTL to keep them for, the result simply has no set.
+     */
+    private function withRowset(string $workspaceId, string $key, BlockType $type, PlanResult $result, BlockResult $built): BlockResult
+    {
+        if ($result->rowset === []) {
+            return $built;
+        }
+
+        $names = [];
+
+        foreach (is_array($built->renderPayload['series'] ?? null) ? $built->renderPayload['series'] : [] as $series) {
+            if (is_array($series) && is_string($series['key'] ?? null) && is_string($series['name'] ?? null)) {
+                $names[$series['key']] = $series['name'];
+            }
+        }
+
+        $labels = [];
+
+        foreach ($type->slots as $slot) {
+            $labels[$slot->key] = $slot->label;
+        }
+
+        $columns = [];
+
+        foreach (array_keys($result->rowset) as $slot) {
+            $columns[] = ['key' => (string) $slot, 'label' => $names[$slot] ?? $labels[$slot] ?? (string) $slot];
+        }
+
+        $ref = 'rs1:'.hash('sha256', $key."\n".$built->generationId."\n".$built->payloadSeq);
+
+        return $this->rowsets->put($workspaceId, $ref, ['columns' => $columns, 'values' => $result->rowset]) ? $built->withRowset($ref) : $built;
     }
 
     /**

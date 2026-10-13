@@ -56,6 +56,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('dashboards/{dashboard}/blocks/{block}', [DashboardController::class, 'removeBlock'])->middleware('throttle:60,1')->name('api.dashboards.blocks.remove');
     Route::put('dashboards/{dashboard}/items/{item}/minimized', [DashboardController::class, 'minimize'])->middleware('throttle:60,1')->name('api.dashboards.items.minimize');
     Route::post('dashboards/{dashboard}/items/{item}/refresh', [DashboardController::class, 'refresh'])->middleware('throttle:60,1')->name('api.dashboards.items.refresh');
+    Route::get('dashboards/{dashboard}/items/{item}/rows', [DashboardController::class, 'rows'])->middleware('throttle:120,1')->name('api.dashboards.items.rows');
     Route::get('dashboards/{dashboard}/results', [DashboardController::class, 'results'])->middleware('throttle:120,1')->name('api.dashboards.results');
 });
 

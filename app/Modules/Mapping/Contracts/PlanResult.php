@@ -14,6 +14,7 @@ final readonly class PlanResult
      * @param  array<string, string|bool|list<string|bool|null>|null>  $slots
      * @param  array{input: int, steps: list<int>}|null  $rows  the row counts of the transforms (Story 5.1), null while the plan has none
      * @param  array<string, list<string|bool|null>>  $columns  the rows the transforms left, by alias
+     * @param  array<string, list<string|bool|null>>  $rowset  each `rows` slot's values before the top-N stage (Story 5.9)
      */
-    public function __construct(public array $payload, public array $unavailable, public array $slots = [], public ?array $rows = null, public array $columns = []) {}
+    public function __construct(public array $payload, public array $unavailable, public array $slots = [], public ?array $rows = null, public array $columns = [], public array $rowset = []) {}
 }

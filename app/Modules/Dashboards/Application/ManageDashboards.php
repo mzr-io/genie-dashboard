@@ -22,6 +22,7 @@ use App\Modules\Dashboards\Contracts\RevisionConflict;
 use App\Modules\Results\Contracts\ManualRefresh;
 use App\Modules\Results\Contracts\RefreshOutcome;
 use App\Modules\Results\Contracts\ResultState;
+use App\Modules\Results\Contracts\RowsetReads;
 use App\Modules\Results\Contracts\ViewedResults;
 use App\Modules\Results\Contracts\ViewRequest;
 use App\Platform\Audit\AuditAction;
@@ -47,6 +48,7 @@ final class ManageDashboards implements Dashboards
         private readonly SubjectAccess $access,
         private readonly ViewedResults $results,
         private readonly ManualRefresh $refreshes,
+        private readonly RowsetReads $rowsets,
         private readonly Outbox $outbox,
     ) {}
 
@@ -384,6 +386,52 @@ final class ManageDashboards implements Dashboards
         }
 
         return $out;
+    }
+
+    public function rows(string $workspaceId, string $membershipId, string $dashboardId, string $itemId, int $page, int $pageSize): array
+    {
+        $dashboard = Str::isUuid($dashboardId)
+            ? DB::selectOne('select id, date_range, range_from::text as range_from, range_to::text as range_to from dashboards where workspace_id = ? and membership_id = ? and id = ?', [$workspaceId, $membershipId, strtolower($dashboardId)])
+            : null;
+
+        if ($dashboard === null) {
+            throw new DashboardNotFound;
+        }
+
+        $item = Str::isUuid($itemId)
+            ? DB::selectOne('select block_id, period_selection from dashboard_items where workspace_id = ? and dashboard_id = ? and id = ?', [$workspaceId, strtolower((string) $dashboard->id), strtolower($itemId)])
+            : null;
+
+        if ($item === null) {
+            throw new ItemNotFound;
+        }
+
+        $blockId = strtolower((string) $item->block_id);
+
+        // Access is judged on this request, never from what the page was built with.
+        if (! ($this->access->canView($workspaceId, $membershipId, RegisterAccessSubject::BLOCK, [$blockId])[$blockId] ?? false)) {
+            return ['status' => 'access_removed', 'page' => null];
+        }
+
+        $card = $this->cards->forBlocks($workspaceId, [$blockId])[$blockId] ?? null;
+
+        if ($card === null) {
+            return ['status' => 'unpublished', 'page' => null];
+        }
+
+        $range = $dashboard->date_range === null ? null : (string) $dashboard->date_range;
+        $custom = $range === 'custom' && $dashboard->range_from !== null ? ['from' => (string) $dashboard->range_from, 'to' => (string) $dashboard->range_to] : null;
+        $own = PeriodBehaviour::hasSelector($card->about['period'] ?? null);
+        $read = $this->rowsets->read(new ViewRequest(
+            $workspaceId,
+            $membershipId,
+            $card->versionId,
+            $own && $item->period_selection !== null ? (string) $item->period_selection : null,
+            $range,
+            dashboardCustom: $custom,
+        ), $page, $pageSize);
+
+        return ['status' => $read->status, 'page' => $read];
     }
 
     /** @return array<string, mixed> an item with a state and no data */

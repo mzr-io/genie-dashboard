@@ -22,6 +22,7 @@ final readonly class ExecutionResult
      * @param  array<string, string>  $unavailable
      * @param  array{input: int, steps: list<int>}|null  $rows  the rows before the transforms and after each of them in stage order; null while the plan has none
      * @param  array<string, list<string|bool|null>>  $columns  with transforms: each row-aligned alias's values in the order the rows are left in (a decimal as its digits, null for anything that is not a scalar)
+     * @param  array<string, list<string|bool|null>>  $rowset  Story 5.9: each `rows` slot's values before the top-N stage (after filter, group, aggregate and sort), uncut
      */
-    public function __construct(public array $slots, public array $unavailable, public ?array $rows = null, public array $columns = []) {}
+    public function __construct(public array $slots, public array $unavailable, public ?array $rows = null, public array $columns = [], public array $rowset = []) {}
 }
