@@ -4,6 +4,8 @@ namespace App\Modules\Blocks\Application;
 
 use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\Mapping\Contracts\Presentation;
+use App\Modules\Mapping\Contracts\Templates;
+use App\Modules\Mapping\Contracts\Transforms;
 
 /**
  * The immutable document of a published version (Story 3.19, `schema_version` 1), built from a validated Draft at the freeze. Pure: it reads the Draft's
@@ -154,5 +156,121 @@ final class FrozenConfig
         }
 
         return $out;
+    }
+
+    /**
+     * The Draft `config` a published version's content makes (Story 6.1): the inverse of {@see self::build()}. The mapping keys come back as the mapping
+     * endpoints wrote them; the transform steps and the template sources are read back from the plan. Nothing is made up: the pinned sample revision is
+     * not restored, so the plan reads as stale until the Admin's sample is fetched again.
+     *
+     * @param  array<string, mixed>  $frozen  the published version's `config`
+     * @return array<string, mixed>
+     */
+    public static function draftConfig(array $frozen): array
+    {
+        $chrome = is_array($frozen['chrome'] ?? null) ? $frozen['chrome'] : [];
+        $sizes = is_array($frozen['sizes'] ?? null) ? $frozen['sizes'] : [];
+        $fields = is_array($frozen['fields'] ?? null) ? $frozen['fields'] : [];
+        $plan = is_array($frozen['query_plan'] ?? null) ? $frozen['query_plan'] : [];
+        $config = ['schema_version' => 1];
+
+        foreach (['description', 'icon'] as $key) {
+            if (is_string($chrome[$key] ?? null)) {
+                $config[$key] = $chrome[$key];
+            }
+        }
+
+        $display = [];
+
+        foreach (self::FLAGS as $flag) {
+            if (is_bool($chrome[$flag] ?? null)) {
+                $display[$flag] = $chrome[$flag];
+            }
+        }
+
+        foreach (['min_width', 'max_width', 'width', 'min_height', 'max_height', 'height'] as $key) {
+            if (is_int($sizes[$key] ?? null) || is_string($sizes[$key] ?? null)) {
+                $display[$key] = $sizes[$key];
+            }
+        }
+
+        if (is_array($frozen['footer'] ?? null)) {
+            $display['footer'] = array_filter($frozen['footer'], fn (mixed $v): bool => $v !== null);
+        }
+
+        if (is_string($frozen['period'] ?? null)) {
+            $display['period'] = $frozen['period'];
+        }
+
+        if ($display !== []) {
+            $config['display'] = $display;
+
+            if (($display['show_footer_action'] ?? false) === true) {
+                $config['slots'] = ['footer_action' => ['required' => false, 'mapping' => null]];
+            }
+        }
+
+        if (is_array($frozen['source'] ?? null) && $frozen['source'] !== []) {
+            $config['source'] = $frozen['source'];
+        }
+
+        if (array_key_exists('record_path', $fields)) {
+            $config['record_path'] = $fields['record_path'];
+        }
+
+        $roles = [];
+        $types = [];
+
+        foreach ((array) ($fields['items'] ?? []) as $item) {
+            if (is_array($item) && is_string($item['path'] ?? null)) {
+                if (is_string($item['role'] ?? null)) {
+                    $roles[$item['path']] = $item['role'];
+                }
+
+                if (is_string($item['type'] ?? null)) {
+                    $types[$item['path']] = $item['type'];
+                }
+            }
+        }
+
+        if ($roles !== []) {
+            $config['field_roles'] = $roles;
+        }
+
+        if ($types !== []) {
+            $config['field_types'] = $types;
+        }
+
+        if (is_array($frozen['slot_map'] ?? null) && $frozen['slot_map'] !== []) {
+            $config['slot_map'] = $frozen['slot_map'];
+        }
+
+        if ($plan !== []) {
+            $config['query_plan'] = $plan;
+        }
+
+        if (is_array($frozen[Presentation::KEY] ?? null) && $frozen[Presentation::KEY] !== []) {
+            $config[Presentation::KEY] = $frozen[Presentation::KEY];
+        }
+
+        $steps = Transforms::steps($plan);
+
+        if ($steps !== []) {
+            $config[Transforms::KEY] = $steps;
+        }
+
+        $templates = [];
+
+        foreach ((array) ($plan[Templates::KEY] ?? []) as $slot => $template) {
+            if (is_array($template) && is_string($template['source'] ?? null)) {
+                $templates[(string) $slot] = $template['source'];
+            }
+        }
+
+        if ($templates !== []) {
+            $config[Templates::KEY] = $templates;
+        }
+
+        return $config;
     }
 }

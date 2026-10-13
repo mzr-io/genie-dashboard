@@ -9,6 +9,7 @@ use App\Http\Responses\AdminApiError;
 use App\Models\User;
 use App\Modules\Access\Contracts\MemberNames;
 use App\Modules\Access\Contracts\MembershipLookup;
+use App\Modules\Blocks\Contracts\BlockArchived;
 use App\Modules\Blocks\Contracts\BlockCategories;
 use App\Modules\Blocks\Contracts\Category;
 use App\Modules\Blocks\Contracts\Draft;
@@ -89,7 +90,9 @@ final class DraftController extends Controller
         } catch (InvalidDraft $e) {
             return $this->invalid($request, $e);
         } catch (DraftExists $e) {
-            return AdminApiError::json($request, ErrorCode::DraftExists->value, 409, 'This block already has a draft.', extra: ['draft_id' => $e->draftId], errorExtra: ['draft_id' => $e->draftId]);
+            return AdminApiError::json($request, ErrorCode::DraftExists->value, 409, 'This block already has a draft.', extra: ['draft_id' => $e->draftId, 'current' => ['data' => $this->currentOf($request, $e->draftId)]], errorExtra: ['draft_id' => $e->draftId]);
+        } catch (BlockArchived) {
+            return AdminApiError::json($request, ErrorCode::BlockArchived->value, 409, 'An archived block is read-only.');
         }
 
         return $this->one($request, $created, 201);
@@ -190,6 +193,20 @@ final class DraftController extends Controller
     private function resource(Request $request, Draft $draft): array
     {
         return (new DraftResource($draft, withConfig: true))->resolve($request);
+    }
+
+    /**
+     * The Draft that won the race, for the loser of a second create (Story 6.1): its state is in the 409.
+     *
+     * @return array<string, mixed>|null
+     */
+    private function currentOf(Request $request, string $draftId): ?array
+    {
+        try {
+            return $this->resource($request, $this->drafts->find($this->workspaceId($request), $draftId));
+        } catch (DraftNotFound) {
+            return null;
+        }
     }
 
     private function one(Request $request, Draft $draft, int $status): JsonResponse

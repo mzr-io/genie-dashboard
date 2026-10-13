@@ -364,6 +364,14 @@ final class Cluster
     }
 
     /** A block category (Story 3.4) of the Workspace. */
+    /** How many migrations are at or after the named one: the steps a rollback of a story's migration takes, whatever is added later. */
+    public static function migrationsSince(string $migration): int
+    {
+        $names = array_map(fn (string $f): string => basename($f, '.php'), glob(base_path('database/migrations/*.php')) ?: []);
+
+        return count(array_filter($names, fn (string $name): bool => strcmp($name, $migration) >= 0));
+    }
+
     /** A viewer row (Story 4.13): a new member and a new Block id. */
     public static function seedBlockViewer(string $workspaceId): string
     {

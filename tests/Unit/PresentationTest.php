@@ -1,8 +1,10 @@
 <?php
 
+use App\Modules\Blocks\Application\FrozenConfig;
 use App\Modules\BlockTypes\Application\LoadBlockTypes;
 use App\Modules\Mapping\Contracts\DecimalValue;
 use App\Modules\Mapping\Contracts\Presentation;
+use App\Modules\Mapping\Contracts\Transforms;
 
 // Story 3.15a: the presentation document is judged whole; every fault is keyed config.presentation.<path>.
 function presType()
@@ -107,4 +109,43 @@ it('judges a table column, the page size and the highlight column', function () 
     ], $type, $errors);
 
     expect(array_keys($errors))->toContain('config.presentation.slots.col_1.align', 'config.presentation.slots.col_1.width', 'config.presentation.slots.col_1.sortable', 'config.presentation.page_size', 'config.presentation.highlight_column');
+});
+
+// Story 6.1: the steps a plan was made from, and a published version's content as a Draft's config.
+it('reads the steps back from a plan: apply of the steps is the plan', function () {
+    [$steps, $errors] = Transforms::check([
+        ['type' => 'filter', 'field' => '$.d[*].s', 'operator' => 'is', 'value' => 'ok'],
+        ['type' => 'group', 'fields' => ['$.d[*].r']],
+        ['type' => 'aggregate', 'function' => 'sum', 'field' => '$.d[*].v'],
+        ['type' => 'sort', 'field' => '$.d[*].v', 'direction' => 'desc'],
+        ['type' => 'top_n', 'count' => 3],
+    ]);
+    $plan = Transforms::apply(['v' => 1], $steps);
+
+    expect($errors)->toBe([])
+        ->and(Transforms::apply(['v' => 1], Transforms::steps($plan)))->toBe($plan);
+});
+
+it('makes a Draft config from a frozen version that builds the same frozen version again', function () {
+    $type = (new LoadBlockTypes(dirname(__DIR__, 2).'/block-types'))->resolve('kpi-card', 1);
+    $config = [
+        'schema_version' => 1,
+        'description' => 'Revenue',
+        'icon' => 'chart-bar',
+        'display' => ['show_header' => true, 'width' => 3, 'period' => 'follow_dashboard'],
+        'source' => ['data_source_id' => 'ds', 'endpoint_id' => 'ep'],
+        'record_path' => '$.data[*]',
+        'field_roles' => ['$.data[*].rev' => 'measure'],
+        'field_types' => ['$.data[*].rev' => 'number'],
+        'slot_map' => ['headline_value' => ['path' => '$.data[*].rev', 'state' => 'confirmed']],
+        'query_plan' => ['v' => 1, 'extract' => ['fields' => ['rev' => '$.data[*].rev']], 'shape' => ['headline_value' => 'rev']],
+        'presentation' => ['empty_display' => 'n/a'],
+    ];
+    $info = ['$.data[*].rev' => ['role' => 'measure', 'type' => 'number']];
+    $frozen = FrozenConfig::build($config, $type, 1, 'ep', 3, $info);
+    $draft = FrozenConfig::draftConfig($frozen);
+
+    expect($draft)->toMatchArray(['description' => 'Revenue', 'icon' => 'chart-bar', 'record_path' => '$.data[*]', 'slot_map' => $config['slot_map'], 'presentation' => ['empty_display' => 'n/a']])
+        ->and($draft['field_roles'])->toBe($config['field_roles'])
+        ->and(FrozenConfig::build($draft, $type, 1, 'ep', 3, $info))->toEqual($frozen);
 });

@@ -10,6 +10,7 @@ export enum ErrorCode {
     AccessRevisionConflict = 'access.revision_conflict',
     AccessSelfChangeForbidden = 'access.self_change_forbidden',
     AccessWorkspaceForbidden = 'access.workspace_forbidden',
+    BlocksBlockArchived = 'blocks.block_archived',
     BlocksDraftExists = 'blocks.draft_exists',
     BlocksDraftPublished = 'blocks.draft_published',
     BlocksInvalidConfig = 'blocks.invalid_config',

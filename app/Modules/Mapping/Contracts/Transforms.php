@@ -339,6 +339,52 @@ final class Transforms
     }
 
     /**
+     * The steps a plan was made from, in the fixed stage order (the inverse of {@see self::apply()}), so that a published version's transforms can be
+     * edited again (Story 6.1): `apply(steps(plan))` is the plan.
+     *
+     * @param  array<string, mixed>  $plan
+     * @return list<array<string, mixed>>
+     */
+    public static function steps(array $plan): array
+    {
+        $steps = [];
+
+        foreach ((array) ($plan[self::FILTER] ?? []) as $filter) {
+            $steps[] = ['type' => self::FILTER, 'field' => $filter['field'] ?? null, 'operator' => $filter['operator'] ?? null, 'value' => $filter['value'] ?? null];
+        }
+
+        foreach ((array) ($plan[self::ROW_CALC] ?? []) as $calc) {
+            $steps[] = ['type' => self::CALC, 'name' => $calc['name'] ?? null, 'level' => 'row', 'source' => $calc['source'] ?? null];
+        }
+
+        if (is_array($plan[self::GROUP] ?? null)) {
+            $steps[] = ['type' => self::GROUP, 'fields' => array_values((array) ($plan[self::GROUP]['fields'] ?? []))];
+        }
+
+        foreach ((array) ($plan[self::AGGREGATE] ?? []) as $aggregate) {
+            $steps[] = ['type' => self::AGGREGATE, 'function' => $aggregate['function'] ?? null, 'field' => $aggregate['field'] ?? null];
+        }
+
+        foreach ((array) ($plan[self::AGGREGATE_CALC] ?? []) as $calc) {
+            $steps[] = isset($calc['ratio'])
+                ? ['type' => self::CALC, 'name' => $calc['name'] ?? null, 'level' => 'aggregate', 'ratio' => $calc['ratio']]
+                : ['type' => self::CALC, 'name' => $calc['name'] ?? null, 'level' => 'aggregate', 'source' => $calc['source'] ?? null];
+        }
+
+        foreach ((array) ($plan[self::SORT] ?? []) as $sort) {
+            $steps[] = ['type' => self::SORT, 'field' => $sort['field'] ?? null, 'direction' => $sort['direction'] ?? null];
+        }
+
+        if (is_array($plan[self::TOP_N] ?? null)) {
+            $top = $plan[self::TOP_N];
+            $steps[] = ['type' => self::TOP_N, 'count' => $top['count'] ?? null]
+                + (($top['other'] ?? false) === true ? ['other' => true, 'other_label' => $top['other_label'] ?? 'Other'] : []);
+        }
+
+        return $steps;
+    }
+
+    /**
      * The stages of a plan, judged for shape: used by {@see QueryPlan::validate()}. A fault is keyed `{root}.{stage}.{n}.{part}` for a list stage and
      * `{root}.{stage}.{part}` for `group` and `top_n`.
      *

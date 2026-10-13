@@ -545,3 +545,41 @@ it('does not list a Draft or another Workspace\'s blocks as published', function
     bdAdmin($other, ['blocks.edit'], 'bob@example.test');
     $this->getJson('/api/v1/admin/blocks/published', BD_HEADERS)->assertOk()->assertJsonPath('meta.total', 0);
 });
+
+// Story 6.1: Edit on a published Block makes a Draft of its content with the next minor version, and never disturbs the live one.
+it('edits a published Block into a Draft with its content and the next minor, leaving the published version alone', function () {
+    [, $membership, , , $draft] = ppWorld();
+    ppValidate($draft);
+    $blockId = ppVersion($draft)['block_id'];
+    ppPublish($draft)->assertOk();
+    $live = ppVersion($draft);
+
+    $created = $this->postJson(BD_URL, ['name' => 'ignored', 'type' => 'kpi-card', 'block_id' => $blockId], BD_HEADERS)->assertCreated();
+    $new = $created->json('data.draft_id');
+    $row = ppVersion($new);
+    $config = json_decode($row['config'], true);
+
+    expect($row)->toMatchArray(['state' => 'draft', 'version' => '1.1', 'name' => 'Revenue', 'block_id' => $blockId, 'revision' => 1])
+        ->and($config['query_plan']['shape'])->toEqual(['headline_value' => 'rev', 'kpi_label' => 'name'])
+        ->and($config['source'])->toHaveKeys(['data_source_id', 'endpoint_id'])
+        ->and(ppVersion($draft))->toEqual($live)
+        ->and(ppAudits('blocks.draft.created'))->toHaveCount(2)
+        ->and(Cluster::rows(Cluster::superuser(), 'select current_version_id from blocks where id = ?', [$blockId])[0]['current_version_id'])->toBe($draft);
+
+    // A second request, or another Admin: the Draft that exists is the answer, with its state.
+    $again = $this->postJson(BD_URL, ['name' => 'x', 'type' => 'kpi-card', 'block_id' => $blockId], BD_HEADERS)->assertStatus(409);
+    expect($again->json('draft_id') ?? $again->json('error.draft_id'))->toBe($new)
+        ->and($again->json('current.data.version'))->toBe('1.1')
+        ->and($membership)->not->toBeNull();
+});
+
+it('refuses to edit an Archived Block', function () {
+    [, , , , $draft] = ppWorld();
+    ppValidate($draft);
+    $blockId = ppVersion($draft)['block_id'];
+    ppPublish($draft)->assertOk();
+    Cluster::rows(Cluster::superuser(), 'update blocks set archived_at = now() where id = ? returning id', [$blockId]);
+
+    $this->postJson(BD_URL, ['name' => 'x', 'type' => 'kpi-card', 'block_id' => $blockId], BD_HEADERS)
+        ->assertStatus(409)->assertJsonPath('error.code', 'blocks.block_archived');
+});

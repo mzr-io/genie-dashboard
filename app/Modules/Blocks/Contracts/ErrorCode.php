@@ -34,4 +34,6 @@ enum ErrorCode: string
     case PublishNotReady = 'blocks.publish_not_ready';
     /** Publish (Story 3.19) froze the version but could not activate it yet: HTTP 503. A retry completes it; otherwise the maintenance job does. */
     case PublishPending = 'blocks.publish_pending';
+    /** An Archived Block was asked to be edited (Story 6.1): HTTP 409, Archived is read-only. */
+    case BlockArchived = 'blocks.block_archived';
 }

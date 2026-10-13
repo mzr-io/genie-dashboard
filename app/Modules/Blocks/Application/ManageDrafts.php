@@ -2,6 +2,7 @@
 
 namespace App\Modules\Blocks\Application;
 
+use App\Modules\Blocks\Contracts\BlockArchived;
 use App\Modules\Blocks\Contracts\Draft;
 use App\Modules\Blocks\Contracts\DraftActor;
 use App\Modules\Blocks\Contracts\DraftExists;
@@ -81,6 +82,9 @@ final class ManageDrafts implements Drafts
             $name = $this->checkedName($name);
             $this->checkType($type);
 
+            // The content and the prospective version of a Draft made from a published Block (Story 6.1); null for a Block with nothing published.
+            $from = null;
+
             if ($blockId === null) {
                 $blockId = (string) Str::uuid7();
                 DB::insert(
@@ -88,18 +92,21 @@ final class ManageDrafts implements Drafts
                     [$blockId, $actor->workspaceId, $type, GeneralCategory::ensure($actor->workspaceId), $actor->membershipId, now(), now()],
                 );
             } else {
-                $this->claimBlock($actor->workspaceId, $blockId, $type);
+                $from = $this->claimBlock($actor->workspaceId, $blockId, $type);
                 GeneralCategory::ensure($actor->workspaceId);
             }
 
             $id = (string) Str::uuid7();
+            $version = $from['version'] ?? '1.0';
+            $name = $from['name'] ?? $name;
+            $config = $from === null ? null : DraftConfig::encode(FrozenConfig::draftConfig($from['config']));
 
             try {
                 // A savepoint: a unique violation must not abort the whole transaction before the existing Draft is read back.
-                DB::transaction(function () use ($actor, $id, $blockId, $name): void {
+                DB::transaction(function () use ($actor, $id, $blockId, $name, $version, $config): void {
                     DB::insert(
-                        "insert into block_versions (id, workspace_id, block_id, state, version, name, revision, lock_epoch, created_by_membership_id, created_at, updated_at) values (?, ?, ?, 'draft', '1.0', ?, 1, 1, ?, ?, ?)",
-                        [$id, $actor->workspaceId, $blockId, $name, $actor->membershipId, now(), now()],
+                        "insert into block_versions (id, workspace_id, block_id, state, version, name, config, revision, lock_epoch, created_by_membership_id, created_at, updated_at) values (?, ?, ?, 'draft', ?, ?, coalesce(?::jsonb, '{\"schema_version\": 1}'::jsonb), 1, 1, ?, ?, ?)",
+                        [$id, $actor->workspaceId, $blockId, $version, $name, $config, $actor->membershipId, now(), now()],
                     );
                 });
             } catch (QueryException $e) {
@@ -292,16 +299,26 @@ final class ManageDrafts implements Drafts
         });
     }
 
-    /** Locks the Block of a new Draft and refuses a Block that is not there, has another type or already has a Draft. */
-    private function claimBlock(string $workspaceId, string $blockId, string $type): void
+    /**
+     * Locks the Block of a new Draft and refuses a Block that is not there, has another type, is Archived or already has a Draft. A Block with a published
+     * version hands back that version's content and the next version label for the Draft (Story 6.1): the next minor for an ordinary edit, the next
+     * major when the Block Type has a newer contract; null for a Block with nothing published.
+     *
+     * @return array{name: string, version: string, config: array<string, mixed>}|null
+     */
+    private function claimBlock(string $workspaceId, string $blockId, string $type): ?array
     {
-        /** @var object{type_key: string}|null $block */
+        /** @var object{type_key: string, contract_version: int|string, current_version_id: string|null, archived_at: string|null}|null $block */
         $block = Str::isUuid($blockId)
-            ? DB::selectOne('select type_key from blocks where workspace_id = ? and id = ? for update', [$workspaceId, strtolower($blockId)])
+            ? DB::selectOne('select type_key, contract_version, current_version_id, archived_at from blocks where workspace_id = ? and id = ? for update', [$workspaceId, strtolower($blockId)])
             : null;
 
         if ($block === null) {
             throw new InvalidDraft(['block_id' => ['This block does not exist.']]);
+        }
+
+        if ($block->archived_at !== null) {
+            throw new BlockArchived;
         }
 
         if ($block->type_key !== $type) {
@@ -313,6 +330,37 @@ final class ManageDrafts implements Drafts
         if ($existing !== null) {
             throw new DraftExists(strtolower((string) $existing->id));
         }
+
+        if ($block->current_version_id === null) {
+            return null;
+        }
+
+        /** @var object{name: string, version: string, config: string}|null $current */
+        $current = DB::selectOne("select name, version, config::text as config from block_versions where workspace_id = ? and id = ? and state = 'published'", [$workspaceId, $block->current_version_id]);
+
+        if ($current === null) {
+            return null;
+        }
+
+        [$major, $minor] = array_map('intval', array_pad(explode('.', (string) $current->version, 2), 2, '0'));
+        $upgrade = $this->hasNewerContract($type, (int) $block->contract_version);
+
+        return [
+            'name' => (string) $current->name,
+            'version' => $upgrade ? ($major + 1).'.0' : $major.'.'.($minor + 1),
+            'config' => DraftConfig::decode((string) $current->config),
+        ];
+    }
+
+    private function hasNewerContract(string $type, int $pinned): bool
+    {
+        foreach ($this->types->all() as $candidate) {
+            if ($candidate->key === $type && $candidate->contractVersion > $pinned) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** The Draft that won the race for the Block (the unique index fired), or the original failure when it is something else. */
