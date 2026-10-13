@@ -63,6 +63,9 @@ const isHeadline = computed(() => key.value === SLOT_HEADLINE);
 const isComparison = computed(() => key.value === SLOT_COMPARISON);
 // The chart's own settings (Story 5.8c) sit on its X axis row.
 const isAxis = computed(() => key.value === 'x');
+// A bar's and a pie's own settings sit on their category row (Story 5.11).
+const isBarAxis = computed(() => key.value === 'category');
+const isPieAxis = computed(() => key.value === 'pie_category');
 const numeric = computed(
     () =>
         props.item.value_type === 'number' ||
@@ -168,6 +171,28 @@ function setChartKind(next: string): void {
             ...props.rules,
             chart_kind: next === 'area' ? 'area' : undefined,
         }),
+    );
+}
+
+// One chart setting of the Block: written whole, a default clears it.
+function setRule(
+    rule: 'chart_kind' | 'orientation' | 'sort' | 'centre' | 'centre_label',
+    value: string,
+    byDefault: string,
+): void {
+    emit(
+        'change',
+        clean({
+            ...props.rules,
+            [rule]: value === byDefault || value === '' ? undefined : value,
+        }),
+    );
+}
+
+function setValueLabels(next: boolean): void {
+    emit(
+        'change',
+        clean({ ...props.rules, value_labels: next ? true : undefined }),
     );
 }
 
@@ -893,6 +918,141 @@ const field = 'grid gap-1 [&>label]:type-caption [&>label]:text-text-secondary';
                     />
                     {{ labels.chartDirectLabels }}
                 </label>
+            </div>
+        </section>
+
+        <!-- Bar settings (Story 5.11) -->
+        <section
+            v-if="isBarAxis"
+            class="grid min-w-0 content-start gap-2"
+            :aria-label="labels.chartTitle"
+            data-test="bar-settings"
+        >
+            <h4 class="type-label-caps text-text-muted">
+                {{ labels.chartTitle }}
+            </h4>
+            <div class="grid gap-3 sm:grid-cols-3">
+                <div :class="field">
+                    <label :for="`${id}-layout`">{{ labels.barLayout }}</label>
+                    <NativeSelect
+                        :id="`${id}-layout`"
+                        :model-value="rules.chart_kind ?? 'grouped'"
+                        :disabled="disabled"
+                        data-test="bar-layout"
+                        @update:model-value="
+                            (v) => setRule('chart_kind', String(v), 'grouped')
+                        "
+                    >
+                        <option value="grouped">{{ labels.barGrouped }}</option>
+                        <option value="stacked">{{ labels.barStacked }}</option>
+                    </NativeSelect>
+                </div>
+                <div :class="field">
+                    <label :for="`${id}-orientation`">{{
+                        labels.barOrientation
+                    }}</label>
+                    <NativeSelect
+                        :id="`${id}-orientation`"
+                        :model-value="rules.orientation ?? 'vertical'"
+                        :disabled="disabled"
+                        data-test="bar-orientation"
+                        @update:model-value="
+                            (v) => setRule('orientation', String(v), 'vertical')
+                        "
+                    >
+                        <option value="vertical">
+                            {{ labels.barVertical }}
+                        </option>
+                        <option value="horizontal">
+                            {{ labels.barHorizontal }}
+                        </option>
+                    </NativeSelect>
+                </div>
+                <div :class="field">
+                    <label :for="`${id}-sort`">{{ labels.barSort }}</label>
+                    <NativeSelect
+                        :id="`${id}-sort`"
+                        :model-value="rules.sort ?? 'data'"
+                        :disabled="disabled"
+                        data-test="bar-sort"
+                        @update:model-value="
+                            (v) => setRule('sort', String(v), 'data')
+                        "
+                    >
+                        <option value="data">{{ labels.sortData }}</option>
+                        <option value="value">{{ labels.sortValue }}</option>
+                    </NativeSelect>
+                </div>
+            </div>
+            <label class="type-body-sm flex items-center gap-2">
+                <Checkbox
+                    :model-value="rules.value_labels === true"
+                    :disabled="disabled"
+                    data-test="bar-value-labels"
+                    @update:model-value="(v) => setValueLabels(v === true)"
+                />
+                {{ labels.barValueLabels }}
+            </label>
+        </section>
+
+        <!-- Pie settings (Story 5.11) -->
+        <section
+            v-if="isPieAxis"
+            class="grid min-w-0 content-start gap-2"
+            :aria-label="labels.chartTitle"
+            data-test="pie-settings"
+        >
+            <h4 class="type-label-caps text-text-muted">
+                {{ labels.chartTitle }}
+            </h4>
+            <div class="grid gap-3 sm:grid-cols-3">
+                <div :class="field">
+                    <label :for="`${id}-shape`">{{ labels.pieShape }}</label>
+                    <NativeSelect
+                        :id="`${id}-shape`"
+                        :model-value="rules.chart_kind ?? 'pie'"
+                        :disabled="disabled"
+                        data-test="pie-shape"
+                        @update:model-value="
+                            (v) => setRule('chart_kind', String(v), 'pie')
+                        "
+                    >
+                        <option value="pie">{{ labels.piePie }}</option>
+                        <option value="donut">{{ labels.pieDonut }}</option>
+                    </NativeSelect>
+                </div>
+                <div :class="field">
+                    <label :for="`${id}-centre`">{{ labels.pieCentre }}</label>
+                    <NativeSelect
+                        :id="`${id}-centre`"
+                        :model-value="rules.centre ?? 'none'"
+                        :disabled="disabled || rules.chart_kind !== 'donut'"
+                        data-test="pie-centre"
+                        @update:model-value="
+                            (v) => setRule('centre', String(v), 'none')
+                        "
+                    >
+                        <option value="none">{{ labels.centreNone }}</option>
+                        <option value="value">{{ labels.centreValue }}</option>
+                        <option value="total">{{ labels.centreTotal }}</option>
+                    </NativeSelect>
+                </div>
+                <div :class="field">
+                    <label :for="`${id}-centre-label`">{{
+                        labels.pieCentreLabel
+                    }}</label>
+                    <Input
+                        :id="`${id}-centre-label`"
+                        :model-value="rules.centre_label ?? ''"
+                        autocomplete="off"
+                        :disabled="disabled || rules.chart_kind !== 'donut'"
+                        data-test="pie-centre-label"
+                        @change="
+                            (e: Event) =>
+                                setRule('centre_label', text(e).trim(), '')
+                        "
+                    />
+                </div>
             </div>
         </section>
 

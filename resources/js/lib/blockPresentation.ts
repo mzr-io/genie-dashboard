@@ -146,8 +146,14 @@ export type PresentationRules = {
     bands?: PresentationBand[];
     empty_display?: string;
     // A chart's own settings (Story 5.8c).
-    chart_kind?: 'line' | 'area';
+    chart_kind?: 'line' | 'area' | 'grouped' | 'stacked' | 'pie' | 'donut';
     direct_labels?: boolean;
+    // Bars and pies (Story 5.11).
+    orientation?: 'vertical' | 'horizontal';
+    value_labels?: boolean;
+    sort?: 'data' | 'value';
+    centre?: 'value' | 'total' | 'none';
+    centre_label?: string;
 };
 
 // What `PUT .../mapping/presentation` answers.
@@ -231,6 +237,18 @@ export function clean(rules: PresentationRules): PresentationRules {
 
     if (rules.direct_labels !== undefined) {
         out.direct_labels = rules.direct_labels;
+    }
+
+    for (const key of [
+        'orientation',
+        'value_labels',
+        'sort',
+        'centre',
+        'centre_label',
+    ] as const) {
+        if (rules[key] !== undefined && rules[key] !== '') {
+            (out as Record<string, unknown>)[key] = rules[key];
+        }
     }
 
     return out;
@@ -484,6 +502,10 @@ export function judge(
     });
 
     add(EMPTY_PATH, textFault(rules.empty_display, LIMITS.empty));
+    add(
+        `${ROOT}.centre_label`,
+        textFault(rules.centre_label, LIMITS.bandLabel),
+    );
 
     return errors;
 }

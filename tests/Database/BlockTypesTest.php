@@ -37,16 +37,16 @@ it('lists kpi-card, kpi-chart and line-area v1 for an Admin with blocks.edit', f
 
     $response = $this->getJson('/api/v1/block-types', BT_HEADERS);
 
-    $response->assertOk()->assertJsonCount(3, 'data')
-        ->assertJsonPath('data.0.key', 'kpi-card')
-        ->assertJsonPath('data.0.contract_version', 1)
-        ->assertJsonPath('data.0.size.default_width', 3)
-        ->assertJsonPath('data.0.size.default_height', 'small')
-        ->assertJsonPath('data.0.default_aggregations.headline_value', 'sum');
-    expect($response->json('data.0.slots'))->toHaveCount(10)
-        ->and($response->json('data.1.key'))->toBe('kpi-chart')
-        ->and($response->json('data.2.key'))->toBe('line-area')
-        ->and(array_column($response->json('data.2.slots'), 'key'))->toContain('x', 'series_1', 'series_6', 'series_label_1', 'highlight_x', 'target_value')
+    $response->assertOk()->assertJsonCount(5, 'data')
+        ->assertJsonPath('data.1.key', 'kpi-card')
+        ->assertJsonPath('data.1.contract_version', 1)
+        ->assertJsonPath('data.1.size.default_width', 3)
+        ->assertJsonPath('data.1.size.default_height', 'small')
+        ->assertJsonPath('data.1.default_aggregations.headline_value', 'sum');
+    expect($response->json('data.1.slots'))->toHaveCount(10)
+        ->and($response->json('data.2.key'))->toBe('kpi-chart')
+        ->and($response->json('data.3.key'))->toBe('line-area')
+        ->and(array_column($response->json('data.3.slots'), 'key'))->toContain('x', 'series_1', 'series_6', 'series_label_1', 'highlight_x', 'target_value')
         ->and($response->headers->get('Cache-Control'))->toContain('no-store');
 });
 

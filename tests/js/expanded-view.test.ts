@@ -330,15 +330,20 @@ describe('the card', () => {
             label: 'Open the rows',
             url: null,
         });
-        await flushPromises();
+        await vi.waitFor(() =>
+            expect(chart.find('[data-slot=footer-expanded]').exists()).toBe(
+                true,
+            ),
+        );
         expect(chart.get('[data-slot=footer-expanded]').text()).toBe(
             'Open the rows',
         );
         await chart.get('[data-slot=footer-expanded]').trigger('click');
-        await flushPromises();
-        expect(
-            document.body.querySelector('[data-slot=expanded-view]'),
-        ).not.toBeNull();
+        await vi.waitFor(() =>
+            expect(
+                document.body.querySelector('[data-slot=expanded-view]'),
+            ).not.toBeNull(),
+        );
         chart.unmount();
 
         const kpi = mountCard('kpi-card', null);

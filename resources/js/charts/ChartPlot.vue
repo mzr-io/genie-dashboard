@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, toRef } from 'vue';
-import { legendEntries } from '@/charts/model';
+import { legendFor } from '@/charts/model';
 import type { ChartInput } from '@/charts/model';
 import { useChart } from '@/charts/useChart';
 import type { ChartInit } from '@/charts/useChart';
@@ -19,7 +19,7 @@ const { label, announcement, onKeydown, onBlur } = useChart(
     toRef(props, 'input'),
     props.chart,
 );
-const legend = computed(() => legendEntries(props.input.series));
+const legend = computed(() => legendFor(props.input));
 </script>
 
 <template>
@@ -41,7 +41,7 @@ const legend = computed(() => legendEntries(props.input.series));
             ></div>
         </div>
         <ul
-            v-if="legend.length > 1"
+            v-if="legend.length > 1 || input.kind === 'pie'"
             class="m-0 flex list-none flex-wrap gap-x-4 gap-y-1 p-0"
             data-test="chart-legend"
         >

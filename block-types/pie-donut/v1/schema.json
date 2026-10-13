@@ -1,0 +1,72 @@
+{
+    "key": "pie-donut",
+    "contractVersion": 1,
+    "title": "Pie / Donut",
+    "slots": [
+        {
+            "key": "title",
+            "label": "Title",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "subtitle",
+            "label": "Subtitle",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "icon",
+            "label": "Icon",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label", "filter"]
+        },
+        {
+            "key": "footer_action",
+            "label": "Footer action",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "pie_category",
+            "label": "Category",
+            "required": true,
+            "valueType": "text",
+            "cardinality": "rows",
+            "fieldRoles": ["dimension", "label"]
+        },
+        {
+            "key": "pie_value",
+            "label": "Value",
+            "required": true,
+            "valueType": "number",
+            "cardinality": "rows",
+            "fieldRoles": ["value", "measure"]
+        },
+        {
+            "key": "centre_label",
+            "label": "Centre label",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        }
+    ],
+    "size": {
+        "defaultWidth": 3,
+        "minWidth": 3,
+        "maxWidth": 6,
+        "defaultHeight": "medium",
+        "minHeight": "small",
+        "maxHeight": "large"
+    },
+    "defaultAggregations": {}
+}

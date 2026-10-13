@@ -31,12 +31,12 @@ function btCopy(?Closure $change = null, string $key = 'kpi-card'): string
     return $root;
 }
 
-it('lists kpi-card, line-area and kpi-chart v1 with their slots, size limits and default aggregations', function () {
+it('lists every Block Type v1 with their slots, size limits and default aggregations', function () {
     $all = (new LoadBlockTypes(btRoot()))->all();
 
-    expect(array_map(fn ($t) => $t->key, $all))->toBe(['kpi-card', 'kpi-chart', 'line-area']);
+    expect(array_map(fn ($t) => $t->key, $all))->toBe(['bar', 'kpi-card', 'kpi-chart', 'line-area', 'pie-donut']);
 
-    $type = $all[0]->toArray();
+    $type = $all[1]->toArray();
 
     expect($type['key'])->toBe('kpi-card')
         ->and($type['contract_version'])->toBe(1)
@@ -105,7 +105,7 @@ it('keeps the generated files in step with schema.json, and names a stale one', 
     $generator = new BlockTypeGenerator;
     $files = $generator->render(BlockTypeGenerator::discover($base.'/block-types'));
 
-    expect(array_keys($files))->toBe([BlockTypeGenerator::PHP_DIR.'/KpiCardSlots.php', BlockTypeGenerator::PHP_DIR.'/KpiChartSlots.php', BlockTypeGenerator::PHP_DIR.'/LineAreaSlots.php', BlockTypeGenerator::TS_OUTPUT]);
+    expect(array_keys($files))->toBe([BlockTypeGenerator::PHP_DIR.'/BarSlots.php', BlockTypeGenerator::PHP_DIR.'/KpiCardSlots.php', BlockTypeGenerator::PHP_DIR.'/KpiChartSlots.php', BlockTypeGenerator::PHP_DIR.'/LineAreaSlots.php', BlockTypeGenerator::PHP_DIR.'/PieDonutSlots.php', BlockTypeGenerator::TS_OUTPUT]);
 
     foreach ($files as $path => $content) {
         expect(file_get_contents($base.'/'.$path))->toBe($content, "{$path} is stale");

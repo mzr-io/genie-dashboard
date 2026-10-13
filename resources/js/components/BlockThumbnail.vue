@@ -69,6 +69,31 @@ defineProps<{ type: string }>();
                 stroke-linejoin="round"
             />
         </template>
+        <template v-else-if="type === 'bar'">
+            <rect x="10" y="26" width="8" height="12" class="fill-chart-1" />
+            <rect x="22" y="14" width="8" height="24" class="fill-chart-1" />
+            <rect x="34" y="20" width="8" height="18" class="fill-chart-2" />
+            <rect x="46" y="10" width="8" height="28" class="fill-chart-2" />
+        </template>
+        <template v-else-if="type === 'pie-donut'">
+            <circle
+                cx="32"
+                cy="23"
+                r="14"
+                fill="none"
+                class="stroke-chart-1"
+                stroke-width="8"
+            />
+            <circle
+                cx="32"
+                cy="23"
+                r="14"
+                fill="none"
+                class="stroke-chart-2"
+                stroke-width="8"
+                stroke-dasharray="26 88"
+            />
+        </template>
         <template v-else-if="type === 'line-area'">
             <polyline
                 points="6,34 18,26 28,30 40,16 58,10"

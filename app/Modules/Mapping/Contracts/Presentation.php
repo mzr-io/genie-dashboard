@@ -38,7 +38,14 @@ final class Presentation
     /** Where a comparison's previous value comes from (Story 5.6): a field of the same response, or the same Endpoint called for a prior window. */
     public const SOURCES = ['mapped_previous', 'prior_period'];
 
-    public const CHART_KINDS = ['line', 'area'];
+    /** A chart's own setting by Block Type: line or area, grouped or stacked bars, a pie or a donut (Stories 5.8, 5.11). */
+    public const CHART_KINDS = ['line', 'area', 'grouped', 'stacked', 'pie', 'donut'];
+
+    public const ORIENTATIONS = ['vertical', 'horizontal'];
+
+    public const SORTS = ['data', 'value'];
+
+    public const CENTRES = ['value', 'total', 'none'];
 
     public const OPS = ['>=', '<=', 'between', 'equals'];
 
@@ -104,7 +111,7 @@ final class Presentation
         $out = [];
 
         foreach (array_keys($input) as $key) {
-            if (! in_array($key, ['slots', 'bands', 'empty_display', 'chart_kind', 'direct_labels'], true)) {
+            if (! in_array($key, ['slots', 'bands', 'empty_display', 'chart_kind', 'direct_labels', 'orientation', 'value_labels', 'sort', 'centre', 'centre_label'], true)) {
                 $errors[self::ROOT.'.'.self::name($key)] = ['This is not a presentation setting.'];
             }
         }
@@ -131,6 +138,32 @@ final class Presentation
                 $out['chart_kind'] = $input['chart_kind'];
             } else {
                 $errors[self::ROOT.'.chart_kind'] = ['Choose one of: '.implode(', ', self::CHART_KINDS).'.'];
+            }
+        }
+
+        foreach (['orientation' => self::ORIENTATIONS, 'sort' => self::SORTS, 'centre' => self::CENTRES] as $setting => $choices) {
+            if (array_key_exists($setting, $input) && $input[$setting] !== null) {
+                if (is_string($input[$setting]) && in_array($input[$setting], $choices, true)) {
+                    $out[$setting] = $input[$setting];
+                } else {
+                    $errors[self::ROOT.'.'.$setting] = ['Choose one of: '.implode(', ', $choices).'.'];
+                }
+            }
+        }
+
+        if (array_key_exists('value_labels', $input) && $input['value_labels'] !== null) {
+            if (is_bool($input['value_labels'])) {
+                $out['value_labels'] = $input['value_labels'];
+            } else {
+                $errors[self::ROOT.'.value_labels'] = ['Value labels are on or off.'];
+            }
+        }
+
+        if (array_key_exists('centre_label', $input) && $input['centre_label'] !== null) {
+            $text = self::text($input['centre_label'], self::BAND_LABEL_MAX, self::ROOT.'.centre_label', $errors);
+
+            if ($text !== null) {
+                $out['centre_label'] = $text;
             }
         }
 

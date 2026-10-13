@@ -32,9 +32,15 @@ final class PresentationOptions
 
         if (is_array($headline['format'] ?? null)) {
             $options['headlineFormat'] = $headline['format'];
-        } elseif (is_array($slots['series_1']['format'] ?? null)) {
-            // A chart's series share the first series' format (Story 5.8c).
-            $options['headlineFormat'] = $slots['series_1']['format'];
+        } else {
+            // A chart's series share the first series' format (Stories 5.8c and 5.11): the first of its value slots that has one.
+            foreach (['series_1', 'values_1', 'pie_value'] as $first) {
+                if (is_array($slots[$first]['format'] ?? null)) {
+                    $options['headlineFormat'] = $slots[$first]['format'];
+
+                    break;
+                }
+            }
         }
 
         // A Block with a headline and a chart (Story 5.10) keeps the two formats apart; the axis writes its dates by the X slot's pattern.
@@ -52,6 +58,17 @@ final class PresentationOptions
 
         if (is_bool($presentation['direct_labels'] ?? null)) {
             $options['directLabels'] = $presentation['direct_labels'];
+        }
+
+        // Bar and pie settings (Story 5.11); the Shaper of the type reads what it knows.
+        foreach (['orientation' => 'orientation', 'sort' => 'sort', 'centre' => 'centre', 'centre_label' => 'centreLabel'] as $key => $option) {
+            if (is_string($presentation[$key] ?? null)) {
+                $options[$option] = $presentation[$key];
+            }
+        }
+
+        if (is_bool($presentation['value_labels'] ?? null)) {
+            $options['valueLabels'] = $presentation['value_labels'];
         }
 
         if (is_array($comparison['format'] ?? null)) {

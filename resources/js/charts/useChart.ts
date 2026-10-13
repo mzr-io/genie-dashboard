@@ -1,8 +1,10 @@
-import { LineChart } from 'echarts/charts';
+import { BarChart, LineChart, PieChart } from 'echarts/charts';
 import {
     GridComponent,
     MarkLineComponent,
+    AriaComponent,
     MarkPointComponent,
+    TitleComponent,
     TooltipComponent,
 } from 'echarts/components';
 import { format, init, use } from 'echarts/core';
@@ -17,6 +19,10 @@ import type { ChartInput, ChartPalette, FocusState } from '@/charts/model';
 // on every piece of the tooltip, and no formatter string anywhere), the same styles, the same label and the same keyboard model. The Renderer gives
 // it decimal strings and formatted text through `ChartInput`; the plot is drawn by the SVG renderer into an element it does not own.
 use([
+    BarChart,
+    PieChart,
+    TitleComponent,
+    AriaComponent,
     LineChart,
     GridComponent,
     TooltipComponent,
@@ -44,6 +50,14 @@ function palette(): ChartPalette {
     return {
         strokes: [
             read('chart-1-stroke'),
+            read('chart-2'),
+            read('chart-3'),
+            read('chart-4'),
+            read('chart-5'),
+            read('chart-6'),
+        ],
+        fills: [
+            read('chart-1'),
             read('chart-2'),
             read('chart-3'),
             read('chart-4'),

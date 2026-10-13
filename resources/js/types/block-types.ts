@@ -47,6 +47,133 @@ export interface BlockType {
     default_aggregations: Record<string, BlockTypeAggregation>;
 }
 
+export type BarSlotKey =
+    | 'title'
+    | 'subtitle'
+    | 'icon'
+    | 'footer_action'
+    | 'category'
+    | 'values_1'
+    | 'values_2'
+    | 'values_3'
+    | 'values_4'
+    | 'values_5'
+    | 'values_6'
+    | 'series_key';
+
+export const barV1: BlockType = {
+    key: 'bar',
+    contract_version: 1,
+    title: 'Bar',
+    slots: [
+        {
+            key: 'title',
+            label: 'Title',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'subtitle',
+            label: 'Subtitle',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'icon',
+            label: 'Icon',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label', 'filter'],
+        },
+        {
+            key: 'footer_action',
+            label: 'Footer action',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'category',
+            label: 'Category',
+            required: true,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['dimension', 'label', 'time'],
+        },
+        {
+            key: 'values_1',
+            label: 'Values 1',
+            required: true,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'values_2',
+            label: 'Values 2',
+            required: false,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'values_3',
+            label: 'Values 3',
+            required: false,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'values_4',
+            label: 'Values 4',
+            required: false,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'values_5',
+            label: 'Values 5',
+            required: false,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'values_6',
+            label: 'Values 6',
+            required: false,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'series_key',
+            label: 'Series key',
+            required: false,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['dimension', 'label', 'filter'],
+        },
+    ],
+    size: {
+        default_width: 4,
+        min_width: 3,
+        max_width: 6,
+        default_height: 'medium',
+        min_height: 'small',
+        max_height: 'large',
+    },
+    default_aggregations: {},
+};
+
 export type KpiCardSlotKey =
     | 'title'
     | 'subtitle'
@@ -524,6 +651,88 @@ export const lineAreaV1: BlockType = {
     ],
     size: {
         default_width: 4,
+        min_width: 3,
+        max_width: 6,
+        default_height: 'medium',
+        min_height: 'small',
+        max_height: 'large',
+    },
+    default_aggregations: {},
+};
+
+export type PieDonutSlotKey =
+    | 'title'
+    | 'subtitle'
+    | 'icon'
+    | 'footer_action'
+    | 'pie_category'
+    | 'pie_value'
+    | 'centre_label';
+
+export const pieDonutV1: BlockType = {
+    key: 'pie-donut',
+    contract_version: 1,
+    title: 'Pie / Donut',
+    slots: [
+        {
+            key: 'title',
+            label: 'Title',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'subtitle',
+            label: 'Subtitle',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'icon',
+            label: 'Icon',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label', 'filter'],
+        },
+        {
+            key: 'footer_action',
+            label: 'Footer action',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+        {
+            key: 'pie_category',
+            label: 'Category',
+            required: true,
+            value_type: 'text',
+            cardinality: 'rows',
+            field_roles: ['dimension', 'label'],
+        },
+        {
+            key: 'pie_value',
+            label: 'Value',
+            required: true,
+            value_type: 'number',
+            cardinality: 'rows',
+            field_roles: ['value', 'measure'],
+        },
+        {
+            key: 'centre_label',
+            label: 'Centre label',
+            required: false,
+            value_type: 'text',
+            cardinality: 'single',
+            field_roles: ['label'],
+        },
+    ],
+    size: {
+        default_width: 3,
         min_width: 3,
         max_width: 6,
         default_height: 'medium',

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import KpiRenderer from '@block-types/kpi-card/v1/Renderer.vue';
 import type { KpiCardPayload } from '@block-types/kpi-card/v1/payload';
+import BarRenderer from '@block-types/bar/v1/Renderer.vue';
 import KpiChartRenderer from '@block-types/kpi-chart/v1/Renderer.vue';
 import LineAreaRenderer from '@block-types/line-area/v1/Renderer.vue';
+import PieDonutRenderer from '@block-types/pie-donut/v1/Renderer.vue';
 import {
     computed,
     nextTick,
@@ -114,40 +116,88 @@ const REGIONS: Record<string, { selector: string; text?: string }> = {
 const BODY = '__body';
 
 // A chart's regions (Story 5.8c): the plot for the axis, the target and the highlight, and the legend entry (else the plot) for each series.
-const CHART_REGIONS: Record<string, { selector: string; text?: string }> = {
-    x: { selector: '[data-test=chart-plot]' },
-    highlight_x: { selector: '[data-test=chart-plot]' },
-    target_value: { selector: '[data-test=chart-plot]' },
-    series_1: {
-        selector:
-            '[data-test=chart-legend] li:nth-child(1), [data-test=chart-plot]',
-    },
-    ...Object.fromEntries(
-        [2, 3, 4, 5, 6].map((n) => [
-            `series_${n}`,
-            { selector: `[data-test=chart-legend] li:nth-child(${n})` },
-        ]),
-    ),
+// A chart's regions (Stories 5.8c and 5.11): the plot for every slot of the chart, and the legend entry (else the plot) for each numbered series.
+function chartRegions(
+    keys: string[],
+): Record<string, { selector: string; text?: string }> {
+    const out: Record<string, { selector: string; text?: string }> = {};
+
+    for (const key of keys) {
+        const numbered = /_(\d+)$/.exec(key);
+
+        out[key] = numbered
+            ? {
+                  selector:
+                      numbered[1] === '1'
+                          ? '[data-test=chart-legend] li:nth-child(1), [data-test=chart-plot]'
+                          : `[data-test=chart-legend] li:nth-child(${numbered[1]})`,
+              }
+            : { selector: '[data-test=chart-plot]' };
+    }
+
+    return out;
+}
+
+const CHART_SLOTS: Record<string, string[]> = {
+    'line-area': [
+        'x',
+        'highlight_x',
+        'target_value',
+        'series_1',
+        'series_2',
+        'series_3',
+        'series_4',
+        'series_5',
+        'series_6',
+    ],
+    'kpi-chart': [
+        'x',
+        'series_1',
+        'series_2',
+        'series_3',
+        'series_4',
+        'series_5',
+        'series_6',
+    ],
+    bar: [
+        'category',
+        'series_key',
+        'values_1',
+        'values_2',
+        'values_3',
+        'values_4',
+        'values_5',
+        'values_6',
+    ],
+    'pie-donut': ['pie_category', 'pie_value'],
 };
-const isChart = computed(() => props.typeKey === 'line-area');
+const isChart = computed(() => props.typeKey in CHART_SLOTS);
 // A KPI & Chart has the card's regions and the chart's (Story 5.10).
-const isCombined = computed(() => props.typeKey === 'kpi-chart');
 const regionMap = computed(() =>
-    isChart.value
-        ? CHART_REGIONS
-        : isCombined.value
-          ? { ...REGIONS, ...CHART_REGIONS }
+    props.typeKey === 'kpi-chart'
+        ? { ...REGIONS, ...chartRegions(CHART_SLOTS['kpi-chart']) }
+        : isChart.value
+          ? chartRegions(CHART_SLOTS[props.typeKey])
           : REGIONS,
 );
-// The slot a Block cannot be drawn without: the headline of a card, the axis of a chart.
-const primarySlot = computed(() => (isChart.value ? 'x' : 'headline_value'));
+// The slot a Block cannot be drawn without: the headline of a card, the axis (or the categories) of a chart.
+const primarySlot = computed(
+    () =>
+        ({
+            'line-area': 'x',
+            bar: 'category',
+            'pie-donut': 'pie_category',
+        })[props.typeKey] ?? 'headline_value',
+);
 // Both are imported here, not loaded on demand: the regions are measured as soon as the card is drawn.
-const rendererOf = computed(() =>
-    isChart.value
-        ? LineAreaRenderer
-        : isCombined.value
-          ? KpiChartRenderer
-          : KpiRenderer,
+const rendererOf = computed(
+    () =>
+        ({
+            'line-area': LineAreaRenderer,
+            'kpi-chart': KpiChartRenderer,
+            bar: BarRenderer,
+            'pie-donut': PieDonutRenderer,
+        })[props.typeKey] ?? KpiRenderer,
 );
 
 const result = ref<PreviewResult | null>(null);

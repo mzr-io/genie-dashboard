@@ -11,6 +11,14 @@
         {
             "key": "kpi-chart",
             "contractVersion": 1
+        },
+        {
+            "key": "bar",
+            "contractVersion": 1
+        },
+        {
+            "key": "pie-donut",
+            "contractVersion": 1
         }
     ]
 }
