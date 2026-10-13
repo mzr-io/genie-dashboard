@@ -6,6 +6,8 @@ use App\Modules\BlockTypes\Application\LoadBlockTypes;
 use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\BlockTypes\Infrastructure\PackageShapers;
 use App\Modules\Mapping\Application\DecimalMath;
+use App\Modules\Mapping\Application\Expressions\ExpressionParser;
+use App\Modules\Mapping\Application\Expressions\ExpressionResolver;
 use App\Modules\Mapping\Application\QueryPlanEngine;
 use App\Modules\Mapping\Contracts\GuardExceeded;
 use App\Modules\Mapping\Contracts\InvalidPlan;
@@ -305,4 +307,100 @@ it('refuses SUM and AVG while the decimal scale is not configured, naming it', f
     $plan = qgPlan([['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].revenue']]);
 
     expect(fn () => $engine->run(qtType(), $plan, qtDocument(qgRows()), $engine->guards()))->toThrow(SettingNotConfigured::class);
+});
+
+// Story 5.3: calculated fields at the row and aggregate stages, and ratios that survive grouping.
+function qcCalc(string $name, string $source, string $level, array $names): array
+{
+    $ast = ExpressionResolver::resolve(ExpressionParser::parse($source), $names);
+
+    return ['type' => 'calc', 'name' => $name, 'source' => $source, 'level' => $level, 'ast' => $ast];
+}
+
+const QC_NAMES = ['revenue' => '$.data[*].revenue', 'cost' => '$.data[*].cost', 'region' => '$.data[*].region', 'done' => '$.data[*].done', 'total' => '$.data[*].total'];
+
+function qcRows(): array
+{
+    return [
+        ['region' => 'EU', 'revenue' => 200, 'cost' => 150, 'done' => 600, 'total' => 1000],
+        ['region' => 'EU', 'revenue' => 0, 'cost' => 10, 'done' => 450, 'total' => 500],
+        ['region' => 'US', 'revenue' => 400, 'cost' => 100, 'done' => 5, 'total' => 10],
+    ];
+}
+
+function qcPlan(array $steps, array $shape = ['headline_value' => 'm']): array
+{
+    return qtPlan($steps, ['m' => 'calc:margin', 'region' => '$.data[*].region'], $shape);
+}
+
+it('evaluates a row-level calculated field per row, with a safe division by 0 as null', function () {
+    $result = qtRun(qcPlan([qcCalc('margin', '(revenue - cost) / revenue', 'row', QC_NAMES)]), qtDocument(qcRows()));
+
+    expect($result->columns['m'])->toBe(['0.25', null, '0.75'])->and($result->rows)->toBe(['input' => 3, 'steps' => [3]]);
+});
+
+it('runs row calc before the group and aggregate calc after the aggregate, each at its fixed position', function () {
+    $steps = [
+        qcCalc('share', 'total_margin / 2', 'aggregate', QC_NAMES + ['total_margin' => '$.data[*].revenue']),
+        ['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].revenue'],
+        ['type' => 'group', 'fields' => ['$.data[*].region']],
+        qcCalc('margin', 'revenue - cost', 'row', QC_NAMES),
+    ];
+    [$ordered] = Transforms::check($steps);
+
+    expect(array_map(fn (array $s): string => $s['type'].':'.($s['name'] ?? ''), $ordered))->toBe(['calc:margin', 'group:', 'aggregate:', 'calc:share']);
+
+    $plan = Transforms::apply(['v' => 1, 'extract' => ['fields' => ['m' => 'calc:share', 'region' => '$.data[*].region']], 'shape' => []], $ordered);
+
+    expect(array_keys($plan))->toEqualCanonicalizing(['v', 'extract', 'shape', 'row_calc', 'group', 'aggregate', 'aggregate_calc']);
+
+    $result = qtRun($plan, qtDocument(qcRows()));
+
+    // revenue per region: EU 200, US 400; share = revenue / 2.
+    expect($result->columns['m'])->toBe(['100', '200'])->and($result->rows['steps'])->toBe([3, 2, 2, 2]);
+});
+
+it('aggregates a ratio from the sums, 70% and not the 75% of averaging 60% and 90%', function () {
+    $rows = [['region' => 'EU', 'done' => 600, 'total' => 1000], ['region' => 'EU', 'done' => 450, 'total' => 500]];
+    $ratio = ['type' => 'calc', 'name' => 'margin', 'level' => 'aggregate', 'ratio' => ['numerator' => '$.data[*].done', 'denominator' => '$.data[*].total']];
+    $result = qtRun(qcPlan([['type' => 'group', 'fields' => ['$.data[*].region']], $ratio]), qtDocument($rows));
+
+    expect($result->columns['m'])->toBe(['70'])->and($result->slots['headline_value'])->toBe('70');
+
+    // The ratio of one group with a zero denominator has no value.
+    $zero = qtRun(qcPlan([['type' => 'group', 'fields' => ['$.data[*].region']], $ratio]), qtDocument([['region' => 'EU', 'done' => 5, 'total' => 0]]));
+
+    expect($zero->slots['headline_value'])->toBeNull()->and($zero->unavailable['headline_value'])->toBe('missing');
+});
+
+it('makes the slot unavailable when a calculated field cannot be made, never 0', function () {
+    $text = qtRun(qcPlan([qcCalc('margin', 'region + 1', 'row', QC_NAMES)]), qtDocument(qcRows()));
+    $gone = qtRun(qcPlan([qcCalc('margin', 'ghost + 1', 'row', QC_NAMES + ['ghost' => '$.data[*].ghost'])]), qtDocument(qcRows()));
+
+    foreach ([$text, $gone] as $result) {
+        expect($result->slots['headline_value'])->toBeNull()->and($result->unavailable['headline_value'])->toBe('missing');
+    }
+});
+
+it('reads a calculated field over scalar fields as one value, like PCT_CHANGE(total, previous_total)', function () {
+    $document = LosslessJson::decode('{"total":284680,"previous_total":249195}');
+    $plan = qtPlan(
+        [qcCalc('change', 'PCT_CHANGE(total, previous_total)', 'row', ['total' => '$.total', 'previous_total' => '$.previous_total'])],
+        ['c' => 'calc:change'],
+        ['headline_value' => 'c'],
+    );
+    $result = qtRun($plan, $document);
+
+    expect($result->slots['headline_value'])->toBe('14.239852')->and($result->rows)->toBe(['input' => 1, 'steps' => [1]]);
+});
+
+it('judges calculated field steps whole: a name, a level, an expression or a ratio, and a ratio only at the aggregate level', function () {
+    [, $errors] = Transforms::check([
+        ['type' => 'calc', 'name' => '1bad', 'level' => 'sideways', 'source' => 'a + 1'],
+        ['type' => 'calc', 'name' => 'r', 'level' => 'row', 'ratio' => ['numerator' => 'a', 'denominator' => 'b']],
+        ['type' => 'calc', 'name' => 'e', 'level' => 'row', 'source' => ''],
+        ['type' => 'calc', 'name' => 'r2', 'level' => 'aggregate', 'ratio' => ['numerator' => 'a']],
+    ]);
+
+    expect(array_keys($errors))->toBe(['config.transforms.0.name', 'config.transforms.0.level', 'config.transforms.1.ratio', 'config.transforms.2.source', 'config.transforms.3.ratio']);
 });

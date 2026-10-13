@@ -1877,6 +1877,7 @@ export const blockSampleLabels = {
 export const blockTransformLabels = {
     stage: {
         filter: 'FILTER',
+        calc: 'CALC',
         group: 'GROUP',
         aggregate: 'AGGREGATE',
         sort: 'SORT',
@@ -1886,6 +1887,7 @@ export const blockTransformLabels = {
     addFilter: 'Filter',
     addSort: 'Sort',
     addTopN: 'Top N',
+    addCalc: 'Calculated field',
     addGroup: 'Group',
     addAggregate: 'Aggregate',
     addDisabledNoField: 'The sample has no row fields to use yet.',
@@ -1900,6 +1902,29 @@ export const blockTransformLabels = {
     valueHelp: 'The value to compare with. Numbers are compared as numbers.',
     directionHelp: 'Ascending is smallest first. Ties keep their order.',
     countHelp: 'How many rows to keep, from the top, after sorting.',
+    calcName: 'Calculated field name',
+    calcNameHelp:
+        'The name other expressions and slots use. Letters, digits and underscores.',
+    calcLevel: 'Calculated at',
+    calcLevelHelp:
+        'Row level is worked out for every row before grouping; after aggregate is worked out on the grouped rows.',
+    levels: { row: 'Each row', aggregate: 'After aggregate' },
+    calcKind: 'Calculated as',
+    calcKindHelp:
+        'An expression, or a ratio that sums its numerator and denominator before dividing.',
+    kinds: { expression: 'Expression', ratio: 'Ratio' },
+    expressionName: 'Expression',
+    expressionHelp:
+        'Use + - * /, comparisons, IF, ROUND, ABS, PCT_CHANGE and date parts. Name a field as revenue or [net revenue].',
+    expressionPlaceholder: 'PCT_CHANGE(total, previous_total)',
+    numeratorName: 'Ratio numerator',
+    denominatorName: 'Ratio denominator',
+    ratioHelp:
+        'The ratio is the sum of the numerator over the sum of the denominator, so grouping never averages percentages.',
+    ratioNote: 'ratio: sums numerator and denominator',
+    calcSentence: (name: string, source: string) => `${name} = ${source}`,
+    ratioSentence: (name: string, numerator: string, denominator: string) =>
+        `${name} = ${numerator} ÷ ${denominator} (ratio)`,
     groupFieldName: (n: number) => `Group by field ${n}`,
     groupHelp: 'Rows with the same value in these fields become one row.',
     addGroupField: '+ Field',
@@ -1949,6 +1974,10 @@ export const blockTransformLabels = {
             `${field} can’t be sorted. Choose a text, number or date field.`,
         not_numeric_value: 'Enter a number to compare with.',
         group_fields: 'Choose each field to group by once.',
+        calc_name:
+            'Name it with letters, digits and underscores, starting with a letter.',
+        expression_empty: 'Enter an expression.',
+        ratio_parts: 'Name both a numerator and a denominator.',
         value_long: 'Use 200 characters or fewer.',
         count: 'Enter a whole number from 1 to 1000.',
     },

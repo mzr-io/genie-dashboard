@@ -4,6 +4,10 @@ namespace App\Modules\Mapping\Infrastructure;
 
 use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\Mapping\Application\DecimalMath;
+use App\Modules\Mapping\Application\Expressions\ExpressionEvaluator;
+use App\Modules\Mapping\Application\Expressions\ExpressionNumber;
+use App\Modules\Mapping\Application\Expressions\ExpressionResolver;
+use App\Modules\Mapping\Application\Expressions\ExpressionTypeError;
 use App\Modules\Mapping\Contracts\ExecutionResult;
 use App\Modules\Mapping\Contracts\GuardExceeded;
 use App\Modules\Mapping\Contracts\PlanGuards;
@@ -56,6 +60,13 @@ final class InProcessExecutor implements QueryExecutor
                 throw new GuardExceeded(GuardExceeded::EVALUATIONS);
             }
 
+            // A calculated field (`calc:<name>`) is made by a calc stage, not read from the document.
+            if (str_starts_with((string) $path, Transforms::CALC_PREFIX)) {
+                $selected[(string) $alias] = [];
+
+                continue;
+            }
+
             $this->checkTime($started, $guards);
             $nodes = SamplePath::select($document, $path);
             $extracted += count($nodes);
@@ -71,7 +82,7 @@ final class InProcessExecutor implements QueryExecutor
         $rows = null;
         $columns = [];
 
-        if (array_intersect_key($plan, array_flip([Transforms::FILTER, Transforms::GROUP, Transforms::AGGREGATE, Transforms::SORT, Transforms::TOP_N])) !== []) {
+        if (array_intersect_key($plan, array_flip([Transforms::FILTER, Transforms::ROW_CALC, Transforms::GROUP, Transforms::AGGREGATE, Transforms::AGGREGATE_CALC, Transforms::SORT, Transforms::TOP_N])) !== []) {
             [$selected, $rows, $columns] = $this->transform($plan, $document, $selected, $guards, $started, $evaluations, $extracted);
         }
 
@@ -147,7 +158,23 @@ final class InProcessExecutor implements QueryExecutor
         $groupFields = array_map('strval', (array) ($plan[Transforms::GROUP]['fields'] ?? []));
         $aggregates = (array) ($plan[Transforms::AGGREGATE] ?? []);
         $sorts = (array) ($plan[Transforms::SORT] ?? []);
+        $rowCalcs = (array) ($plan[Transforms::ROW_CALC] ?? []);
+        $aggregateCalcs = (array) ($plan[Transforms::AGGREGATE_CALC] ?? []);
+        $calcFields = [];
+
+        // The fields the calculated fields read are columns too (a calculated field read by another is made by the stage, not read from the document).
+        foreach ([...$rowCalcs, ...$aggregateCalcs] as $calc) {
+            $reads = isset($calc['ratio']) ? [(string) $calc['ratio']['numerator'], (string) $calc['ratio']['denominator']] : ExpressionResolver::paths((array) ($calc['ast'] ?? ['t' => 'null']));
+
+            foreach ($reads as $path) {
+                if (! str_starts_with($path, Transforms::CALC_PREFIX)) {
+                    $calcFields[] = $path;
+                }
+            }
+        }
+
         $stageFields = [
+            ...$calcFields,
             ...array_map(fn (array $s): string => (string) $s['field'], $filters),
             ...$groupFields,
             ...array_map(fn (array $s): string => (string) $s['field'], $aggregates),
@@ -171,7 +198,7 @@ final class InProcessExecutor implements QueryExecutor
         /** @var array<string, list<mixed>> $table */
         $table = [];
         foreach ($paths as $alias => $path) {
-            if (count($selected[(string) $alias] ?? []) === $rowCount) {
+            if (! str_starts_with($path, Transforms::CALC_PREFIX) && count($selected[(string) $alias] ?? []) === $rowCount) {
                 $table[$path] = $selected[(string) $alias];
             }
         }
@@ -201,6 +228,21 @@ final class InProcessExecutor implements QueryExecutor
                 } else {
                     $table = $take($table, $kept);
                     $rows = count($kept);
+                }
+            }
+
+            $counts[] = $broken ? 0 : $rows;
+        }
+
+        // Row-level calculated fields (the "row calc" stage): one value per row, read from the columns the rows have so far.
+        foreach ($rowCalcs as $calc) {
+            if (! $broken) {
+                $column = $this->calculate($calc, $table, $rows);
+
+                if ($column === null) {
+                    $broken = true;
+                } else {
+                    $table[Transforms::CALC_PREFIX.$calc['name']] = $column;
                 }
             }
 
@@ -282,6 +324,32 @@ final class InProcessExecutor implements QueryExecutor
             $counts[] = $broken ? 0 : $rows;
         }
 
+        // Aggregate-level calculated fields (the "aggregate calc" stage): one value per row that is left, and a ratio is made from the sums.
+        foreach ($aggregateCalcs as $calc) {
+            if (! $broken) {
+                if (isset($calc['ratio'])) {
+                    if ($members === null) {
+                        $members = $rows === 0 ? [] : [self::indexes($rows)];
+                        $source = $table;
+                        $table = [];
+                        $rows = count($members);
+                    }
+
+                    $column = $this->ratio((string) $calc['ratio']['numerator'], (string) $calc['ratio']['denominator'], $source, array_values($members));
+                } else {
+                    $column = $this->calculate($calc, $table, $rows);
+                }
+
+                if ($column === null) {
+                    $broken = true;
+                } else {
+                    $table[Transforms::CALC_PREFIX.$calc['name']] = $column;
+                }
+            }
+
+            $counts[] = $broken ? 0 : $rows;
+        }
+
         foreach ($sorts as $step) {
             if (! $broken) {
                 /** @var list<mixed>|null $values */
@@ -312,8 +380,8 @@ final class InProcessExecutor implements QueryExecutor
         foreach ($paths as $alias => $path) {
             $alias = (string) $alias;
 
-            // A list of another length than the rows (a single value beside them) is not a column and is left as it is.
-            if (count($selected[$alias] ?? []) !== $rowCount) {
+            // A list of another length than the rows (a single value beside them) is not a column and is left as it is; a calculated field is one.
+            if (! str_starts_with($path, Transforms::CALC_PREFIX) && count($selected[$alias] ?? []) !== $rowCount) {
                 continue;
             }
 
@@ -329,6 +397,98 @@ final class InProcessExecutor implements QueryExecutor
         }
 
         return [$selected, ['input' => $rowCount, 'steps' => $counts], $left];
+    }
+
+    /**
+     * A calculated field over the rows of the table: its expression evaluated once per row. Null when a column it reads is not there or a value cannot be
+     * read as what the expression uses it as, so the slots that read it are unavailable.
+     *
+     * @param  array<string, mixed>  $calc  `{name, ast}`
+     * @param  array<string, array<mixed>>  $table
+     * @return list<mixed>|null
+     */
+    private function calculate(array $calc, array $table, int $rows): ?array
+    {
+        if ($this->math === null) {
+            throw new SettingNotConfigured('DASHFLOW_DECIMAL_SCALE');
+        }
+
+        $ast = $calc['ast'] ?? null;
+
+        if (! is_array($ast)) {
+            return null;
+        }
+
+        $evaluator = new ExpressionEvaluator($this->math);
+        $column = [];
+
+        try {
+            for ($i = 0; $i < $rows; $i++) {
+                $value = $evaluator->value($ast, function (string $path) use ($table, $i): string|bool|null|ExpressionNumber {
+                    if (! isset($table[$path])) {
+                        throw new ExpressionTypeError('A field is not in the rows.');
+                    }
+
+                    $node = $table[$path][$i] ?? null;
+
+                    return match (true) {
+                        $node instanceof DecimalLiteral => new ExpressionNumber($node->lexeme),
+                        $node === null, is_string($node), is_bool($node) => $node,
+                        default => throw new ExpressionTypeError('A value is not a scalar.'),
+                    };
+                });
+
+                $column[] = $value instanceof ExpressionNumber ? new DecimalLiteral(ExpressionEvaluator::trimmed($value->value)) : $value;
+            }
+        } catch (ExpressionTypeError) {
+            return null;
+        }
+
+        return $column;
+    }
+
+    /**
+     * A ratio of two measures over each group: the numerator and the denominator are summed apart, then divided, as a percentage. A group with no
+     * denominator, or a denominator of 0, has no value.
+     *
+     * @param  array<string, array<mixed>>  $source  the columns before the rows were grouped
+     * @param  list<list<int>>  $members
+     * @return list<mixed>|null
+     */
+    private function ratio(string $numerator, string $denominator, array $source, array $members): ?array
+    {
+        if ($this->math === null) {
+            throw new SettingNotConfigured('DASHFLOW_DECIMAL_SCALE');
+        }
+
+        if (! isset($source[$numerator], $source[$denominator])) {
+            return null;
+        }
+
+        $nums = $this->aggregate('sum', array_values($source[$numerator]), $members);
+        $dens = $this->aggregate('sum', array_values($source[$denominator]), $members);
+
+        if ($nums === null || $dens === null) {
+            return null;
+        }
+
+        $out = [];
+
+        foreach ($nums as $i => $num) {
+            $den = $dens[$i];
+
+            if (! $num instanceof DecimalLiteral || ! $den instanceof DecimalLiteral || bccomp(self::plain($den->lexeme), '0', 400) === 0) {
+                $out[] = null;
+
+                continue;
+            }
+
+            $scaled = $this->math->mul(self::plain($num->lexeme), '100');
+            /** @var numeric-string $scaled */
+            $out[] = new DecimalLiteral(self::trimmed($this->math->div($scaled, self::plain($den->lexeme))));
+        }
+
+        return $out;
     }
 
     /** @return list<int> */

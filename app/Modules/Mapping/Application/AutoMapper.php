@@ -5,11 +5,14 @@ namespace App\Modules\Mapping\Application;
 use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\BlockTypes\Contracts\BlockTypeSlot;
 use App\Modules\BlockTypes\Contracts\KpiCardSlots;
+use App\Modules\Mapping\Application\Expressions\ExpressionParser;
+use App\Modules\Mapping\Application\Expressions\ExpressionResolver;
 use App\Modules\Mapping\Contracts\AutoMapping;
 use App\Modules\Mapping\Contracts\AutoMapResult;
 use App\Modules\Mapping\Contracts\ExecutionResult;
 use App\Modules\Mapping\Contracts\FieldRole;
 use App\Modules\Mapping\Contracts\FieldRoleReport;
+use App\Modules\Mapping\Contracts\InvalidExpression;
 use App\Modules\Mapping\Contracts\QueryPlan;
 use App\Modules\Mapping\Contracts\SlotState;
 use App\Modules\Mapping\Contracts\Transforms;
@@ -67,6 +70,9 @@ final class AutoMapper implements AutoMapping
     public function map(FieldRoleReport $report, BlockType $type, array $slotMap, array $fieldTypes = [], array $transforms = []): AutoMapResult
     {
         $fields = $this->enrich($report, $fieldTypes);
+        // Calculated fields are fields a slot may be pointed at by hand, never picked by the auto-mapper.
+        $own = $fields;
+        $fields = [...$fields, ...$this->calcFields($transforms, $fields)];
 
         $byPath = array_column($fields, null, 'path');
         $rows = [];
@@ -93,7 +99,7 @@ final class AutoMapper implements AutoMapping
             }
 
             $decision = $this->decision($slotMap[$slot->key] ?? null);
-            $row = $decision !== null ? $this->decided($slot, $decision, $byPath, $fields, $apiChanged) : $this->auto($slot, $fields, $used);
+            $row = $decision !== null ? $this->decided($slot, $decision, $byPath, $fields, $apiChanged) : $this->auto($slot, $own, $used);
             $rows[] = $row;
 
             if ($decision === null && $row['path'] !== null) {
@@ -101,7 +107,7 @@ final class AutoMapper implements AutoMapping
             }
         }
 
-        $baseline = $this->baseline($type, $fields, $decidedPath);
+        $baseline = $this->baseline($type, $own, $decidedPath);
 
         $groups = [];
 
@@ -119,7 +125,11 @@ final class AutoMapper implements AutoMapping
         return new AutoMapResult($groups, $this->counts($rows), $this->blockers($rows, $apiChanged), $baseline, Transforms::apply($this->plan($rows), $transforms), $apiChanged, $this->transformFaults($transforms, $fields));
     }
 
-    public function fieldsFor(FieldRoleReport $report, BlockType $type, string $slot, array $fieldTypes = []): ?array
+    /**
+     * @param  array<string, mixed>  $fieldTypes
+     * @param  list<array<string, mixed>>  $transforms
+     */
+    public function fieldsFor(FieldRoleReport $report, BlockType $type, string $slot, array $fieldTypes = [], array $transforms = []): ?array
     {
         $definition = null;
 
@@ -135,7 +145,9 @@ final class AutoMapper implements AutoMapping
 
         $entries = [];
 
-        foreach ($this->enrich($report, $fieldTypes) as $field) {
+        $enriched = $this->enrich($report, $fieldTypes);
+
+        foreach ([...$enriched, ...$this->calcFields($transforms, $enriched)] as $field) {
             $compatible = $field['single'] === true && $this->fits($definition->valueType, $field);
             $entry = [
                 'kind' => 'field',
@@ -161,6 +173,11 @@ final class AutoMapper implements AutoMapping
         if ($definition->valueType === 'text') {
             $firstIncompatible = count(array_filter($entries, fn (array $e): bool => $e['compatible']));
             array_splice($entries, $firstIncompatible, 0, [['kind' => 'static_text', 'path' => null, 'display' => 'Static text', 'compatible' => true]]);
+        }
+
+        // A number slot may be filled by an expression (Story 5.3): the entry sits beside the fields, with an example of what to write.
+        if ($definition->valueType === 'number') {
+            $entries[] = ['kind' => 'calculated', 'path' => null, 'display' => 'Calculated Field', 'example' => 'PCT_CHANGE(total, previous_total)', 'compatible' => true];
         }
 
         return $entries;
@@ -544,6 +561,137 @@ final class AutoMapper implements AutoMapping
         return $out;
     }
 
+    public function resolveTransforms(FieldRoleReport $report, array $steps): array
+    {
+        /** @var array<string, string> $names */
+        $names = [];
+
+        foreach ($report->fields as $field) {
+            $path = (string) $field['path'];
+
+            foreach ([$this->key($path), $this->display($path)] as $name) {
+                $key = mb_strtolower($name);
+
+                if ($key === '') {
+                    continue;
+                }
+
+                $names[$key] = isset($names[$key]) && $names[$key] !== $path ? '' : $path;
+            }
+        }
+
+        $paths = array_flip(array_map(fn (array $f): string => (string) $f['path'], $report->fields));
+        $errors = [];
+        $out = [];
+        $seen = [];
+
+        foreach ($steps as $index => $step) {
+            if ($step['type'] !== Transforms::CALC) {
+                $out[] = $step;
+
+                continue;
+            }
+
+            $at = "config.transforms.{$index}";
+            $name = (string) $step['name'];
+
+            if (isset($seen[mb_strtolower($name)])) {
+                $errors["{$at}.name"] = ['Name each calculated field once.'];
+            }
+
+            $seen[mb_strtolower($name)] = true;
+
+            if (isset($step['ratio'])) {
+                foreach (['numerator', 'denominator'] as $part) {
+                    $given = (string) $step['ratio'][$part];
+                    $path = isset($paths[$given]) ? $given : ($names[mb_strtolower($given)] ?? null);
+
+                    if ($path === null || $path === '') {
+                        $errors["{$at}.ratio"] = ["{$given} isn’t a field of the response."];
+                    } else {
+                        $step['ratio'][$part] = $path;
+                    }
+                }
+            } else {
+                try {
+                    $step['ast'] = ExpressionResolver::resolve(ExpressionParser::parse((string) $step['source']), $names);
+                } catch (InvalidExpression $e) {
+                    $errors["{$at}.source"] = [rtrim($e->getMessage(), '.').' (position '.$e->position.').'];
+                }
+            }
+
+            $names[mb_strtolower($name)] = Transforms::CALC_PREFIX.$name;
+            $out[] = $step;
+        }
+
+        return [$out, $errors];
+    }
+
+    /**
+     * The calculated fields as fields a slot can be pointed at: read by `calc:<name>`, numbers, and single when they come out as one value (aggregated
+     * with no group, or made only of single fields).
+     *
+     * @param  list<array<string, mixed>>  $steps
+     * @param  list<array<string, mixed>>  $fields  the enriched fields of the sample
+     * @return list<array<string, mixed>>
+     */
+    private function calcFields(array $steps, array $fields): array
+    {
+        $grouped = false;
+
+        foreach ($steps as $step) {
+            $grouped = $grouped || $step['type'] === Transforms::GROUP;
+        }
+
+        $single = [];
+
+        foreach ($fields as $field) {
+            $single[(string) $field['path']] = $field['single'] === true;
+        }
+
+        $out = [];
+
+        foreach ($steps as $step) {
+            if ($step['type'] !== Transforms::CALC) {
+                continue;
+            }
+
+            $reads = isset($step['ratio'])
+                ? [(string) $step['ratio']['numerator'], (string) $step['ratio']['denominator']]
+                : (is_array($step['ast'] ?? null) ? ExpressionResolver::paths($step['ast']) : []);
+            $path = Transforms::CALC_PREFIX.$step['name'];
+            $isSingle = $step['level'] === 'aggregate' && ! $grouped;
+
+            if (! $isSingle && $reads !== []) {
+                $isSingle = true;
+
+                foreach ($reads as $read) {
+                    $isSingle = $isSingle && ($single[$read] ?? false);
+                }
+            }
+
+            $single[$path] = $isSingle;
+            $out[] = [
+                'path' => $path,
+                'display' => $step['name'].' (calculated)',
+                'type' => 'decimal',
+                'example' => null,
+                'role' => 'measure',
+                'confidence' => 'high',
+                'overridden' => false,
+                'in_records' => false,
+                'suggestion' => null,
+                'key' => (string) $step['name'],
+                'single' => $isSingle,
+                'forced' => false,
+                'inferred' => 'number',
+                'effective' => 'number',
+            ];
+        }
+
+        return $out;
+    }
+
     /**
      * The transform steps the sample cannot satisfy (Story 5.1): a field that is not in the response, a numeric comparison on a field that is not a number
      * (or with a value that is not one) and a Sort on a field that cannot be ordered (a true or false field).
@@ -566,7 +714,31 @@ final class AutoMapper implements AutoMapping
 
             $fault = null;
 
-            if ($type === Transforms::GROUP) {
+            if ($type === Transforms::CALC) {
+                $reads = isset($step['ratio'])
+                    ? [(string) $step['ratio']['numerator'], (string) $step['ratio']['denominator']]
+                    : (is_array($step['ast'] ?? null) ? ExpressionResolver::paths($step['ast']) : []);
+
+                foreach ($reads as $path) {
+                    if (str_starts_with($path, Transforms::CALC_PREFIX)) {
+                        continue;
+                    }
+
+                    $read = $byPath[$path] ?? null;
+
+                    if ($read === null) {
+                        $fault = ['field' => $path, 'reason' => 'field_missing'];
+
+                        break;
+                    }
+
+                    if (isset($step['ratio']) && $read['effective'] !== 'number') {
+                        $fault = ['field' => $path, 'reason' => 'not_numeric'];
+
+                        break;
+                    }
+                }
+            } elseif ($type === Transforms::GROUP) {
                 foreach ($step['fields'] as $path) {
                     if (! isset($byPath[(string) $path])) {
                         $fault = ['field' => (string) $path, 'reason' => 'field_missing'];

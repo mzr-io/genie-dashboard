@@ -31,6 +31,16 @@ export const FUNCTIONS = ['sum', 'count', 'avg', 'min', 'max'] as const;
 export type AggregateFunction = (typeof FUNCTIONS)[number];
 
 export type GroupStep = { type: 'group'; fields: string[] };
+// A calculated field (Story 5.3): an expression at the row level or after the aggregate, or an aggregate-level ratio of two measures. The server adds
+// `ast` (the parsed tree) beside the source text.
+export type CalcStep = {
+    type: 'calc';
+    name: string;
+    level: 'row' | 'aggregate';
+    source: string;
+    ratio?: { numerator: string; denominator: string };
+    ast?: unknown;
+};
 export type AggregateStep = {
     type: 'aggregate';
     function: AggregateFunction;
@@ -44,6 +54,7 @@ export type SortStep = {
 export type TopNStep = { type: 'top_n'; count: number };
 export type TransformStep =
     | FilterStep
+    | CalcStep
     | GroupStep
     | AggregateStep
     | SortStep
@@ -75,6 +86,8 @@ export const MAX_FILTERS = 5;
 export const MAX_SORTS = 3;
 export const MAX_GROUP_FIELDS = 3;
 export const MAX_AGGREGATES = 5;
+export const MAX_CALCS = 5;
+export const CALC_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,63}$/;
 export const MAX_TOP_N = 1000;
 export const VALUE_MAX = 200;
 export const ROOT = 'config.transforms';
@@ -82,21 +95,22 @@ export const ROOT = 'config.transforms';
 const DECIMAL = /^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/;
 const ORDER: Record<StepType, number> = {
     filter: 0,
-    group: 1,
-    aggregate: 2,
-    sort: 3,
-    top_n: 4,
+    calc: 1,
+    group: 2,
+    aggregate: 3,
+    sort: 5,
+    top_n: 6,
 };
+
+// AD-11's stage order: filter, row calc, group, aggregate, aggregate calc, sort, top-N.
+const rank = (step: TransformStep): number =>
+    step.type === 'calc' && step.level === 'aggregate' ? 4 : ORDER[step.type];
 
 // The fixed stage order, each stage keeping the order steps were added in: what the server stores and runs.
 export function inStageOrder(steps: TransformStep[]): TransformStep[] {
     return steps
         .map((step, position) => ({ step, position }))
-        .sort(
-            (a, b) =>
-                ORDER[a.step.type] - ORDER[b.step.type] ||
-                a.position - b.position,
-        )
+        .sort((a, b) => rank(a.step) - rank(b.step) || a.position - b.position)
         .map((entry) => entry.step);
 }
 
@@ -110,7 +124,9 @@ export function canAdd(steps: TransformStep[], type: StepType): boolean {
               ? MAX_SORTS
               : type === 'aggregate'
                 ? MAX_AGGREGATES
-                : 1;
+                : type === 'calc'
+                  ? MAX_CALCS
+                  : 1;
 
     return used < limit;
 }
@@ -140,6 +156,20 @@ export function judge(steps: TransformStep[]): Record<number, string> {
                 !DECIMAL.test(step.value.trim())
             ) {
                 out[index] = 'not_numeric_value';
+            }
+        } else if (step.type === 'calc') {
+            if (!CALC_NAME.test(step.name)) {
+                out[index] = 'calc_name';
+            } else if (step.ratio !== undefined) {
+                if (
+                    step.level !== 'aggregate' ||
+                    step.ratio.numerator.trim() === '' ||
+                    step.ratio.denominator.trim() === ''
+                ) {
+                    out[index] = 'ratio_parts';
+                }
+            } else if (step.source.trim() === '') {
+                out[index] = 'expression_empty';
             }
         } else if (step.type === 'group') {
             if (

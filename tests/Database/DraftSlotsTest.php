@@ -403,8 +403,10 @@ it('lists the field picker of a slot, read-only, compatible first with reasons, 
     $res = dslFields($id, 'headline_value')->assertOk()->assertHeader('Cache-Control', 'no-store, private');
     $fields = $res->json('data.fields');
 
-    expect(array_column($fields, 'path'))->toBe(['$.total', '$.currency', '$.data[*].v'])
-        ->and(array_column($fields, 'compatible'))->toBe([true, false, false])
+    // A number Slot also offers a Calculated Field (Story 5.3), last and with no path.
+    expect(array_column($fields, 'path'))->toBe(['$.total', '$.currency', '$.data[*].v', null])
+        ->and(array_column($fields, 'kind'))->toBe(['field', 'field', 'field', 'calculated'])
+        ->and(array_column($fields, 'compatible'))->toBe([true, false, false, true])
         ->and($fields[1]['reason'])->toBe("Text field can't be a numeric headline. Use it as the currency format below.")
         ->and($fields[2]['reason'])->toBe('Needs aggregation (a later release).')
         ->and(array_column(dslFields($id, 'subtitle')->json('data.fields'), 'kind'))->toContain('static_text')
@@ -1289,4 +1291,65 @@ it('refuses a field both grouped and aggregated, naming it, and stores nothing',
     ])->assertStatus(422)->json('errors');
 
     expect(array_keys($errors))->toBe(['config.transforms.1.field'])->and(dslRev())->toBe($revision);
+});
+
+// Story 5.3: calculated fields (`calc` steps) and a slot pointed at one.
+it('stores a calculated field with its tree beside the source, maps a slot to it and previews the exact value', function () {
+    config(['dashflow.tunables.numbers.decimal_scale.value' => '6']);
+    $id = dslDraft();
+
+    $picker = dslFields($id, 'headline_value')->assertOk()->json('data.fields');
+
+    expect(array_column($picker, 'kind'))->toContain('calculated')
+        ->and(collect($picker)->firstWhere('kind', 'calculated')['example'])->toBe('PCT_CHANGE(total, previous_total)');
+
+    $saved = dslTransforms($id, [
+        ['type' => 'calc', 'name' => 'change', 'level' => 'row', 'source' => 'PCT_CHANGE(total, previous_total)'],
+    ])->assertOk()->json('data');
+
+    expect($saved['transforms'][0]['source'])->toBe('PCT_CHANGE(total, previous_total)')
+        ->and($saved['transforms'][0]['ast']['t'])->toBe('call')
+        ->and($saved['transforms'][0]['ast']['args'][0]['path'])->toBe('$.total')
+        ->and($saved['query_plan']['row_calc'][0]['name'])->toBe('change')
+        ->and($saved['transform_faults'])->toBe([]);
+
+    $row = dslOverride($id, 'headline_value', 'calc:change')->assertOk()->json('data');
+
+    expect($row['query_plan']['extract']['fields']['headline_value'])->toBe('calc:change');
+
+    $slots = dslPreview($id)->assertOk()->json('data.slots');
+
+    expect($slots['headline_value']['value'])->toBe('13.8722');
+});
+
+it('refuses an expression the grammar does not accept, naming the position, and stores nothing', function () {
+    $id = dslDraft();
+    $revision = dslRev();
+
+    foreach ([['ROUND(total,', 'position 13'], ['total + nope', 'nope'], ['SUM(total)', 'Unknown function'], ['total; 1', 'Unexpected']] as [$source, $needle]) {
+        $errors = dslTransforms($id, [['type' => 'calc', 'name' => 'x', 'level' => 'row', 'source' => $source]])->assertStatus(422)->json('errors');
+
+        expect(array_keys($errors))->toBe(['config.transforms.0.source'])->and($errors['config.transforms.0.source'][0])->toContain($needle);
+    }
+
+    expect(dslRev())->toBe($revision)->and(dslConfig())->not->toHaveKey('transforms');
+});
+
+it('makes a ratio that sums numerator and denominator apart, and refuses a ratio without both', function () {
+    config(['dashflow.tunables.numbers.decimal_scale.value' => '6']);
+    $id = dslDraft(json_encode(['data' => [['region' => 'EU', 'done' => 600, 'total' => 1000], ['region' => 'EU', 'done' => 450, 'total' => 500]]]));
+    dslWrite($id, 'record-path', ['record_path' => '$.data[*]'])->assertOk();
+
+    $saved = dslTransforms($id, [
+        ['type' => 'group', 'fields' => ['$.data[*].region']],
+        ['type' => 'calc', 'name' => 'completion', 'level' => 'aggregate', 'ratio' => ['numerator' => 'done', 'denominator' => 'total']],
+    ])->assertOk()->json('data');
+
+    expect($saved['transforms'][1]['ratio'])->toBe(['numerator' => '$.data[*].done', 'denominator' => '$.data[*].total'])
+        ->and($saved['query_plan']['aggregate_calc'][0]['ratio']['numerator'])->toBe('$.data[*].done');
+
+    dslTransforms($id, [['type' => 'calc', 'name' => 'completion', 'level' => 'aggregate', 'ratio' => ['numerator' => 'done']]])
+        ->assertStatus(422);
+    dslTransforms($id, [['type' => 'calc', 'name' => 'completion', 'level' => 'aggregate', 'ratio' => ['numerator' => 'done', 'denominator' => 'region']]])
+        ->assertOk()->assertJsonPath('data.transform_faults.0.reason', 'not_numeric');
 });

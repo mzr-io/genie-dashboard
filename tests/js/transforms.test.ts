@@ -394,3 +394,170 @@ describe('TransformsSection: group and aggregate', () => {
         });
     });
 });
+
+describe('TransformsSection: calculated fields', () => {
+    let wrapper: VueWrapper | null = null;
+
+    afterEach(() => {
+        wrapper?.unmount();
+        wrapper = null;
+        document.body.innerHTML = '';
+        resetAnnouncer();
+    });
+
+    const calc: TransformStep = {
+        type: 'calc',
+        name: 'margin',
+        level: 'row',
+        source: '(revenue - cost) / revenue',
+    };
+    const ratio: TransformStep = {
+        type: 'calc',
+        name: 'completion',
+        level: 'aggregate',
+        source: '',
+        ratio: {
+            numerator: '$.data[*].revenue',
+            denominator: '$.data[*].status',
+        },
+    };
+
+    function mountSection(props: Record<string, unknown> = {}): VueWrapper {
+        wrapper = mount(TransformsSection as never, {
+            props: {
+                steps: [calc, ratio],
+                fields,
+                faults: {},
+                counts: null,
+                ...props,
+            },
+            attachTo: document.body,
+        });
+
+        return wrapper;
+    }
+
+    it('orders a row calc before the group and an aggregate calc after the aggregate', () => {
+        const steps: TransformStep[] = [
+            { type: 'sort', field: '$.a', direction: 'asc' },
+            { ...calc, level: 'aggregate' },
+            { type: 'aggregate', function: 'sum', field: '$.b' },
+            { type: 'group', fields: ['$.a'] },
+            calc,
+        ];
+
+        expect(
+            inStageOrder(steps).map((s) =>
+                s.type === 'calc' ? `calc:${s.level}` : s.type,
+            ),
+        ).toEqual(['calc:row', 'group', 'aggregate', 'calc:aggregate', 'sort']);
+    });
+
+    it('says what a calculated field and a ratio are, and notes how a ratio aggregates', async () => {
+        mountSection();
+        await flushPromises();
+
+        const sentences = Array.from(
+            document.querySelectorAll('[data-test=step-sentence]'),
+        ).map((e) => e.textContent?.trim());
+
+        expect(sentences).toEqual([
+            'margin = (revenue - cost) / revenue',
+            'completion = revenue ÷ status (ratio)',
+        ]);
+        expect(
+            document.querySelector('[data-test=ratio-note]')?.textContent,
+        ).toContain('sums numerator and denominator');
+        expect(
+            (
+                document.querySelectorAll(
+                    '[data-test=calc-level]',
+                )[1] as HTMLSelectElement
+            ).disabled,
+        ).toBe(true);
+        expect(
+            document
+                .querySelector('[data-test=calc-expression]')
+                ?.getAttribute('aria-label'),
+        ).toBe('Expression');
+    });
+
+    it("commits an expression on change, takes the old tree away, and shows the server's refusal with its position", async () => {
+        const w = mountSection({
+            steps: [{ ...calc, ast: { t: 'num' } }],
+            faults: {
+                0: {
+                    reason: 'message',
+                    field: null,
+                    message: 'Unexpected end (position 14).',
+                },
+            },
+        });
+        await flushPromises();
+
+        expect(
+            document.querySelector('[data-test=step-fault]')?.textContent,
+        ).toContain('position 14');
+
+        const input = document.querySelector(
+            '[data-test=calc-expression]',
+        ) as HTMLInputElement;
+
+        input.value = 'ROUND(revenue, 2)';
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+        await flushPromises();
+
+        const sent = (
+            w.emitted('change')![0][0] as TransformStep[]
+        )[0] as Record<string, unknown>;
+
+        expect(sent.source).toBe('ROUND(revenue, 2)');
+        expect(sent.ast).toBeUndefined();
+    });
+
+    it('switches to a ratio and back, and adds a calculated field with a free name', async () => {
+        const w = mountSection({ steps: [calc] });
+
+        const kind = document.querySelector(
+            '[data-test=calc-kind]',
+        ) as HTMLSelectElement;
+
+        kind.value = 'ratio';
+        kind.dispatchEvent(new Event('change', { bubbles: true }));
+        await flushPromises();
+
+        const ratioStep = (
+            w.emitted('change')![0][0] as TransformStep[]
+        )[0] as Record<string, unknown>;
+
+        expect(ratioStep.level).toBe('aggregate');
+        expect(ratioStep.ratio).toEqual({
+            numerator: '$.data[*].status',
+            denominator: '$.data[*].revenue',
+        });
+
+        (document.querySelector('[data-test=add-step]') as HTMLElement).click();
+        await flushPromises();
+        (document.querySelector('[data-test=add-calc]') as HTMLElement).click();
+        await flushPromises();
+
+        const added = w.emitted('change')![1][0] as TransformStep[];
+
+        expect(added.map((s) => (s.type === 'calc' ? s.name : s.type))).toEqual(
+            ['margin', 'calc_1'],
+        );
+    });
+
+    it('says Escape in the expression to the page', async () => {
+        const w = mountSection({ steps: [calc] });
+
+        (
+            document.querySelector('[data-test=calc-expression]') as HTMLElement
+        ).dispatchEvent(
+            new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+        );
+        await flushPromises();
+
+        expect(w.emitted('cancelCalc')?.[0]).toEqual(['margin']);
+    });
+});

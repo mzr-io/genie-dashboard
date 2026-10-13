@@ -598,3 +598,55 @@ describe('Transforms section', () => {
         ).toBe('true');
     });
 });
+
+describe('Transforms section: calculated fields', () => {
+    it('shows an expression the server refused, with its position, and blocks Continue', async () => {
+        storedTransforms = [
+            {
+                type: 'calc',
+                name: 'margin',
+                level: 'row',
+                source: 'ROUND(revenue)',
+            },
+        ];
+        await openWithRows();
+
+        transformsReply = () => ({
+            status: 422,
+            json: {
+                error: { code: 'blocks.invalid_config' },
+                errors: {
+                    'config.transforms.0.source': [
+                        'ghost isn’t a field of the response (position 7).',
+                    ],
+                },
+            },
+        });
+
+        await setValue($('[data-test=calc-expression]'), 'ROUND(ghost)');
+
+        expect(text('[data-test=step-fault]')).toContain('position 7');
+        expect(
+            $('[data-test=slots-continue]')?.getAttribute('aria-disabled'),
+        ).toBe('true');
+    });
+
+    it('stores an expression through the same endpoint, in stage order, with the source text', async () => {
+        await openWithRows();
+
+        await click($('[data-test=add-step]'));
+        await click($('[data-test=add-calc]'));
+
+        expect(transformPuts()).toHaveLength(0);
+
+        await setValue($('[data-test=calc-expression]'), 'revenue * 2');
+
+        expect(transformPuts()).toHaveLength(1);
+        expect(transformPuts()[0].body!.transforms[0]).toMatchObject({
+            type: 'calc',
+            name: 'calc_1',
+            level: 'row',
+            source: 'revenue * 2',
+        });
+    });
+});

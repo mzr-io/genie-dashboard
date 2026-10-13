@@ -200,7 +200,12 @@ function amFields(string $json, string $slot, array $types = [], array $roles = 
 
 // Story 3.13a.
 it('lists the headline picker: compatible numeric single scalars first, text with the reason, records with the aggregation reason', function () {
-    $fields = amFields('{"currency":"USD","total":10,"data":[{"v":1},{"v":2}],"count":3}', 'headline_value');
+    $all = amFields('{"currency":"USD","total":10,"data":[{"v":1},{"v":2}],"count":3}', 'headline_value');
+
+    // A number Slot also offers a Calculated Field (Story 5.3), last and with no path.
+    expect(array_column($all, 'kind'))->toContain('calculated');
+
+    $fields = array_values(array_filter($all, fn (array $f): bool => $f['kind'] === 'field'));
 
     expect(array_column($fields, 'path'))->toBe(['$.total', '$.count', '$.currency', '$.data[*].v'])
         ->and(array_column($fields, 'compatible'))->toBe([true, true, false, false])
@@ -224,7 +229,7 @@ it('offers static_text for a text slot only, and nothing for an unknown or confi
 
 it('treats a decimal-shaped string as a number, and keeps any other forced mismatch with its reason', function () {
     $json = '{"revenue":"284680","currency":"USD"}';
-    $fields = amFields($json, 'headline_value', ['$.revenue' => 'number', '$.currency' => 'number']);
+    $fields = array_filter(amFields($json, 'headline_value', ['$.revenue' => 'number', '$.currency' => 'number']), fn (array $f): bool => $f['kind'] === 'field');
     $by = array_column($fields, null, 'path');
 
     expect($by['$.revenue'])->toMatchArray(['compatible' => true, 'effective_type' => 'number', 'type' => 'string'])
@@ -232,7 +237,7 @@ it('treats a decimal-shaped string as a number, and keeps any other forced misma
         ->and($by['$.currency']['reason'])->toBe('currency is number. Headline value needs a number.');
 
     // Without the override neither fits; the field is never discarded from a decided slot.
-    expect(array_column(amFields($json, 'headline_value'), 'compatible', 'path'))->toBe(['$.revenue' => false, '$.currency' => false]);
+    expect(array_column(array_filter(amFields($json, 'headline_value'), fn (array $f): bool => $f['kind'] === 'field'), 'compatible', 'path'))->toBe(['$.revenue' => false, '$.currency' => false]);
 
     $ok = amMap($json, ['headline_value' => ['path' => '$.revenue', 'state' => 'overridden']], types: ['$.revenue' => 'number']);
     expect(amSlot($ok, 'headline_value'))->toMatchArray(['state' => 'overridden', 'path' => '$.revenue']);

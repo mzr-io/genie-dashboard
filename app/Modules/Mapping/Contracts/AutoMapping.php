@@ -16,14 +16,24 @@ interface AutoMapping
     public function map(FieldRoleReport $report, BlockType $type, array $slotMap, array $fieldTypes = [], array $transforms = []): AutoMapResult;
 
     /**
+     * The calculated fields of a Draft's transform steps judged against the fields of the sample (Story 5.3): each expression is parsed by the one grammar
+     * (AD-12), its field names are resolved to stored paths and the tree is kept beside the source text. A ratio's numerator and denominator become paths.
+     *
+     * @param  list<array<string, mixed>>  $steps  as {@see Transforms::check()} returned them (stage order)
+     * @return array{0: list<array<string, mixed>>, 1: array<string, list<string>>} the steps with `ast` and the faults keyed `config.transforms.{n}.{part}`
+     */
+    public function resolveTransforms(FieldRoleReport $report, array $steps): array;
+
+    /**
      * The field picker of one Slot (Story 3.13a): every field of the sample with its effective type and role, `compatible` and, when false, a `reason`.
      * Compatible fields first, then document order; a text Slot also gets a `static_text` entry. Null for a Slot the Block Type does not have or that is
      * config-only.
      *
      * @param  array<string, mixed>  $fieldTypes
+     * @param  list<array<string, mixed>>  $transforms  the Draft's steps: its calculated fields are offered, and a number Slot gets a `calculated` entry (Story 5.3)
      * @return list<array<string, mixed>>|null
      */
-    public function fieldsFor(FieldRoleReport $report, BlockType $type, string $slot, array $fieldTypes = []): ?array;
+    public function fieldsFor(FieldRoleReport $report, BlockType $type, string $slot, array $fieldTypes = [], array $transforms = []): ?array;
 
     /**
      * What survives a change of Block Type: the entries whose slot key exists in both slot sets with the same value type are kept; every other entry is

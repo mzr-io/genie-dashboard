@@ -16,6 +16,7 @@ import {
 import type {
     AggregateFunction,
     AggregateStep,
+    CalcStep,
     FilterStep,
     GroupStep,
     Operator,
@@ -46,6 +47,8 @@ const props = defineProps<{
             field: string | null;
             function?: string | null;
             field_type?: string | null;
+            // A refusal worded by the server (an expression, with its position).
+            message?: string | null;
         }
     >;
     counts: RowCounts | null;
@@ -53,7 +56,11 @@ const props = defineProps<{
     blocked?: string;
 }>();
 
-const emit = defineEmits<{ change: [steps: TransformStep[]] }>();
+const emit = defineEmits<{
+    change: [steps: TransformStep[]];
+    // Escape in an expression the Field picker opened: the page puts focus back where it came from (UX-DR-193).
+    cancelCalc: [name: string];
+}>();
 
 const open = ref(false);
 const adding = ref(false);
@@ -93,6 +100,16 @@ function sentence(step: TransformStep): string {
             labels.operators[step.operator],
             step.value,
         );
+    }
+
+    if (step.type === 'calc') {
+        return step.ratio !== undefined
+            ? labels.ratioSentence(
+                  step.name,
+                  nameOf(step.ratio.numerator),
+                  nameOf(step.ratio.denominator),
+              )
+            : labels.calcSentence(step.name, step.source.trim() || '…');
     }
 
     if (step.type === 'group') {
@@ -136,6 +153,10 @@ function faultText(index: number): string | null {
         return null;
     }
 
+    if (fault.message !== undefined && fault.message !== null) {
+        return fault.message;
+    }
+
     // "Can't SUM a text field": the function and the kind of field the aggregate met.
     if (fault.function !== undefined && fault.function !== null) {
         return labels.cantAggregate(
@@ -167,24 +188,35 @@ function addStep(type: StepType): void {
     adding.value = false;
 
     const field = props.fields[0]?.path ?? '';
+    const taken = new Set(
+        props.steps.flatMap((s) => (s.type === 'calc' ? [s.name] : [])),
+    );
+    let n = 1;
+
+    while (taken.has(`calc_${n}`)) {
+        n += 1;
+    }
+
     const step: TransformStep =
-        type === 'filter'
-            ? { type, field, operator: 'is', value: '' }
-            : type === 'group'
-              ? { type, fields: [field] }
-              : type === 'aggregate'
-                ? {
-                      type,
-                      function: 'sum',
-                      field: props.fields[1]?.path ?? field,
-                  }
-                : type === 'sort'
+        type === 'calc'
+            ? { type, name: `calc_${n}`, level: 'row', source: '' }
+            : type === 'filter'
+              ? { type, field, operator: 'is', value: '' }
+              : type === 'group'
+                ? { type, fields: [field] }
+                : type === 'aggregate'
                   ? {
                         type,
-                        field: sortFields.value[0]?.path ?? field,
-                        direction: 'desc',
+                        function: 'sum',
+                        field: props.fields[1]?.path ?? field,
                     }
-                  : { type, count: 5 };
+                  : type === 'sort'
+                    ? {
+                          type,
+                          field: sortFields.value[0]?.path ?? field,
+                          direction: 'desc',
+                      }
+                    : { type, count: 5 };
 
     open.value = true;
     put([...props.steps, step]);
@@ -244,6 +276,68 @@ function removeGroupField(index: number, step: GroupStep): void {
     if (step.fields.length > 1) {
         replace(index, { ...step, fields: step.fields.slice(0, -1) });
     }
+}
+
+function setCalcName(index: number, step: CalcStep, event: Event): void {
+    const name = (event.target as HTMLInputElement).value.trim();
+
+    if (name !== step.name) {
+        replace(index, { ...step, name });
+    }
+}
+
+function setCalcSource(index: number, step: CalcStep, event: Event): void {
+    const source = (event.target as HTMLInputElement).value;
+
+    if (source !== step.source) {
+        // The server parses it again: the old tree no longer says what the text says.
+        const { ast: _ast, ...rest } = step;
+
+        replace(index, { ...rest, source });
+        keep(index, '[data-test="calc-expression"]', event);
+    }
+}
+
+function setCalcKind(index: number, step: CalcStep, kind: string): void {
+    const { ast: _ast, ratio: _ratio, ...rest } = step;
+
+    if (kind === 'ratio') {
+        const first = props.fields[0]?.path ?? '';
+        const second = props.fields[1]?.path ?? first;
+
+        replace(index, {
+            ...rest,
+            level: 'aggregate',
+            source: '',
+            ratio: { numerator: first, denominator: second },
+        });
+    } else {
+        replace(index, { ...rest, source: '' });
+    }
+}
+
+function setCalcLevel(index: number, step: CalcStep, level: string): void {
+    const { ast: _ast, ...rest } = step;
+
+    replace(index, {
+        ...rest,
+        level: level === 'aggregate' ? 'aggregate' : 'row',
+    });
+}
+
+function setRatio(
+    index: number,
+    step: CalcStep,
+    part: 'numerator' | 'denominator',
+    path: string,
+): void {
+    replace(index, {
+        ...step,
+        ratio: {
+            ...(step.ratio ?? { numerator: '', denominator: '' }),
+            [part]: path,
+        },
+    });
 }
 
 function setOperator(index: number, step: FilterStep, value: string): void {
@@ -307,13 +401,34 @@ function focusFirstFault(): boolean {
     return true;
 }
 
-defineExpose({ focusFirstFault, open });
+// The expression input of a calculated field, opened and focused: the Field picker's "Calculated Field" asks for it (UX-DR-193).
+function focusCalc(name: string): void {
+    open.value = true;
+    void nextTick(() => {
+        const row = Array.from(
+            root.value?.querySelectorAll<HTMLElement>(
+                '[data-test="transform-row"]',
+            ) ?? [],
+        ).find(
+            (r) =>
+                r.querySelector<HTMLInputElement>('[data-test="calc-name"]')
+                    ?.defaultValue === name,
+        );
+
+        row?.querySelector<HTMLElement>(
+            '[data-test="calc-expression"]',
+        )?.focus();
+    });
+}
+
+defineExpose({ focusFirstFault, focusCalc, open });
 
 const typeOf = (step: TransformStep): StepType => step.type;
 const asFilter = (s: TransformStep): FilterStep => s as FilterStep;
 const asSort = (s: TransformStep): SortStep => s as SortStep;
 const asTopN = (s: TransformStep): TopNStep => s as TopNStep;
 const asGroup = (s: TransformStep): GroupStep => s as GroupStep;
+const asCalc = (s: TransformStep): CalcStep => s as CalcStep;
 const asAggregate = (s: TransformStep): AggregateStep => s as AggregateStep;
 </script>
 
@@ -380,7 +495,165 @@ const asAggregate = (s: TransformStep): AggregateStep => s as AggregateStep;
                     <div
                         class="flex min-w-0 flex-1 flex-wrap items-center gap-2"
                     >
-                        <template v-if="typeOf(step) === 'filter'">
+                        <template v-if="typeOf(step) === 'calc'">
+                            <Input
+                                class="w-auto min-w-32"
+                                type="text"
+                                maxlength="64"
+                                autocomplete="off"
+                                :default-value="asCalc(step).name"
+                                :aria-label="labels.calcName"
+                                :aria-describedby="help(index, 'calcname')"
+                                :disabled="disabled"
+                                data-test="calc-name"
+                                @change="
+                                    setCalcName(index, asCalc(step), $event)
+                                "
+                            />
+                            <NativeSelect
+                                class="w-auto min-w-32"
+                                :model-value="asCalc(step).level"
+                                :aria-label="labels.calcLevel"
+                                :aria-describedby="help(index, 'calclevel')"
+                                :disabled="
+                                    disabled || asCalc(step).ratio !== undefined
+                                "
+                                data-test="calc-level"
+                                @update:model-value="
+                                    (v?: string) =>
+                                        setCalcLevel(
+                                            index,
+                                            asCalc(step),
+                                            v ?? 'row',
+                                        )
+                                "
+                            >
+                                <option value="row">
+                                    {{ labels.levels.row }}
+                                </option>
+                                <option value="aggregate">
+                                    {{ labels.levels.aggregate }}
+                                </option>
+                            </NativeSelect>
+                            <NativeSelect
+                                class="w-auto min-w-28"
+                                :model-value="
+                                    asCalc(step).ratio !== undefined
+                                        ? 'ratio'
+                                        : 'expression'
+                                "
+                                :aria-label="labels.calcKind"
+                                :aria-describedby="help(index, 'calckind')"
+                                :disabled="disabled"
+                                data-test="calc-kind"
+                                @update:model-value="
+                                    (v?: string) =>
+                                        setCalcKind(
+                                            index,
+                                            asCalc(step),
+                                            v ?? 'expression',
+                                        )
+                                "
+                            >
+                                <option value="expression">
+                                    {{ labels.kinds.expression }}
+                                </option>
+                                <option value="ratio">
+                                    {{ labels.kinds.ratio }}
+                                </option>
+                            </NativeSelect>
+                            <template v-if="asCalc(step).ratio !== undefined">
+                                <NativeSelect
+                                    class="w-auto min-w-32"
+                                    :model-value="asCalc(step).ratio!.numerator"
+                                    :aria-label="labels.numeratorName"
+                                    :aria-describedby="help(index, 'ratio')"
+                                    :disabled="disabled"
+                                    data-test="ratio-numerator"
+                                    @update:model-value="
+                                        (v?: string) =>
+                                            setRatio(
+                                                index,
+                                                asCalc(step),
+                                                'numerator',
+                                                v ?? '',
+                                            )
+                                    "
+                                >
+                                    <option
+                                        v-for="f in fields"
+                                        :key="f.path"
+                                        :value="f.path"
+                                    >
+                                        {{ shortName(f.display) }}
+                                    </option>
+                                </NativeSelect>
+                                <NativeSelect
+                                    class="w-auto min-w-32"
+                                    :model-value="
+                                        asCalc(step).ratio!.denominator
+                                    "
+                                    :aria-label="labels.denominatorName"
+                                    :aria-describedby="help(index, 'ratio')"
+                                    :disabled="disabled"
+                                    data-test="ratio-denominator"
+                                    @update:model-value="
+                                        (v?: string) =>
+                                            setRatio(
+                                                index,
+                                                asCalc(step),
+                                                'denominator',
+                                                v ?? '',
+                                            )
+                                    "
+                                >
+                                    <option
+                                        v-for="f in fields"
+                                        :key="f.path"
+                                        :value="f.path"
+                                    >
+                                        {{ shortName(f.display) }}
+                                    </option>
+                                </NativeSelect>
+                            </template>
+                            <Input
+                                v-else
+                                class="w-full min-w-48 flex-1 font-mono"
+                                type="text"
+                                maxlength="500"
+                                autocomplete="off"
+                                spellcheck="false"
+                                :default-value="asCalc(step).source"
+                                :placeholder="labels.expressionPlaceholder"
+                                :aria-label="labels.expressionName"
+                                :aria-describedby="help(index, 'expression')"
+                                :aria-invalid="
+                                    faults[index] !== undefined
+                                        ? 'true'
+                                        : undefined
+                                "
+                                :disabled="disabled"
+                                data-test="calc-expression"
+                                @change="
+                                    setCalcSource(index, asCalc(step), $event)
+                                "
+                                @keydown.enter="
+                                    setCalcSource(index, asCalc(step), $event)
+                                "
+                                @keydown.esc="
+                                    emit('cancelCalc', asCalc(step).name)
+                                "
+                            />
+                            <p
+                                v-if="asCalc(step).ratio !== undefined"
+                                class="type-caption w-full text-text-secondary"
+                                data-test="ratio-note"
+                            >
+                                {{ labels.ratioNote }}
+                            </p>
+                        </template>
+
+                        <template v-else-if="typeOf(step) === 'filter'">
                             <NativeSelect
                                 class="w-auto min-w-32"
                                 :model-value="asFilter(step).field"
@@ -710,13 +983,23 @@ const asAggregate = (s: TransformStep): AggregateStep => s as AggregateStep;
                                 ? labels.valueHelp
                                 : part === 'direction'
                                   ? labels.directionHelp
-                                  : part === 'group'
-                                    ? labels.groupHelp
-                                    : part === 'function'
-                                      ? labels.functionHelp
-                                      : part === 'aggregate'
-                                        ? labels.aggregateFieldHelp
-                                        : labels.countHelp
+                                  : part === 'calcname'
+                                    ? labels.calcNameHelp
+                                    : part === 'calclevel'
+                                      ? labels.calcLevelHelp
+                                      : part === 'calckind'
+                                        ? labels.calcKindHelp
+                                        : part === 'expression'
+                                          ? labels.expressionHelp
+                                          : part === 'ratio'
+                                            ? labels.ratioHelp
+                                            : part === 'group'
+                                              ? labels.groupHelp
+                                              : part === 'function'
+                                                ? labels.functionHelp
+                                                : part === 'aggregate'
+                                                  ? labels.aggregateFieldHelp
+                                                  : labels.countHelp
                     }}</span
                 >
 
@@ -774,6 +1057,7 @@ const asAggregate = (s: TransformStep): AggregateStep => s as AggregateStep;
                 <Button
                     v-for="type in [
                         'filter',
+                        'calc',
                         'group',
                         'aggregate',
                         'sort',
@@ -790,13 +1074,15 @@ const asAggregate = (s: TransformStep): AggregateStep => s as AggregateStep;
                     {{
                         type === 'filter'
                             ? labels.addFilter
-                            : type === 'group'
-                              ? labels.addGroup
-                              : type === 'aggregate'
-                                ? labels.addAggregate
-                                : type === 'sort'
-                                  ? labels.addSort
-                                  : labels.addTopN
+                            : type === 'calc'
+                              ? labels.addCalc
+                              : type === 'group'
+                                ? labels.addGroup
+                                : type === 'aggregate'
+                                  ? labels.addAggregate
+                                  : type === 'sort'
+                                    ? labels.addSort
+                                    : labels.addTopN
                     }}
                 </Button>
             </template>

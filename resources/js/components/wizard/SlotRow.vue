@@ -53,6 +53,8 @@ const props = defineProps<{
 const emit = defineEmits<{
     (e: 'confirm', slot: string): void;
     (e: 'pick', slot: string, path: string | null): void;
+    // "Calculated Field" was chosen in the picker (Story 5.3): the page opens the expression editor for this slot.
+    (e: 'calculated', slot: string, opener: HTMLElement | null): void;
     (e: 'undo', slot: string): void;
     (e: 'treat', slot: string, path: string, type: FieldType | null): void;
     // "Choose from the field tree" on a required slot with nothing mapped (Story 3.11d).
@@ -149,6 +151,16 @@ watch(
 );
 
 function pick(field: PickerField): void {
+    if (field.kind === 'calculated') {
+        emit(
+            'calculated',
+            props.item.slot,
+            document.activeElement as HTMLElement | null,
+        );
+
+        return;
+    }
+
     emit('pick', props.item.slot, field.path);
 }
 

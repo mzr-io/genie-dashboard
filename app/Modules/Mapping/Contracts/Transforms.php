@@ -20,6 +20,12 @@ final class Transforms
 
     public const FILTER = 'filter';
 
+    public const CALC = 'calc';
+
+    public const ROW_CALC = 'row_calc';
+
+    public const AGGREGATE_CALC = 'aggregate_calc';
+
     public const GROUP = 'group';
 
     public const AGGREGATE = 'aggregate';
@@ -45,6 +51,16 @@ final class Transforms
     public const MAX_GROUP_FIELDS = 3;
 
     public const MAX_AGGREGATES = 5;
+
+    public const MAX_CALCS = 5;
+
+    public const LEVELS = ['row', 'aggregate'];
+
+    /** The name of a calculated field: usable bare in an expression. */
+    public const CALC_NAME = '/\A[A-Za-z_][A-Za-z0-9_]{0,63}\z/D';
+
+    /** The prefix of the stored path a calculated field is read by. */
+    public const CALC_PREFIX = 'calc:';
 
     public const MAX_FILTERS = 5;
 
@@ -74,13 +90,13 @@ final class Transforms
 
         $errors = [];
         $steps = [];
-        $counts = [self::FILTER => 0, self::GROUP => 0, self::AGGREGATE => 0, self::SORT => 0, self::TOP_N => 0];
+        $counts = [self::FILTER => 0, self::CALC => 0, self::GROUP => 0, self::AGGREGATE => 0, self::SORT => 0, self::TOP_N => 0];
 
         foreach ($input as $index => $step) {
             $at = "{$root}.{$index}";
 
             if (! is_array($step) || ! isset($step['type']) || ! is_string($step['type']) || ! isset($counts[$step['type']])) {
-                $errors[$at] = ['Choose Filter, Group, Aggregate, Sort or Top N.'];
+                $errors[$at] = ['Choose Filter, Calculated field, Group, Aggregate, Sort or Top N.'];
 
                 continue;
             }
@@ -95,6 +111,7 @@ final class Transforms
 
             $allowed = match ($type) {
                 self::FILTER => ['type', 'field', 'operator', 'value'],
+                self::CALC => ['type', 'name', 'level', 'source', 'ratio', 'ast'],
                 self::GROUP => ['type', 'fields'],
                 self::AGGREGATE => ['type', 'function', 'field'],
                 self::SORT => ['type', 'field', 'direction'],
@@ -109,6 +126,10 @@ final class Transforms
 
             if (in_array($type, [self::FILTER, self::SORT, self::AGGREGATE], true) && ! self::isPath($step['field'] ?? null)) {
                 $errors["{$at}.field"] = ['Choose a field of the response.'];
+            }
+
+            if ($type === self::CALC) {
+                $errors += self::checkCalc($step, $at);
             }
 
             if ($type === self::GROUP) {
@@ -168,9 +189,17 @@ final class Transforms
             return [[], $errors];
         }
 
-        $order = [self::FILTER => 0, self::GROUP => 1, self::AGGREGATE => 2, self::SORT => 3, self::TOP_N => 4];
+        // The stage order of AD-11: filter, row calc, group, aggregate, aggregate calc, sort, top-N.
+        $rank = fn (array $step): int => match ($step['type']) {
+            self::FILTER => 0,
+            self::CALC => $step['level'] === 'row' ? 1 : 4,
+            self::GROUP => 2,
+            self::AGGREGATE => 3,
+            self::SORT => 5,
+            default => 6,
+        };
         $indexed = array_map(null, array_keys($steps), $steps);
-        usort($indexed, fn (array $a, array $b): int => [$order[$a[1]['type']], $a[0]] <=> [$order[$b[1]['type']], $b[0]]);
+        usort($indexed, fn (array $a, array $b): int => [$rank($a[1]), $a[0]] <=> [$rank($b[1]), $b[0]]);
 
         return [array_map(fn (array $pair): array => $pair[1], $indexed), []];
     }
@@ -217,6 +246,12 @@ final class Transforms
             $left = [...$grouped, ...array_keys($aggregated)];
 
             foreach ($steps as $step) {
+                if ($step['type'] === self::CALC) {
+                    $left[] = self::CALC_PREFIX.$step['name'];
+                }
+            }
+
+            foreach ($steps as $step) {
                 if ($step['type'] === self::SORT && ! in_array((string) $step['field'], $left, true)) {
                     $errors[$root.'.'.$at($step).'.field'] = ['Sort by a field that is grouped or aggregated.'];
                 }
@@ -235,17 +270,24 @@ final class Transforms
      */
     public static function apply(array $plan, array $steps): array
     {
-        foreach ([self::FILTER, self::GROUP, self::AGGREGATE, self::SORT, self::TOP_N] as $stage) {
+        foreach ([self::FILTER, self::ROW_CALC, self::GROUP, self::AGGREGATE, self::AGGREGATE_CALC, self::SORT, self::TOP_N] as $stage) {
             unset($plan[$stage]);
         }
 
         $filters = [];
+        $rowCalcs = [];
+        $aggregateCalcs = [];
         $aggregates = [];
         $sorts = [];
 
         foreach ($steps as $step) {
             match ($step['type']) {
                 self::FILTER => $filters[] = ['field' => $step['field'], 'operator' => $step['operator'], 'value' => $step['value']],
+                self::CALC => $step['level'] === 'row'
+                    ? $rowCalcs[] = ['name' => $step['name'], 'source' => $step['source'], 'ast' => $step['ast'] ?? null]
+                    : $aggregateCalcs[] = isset($step['ratio'])
+                        ? ['name' => $step['name'], 'ratio' => $step['ratio']]
+                        : ['name' => $step['name'], 'source' => $step['source'], 'ast' => $step['ast'] ?? null],
                 self::GROUP => $plan[self::GROUP] = ['fields' => array_values($step['fields'])],
                 self::AGGREGATE => $aggregates[] = ['function' => $step['function'], 'field' => $step['field']],
                 self::SORT => $sorts[] = ['field' => $step['field'], 'direction' => $step['direction']],
@@ -257,8 +299,16 @@ final class Transforms
             $plan[self::FILTER] = $filters;
         }
 
+        if ($rowCalcs !== []) {
+            $plan[self::ROW_CALC] = $rowCalcs;
+        }
+
         if ($aggregates !== []) {
             $plan[self::AGGREGATE] = $aggregates;
+        }
+
+        if ($aggregateCalcs !== []) {
+            $plan[self::AGGREGATE_CALC] = $aggregateCalcs;
         }
 
         if ($sorts !== []) {
@@ -304,6 +354,30 @@ final class Transforms
             }
         }
 
+        foreach ([self::ROW_CALC => 'row', self::AGGREGATE_CALC => 'aggregate'] as $stage => $level) {
+            if (! isset($plan[$stage])) {
+                continue;
+            }
+
+            if (! is_array($plan[$stage]) || ! array_is_list($plan[$stage])) {
+                $errors["{$root}.{$stage}"] = ['This stage is a list of steps.'];
+
+                continue;
+            }
+
+            foreach ($plan[$stage] as $index => $item) {
+                $judged = is_array($item) ? ['type' => self::CALC, 'level' => $level] + $item : $item;
+
+                foreach (self::check([$judged])[1] as $key => $messages) {
+                    $errors[str_replace('config.'.self::KEY.'.0', "{$root}.{$stage}.{$index}", $key)] = $messages;
+                }
+
+                if (is_array($item) && ! isset($item['ratio']) && ! is_array($item['ast'] ?? null)) {
+                    $errors["{$root}.{$stage}.{$index}.ast"] = ['The expression is not parsed.'];
+                }
+            }
+        }
+
         foreach ([self::GROUP, self::TOP_N] as $stage) {
             if (! isset($plan[$stage])) {
                 continue;
@@ -329,11 +403,52 @@ final class Transforms
         return $errors;
     }
 
+    /**
+     * The shape of a calculated field: a name, a level, and either the source of an expression or (at the aggregate level) a ratio's numerator and
+     * denominator. The expression itself is judged where the fields of the sample are known.
+     *
+     * @param  array<string, mixed>  $step
+     * @return array<string, list<string>>
+     */
+    private static function checkCalc(array $step, string $at): array
+    {
+        $errors = [];
+        $name = $step['name'] ?? null;
+        $level = $step['level'] ?? null;
+        $source = $step['source'] ?? null;
+        $ratio = $step['ratio'] ?? null;
+
+        if (! is_string($name) || preg_match(self::CALC_NAME, $name) !== 1) {
+            $errors["{$at}.name"] = ['Name it with letters, digits and underscores, starting with a letter.'];
+        }
+
+        if (! is_string($level) || ! in_array($level, self::LEVELS, true)) {
+            $errors["{$at}.level"] = ['Choose row level or aggregate level.'];
+        }
+
+        if ($ratio !== null) {
+            if ($level !== 'aggregate') {
+                $errors["{$at}.ratio"] = ['A ratio is calculated after the rows are aggregated.'];
+            } elseif (! is_array($ratio) || array_diff(array_keys($ratio), ['numerator', 'denominator']) !== [] || ! is_string($ratio['numerator'] ?? null) || trim($ratio['numerator']) === '' || ! is_string($ratio['denominator'] ?? null) || trim($ratio['denominator']) === '') {
+                $errors["{$at}.ratio"] = ['Name both a numerator and a denominator.'];
+            } elseif ($source !== null && $source !== '') {
+                $errors["{$at}.source"] = ['A ratio takes its numerator and denominator, not an expression.'];
+            }
+        } elseif (! is_string($source) || trim($source) === '') {
+            $errors["{$at}.source"] = ['Enter an expression.'];
+        } elseif (mb_strlen($source) > 500) {
+            $errors["{$at}.source"] = ['Use 500 characters or fewer.'];
+        }
+
+        return $errors;
+    }
+
     private static function limit(string $type): int
     {
         return match ($type) {
             self::FILTER => self::MAX_FILTERS,
             self::AGGREGATE => self::MAX_AGGREGATES,
+            self::CALC => self::MAX_CALCS,
             self::SORT => self::MAX_SORTS,
             default => 1,
         };
@@ -343,6 +458,11 @@ final class Transforms
     {
         if (! is_string($value)) {
             return false;
+        }
+
+        // A calculated field is read by `calc:<name>`.
+        if (str_starts_with($value, self::CALC_PREFIX)) {
+            return preg_match(self::CALC_NAME, substr($value, strlen(self::CALC_PREFIX))) === 1;
         }
 
         try {

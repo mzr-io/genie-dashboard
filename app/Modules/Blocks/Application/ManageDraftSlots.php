@@ -117,7 +117,7 @@ final class ManageDraftSlots implements DraftSlots
         $draft = $this->drafts->find($actor->workspaceId, $draftId);
         [$type, $shape] = $this->inputs($actor->workspaceId, $draft);
 
-        return $this->mapper->fieldsFor($this->report($shape, $draft->config), $type, $slot, self::fieldTypes($draft->config)) ?? throw new SlotNotFound($slot);
+        return $this->mapper->fieldsFor($this->report($shape, $draft->config), $type, $slot, self::fieldTypes($draft->config), self::transforms($draft->config)) ?? throw new SlotNotFound($slot);
     }
 
     public function rerun(DraftActor $actor, string $draftId, int $revision, int $lockEpoch, ?\Closure $holdsLock = null): DraftChecklist
@@ -168,7 +168,7 @@ final class ManageDraftSlots implements DraftSlots
             $undo = ['slot' => $slot, 'slot_entry' => is_array($previous) ? ['path' => $previous['path'] ?? null, 'state' => $previous['state'] ?? null] : null, 'role' => null, 'applied' => ['path' => $path, 'state' => SlotState::Overridden->value]];
 
             if ($path !== null) {
-                $entries = $this->mapper->fieldsFor($report, $type, $slot, self::fieldTypes($config)) ?? throw new SlotNotFound($slot);
+                $entries = $this->mapper->fieldsFor($report, $type, $slot, self::fieldTypes($config), self::transforms($config)) ?? throw new SlotNotFound($slot);
                 $entry = null;
 
                 foreach ($entries as $candidate) {
@@ -230,7 +230,7 @@ final class ManageDraftSlots implements DraftSlots
 
             // A restored path must still be one the slot accepts, as for an override.
             if (is_array($entry) && is_string($entry['path'] ?? null)) {
-                $fits = array_filter($this->mapper->fieldsFor($report, $type, $slot, self::fieldTypes($config)) ?? [], fn (array $e): bool => ($e['path'] ?? null) === $entry['path'] && $e['compatible'] === true);
+                $fits = array_filter($this->mapper->fieldsFor($report, $type, $slot, self::fieldTypes($config), self::transforms($config)) ?? [], fn (array $e): bool => ($e['path'] ?? null) === $entry['path'] && $e['compatible'] === true);
 
                 if ($fits === []) {
                     throw new SlotRefused($slot, 'The field to restore is no longer one this slot accepts.');
@@ -407,9 +407,16 @@ final class ManageDraftSlots implements DraftSlots
         $stored = [];
         $faults = [];
 
-        $checklist = $this->write($actor, $draftId, $revision, $lockEpoch, $holdsLock, function (array $config) use ($steps, &$stored): array {
-            // Judged whole: nothing is stored when any part is faulty. The fields are judged against the sample by the mapper, as faults.
-            $stored = DraftConfig::normaliseTransforms($steps);
+        $checklist = $this->write($actor, $draftId, $revision, $lockEpoch, $holdsLock, function (array $config, AutoMapResult $now, FieldRoleReport $report) use ($steps, &$stored): array {
+            // Judged whole: nothing is stored when any part is faulty. The fields are judged against the sample by the mapper, as faults; an expression is
+            // parsed and its field names resolved here, and a fault of it is a refusal that names the position.
+            [$resolved, $problems] = $this->mapper->resolveTransforms($report, DraftConfig::normaliseTransforms($steps));
+
+            if ($problems !== []) {
+                throw new InvalidDraft($problems, 'blocks.invalid_config');
+            }
+
+            $stored = $resolved;
 
             return self::withKey($config, Transforms::KEY, $stored);
         });

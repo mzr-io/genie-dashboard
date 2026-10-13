@@ -21,7 +21,7 @@ final class QueryPlan
     public const STAGE_ORDER = ['extract', 'filter', 'row_calc', 'group', 'aggregate', 'aggregate_calc', 'sort', 'top_n', 'shape'];
 
     /** The stages plan v1 carries. */
-    public const STAGES_V1 = ['extract', 'filter', 'group', 'aggregate', 'sort', 'top_n', 'shape'];
+    public const STAGES_V1 = ['extract', 'filter', 'row_calc', 'group', 'aggregate', 'aggregate_calc', 'sort', 'top_n', 'shape'];
 
     private const ALIAS = '/\A[A-Za-z_][A-Za-z0-9_]{0,63}\z/D';
 
@@ -54,6 +54,17 @@ final class QueryPlan
         }
 
         $fields = [];
+        $calcs = [];
+
+        // The calculated fields the plan defines (Story 5.3): a slot may read one as `calc:<name>`.
+        foreach ([Transforms::ROW_CALC, Transforms::AGGREGATE_CALC] as $stage) {
+            foreach (is_array($plan[$stage] ?? null) ? $plan[$stage] : [] as $item) {
+                if (is_array($item) && is_string($item['name'] ?? null)) {
+                    $calcs[Transforms::CALC_PREFIX.$item['name']] = true;
+                }
+            }
+        }
+
         $extract = $plan['extract'] ?? null;
 
         if (! is_array($extract) || ($extract !== [] && array_is_list($extract))) {
@@ -78,7 +89,10 @@ final class QueryPlan
                             throw new InvalidArgumentException('A path is text.');
                         }
 
-                        SamplePath::parse($path);
+                        if (! isset($calcs[$path])) {
+                            SamplePath::parse($path);
+                        }
+
                         $fields[$alias] = true;
                     } catch (InvalidArgumentException) {
                         $errors["{$root}.extract.fields.{$alias}"] = ['Use a stored path: $ then member names and [*] only.'];

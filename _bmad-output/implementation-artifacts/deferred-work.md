@@ -527,3 +527,7 @@
 - source_spec: `_bmad-output/implementation-artifacts/spec-5-2-group-and-aggregate-transforms-and-aggregate-rows-by-flattening.md`
   summary: Block Continue for a flattened array used by a per-row chart slot with no aggregation, and apply a chart slot's declared default aggregation.
   evidence: No Block Type declares a per-row chart slot or a default aggregation (the KPI card's slots take one value); this arrives with the line/area block type of Story 5.8.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-5-3-calculated-fields-and-ratio-safe-aggregation.md`
+  summary: Make the expression grammar available to Text Templates and URL templates (the same parser and evaluator, `{field}` token syntax).
+  evidence: The grammar is shared by design (AD-12) and lives in `Mapping\Application\Expressions`; the template slots and their editors are Story 5.4.

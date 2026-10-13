@@ -62,6 +62,7 @@ import {
 import type { PresentationRules } from '@/lib/blockPresentation';
 import type { SampleClaim, SampleState } from '@/lib/blockSample';
 import {
+    inStageOrder,
     putTransforms,
     judge as judgeTransforms,
     sameSteps,
@@ -834,6 +835,7 @@ const transformFaults = computed(() => {
             field: string | null;
             function?: string | null;
             field_type?: string | null;
+            message?: string | null;
         }
     > = {};
     const stored = read.value?.transforms ?? [];
@@ -855,13 +857,74 @@ const transformFaults = computed(() => {
         out[Number(index)] = { reason, field: null };
     }
 
+    for (const [index, message] of Object.entries(serverMessages.value)) {
+        out[Number(index)] = { reason: 'message', field: null, message };
+    }
+
     return out;
 });
+
+// What the server said of each step it refused (an expression, with its position), by the step's position.
+const serverMessages = ref<Record<number, string>>({});
+// The slot a "Calculated Field" was chosen for: once its expression is stored the slot is pointed at it.
+const pendingCalc = ref<{
+    slot: string;
+    name: string;
+    opener: HTMLElement | null;
+} | null>(null);
+
+function onCalculated(slot: string, opener: HTMLElement | null): void {
+    const taken = new Set(
+        steps.value.flatMap((s) => (s.type === 'calc' ? [s.name] : [])),
+    );
+    let name = slot;
+    let n = 2;
+
+    while (taken.has(name)) {
+        name = `${slot}_${n}`;
+        n += 1;
+    }
+
+    pendingCalc.value = { slot, name, opener };
+    steps.value = inStageOrder([
+        ...steps.value,
+        { type: 'calc', name, level: 'row', source: '' },
+    ]);
+    transformsRef.value?.focusCalc(name);
+}
+
+// Escape in the expression of a Calculated Field the picker opened: nothing was stored, and focus goes back to the picker's opener.
+function onCancelCalc(name: string): void {
+    const pending = pendingCalc.value;
+
+    if (pending === null || pending.name !== name) {
+        return;
+    }
+
+    pendingCalc.value = null;
+    steps.value = steps.value.filter(
+        (s) =>
+            !(s.type === 'calc' && s.name === name && s.source.trim() === ''),
+    );
+    void nextTick(() => pending.opener?.focus());
+}
 
 function transformsRefused(error: WizardError): boolean {
     if (error.status !== 422) {
         return false;
     }
+
+    const messages: Record<number, string> = {};
+
+    for (const [path, list] of Object.entries(error.fields ?? {})) {
+        const match = /^config\.transforms\.(\d+)\./.exec(path);
+
+        if (match !== null && list[0] !== undefined) {
+            messages[Number(match[1])] = list[0];
+        }
+    }
+
+    serverMessages.value = messages;
 
     notSaved.value = transformLabels.notSaved;
     announce(transformLabels.notSaved, 'assertive');
@@ -871,6 +934,7 @@ function transformsRefused(error: WizardError): boolean {
 
 async function saveTransforms(next: TransformStep[]): Promise<void> {
     steps.value = next;
+    serverMessages.value = {};
 
     // An invalid value is shown on its step, blocks Continue and is never sent.
     if (Object.keys(judgeTransforms(next)).length > 0) {
@@ -904,6 +968,23 @@ async function saveTransforms(next: TransformStep[]): Promise<void> {
                   },
     };
     steps.value = done.transforms;
+
+    // A Calculated Field chosen from a slot's picker: now that its expression is stored, the slot reads it.
+    const pending = pendingCalc.value;
+
+    if (
+        pending !== null &&
+        done.transforms.some(
+            (s) =>
+                s.type === 'calc' &&
+                s.name === pending.name &&
+                (s.ratio !== undefined || s.source.trim() !== ''),
+        ) &&
+        done.transform_faults.length === 0
+    ) {
+        pendingCalc.value = null;
+        await pickField(pending.slot, `calc:${pending.name}`);
+    }
 }
 
 watch(
@@ -1695,6 +1776,7 @@ onBeforeUnmount(() => {
                     :rules="rules"
                     :presentation-errors="presentationErrors"
                     @presentation="savePresentation"
+                    @calculated="onCalculated"
                     @confirm="confirmSlot"
                     @rerun="rerun"
                     @pick="pickField"
@@ -1755,6 +1837,7 @@ onBeforeUnmount(() => {
                 :counts="rows ?? null"
                 :blocked="blocked"
                 @change="saveTransforms"
+                @cancel-calc="onCancelCalc"
             />
         </template>
     </div>

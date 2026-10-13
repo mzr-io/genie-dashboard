@@ -180,7 +180,7 @@ export type MappingWrite = Checklist & {
 
 // One entry of a slot's field picker (`GET .../mapping/slots/{slot}/fields`), compatible fields first.
 export type PickerField = {
-    kind: 'field' | 'static_text';
+    kind: 'field' | 'static_text' | 'calculated';
     path: string | null;
     display: string;
     type?: string;
