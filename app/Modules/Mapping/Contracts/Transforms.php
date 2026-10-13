@@ -68,6 +68,9 @@ final class Transforms
 
     public const MAX_TOP_N = 1000;
 
+    /** The longest label of the row that holds the rest (Story 5.11). */
+    public const OTHER_LABEL_MAX = 40;
+
     public const VALUE_MAX = 200;
 
     /**
@@ -115,7 +118,7 @@ final class Transforms
                 self::GROUP => ['type', 'fields'],
                 self::AGGREGATE => ['type', 'function', 'field'],
                 self::SORT => ['type', 'field', 'direction'],
-                default => ['type', 'count'],
+                default => ['type', 'count', 'other', 'other_label'],
             };
 
             foreach (array_keys($step) as $key) {
@@ -176,6 +179,15 @@ final class Transforms
                 if (! is_int($count) || $count < 1 || $count > self::MAX_TOP_N) {
                     $errors["{$at}.count"] = ['Enter a whole number from 1 to '.self::MAX_TOP_N.'.'];
                 }
+
+                // "Group the rest as Other" (Story 5.11): the groups beyond the count become one row, aggregated again over their rows.
+                if (isset($step['other']) && ! is_bool($step['other'])) {
+                    $errors["{$at}.other"] = ['Group the rest as Other is on or off.'];
+                }
+
+                if (isset($step['other_label']) && (! is_string($step['other_label']) || trim($step['other_label']) === '' || mb_strlen($step['other_label']) > self::OTHER_LABEL_MAX || preg_match('/[\p{Cc}\p{Cf}]/u', $step['other_label']) === 1)) {
+                    $errors["{$at}.other_label"] = ['Enter a label of up to '.self::OTHER_LABEL_MAX.' characters, with no control characters.'];
+                }
             }
 
             $steps[] = $step;
@@ -225,6 +237,13 @@ final class Transforms
         }
 
         $at = fn (array $step): int => (int) array_search($step, $input, true);
+
+        // The rest can only be grouped as Other when there are groups to group (Story 5.11).
+        foreach ($steps as $step) {
+            if ($step['type'] === self::TOP_N && ($step['other'] ?? false) === true && $grouped === []) {
+                $errors[$root.'.'.$at($step).'.other'] = ['Group the rest as Other needs a Group step.'];
+            }
+        }
 
         foreach ($steps as $step) {
             if ($step['type'] !== self::AGGREGATE) {
@@ -291,7 +310,8 @@ final class Transforms
                 self::GROUP => $plan[self::GROUP] = ['fields' => array_values($step['fields'])],
                 self::AGGREGATE => $aggregates[] = ['function' => $step['function'], 'field' => $step['field']],
                 self::SORT => $sorts[] = ['field' => $step['field'], 'direction' => $step['direction']],
-                default => $plan[self::TOP_N] = ['count' => $step['count']],
+                default => $plan[self::TOP_N] = ['count' => $step['count']]
+                    + (($step['other'] ?? false) === true ? ['other' => true, 'other_label' => is_string($step['other_label'] ?? null) ? trim($step['other_label']) : 'Other'] : []),
             };
         }
 
@@ -375,6 +395,11 @@ final class Transforms
                 if (is_array($item) && ! isset($item['ratio']) && ! is_array($item['ast'] ?? null)) {
                     $errors["{$root}.{$stage}.{$index}.ast"] = ['The expression is not parsed.'];
                 }
+
+                // A calculated field is a field that is left, so a Sort may use it.
+                if (is_array($judged)) {
+                    $steps[] = $judged;
+                }
             }
         }
 
@@ -385,7 +410,10 @@ final class Transforms
 
             $judged = is_array($plan[$stage]) ? ['type' => $stage] + $plan[$stage] : $plan[$stage];
 
-            foreach (self::check([$judged])[1] as $key => $messages) {
+            // "Group the rest as Other" is judged against the group stage below, not against a Top-N judged alone.
+            $alone = is_array($judged) ? array_diff_key($judged, ['other' => true]) : $judged;
+
+            foreach (self::check([$alone])[1] as $key => $messages) {
                 $errors[str_replace('config.'.self::KEY.'.0', "{$root}.{$stage}", $key)] = $messages;
             }
 

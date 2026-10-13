@@ -1987,8 +1987,8 @@ export const blockTransformLabels = {
         `Keep rows where ${field} ${operator} ${value === '' ? '(empty)' : value}`,
     sortSentence: (field: string, direction: string) =>
         `Sort by ${field} ${direction}`,
-    topNSentence: (count: number) =>
-        `Keep the top ${count} ${count === 1 ? 'row' : 'rows'}`,
+    topNSentence: (count: number, other = false) =>
+        `Keep the top ${count} ${count === 1 ? 'row' : 'rows'}${other ? ' and group the rest as Other' : ''}`,
     counts: (from: number, to: number) => `${from} → ${to} rows`,
     removeName: (sentence: string) => `Remove step: ${sentence}`,
     remove: 'Remove',
@@ -2009,7 +2009,11 @@ export const blockTransformLabels = {
         ratio_parts: 'Name both a numerator and a denominator.',
         value_long: 'Use 200 characters or fewer.',
         count: 'Enter a whole number from 1 to 1000.',
+        other_group: 'Grouping the rest needs a Group step.',
+        other_label: 'Use 40 characters or fewer.',
     },
+    otherRest: 'Group the rest as Other',
+    otherLabel: 'Label of the rest',
     blockedContinue: 'Fix the highlighted transform step to continue.',
     notSaved: 'The transform steps weren’t saved. Try again.',
     stepRemoved: (sentence: string) => `Removed: ${sentence}.`,

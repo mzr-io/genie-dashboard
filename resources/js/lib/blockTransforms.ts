@@ -51,7 +51,13 @@ export type SortStep = {
     field: string;
     direction: 'asc' | 'desc';
 };
-export type TopNStep = { type: 'top_n'; count: number };
+// `other`: the groups beyond the count become one row, aggregated again over their rows (Story 5.11).
+export type TopNStep = {
+    type: 'top_n';
+    count: number;
+    other?: boolean;
+    other_label?: string;
+};
 export type TransformStep =
     | FilterStep
     | CalcStep
@@ -185,6 +191,13 @@ export function judge(steps: TransformStep[]): Record<number, string> {
                 step.count > MAX_TOP_N
             ) {
                 out[index] = 'count';
+            } else if (
+                step.other === true &&
+                !steps.some((candidate) => candidate.type === 'group')
+            ) {
+                out[index] = 'other_group';
+            } else if ((step.other_label ?? '').length > 40) {
+                out[index] = 'other_label';
             }
         }
     });

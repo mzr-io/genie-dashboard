@@ -130,7 +130,7 @@ function sentence(step: TransformStep): string {
         );
     }
 
-    return labels.topNSentence(step.count);
+    return labels.topNSentence(step.count, step.other === true);
 }
 
 function countOf(index: number): { from: number; to: number } | null {
@@ -366,6 +366,30 @@ function setCount(index: number, step: TopNStep, event: Event): void {
         replace(index, { ...step, count });
         keep(index, '[data-test="topn-count"]', event);
     }
+}
+
+function setOther(index: number, step: TopNStep, on: boolean): void {
+    const next: TopNStep = { ...step, other: on };
+
+    if (!on) {
+        delete next.other;
+        delete next.other_label;
+    }
+
+    replace(index, next);
+}
+
+function setOtherLabel(index: number, step: TopNStep, event: Event): void {
+    const label = (event.target as HTMLInputElement).value.trim();
+    const next: TopNStep = { ...step };
+
+    if (label === '') {
+        delete next.other_label;
+    } else {
+        next.other_label = label;
+    }
+
+    replace(index, next);
 }
 
 function commitValue(index: number, step: FilterStep, event: Event): void {
@@ -950,6 +974,39 @@ const asAggregate = (s: TransformStep): AggregateStep => s as AggregateStep;
                                 @change="setCount(index, asTopN(step), $event)"
                                 @keydown.enter="
                                     setCount(index, asTopN(step), $event)
+                                "
+                            />
+                            <label
+                                class="type-body-sm flex items-center gap-2 text-text-secondary"
+                            >
+                                <input
+                                    type="checkbox"
+                                    :checked="asTopN(step).other === true"
+                                    :disabled="disabled"
+                                    data-test="topn-other"
+                                    @change="
+                                        setOther(
+                                            index,
+                                            asTopN(step),
+                                            ($event.target as HTMLInputElement)
+                                                .checked,
+                                        )
+                                    "
+                                />
+                                {{ labels.otherRest }}
+                            </label>
+                            <Input
+                                v-if="asTopN(step).other === true"
+                                class="w-40"
+                                type="text"
+                                autocomplete="off"
+                                :default-value="asTopN(step).other_label ?? ''"
+                                placeholder="Other"
+                                :aria-label="labels.otherLabel"
+                                :disabled="disabled"
+                                data-test="topn-other-label"
+                                @change="
+                                    setOtherLabel(index, asTopN(step), $event)
                                 "
                             />
                         </template>

@@ -267,6 +267,11 @@ final class InProcessExecutor implements QueryExecutor
         $stageNodes = [];
 
         foreach (array_unique($stageFields) as $path) {
+            // A calculated field a stage reads (a Sort by a ratio) is made by its own stage, not read from the document.
+            if (str_starts_with($path, Transforms::CALC_PREFIX)) {
+                continue;
+            }
+
             $stageNodes[$path] = $fieldOf($path);
             $rowCount = max($rowCount, count($stageNodes[$path]));
         }
@@ -460,6 +465,9 @@ final class InProcessExecutor implements QueryExecutor
             $counts[] = $broken ? 0 : $rows;
         }
 
+        // Which group each row of the table now is (a sort moves rows): the Other row of a Top-N is made from the groups that fall outside it.
+        $positions = self::indexes($rows);
+
         foreach ($sorts as $step) {
             if (! $broken) {
                 /** @var list<mixed>|null $values */
@@ -470,6 +478,7 @@ final class InProcessExecutor implements QueryExecutor
                     $broken = true;
                 } else {
                     $table = $take($table, $order);
+                    $positions = array_map(fn (int $i): int => $positions[$i], $order);
                 }
             }
 
@@ -480,8 +489,34 @@ final class InProcessExecutor implements QueryExecutor
 
         if (isset($plan[Transforms::TOP_N])) {
             if (! $broken) {
-                $rows = min($rows, (int) $plan[Transforms::TOP_N]['count']);
-                $table = $take($table, self::indexes($rows));
+                $keep = min($rows, (int) $plan[Transforms::TOP_N]['count']);
+                $dropped = array_slice($positions, $keep);
+                $cut = $take($table, self::indexes($keep));
+
+                // The rest as one row (Story 5.11): each aggregate and ratio is made again over the rows of the groups left out, so a ratio is the ratio of
+                // the sums and never an average of ratios.
+                if (($plan[Transforms::TOP_N]['other'] ?? false) === true && $dropped !== [] && $members !== null) {
+                    $union = [];
+
+                    foreach ($dropped as $position) {
+                        array_push($union, ...($members[$position] ?? []));
+                    }
+
+                    $other = $this->otherRow($plan, $source, $union, array_values($groupFields), array_values($aggregates), array_values($aggregateCalcs), (string) ($plan[Transforms::TOP_N]['other_label'] ?? 'Other'));
+
+                    if ($other === null) {
+                        $broken = true;
+                    } else {
+                        foreach ($cut as $key => $column) {
+                            $cut[$key][] = $other[$key] ?? null;
+                        }
+
+                        $keep++;
+                    }
+                }
+
+                $rows = $keep;
+                $table = $cut;
             }
 
             $counts[] = $broken ? 0 : $rows;
@@ -509,6 +544,55 @@ final class InProcessExecutor implements QueryExecutor
         }
 
         return [$selected, ['input' => $rowCount, 'steps' => $counts], $left, $broken ? [] : $table, $broken ? 0 : $rows, $beforeTop];
+    }
+
+    /**
+     * The row that holds the groups a Top-N left out: the group fields read "Other" (or the Admin's label), each aggregate is made again over all the
+     * source rows of those groups and an aggregate-level calculated field from them, a ratio from their sums. Null when one of them cannot be made.
+     *
+     * @param  array<string, mixed>  $plan
+     * @param  array<string, array<mixed>>  $source  the columns before the rows were grouped
+     * @param  list<int>  $union  the positions in `$source` of every row of the left-out groups
+     * @param  list<string>  $groupFields
+     * @param  list<array<string, mixed>>  $aggregates
+     * @param  list<array<string, mixed>>  $aggregateCalcs
+     * @return array<string, mixed>|null the value of each column of the table in the new row
+     */
+    private function otherRow(array $plan, array $source, array $union, array $groupFields, array $aggregates, array $aggregateCalcs, string $label): ?array
+    {
+        $row = [];
+
+        foreach ($groupFields as $field) {
+            $row[$field] = $label;
+        }
+
+        foreach ($aggregates as $step) {
+            $column = $source[(string) $step['field']] ?? null;
+            $made = $column === null ? null : $this->aggregate((string) $step['function'], array_values($column), [$union]);
+
+            if ($made === null) {
+                return null;
+            }
+
+            $row[(string) $step['field']] = $made[0] ?? null;
+        }
+
+        foreach ($aggregateCalcs as $calc) {
+            if (isset($calc['ratio'])) {
+                $made = $this->ratio((string) $calc['ratio']['numerator'], (string) $calc['ratio']['denominator'], $source, [$union]);
+            } else {
+                $one = array_map(fn (mixed $value): array => [$value], $row);
+                $made = $this->calculate($calc, $one, 1);
+            }
+
+            if ($made === null) {
+                return null;
+            }
+
+            $row[Transforms::CALC_PREFIX.$calc['name']] = $made[0] ?? null;
+        }
+
+        return $row;
     }
 
     /**

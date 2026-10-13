@@ -465,3 +465,62 @@ it('reads one value of aggregated rows and formats a date field', function () {
 
     expect($result->slots['kpi_label'])->toBe('7/10 tasks · {@2026-05-03|MMM d, yyyy}');
 });
+
+// Story 5.11: the groups a Top-N leaves out become one "Other" row, aggregated again over their rows.
+function qoRows(): array
+{
+    return [
+        ['cat' => 'A', 'revenue' => 100, 'done' => 100, 'total' => 100],
+        ['cat' => 'B', 'revenue' => 50, 'done' => 450, 'total' => 500],
+        ['cat' => 'C', 'revenue' => 30, 'done' => 600, 'total' => 1000],
+        ['cat' => 'C', 'revenue' => 5, 'done' => 0, 'total' => 0],
+        ['cat' => 'D', 'revenue' => 20, 'done' => 5, 'total' => 10],
+    ];
+}
+
+it('folds the groups beyond the count into one Other row, summed again over their rows', function () {
+    $plan = qtPlan([
+        ['type' => 'group', 'fields' => ['$.data[*].cat']],
+        ['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].revenue'],
+        ['type' => 'sort', 'field' => '$.data[*].revenue', 'direction' => 'desc'],
+        ['type' => 'top_n', 'count' => 2, 'other' => true, 'other_label' => 'The rest'],
+    ], ['c' => '$.data[*].cat', 'r' => '$.data[*].revenue'], ['kpi_label' => 'c', 'headline_value' => 'r']);
+    $result = qtRun($plan, qtDocument(qoRows()));
+
+    expect($result->columns['c'])->toBe(['A', 'B', 'The rest'])
+        ->and($result->columns['r'])->toBe(['100', '50', '55'])
+        ->and($result->rows)->toBe(['input' => 5, 'steps' => [4, 4, 4, 3]])
+        ->and($result->rowset)->toBe([]);
+});
+
+it('makes the Other ratio from the sums of the groups left out, never an average of ratios', function () {
+    $plan = qtPlan([
+        ['type' => 'group', 'fields' => ['$.data[*].cat']],
+        ['type' => 'calc', 'name' => 'rate', 'level' => 'aggregate', 'ratio' => ['numerator' => '$.data[*].done', 'denominator' => '$.data[*].total']],
+        ['type' => 'sort', 'field' => 'calc:rate', 'direction' => 'desc'],
+        ['type' => 'top_n', 'count' => 2, 'other' => true],
+    ], ['c' => '$.data[*].cat', 'r' => 'calc:rate'], ['kpi_label' => 'c', 'headline_value' => 'r']);
+    $result = qtRun($plan, qtDocument(qoRows()));
+
+    // A 100%, B 90%; C is 600/1000 and D is 5/10, so Other is 605/1010 = 59.9009...%, not the 55% of averaging 60% and 50%.
+    expect($result->columns['c'])->toBe(['A', 'B', 'Other'])
+        ->and(substr((string) $result->columns['r'][2], 0, 7))->toBe('59.9009');
+});
+
+it('leaves the table as it is when nothing falls outside the count, and refuses Other without a group', function () {
+    $plan = qtPlan([
+        ['type' => 'group', 'fields' => ['$.data[*].cat']],
+        ['type' => 'aggregate', 'function' => 'sum', 'field' => '$.data[*].revenue'],
+        ['type' => 'top_n', 'count' => 10, 'other' => true],
+    ], ['c' => '$.data[*].cat', 'r' => '$.data[*].revenue'], ['kpi_label' => 'c', 'headline_value' => 'r']);
+
+    expect(qtRun($plan, qtDocument(qoRows()))->columns['c'])->toBe(['A', 'B', 'C', 'D']);
+
+    [, $errors] = Transforms::check([['type' => 'top_n', 'count' => 2, 'other' => true]]);
+
+    expect(array_keys($errors))->toBe(['config.transforms.0.other']);
+
+    [, $errors] = Transforms::check([['type' => 'top_n', 'count' => 2, 'other' => 'yes', 'other_label' => '']]);
+
+    expect(array_keys($errors))->toContain('config.transforms.0.other')->toContain('config.transforms.0.other_label');
+});
