@@ -956,10 +956,22 @@ export const blockWizardLabels = {
     descriptionTooLong: (max: number) => `Use up to ${max} characters.`,
     category: 'Category',
     type: 'Block type',
-    typeNames: { 'kpi-card': 'KPI card', 'line-area': 'Line / Area' } as Record<
-        string,
-        string
-    >,
+    typeNames: {
+        'kpi-card': 'KPI card',
+        'kpi-chart': 'KPI and chart',
+        'line-area': 'Line / Area',
+        bar: 'Bar',
+        'pie-donut': 'Pie / Donut',
+        table: 'Table',
+        list: 'List',
+        'progress-list': 'Progress list',
+        'activity-feed': 'Activity feed',
+        'calendar-agenda': 'Calendar / Agenda',
+        'text-status': 'Text / Status',
+    } as Record<string, string>,
+    // Said politely when the type changes (Story 5.15).
+    typeChanged: (name: string) =>
+        `Block type changed to ${name}. Slots with the same name keep their mapping; check the others in Map data.`,
     icon: 'Icon',
     iconChange: 'Change',
     iconUseCategory: 'Use category icon',

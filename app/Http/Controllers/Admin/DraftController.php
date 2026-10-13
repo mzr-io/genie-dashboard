@@ -19,8 +19,10 @@ use App\Modules\Blocks\Contracts\DraftNotFound;
 use App\Modules\Blocks\Contracts\DraftPublished;
 use App\Modules\Blocks\Contracts\DraftRevisionConflict;
 use App\Modules\Blocks\Contracts\Drafts;
+use App\Modules\Blocks\Contracts\DraftSlots;
 use App\Modules\Blocks\Contracts\ErrorCode;
 use App\Modules\Blocks\Contracts\InvalidDraft;
+use App\Modules\Blocks\Contracts\PreviewRefused;
 use App\Platform\Contracts\ErrorCode as PlatformErrorCode;
 use App\Platform\EditLock\EditLock;
 use App\Platform\Tenancy\WorkspaceTransaction;
@@ -40,6 +42,7 @@ final class DraftController extends Controller
 
     public function __construct(
         private readonly Drafts $drafts,
+        private readonly DraftSlots $slots,
         private readonly BlockCategories $categories,
         private readonly MembershipLookup $memberships,
         private readonly MemberNames $names,
@@ -96,7 +99,27 @@ final class DraftController extends Controller
     {
         try {
             $actor = $this->actor($request);
-            $saved = $this->drafts->save($actor, $draft, $request->name(), $request->type(), $request->expectedRevision(), $request->lockEpoch(), $request->config(), $request->step(), $request->categoryId(), $request->uiState(), $this->holdsLock($request, $actor, $draft));
+            $holdsLock = $this->holdsLock($request, $actor, $draft);
+            // What a save of an unknown or published Draft answers is the save's own to say; this read only asks what the type was.
+            try {
+                $was = $request->type() === null ? null : $this->drafts->find($actor->workspaceId, $draft)->type;
+            } catch (DraftNotFound) {
+                $was = null;
+            }
+
+            $saved = $this->drafts->save($actor, $draft, $request->name(), $request->type(), $request->expectedRevision(), $request->lockEpoch(), $request->config(), $request->step(), $request->categoryId(), $request->uiState(), $holdsLock);
+
+            // A new Block Type re-reads the mapping at once (Story 5.15): slots with the same name keep their mapping, rules and Confirmed state, the
+            // plan is written for the new type, and a slot with no counterpart is left unmapped. The stored decisions of slots the new type lacks
+            // stay, so switching back restores them. Without a sample there is nothing to map yet.
+            if ($was !== null && $saved->type !== $was) {
+                try {
+                    $this->slots->rerun($actor, $draft, $saved->revision, $request->lockEpoch(), $holdsLock);
+                    $saved = $this->drafts->find($actor->workspaceId, $draft);
+                } catch (PreviewRefused) {
+                    // No live sample: the mapping is read when there is one.
+                }
+            }
         } catch (DraftNotFound) {
             abort(404);
         } catch (DraftLockLost $e) {

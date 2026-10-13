@@ -1462,3 +1462,29 @@ it('stores a footer action with a literal host and user tokens, and refuses a sc
     expect(dslConfig()['display']['footer'])->toEqual(['target' => 'expanded_view', 'label' => 'View all approvals', 'url' => null]);
     expect($ok)->not->toBeNull();
 });
+
+// Story 5.15: changing the Block Type keeps the decisions of slots with the same name, writes the plan for the new type and restores on the way back.
+it('re-reads the mapping on a type change: same-name slots stay confirmed, others are unmapped, and switching back restores them', function () {
+    $id = dslDraft();
+    dslConfirm($id, 'headline_value')->assertOk();
+    $map = dslConfig()['slot_map'];
+
+    $changed = bdSave($id, dslRev(), 1, ['type' => 'line-area'])->assertOk();
+    $config = dslConfig();
+
+    expect($changed->json('data.type'))->toBe('line-area')
+        ->and($config['slot_map'])->toBe($map)
+        ->and($config['query_plan']['shape'] ?? [])->not->toHaveKey('headline_value');
+
+    $back = bdSave($id, dslRev(), 1, ['type' => 'kpi-card'])->assertOk();
+
+    expect($back->json('data.type'))->toBe('kpi-card')
+        ->and(dslConfig()['query_plan']['extract']['fields']['headline_value'])->toBe('$.total')
+        ->and(dslRow(dslList($id), 'headline_value')['state'])->toBe('confirmed');
+});
+
+it('saves a type change on a draft without a sample and leaves nothing to re-read', function () {
+    $id = dslDraft(null);
+
+    bdSave($id, dslRev(), 1, ['type' => 'line-area'])->assertOk()->assertJsonPath('data.type', 'line-area');
+});

@@ -19,6 +19,7 @@ import {
     heightLabel,
     heightName,
 } from '@/lib/blockWizard';
+import { announce } from '@/lib/announce';
 import { FIELD_IDS } from '@/lib/blockWizard';
 import type { BlockCategory, StepForm } from '@/lib/blockWizard';
 import { blockWizardLabels as labels } from '@/locales/labels';
@@ -141,7 +142,13 @@ const typeLabel = (key: string) =>
                             v-bind="field"
                             v-model="form.type"
                             data-test="type"
-                            @change="emit('change')"
+                            @change="
+                                announce(
+                                    labels.typeChanged(typeLabel(form.type)),
+                                    'polite',
+                                );
+                                emit('change');
+                            "
                         >
                             <option
                                 v-for="option in BLOCK_TYPES"
