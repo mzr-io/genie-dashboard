@@ -48,14 +48,17 @@ use App\Modules\Blocks\Application\PreviewDraft;
 use App\Modules\Blocks\Application\PublishDraft;
 use App\Modules\Blocks\Application\ReadBlockCards;
 use App\Modules\Blocks\Application\ReadBlockCatalogue;
+use App\Modules\Blocks\Application\ReadBlockImpact;
 use App\Modules\Blocks\Application\ReadDraftFieldRoles;
 use App\Modules\Blocks\Application\ReadPublishedConfigs;
 use App\Modules\Blocks\Application\RunDraftValidation;
 use App\Modules\Blocks\Application\StartDraftSampleFetch;
 use App\Modules\Blocks\Application\StartDraftValidation;
+use App\Modules\Blocks\Application\TrackBlockUsage;
 use App\Modules\Blocks\Contracts\BlockCards;
 use App\Modules\Blocks\Contracts\BlockCatalogue;
 use App\Modules\Blocks\Contracts\BlockCategories;
+use App\Modules\Blocks\Contracts\BlockImpact;
 use App\Modules\Blocks\Contracts\BlockPublishing;
 use App\Modules\Blocks\Contracts\BlockSamples;
 use App\Modules\Blocks\Contracts\DraftFieldRoles;
@@ -271,6 +274,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(HostAllowlistDependents::class, SqlHostAllowlistDependents::class);
         $this->app->bind(DataSources::class, ManageDataSources::class);
         $this->app->bind(Drafts::class, ManageDrafts::class);
+        $this->app->bind(BlockImpact::class, ReadBlockImpact::class);
         $this->app->bind(DraftSamples::class, ManageDraftSamples::class);
         $this->app->singleton(DraftPreviews::class, PreviewDraft::class);
         $this->app->bind(DraftUserSamples::class, ManageUserSamples::class);
@@ -408,6 +412,7 @@ class AppServiceProvider extends ServiceProvider
         $this->app->make(OutboxConsumers::class)->register(new RegisterSourceHealth);
         $this->app->make(OutboxConsumers::class)->register(new ComputeOnPayloadChanged);
         $this->app->make(OutboxConsumers::class)->register(new TrackBlockViewers);
+        $this->app->make(OutboxConsumers::class)->register(new TrackBlockUsage);
         $this->app->make(OutboxConsumers::class)->register(new BroadcastResultUpdated);
 
         // Each module registers the lockable resources it owns with the kernel's edit lock (the kernel calls no module).

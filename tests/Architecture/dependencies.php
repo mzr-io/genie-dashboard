@@ -58,7 +58,7 @@ return [
         'Results' => ['block_results', 'block_viewers', 'mapping_health_incidents'],
         'Blocks' => [
             'blocks', 'block_versions', 'draft_samples', 'draft_ui_state', 'validation_reports',
-            'block_categories', 'block_usage',
+            'block_categories', 'block_usage', 'block_usage_cursors',
         ],
         'Templates' => ['templates', 'template_versions'],
         'Dashboards' => ['dashboards', 'dashboard_items', 'dashboard_pending_mandatory'],

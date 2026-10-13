@@ -150,7 +150,7 @@ development_status:
 
   epic-6: in-progress
   6-1-edit-a-published-block-into-a-new-draft: review
-  6-2-know-who-is-affected-the-block_usage-impact-read-model: backlog
+  6-2-know-who-is-affected-the-block_usage-impact-read-model: review
   6-3-diff-a-new-version-against-the-current-one: backlog
   6-4-publish-a-new-version-with-diff-impact-and-two-phase-activat: backlog
   6-5-activate-stuck-prepared-versions-by-maintenance: backlog

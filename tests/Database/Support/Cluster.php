@@ -274,6 +274,8 @@ final class Cluster
             'dataset_fields' => self::seedDatasetField($workspaceId),
             'access_subjects' => self::seedAccessSubject($workspaceId),
             'block_viewers' => self::seedBlockViewer($workspaceId),
+            'block_usage' => self::seedBlockUsage($workspaceId),
+            'block_usage_cursors' => self::seedBlockUsageCursor($workspaceId),
             'dashboards' => self::seedDashboard($workspaceId),
             'dashboard_items' => self::seedDashboardItem($workspaceId),
             default => null,
@@ -370,6 +372,26 @@ final class Cluster
         $names = array_map(fn (string $f): string => basename($f, '.php'), glob(base_path('database/migrations/*.php')) ?: []);
 
         return count(array_filter($names, fn (string $name): bool => strcmp($name, $migration) >= 0));
+    }
+
+    /** A usage row (Story 6.2): a new member and a new Block id. */
+    public static function seedBlockUsage(string $workspaceId, ?string $blockId = null, ?string $membershipId = null): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare("INSERT INTO block_usage (id, workspace_id, block_id, membership_id, kind, items, created_at, updated_at) VALUES (?, ?, ?, ?, 'user', 1, now(), now())")
+            ->execute([$id, $workspaceId, $blockId ?? (string) Str::uuid7(), $membershipId ?? (string) Str::uuid7()]);
+
+        return $id;
+    }
+
+    /** A cursor row (Story 6.2): a dashboard subject of the Workspace. */
+    public static function seedBlockUsageCursor(string $workspaceId): string
+    {
+        $id = (string) Str::uuid7();
+        self::superuser()->prepare('INSERT INTO block_usage_cursors (id, workspace_id, subject, last_seq, updated_at) VALUES (?, ?, ?, 1, now())')
+            ->execute([$id, $workspaceId, 'dashboard:'.Str::uuid7()]);
+
+        return $id;
     }
 
     /** A viewer row (Story 4.13): a new member and a new Block id. */
