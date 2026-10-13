@@ -4,6 +4,7 @@ import { computed, useId } from 'vue';
 import { useI18n } from 'vue-i18n';
 import ChartPlot from '@/charts/ChartPlot.vue';
 import type { ChartInput } from '@/charts/model';
+import { axisLabel } from '@/charts/axis';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
     formatCurrency,
@@ -99,11 +100,9 @@ function compact(value: string): string {
     );
 }
 
-// The axis labels: an ISO date or date-time is shown as a short date in the viewer's locale, anything else as it came.
+// The axis labels: by the X slot's pattern in the viewer's locale (Story 5.10).
 function axis(value: string): string {
-    return /^\d{4}-\d{2}-\d{2}/.test(value)
-        ? formatDate(value, { dateStyle: 'medium' }, locale.value) || value
-        : value;
+    return axisLabel(value, locale.value, props.payload.xPattern ?? null);
 }
 
 // A state with no data (Loading, Unavailable, Error) arrives without a chart.

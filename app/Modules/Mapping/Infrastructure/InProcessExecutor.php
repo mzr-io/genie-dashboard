@@ -84,6 +84,8 @@ final class InProcessExecutor implements QueryExecutor
         $columns = [];
         $table = [];
         $rowsLeft = 0;
+        // What each path selected before any row stage (an alias that selected nothing stays nothing, whatever a stage does).
+        $original = $selected;
         // The table as it was before the top-N stage (Story 5.9), by stored path: the rows an Expanded view browses.
         $beforeTop = null;
 
@@ -146,6 +148,11 @@ final class InProcessExecutor implements QueryExecutor
             [$value, $reason] = ($lists[$slot] ?? false)
                 ? self::slotList($selected[$alias] ?? [], $valueTypes[$slot] ?? 'text')
                 : self::slotValue($selected[$alias] ?? [], $valueTypes[$slot] ?? 'text');
+
+            // The rows are there and there are none (`monthly: []`): the slot is an empty list, which is not a missing field.
+            if (($lists[$slot] ?? false) && $reason === ExecutionResult::MISSING && ($original[$alias] ?? []) === [] && is_string($fields[$alias] ?? null) && self::isEmptyList($document, $fields[$alias])) {
+                [$value, $reason] = [[], null];
+            }
             $slots[(string) $slot] = $value;
 
             if ($reason !== null) {
@@ -303,13 +310,47 @@ final class InProcessExecutor implements QueryExecutor
             $counts[] = $broken ? 0 : $rows;
         }
 
+        // A calculated field of single values beside the rows (`PCT_CHANGE(total, previous_total)` next to a list of months) is one value, not a column:
+        // it is worked out once from those values, and a slot of one value reads it.
+        /** @var array<string, list<mixed>> $scalars */
+        $scalars = [];
+
         // Row-level calculated fields (the "row calc" stage): one value per row, read from the columns the rows have so far.
         foreach ($rowCalcs as $calc) {
             if (! $broken) {
-                $column = $this->calculate($calc, $table, $rows);
+                $reads = isset($calc['ratio']) ? [] : ExpressionResolver::paths((array) ($calc['ast'] ?? ['t' => 'null']));
+                $one = [];
+
+                foreach ($reads as $read) {
+                    $nodes = str_starts_with($read, Transforms::CALC_PREFIX) ? ($scalars[$read] ?? null) : ($stageNodes[$read] ?? null);
+
+                    if ($nodes !== null && count($nodes) === 1) {
+                        $one[$read] = $nodes;
+                    }
+                }
+
+                // A field the response has none of (`previous_total` is gone) leaves the calculated field without a value: its slot is unavailable
+                // and the rows and every other slot stand.
+                $absent = false;
+
+                foreach ($reads as $read) {
+                    $absent = $absent || (! str_starts_with($read, Transforms::CALC_PREFIX) && ($stageNodes[$read] ?? []) === []);
+                }
+
+                if ($absent && $rows > 0) {
+                    $scalars[Transforms::CALC_PREFIX.$calc['name']] = [];
+                    $counts[] = $rows;
+
+                    continue;
+                }
+
+                $isScalar = $rowCount > 1 && $reads !== [] && count($one) === count($reads);
+                $column = $isScalar ? $this->calculate($calc, $one, 1) : $this->calculate($calc, $table, $rows);
 
                 if ($column === null) {
                     $broken = true;
+                } elseif ($isScalar) {
+                    $scalars[Transforms::CALC_PREFIX.$calc['name']] = $column;
                 } else {
                     $table[Transforms::CALC_PREFIX.$calc['name']] = $column;
                 }
@@ -456,7 +497,7 @@ final class InProcessExecutor implements QueryExecutor
                 continue;
             }
 
-            $selected[$alias] = $broken ? [] : array_values($table[$path] ?? []);
+            $selected[$alias] = $broken ? [] : array_values($scalars[$path] ?? $table[$path] ?? []);
             $left[$alias] = array_map(
                 fn (mixed $node): string|bool|null => match (true) {
                     $node instanceof DecimalLiteral => $node->lexeme,
@@ -922,6 +963,22 @@ final class InProcessExecutor implements QueryExecutor
         if (($this->clock)() - $started > $guards->maxWallMs) {
             throw new GuardExceeded(GuardExceeded::WALL_TIME);
         }
+    }
+
+    /** Whether the array a `[*]` path walks is in the document and empty. */
+    private static function isEmptyList(mixed $document, string $path): bool
+    {
+        if (preg_match('/\A(.*)\[\*\]/', $path, $match) !== 1) {
+            return false;
+        }
+
+        try {
+            $container = SamplePath::select($document, $match[1]);
+        } catch (\InvalidArgumentException) {
+            return false;
+        }
+
+        return count($container) === 1 && $container[0] === [];
     }
 
     /**

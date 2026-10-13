@@ -11,6 +11,9 @@ export const blockRenderers: Record<string, Component> = {
     'line-area': defineAsyncComponent(
         () => import('@block-types/line-area/v1/Renderer.vue'),
     ),
+    'kpi-chart': defineAsyncComponent(
+        () => import('@block-types/kpi-chart/v1/Renderer.vue'),
+    ),
 };
 
 export const rendererFor = (type: string): Component | null =>
@@ -34,7 +37,17 @@ export type TableBuilder = {
     ) => string;
 };
 
+// The chart of a KPI & Chart payload is a line-area payload under `chart`.
+const chartOf = (payload: Record<string, unknown>): never =>
+    (payload.chart ?? {}) as never;
+
 export const tableBuilders: Record<string, TableBuilder> = {
+    'kpi-chart': {
+        table: (payload, locale) =>
+            lineAreaTable.tableOf(chartOf(payload), locale),
+        cell: (key, value, payload, locale) =>
+            lineAreaTable.cell(key, value, chartOf(payload), locale),
+    },
     'line-area': {
         table: (payload, locale) =>
             lineAreaTable.tableOf(payload as never, locale),

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import KpiRenderer from '@block-types/kpi-card/v1/Renderer.vue';
 import type { KpiCardPayload } from '@block-types/kpi-card/v1/payload';
+import KpiChartRenderer from '@block-types/kpi-chart/v1/Renderer.vue';
 import LineAreaRenderer from '@block-types/line-area/v1/Renderer.vue';
 import {
     computed,
@@ -129,12 +130,24 @@ const CHART_REGIONS: Record<string, { selector: string; text?: string }> = {
     ),
 };
 const isChart = computed(() => props.typeKey === 'line-area');
-const regionMap = computed(() => (isChart.value ? CHART_REGIONS : REGIONS));
+// A KPI & Chart has the card's regions and the chart's (Story 5.10).
+const isCombined = computed(() => props.typeKey === 'kpi-chart');
+const regionMap = computed(() =>
+    isChart.value
+        ? CHART_REGIONS
+        : isCombined.value
+          ? { ...REGIONS, ...CHART_REGIONS }
+          : REGIONS,
+);
 // The slot a Block cannot be drawn without: the headline of a card, the axis of a chart.
 const primarySlot = computed(() => (isChart.value ? 'x' : 'headline_value'));
 // Both are imported here, not loaded on demand: the regions are measured as soon as the card is drawn.
 const rendererOf = computed(() =>
-    isChart.value ? LineAreaRenderer : KpiRenderer,
+    isChart.value
+        ? LineAreaRenderer
+        : isCombined.value
+          ? KpiChartRenderer
+          : KpiRenderer,
 );
 
 const result = ref<PreviewResult | null>(null);

@@ -1,0 +1,11 @@
+{
+    "data": {
+        "total": 284680,
+        "previous_total": 249195,
+        "currency": "USD",
+        "monthly": [
+            { "month": "2026-01", "revenue": 10200 },
+            { "month": "2026-02", "revenue": 12650 }
+        ]
+    }
+}

@@ -6,6 +6,7 @@ use App\Modules\BlockTypes\Contracts\BlockType;
 use App\Modules\BlockTypes\Contracts\BlockTypeShapers;
 use App\Modules\BlockTypes\Contracts\UnknownBlockType;
 use BlockTypes\KpiCard\V1\Shaper as KpiCardV1;
+use BlockTypes\KpiChart\V1\Shaper as KpiChartV1;
 use BlockTypes\LineArea\V1\Shaper as LineAreaV1;
 
 /** The Shapers of the packages under `block-types/`, by pinned `(key, contractVersion)`: never "latest". */
@@ -15,6 +16,7 @@ final class PackageShapers implements BlockTypeShapers
     private const SHAPERS = [
         'kpi-card@1' => KpiCardV1::class,
         'line-area@1' => LineAreaV1::class,
+        'kpi-chart@1' => KpiChartV1::class,
     ];
 
     public function shape(BlockType $type, array $slots, array $options = []): array

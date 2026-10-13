@@ -19,7 +19,8 @@ final class Presentation
 
     public const CURRENCY_DISPLAYS = ['symbol', 'code'];
 
-    public const DATE_PATTERNS = ['short', 'medium', 'long', 'full'];
+    /** The `Intl` styles, and the month patterns a chart's axis uses (Story 5.10). */
+    public const DATE_PATTERNS = ['short', 'medium', 'long', 'full', 'MMM', 'MMM yyyy', 'MMM d'];
 
     public const MAX_PLACES = 20;
 

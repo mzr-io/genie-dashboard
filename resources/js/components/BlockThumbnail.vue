@@ -43,6 +43,32 @@ defineProps<{ type: string }>();
                 opacity="0.8"
             />
         </template>
+        <template v-else-if="type === 'kpi-chart'">
+            <rect
+                x="8"
+                y="8"
+                width="20"
+                height="8"
+                rx="2"
+                class="fill-chart-1"
+            />
+            <rect
+                x="8"
+                y="20"
+                width="14"
+                height="3"
+                rx="1.5"
+                class="fill-text-muted"
+                opacity="0.55"
+            />
+            <polyline
+                points="8,40 22,32 34,36 48,26 58,22"
+                fill="none"
+                class="stroke-chart-1-stroke"
+                stroke-width="2"
+                stroke-linejoin="round"
+            />
+        </template>
         <template v-else-if="type === 'line-area'">
             <polyline
                 points="6,34 18,26 28,30 40,16 58,10"

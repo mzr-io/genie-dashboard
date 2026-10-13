@@ -46,6 +46,7 @@
             "App\\": "app/",
             "BlockTypes\\KpiCard\\V1\\": "block-types/kpi-card/v1/",
             "BlockTypes\\LineArea\\V1\\": "block-types/line-area/v1/",
+            "BlockTypes\\KpiChart\\V1\\": "block-types/kpi-chart/v1/",
             "Database\\Factories\\": "database/factories/",
             "Database\\Seeders\\": "database/seeders/"
         }

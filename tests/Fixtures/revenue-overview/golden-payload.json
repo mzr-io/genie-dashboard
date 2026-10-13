@@ -1,0 +1,74 @@
+{
+    "state": "normal",
+    "title": "Revenue overview",
+    "subtitle": "Financial performance · Current year",
+    "icon": null,
+    "footerAction": null,
+    "kpiLabel": "Total revenue",
+    "headline": {
+        "available": true,
+        "value": "284680",
+        "format": {
+            "kind": "currency",
+            "decimalPlaces": 0,
+            "thousandsSeparator": true,
+            "currencyCode": "USD",
+            "currencyDisplay": "symbol",
+            "datePattern": "medium",
+            "unitsSuffix": null
+        },
+        "emphasis": {
+            "role": "headline",
+            "size": "lg",
+            "weight": "bold"
+        }
+    },
+    "comparison": {
+        "value": "14.239852",
+        "format": {
+            "kind": "percent",
+            "decimalPlaces": 1,
+            "thousandsSeparator": true,
+            "currencyCode": null,
+            "currencyDisplay": "symbol",
+            "datePattern": "medium",
+            "unitsSuffix": null
+        },
+        "direction": "up",
+        "lowerIsBetter": false
+    },
+    "comparisonLabel": "from last year",
+    "secondaryNote": null,
+    "statusBadge": null,
+    "prefix": null,
+    "suffix": null,
+    "emptyDisplay": null,
+    "emptySlots": [],
+    "staleSince": null,
+    "errorMessage": null,
+    "chart": {
+        "state": "normal",
+        "kind": "area",
+        "x": ["2026-01", "2026-02"],
+        "xLabel": "month",
+        "xPattern": "MMM",
+        "series": [
+            {
+                "key": "series_1",
+                "name": "revenue",
+                "values": ["10200", "12650"]
+            }
+        ],
+        "partial": false,
+        "highlight": null,
+        "target": null,
+        "format": {
+            "kind": "currency",
+            "decimalPlaces": 0,
+            "thousandsSeparator": true,
+            "currencyCode": "USD",
+            "currencyDisplay": "symbol"
+        },
+        "directLabels": true
+    }
+}

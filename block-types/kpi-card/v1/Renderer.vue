@@ -346,16 +346,13 @@ const staleMessage = computed(() => {
                             }}</span>
                             {{ delta.value }}
                         </template>
-                        <template v-if="payload.comparisonLabel">
-                            {{ payload.comparisonLabel }}</template
-                        >
-                        <template v-if="delta.judged">
-                            {{
-                                delta.good
-                                    ? kpiCardLabels.better
-                                    : kpiCardLabels.worse
-                            }}</template
-                        >
+                        <!-- A leading space inside a template is dropped by the compiler: the space is part of the text. -->
+                        <template v-if="payload.comparisonLabel">{{
+                            ` ${payload.comparisonLabel}`
+                        }}</template>
+                        <template v-if="delta.judged">{{
+                            ` ${delta.good ? kpiCardLabels.better : kpiCardLabels.worse}`
+                        }}</template>
                     </span>
                     <span class="sr-only" data-test="kpi-delta-spoken">{{
                         delta.spoken

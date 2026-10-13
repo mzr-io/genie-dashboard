@@ -7,6 +7,10 @@
         {
             "key": "line-area",
             "contractVersion": 1
+        },
+        {
+            "key": "kpi-chart",
+            "contractVersion": 1
         }
     ]
 }

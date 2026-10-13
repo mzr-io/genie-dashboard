@@ -35,6 +35,8 @@ export type LineAreaPayload = {
     x: string[];
     // The axis column's name in a table (the X slot's label).
     xLabel?: string | null;
+    // How the axis writes a date; null is a medium date.
+    xPattern?: string | null;
     series: LineAreaSeries[];
     // At least one row of at least one series has no value.
     partial: boolean;

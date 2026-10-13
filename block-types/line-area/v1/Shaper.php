@@ -17,6 +17,9 @@ final class Shaper
 
     private const SERIES = 6;
 
+    /** How the axis writes a date: `MMM` (Jan), `MMM yyyy`, `MMM d`, or the `Intl` styles. */
+    private const PATTERNS = ['MMM', 'MMM yyyy', 'MMM d', 'short', 'medium', 'long', 'full'];
+
     /**
      * @param  array<string, mixed>  $slots  slot key => value (`x` and `series_n` are lists, one entry per row)
      * @param  array<string, mixed>  $options  state, `headlineFormat` (the series format descriptor), `directLabels`, `fieldNames` (slot => the mapped field's name), staleSince, errorMessage, emptyDisplay
@@ -65,6 +68,7 @@ final class Shaper
             'footerAction' => $this->text($slots['footer_action'] ?? null),
             'x' => $x ?? [],
             'xLabel' => $this->text($fields['x'] ?? null),
+            'xPattern' => in_array($options['xPattern'] ?? null, self::PATTERNS, true) ? $options['xPattern'] : null,
             'series' => $series,
             'partial' => $partial,
             'highlight' => $at === false ? null : $at,
@@ -80,7 +84,7 @@ final class Shaper
     /** @return list<string>|null the axis values as text, null when the slot has none */
     private function texts(mixed $values): ?array
     {
-        if (! is_array($values) || $values === []) {
+        if (! is_array($values)) {
             return null;
         }
 
@@ -96,7 +100,7 @@ final class Shaper
     /** @return list<string|null>|null decimal strings and nulls, null when the slot has no list */
     private function measures(mixed $values): ?array
     {
-        if (! is_array($values) || $values === []) {
+        if (! is_array($values)) {
             return null;
         }
 

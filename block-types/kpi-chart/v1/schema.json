@@ -1,0 +1,120 @@
+{
+    "key": "kpi-chart",
+    "contractVersion": 1,
+    "title": "KPI & Chart",
+    "slots": [
+        {
+            "key": "title",
+            "label": "Title",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "subtitle",
+            "label": "Subtitle",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "icon",
+            "label": "Icon",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label", "filter"]
+        },
+        {
+            "key": "footer_action",
+            "label": "Footer action",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label"]
+        },
+        {
+            "key": "kpi_label",
+            "label": "KPI label",
+            "required": true,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label", "dimension"]
+        },
+        {
+            "key": "headline_value",
+            "label": "Headline value",
+            "required": true,
+            "valueType": "number",
+            "cardinality": "single",
+            "fieldRoles": ["value", "measure"]
+        },
+        {
+            "key": "comparison",
+            "label": "Comparison value or change %",
+            "required": false,
+            "valueType": "number",
+            "cardinality": "single",
+            "fieldRoles": ["value", "measure"]
+        },
+        {
+            "key": "comparison_label",
+            "label": "Comparison label",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label", "time"]
+        },
+        {
+            "key": "secondary_note",
+            "label": "Secondary note",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["label", "dimension", "time"]
+        },
+        {
+            "key": "status_badge",
+            "label": "Status badge",
+            "required": false,
+            "valueType": "text",
+            "cardinality": "single",
+            "fieldRoles": ["dimension", "filter"]
+        },
+        {
+            "key": "x",
+            "label": "Chart X",
+            "required": true,
+            "valueType": "datetime",
+            "cardinality": "rows",
+            "fieldRoles": ["time", "dimension", "label"]
+        },
+        {
+            "key": "series",
+            "label": "Chart series",
+            "required": true,
+            "valueType": "number",
+            "cardinality": "rows",
+            "repeat": 6,
+            "fieldRoles": ["value", "measure"]
+        }
+    ],
+    "size": {
+        "defaultWidth": 6,
+        "minWidth": 4,
+        "maxWidth": 6,
+        "defaultHeight": "medium",
+        "minHeight": "medium",
+        "maxHeight": "large"
+    },
+    "defaultAggregations": {
+        "headline_value": "sum",
+        "comparison": "sum"
+    },
+    "presentation": {
+        "headlineSlot": "headline_value",
+        "directionSlot": "comparison"
+    }
+}

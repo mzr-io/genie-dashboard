@@ -1,4 +1,5 @@
-import { formatCurrency, formatDate, formatNumber } from '@/lib/format';
+import { axisLabel } from '@/charts/axis';
+import { formatCurrency, formatNumber } from '@/lib/format';
 import type { LineAreaFormat, LineAreaPayload } from './payload';
 
 // The chart as a table (Story 5.9): the same formats the plot uses, so a reader gets the exact values. `View as table` is built from this on the
@@ -44,10 +45,12 @@ export function measure(
     );
 }
 
-export function axis(value: string, locale: string): string {
-    return /^\d{4}-\d{2}-\d{2}/.test(value)
-        ? formatDate(value, { dateStyle: 'medium' }, locale) || value
-        : value;
+export function axis(
+    value: string,
+    locale: string,
+    pattern: string | null = null,
+): string {
+    return axisLabel(value, locale, pattern);
 }
 
 const FALLBACK: LineAreaFormat = {
@@ -62,7 +65,7 @@ const FALLBACK: LineAreaFormat = {
 export function cell(
     key: string,
     value: string | boolean | null,
-    payload: Pick<LineAreaPayload, 'format'>,
+    payload: Pick<LineAreaPayload, 'format' | 'xPattern'>,
     locale: string,
 ): string {
     if (value === null) {
@@ -74,7 +77,7 @@ export function cell(
     }
 
     if (key === 'x') {
-        return axis(value, locale);
+        return axis(value, locale, payload.xPattern ?? null);
     }
 
     return key.startsWith('series_')
@@ -99,7 +102,7 @@ export function tableOf(payload: LineAreaPayload, locale: string): TableModel {
             ...series.map((s) => ({ key: s.key, label: s.name })),
         ],
         rows: x.map((value, at) => [
-            axis(value, locale),
+            axis(value, locale, payload.xPattern ?? null),
             ...series.map((s) => {
                 const point = s.values[at] ?? null;
 

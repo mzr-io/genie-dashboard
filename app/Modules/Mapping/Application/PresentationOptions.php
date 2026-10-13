@@ -37,6 +37,15 @@ final class PresentationOptions
             $options['headlineFormat'] = $slots['series_1']['format'];
         }
 
+        // A Block with a headline and a chart (Story 5.10) keeps the two formats apart; the axis writes its dates by the X slot's pattern.
+        if (is_array($slots['series_1']['format'] ?? null)) {
+            $options['seriesFormat'] = $slots['series_1']['format'];
+        }
+
+        if (is_string($slots['x']['format']['datePattern'] ?? null)) {
+            $options['xPattern'] = $slots['x']['format']['datePattern'];
+        }
+
         if (in_array($presentation['chart_kind'] ?? null, ['line', 'area'], true)) {
             $options['chartKind'] = $presentation['chart_kind'];
         }

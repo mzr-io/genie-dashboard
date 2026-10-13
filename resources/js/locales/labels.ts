@@ -65,6 +65,7 @@ export const kpiCardLabels = {
 
 // The line-area Renderer's own copy (Story 5.8c); the shared states come from the message catalogue.
 export const lineAreaLabels = {
+    kpiChartFallbackTitle: 'KPI & chart',
     fallbackTitle: 'Line chart',
     errorMessage: "This block couldn't load.",
     chartField: 'Chart data',
@@ -2381,6 +2382,9 @@ export const blockPresentationLabels = {
         medium: 'Medium',
         long: 'Long',
         full: 'Full',
+        MMM: 'Month (Jan)',
+        'MMM yyyy': 'Month and year (Jan 2026)',
+        'MMM d': 'Month and day (Jan 5)',
     } as Record<string, string>,
     units: 'Units suffix',
     unitsHint: 'Such as kg or items',

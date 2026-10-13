@@ -31,7 +31,15 @@ export const FORMAT_CHOICES = [
 ] as const;
 export type FormatChoice = (typeof FORMAT_CHOICES)[number];
 
-export const DATE_PATTERNS = ['short', 'medium', 'long', 'full'] as const;
+export const DATE_PATTERNS = [
+    'short',
+    'medium',
+    'long',
+    'full',
+    'MMM',
+    'MMM yyyy',
+    'MMM d',
+] as const;
 export const EMPHASIS_ROLES = [
     'headline',
     'primary',

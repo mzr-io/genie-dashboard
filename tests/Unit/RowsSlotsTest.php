@@ -81,11 +81,16 @@ it('reads the value of every row for a rows slot, a row without one is null, nev
         ->and($result->unavailable)->not->toHaveKey('series_1');
 });
 
-it('is unavailable when no row has a value of the type', function () {
+it('is unavailable when no row has a value of the type or the field is missing, and empty when the rows are there and none', function () {
     $plan = ['v' => 1, 'extract' => ['fields' => ['a' => '$.rows[*].revenue']], 'shape' => ['series_1' => 'a']];
 
     expect(rsRun($plan, '{"rows":[{"revenue":"n/a"},{"revenue":null}]}')->unavailable['series_1'])->toBe('wrong_type')
-        ->and(rsRun($plan, '{"rows":[]}')->unavailable['series_1'])->toBe('missing');
+        ->and(rsRun($plan, '{}')->unavailable['series_1'])->toBe('missing');
+
+    // Rows that are there and empty are an empty list, which is not a missing field.
+    $empty = rsRun($plan, '{"rows":[]}');
+
+    expect($empty->slots['series_1'])->toBe([])->and($empty->unavailable)->not->toHaveKey('series_1');
 });
 
 it('maps the axis and the series from the rows, one field to one slot, and offers only the rows to a rows slot', function () {
