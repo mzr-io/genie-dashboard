@@ -376,6 +376,7 @@ const reasonId = (index: number): string => `${optionPrefix}-reason-${index}`;
                             field.display
                         }}</span>
                         <span
+                            v-if="field.effective_type ?? field.type"
                             class="type-caption shrink-0 rounded-sm border border-border-default bg-surface-muted px-1.5 text-text-secondary"
                             data-test="picker-type"
                             >{{ field.effective_type ?? field.type }}</span

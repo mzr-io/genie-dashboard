@@ -330,8 +330,9 @@ export function postConfirm(
     );
 }
 
-// The fields a slot could take, each with whether it fits and, when not, why. Read-only: it writes nothing. "Static text" is dropped: the
-// backend cannot store it (reported in the story's notes).
+// The fields a slot could take, each with whether it fits and, when not, why, plus the "Text Template" (Story 5.4) and "Calculated Field"
+// (Story 5.3) entries the slot row opens an editor for. Read-only: it writes nothing. "Static text" is dropped: the backend cannot store it
+// (reported in the story's notes).
 export async function fetchSlotFields(
     draftId: string,
     slot: string,
@@ -342,7 +343,7 @@ export async function fetchSlotFields(
     );
     const data = answer.data as { fields?: PickerField[] } | undefined;
 
-    return (data?.fields ?? []).filter((field) => field.kind === 'field');
+    return (data?.fields ?? []).filter((field) => field.kind !== 'static_text');
 }
 
 // Feeds a slot from a field (or clears it with null); answers with `role_change` and `undo` when they apply.

@@ -2229,6 +2229,9 @@ export const blockMapLabels = {
     changeField: 'Change field',
     cannotChange: 'This slot cannot be changed right now.',
     changeFieldFor: (slot: string) => `Change field for ${slot}`,
+    // An optional slot can be cleared: the block shows nothing for it.
+    leaveEmpty: 'Leave empty',
+    leaveEmptyFor: (slot: string) => `Leave ${slot} empty`,
     pickerLabel: (slot: string) => `Fields for ${slot}`,
     pickerSearch: 'Search fields',
     pickerSearchHint: 'Search by name, type or role',

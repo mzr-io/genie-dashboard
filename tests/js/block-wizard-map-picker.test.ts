@@ -533,6 +533,60 @@ describe('Field picker: opening and listing', () => {
     });
 });
 
+describe('Field picker: Text Template and Calculated Field', () => {
+    const entry = (kind: 'template' | 'calculated', display: string) =>
+        ({
+            kind,
+            path: null,
+            display,
+            example: 'an example',
+            compatible: true,
+        }) as PickerField;
+    const option = (display: string) =>
+        options().find((o) => o.textContent?.includes(display));
+
+    it('offers Text Template on a text slot, without Static text, and opens the template for that slot', async () => {
+        offer([
+            field({ display: 'name', type: 'text', effective_type: 'text' }),
+            {
+                kind: 'static_text',
+                path: null,
+                display: 'Static text',
+                compatible: true,
+            },
+            entry('template', 'Text Template'),
+        ]);
+        await open([title({ state: 'confirmed' })]);
+        await openPicker('title');
+
+        expect(document.body.textContent).not.toContain('Static text');
+        expect(
+            option('Text Template')?.querySelector('[data-test=picker-type]'),
+        ).toBeNull();
+
+        await click(option('Text Template')!);
+
+        const input = $('[data-test=template-input][data-slot=title]');
+
+        expect(input).not.toBeNull();
+        expect(document.activeElement).toBe(input);
+        expect(putCalls('slots/title')).toHaveLength(0);
+    });
+
+    it('offers Calculated Field on a number slot and opens an expression for it', async () => {
+        offer([
+            field({ display: 'total' }),
+            entry('calculated', 'Calculated Field'),
+        ]);
+        await open([headline({ state: 'confirmed' })]);
+        await openPicker();
+        await click(option('Calculated Field')!);
+
+        expect($('[data-test=calc-expression]')).not.toBeNull();
+        expect(putCalls('slots/headline_value')).toHaveLength(0);
+    });
+});
+
 describe('Field picker: keyboard', () => {
     it('moves with the arrows, Home and End, and Enter picks the active field', async () => {
         offer(headlineFields());
@@ -579,6 +633,73 @@ describe('Field picker: keyboard', () => {
         expect($('[data-test=picker-popover]')).toBeNull();
         expect(document.activeElement).toBe(opener('headline_value'));
         expect(calls.filter((c) => c.method === 'PUT')).toHaveLength(0);
+    });
+});
+
+describe('Leave empty', () => {
+    const leaveEmpty = (key: string) =>
+        row(key).querySelector<HTMLElement>('[data-test=leave-empty]');
+
+    it('clears an optional slot with a null path, says so, and hides itself once the slot is empty', async () => {
+        offer(headlineFields());
+        await open([headline({ state: 'confirmed' }), note()]);
+        writeReply = () => {
+            current = [
+                headline({ state: 'confirmed' }),
+                note({
+                    state: 'optional_empty',
+                    path: null,
+                    display: null,
+                    reason: 'Cleared by an admin.',
+                }),
+            ];
+
+            return answer({
+                undo: {
+                    slot: 'secondary_note',
+                    slot_entry: null,
+                    role: null,
+                    applied: { path: null, state: 'overridden' },
+                },
+            });
+        };
+
+        expect(leaveEmpty('secondary_note')?.getAttribute('aria-label')).toBe(
+            labels.leaveEmptyFor('Secondary note'),
+        );
+
+        await click(leaveEmpty('secondary_note'));
+
+        const put = putCalls('slots/secondary_note')[0];
+
+        expect(put.body).toMatchObject({ path: null, draft_revision: 1 });
+        expect(put.body).toHaveProperty('lock_epoch');
+        expect(row('secondary_note').dataset.state).toBe('optional_empty');
+        expect(leaveEmpty('secondary_note')).toBeNull();
+        expect(text('[data-test=override-note]')).toContain(
+            labels.overriddenPlain(null, 'Secondary note'),
+        );
+    });
+
+    it('clears an optional Type-mismatch slot', async () => {
+        await open([
+            title({
+                state: 'type_mismatch',
+                path: null,
+                display: null,
+                reason: 'Only found inside the rows; one value is needed here.',
+            }),
+        ]);
+
+        await click(leaveEmpty('title'));
+
+        expect(putCalls('slots/title')[0].body).toMatchObject({ path: null });
+    });
+
+    it('is not offered on a required slot', async () => {
+        await open([headline({ state: 'confirmed' })]);
+
+        expect(leaveEmpty('headline_value')).toBeNull();
     });
 });
 

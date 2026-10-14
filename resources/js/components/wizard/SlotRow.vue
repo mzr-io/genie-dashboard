@@ -119,6 +119,10 @@ const suggestion = computed(() =>
     props.item.state === 'required_missing' ? props.item.suggestion : null,
 );
 const mismatch = computed(() => props.item.state === 'type_mismatch');
+// An optional slot that holds a field, or a field that does not fit, can be cleared; a cleared one reads `optional_empty`.
+const clearable = computed(
+    () => !props.item.required && props.item.state !== 'optional_empty',
+);
 const list = (): Promise<PickerField[]> =>
     props.loadFields?.(props.item.slot) ?? Promise.resolve([]);
 
@@ -352,6 +356,18 @@ defineExpose({ focusPicker: () => picker.value?.focus(), openPicker });
                 :busy="busy"
                 @pick="pick"
             />
+            <Button
+                v-if="loadFields && clearable"
+                type="button"
+                variant="secondary"
+                size="sm"
+                :blocked="busy === true"
+                :aria-busy="busy ? 'true' : undefined"
+                :aria-label="labels.leaveEmptyFor(item.label)"
+                data-test="leave-empty"
+                @click="emit('pick', item.slot, null)"
+                >{{ labels.leaveEmpty }}</Button
+            >
             <Button
                 v-if="item.state === 'required_missing' && treeAvailable"
                 type="button"
