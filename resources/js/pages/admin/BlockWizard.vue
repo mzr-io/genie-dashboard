@@ -1761,6 +1761,7 @@ onBeforeUnmount(() => {
                             :fetch-body="fetchBodyNow"
                             :source-name="sourceNameNow"
                             :fetch-reason="fetchReasonNow"
+                            :type-key="form.type"
                             @update:acknowledged="setAcknowledged"
                             @gate="(reason) => (previewGate = reason)"
                             @live="(ids) => (liveWarnings = ids)"
