@@ -109,6 +109,7 @@ final class ShellNavigation
         'api.admin.blocks.drafts.sample.store' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.sample.fetch' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.preview' => Permission::BlocksEdit,
+        'api.admin.blocks.drafts.diff' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.sample.roles' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.mapping.show' => Permission::BlocksEdit,
         'api.admin.blocks.drafts.mapping.rerun' => Permission::BlocksEdit,

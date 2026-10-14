@@ -157,11 +157,14 @@ final class PublishDraft implements BlockPublishing
 
         $now = now();
 
+        // What this version changed against the one users have now: section names with counts, frozen with it (Story 6.3). A first version has none.
+        $summary = $this->changeSummary($actor->workspaceId, $draft->blockId, $draft->config, $draft->name);
+
         try {
             $changed = DB::update(
-                "update block_versions set state = 'prepared', config = ?::jsonb, endpoint_id = ?, endpoint_revision = ?, prepared_at = ?, prepared_by_membership_id = ?, updated_at = ? "
+                "update block_versions set state = 'prepared', config = ?::jsonb, change_summary = ?::jsonb, endpoint_id = ?, endpoint_revision = ?, prepared_at = ?, prepared_by_membership_id = ?, updated_at = ? "
                 ."where workspace_id = ? and id = ? and state = 'draft' and revision = ?",
-                [DraftConfig::encode($frozen), $report->endpointId, $report->endpointRevision, $now, $actor->membershipId, $now, $actor->workspaceId, $id, $report->subjectRevision],
+                [DraftConfig::encode($frozen), $summary === null ? null : json_encode($summary, JSON_THROW_ON_ERROR | JSON_FORCE_OBJECT), $report->endpointId, $report->endpointRevision, $now, $actor->membershipId, $now, $actor->workspaceId, $id, $report->subjectRevision],
             );
         } catch (QueryException $e) {
             // Another version of this Block already holds the label (the unique index): this Draft cannot become it.
@@ -191,6 +194,29 @@ final class PublishDraft implements BlockPublishing
         );
 
         return $id;
+    }
+
+    /**
+     * The sections that changed against the published version of the Block, with their counts; null when there is no version before this one.
+     *
+     * @param  array<string, mixed>  $config  the Draft's config
+     * @return array<string, int>|null
+     */
+    private function changeSummary(string $workspaceId, string $blockId, array $config, string $name): ?array
+    {
+        /** @var object{name: string, config: string}|null $current */
+        $current = DB::selectOne(
+            "select v.name, v.config::text as config from blocks b join block_versions v on v.id = b.current_version_id and v.state = 'published' where b.workspace_id = ? and b.id = ?",
+            [$workspaceId, $blockId],
+        );
+
+        if ($current === null) {
+            return null;
+        }
+
+        $before = FrozenConfig::draftConfig(DraftConfig::decode((string) $current->config));
+
+        return VersionDiff::summary(VersionDiff::between($before, $config, (string) $current->name, $name));
     }
 
     /**

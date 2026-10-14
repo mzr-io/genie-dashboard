@@ -3080,3 +3080,17 @@ export const dashboardLabels = {
     footerLinkExternal: (label: string): string =>
         `${label} (opens in a new tab)`,
 } as const;
+
+// "What changed" of a new version (Story 6.3).
+export const versionDiffLabels = {
+    sections: {
+        mapping: 'Mapping',
+        presentation: 'Presentation',
+        chrome: 'Chrome',
+        endpoint: 'Endpoint',
+    } as Record<string, string>,
+    none: 'No changes',
+    was: 'was',
+    now: 'now',
+    noValue: 'none',
+};

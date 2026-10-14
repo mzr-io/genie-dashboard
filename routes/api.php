@@ -7,6 +7,7 @@ use App\Http\Controllers\Admin\DataSourceController;
 use App\Http\Controllers\Admin\DataSourceHealthController;
 use App\Http\Controllers\Admin\DataSourceLockController;
 use App\Http\Controllers\Admin\DraftController;
+use App\Http\Controllers\Admin\DraftDiffController;
 use App\Http\Controllers\Admin\DraftLockController;
 use App\Http\Controllers\Admin\DraftPreviewController;
 use App\Http\Controllers\Admin\DraftPublishController;
@@ -149,6 +150,9 @@ Route::middleware(['auth:sanctum'])->prefix('admin')->group(function () {
     // failed activation) is left out of this route.
     Route::post('blocks/drafts/{draft}/publish', [DraftPublishController::class, 'store'])->whereUuid('draft')->withoutMiddleware([WorkspaceTransaction::class])->middleware(['admin', 'throttle:30,1,block-publish'])->name('api.admin.blocks.drafts.publish');
     Route::get('blocks/published', [DraftPublishController::class, 'index'])->middleware('admin')->name('api.admin.blocks.published.index');
+
+    // What the Draft changed against the published version (Story 6.3): read-only, `blocks.edit`.
+    Route::get('blocks/drafts/{draft}/diff', [DraftDiffController::class, 'show'])->whereUuid('draft')->middleware(['admin', 'throttle:60,1,block-diff'])->name('api.admin.blocks.drafts.diff');
 
     // Field roles and record-path candidates of the sample (Story 3.11a): read-only, `blocks.edit`, no edit-lock claim.
     Route::get('blocks/drafts/{draft}/sample/roles', [DraftRolesController::class, 'show'])->whereUuid('draft')->middleware('admin')->name('api.admin.blocks.drafts.sample.roles');

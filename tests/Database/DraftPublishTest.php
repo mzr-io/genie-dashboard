@@ -583,3 +583,40 @@ it('refuses to edit an Archived Block', function () {
     $this->postJson(BD_URL, ['name' => 'x', 'type' => 'kpi-card', 'block_id' => $blockId], BD_HEADERS)
         ->assertStatus(409)->assertJsonPath('error.code', 'blocks.block_archived');
 });
+
+// Story 6.3: the diff of a Draft against the published version, in four sections, and the summary frozen with the version.
+it('diffs a new Draft against the published version, leaves the wizard state out and freezes the summary', function () {
+    [, , , , $draft] = ppWorld();
+    ppValidate($draft);
+    $blockId = ppVersion($draft)['block_id'];
+    ppPublish($draft)->assertOk();
+
+    $new = $this->postJson(BD_URL, ['name' => 'x', 'type' => 'kpi-card', 'block_id' => $blockId], BD_HEADERS)->assertCreated()->json('data.draft_id');
+
+    // Nothing changed: every section is empty and the summary has no section.
+    $none = $this->getJson(BD_URL."/{$new}/diff", BD_HEADERS)->assertOk();
+    expect($none->json('data.first_publish'))->toBeFalse()
+        ->and($none->json('data.current_version'))->toBe('1.0')
+        ->and($none->json('data.draft_version'))->toBe('1.1')
+        ->and($none->json('data.sections'))->toBe(['mapping' => [], 'presentation' => [], 'chrome' => [], 'endpoint' => []])
+        ->and($none->json('data.summary'))->toBe([]);
+
+    // The wizard's own state is not a change.
+    bdSave($new, 1, 1, ['name' => 'Revenue', 'step' => 4, 'ui_state' => ['acknowledged_warnings' => ['x'], 'slot_statuses' => ['headline_value' => 'review']]])->assertOk();
+    expect($this->getJson(BD_URL."/{$new}/diff", BD_HEADERS)->json('data.summary'))->toBe([]);
+
+    // A chrome change is one change in one section (a save replaces what the wizard owns, so the display it already has is sent again).
+    $display = $this->getJson(BD_URL."/{$new}", BD_HEADERS)->assertOk()->json('data.config.display');
+    bdSave($new, 2, 1, ['name' => 'Revenue', 'config' => ['description' => 'New words', 'display' => $display]])->assertOk();
+    $changed = $this->getJson(BD_URL."/{$new}/diff", BD_HEADERS)->assertOk();
+
+    expect($changed->json('data.summary'))->toBe(['chrome' => 1])
+        ->and($changed->json('data.sections.chrome.0'))->toMatchArray(['path' => 'description', 'before' => null, 'after' => 'New words']);
+});
+
+it('has no diff for a first publish', function () {
+    [, , , , $draft] = ppWorld();
+
+    $this->getJson(BD_URL."/{$draft}/diff", BD_HEADERS)->assertOk()
+        ->assertJsonPath('data.first_publish', true)->assertJsonPath('data.current_version', null);
+});
