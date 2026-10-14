@@ -80,7 +80,8 @@ function vrWorld(array $display = [], array $endpoint = [], array $source = []):
         'schema_version' => 1, 'type_key' => 'kpi-card', 'contract_version' => 1,
         'source' => $source + ['data_source_id' => $dataSource, 'endpoint_id' => $endpointId, 'bindings' => [], 'refresh_interval' => 60, 'default_date_range' => ['preset' => 'this_month']],
         'query_plan' => ['v' => 1, 'extract' => ['fields' => ['rev' => '$.data.revenue']], 'shape' => ['headline_value' => 'rev']],
-        'presentation' => $display['presentation'] ?? [], 'fields' => ['record_path' => null, 'items' => []], 'refresh_interval' => 60,
+        'presentation' => $display['presentation'] ?? [], 'fields' => ['record_path' => null, 'items' => []],
+        'refresh_interval' => array_key_exists('refresh_interval', $display) ? $display['refresh_interval'] : 60,
     ] + ['period' => $display['period'] ?? 'follow_dashboard'];
     $version = Cluster::seedBlockVersion($ws, ['state' => $display['state'] ?? 'published', 'config' => json_encode($config), 'prepared_at' => '2026-10-12 09:00:00+00']
         + (($display['state'] ?? 'published') === 'published' ? ['published_at' => '2026-10-12 09:00:01+00'] : []));
@@ -122,6 +123,17 @@ it('subscribes on the first view with the interval, context and resolved period,
 
     expect(Cluster::rows(Cluster::superuser(), 'select count(*) as n from sync_subscriptions')[0]['n'])->toBe(1)
         ->and($second->hotUntil)->not->toBeNull();
+});
+
+it('keeps a block published with no refresh interval hot at the smallest interval the Workspace offers', function () {
+    $w = vrWorld(['refresh_interval' => null]);
+
+    $view = vrView($w);
+    $subs = Cluster::rows(Cluster::superuser(), 'select * from sync_subscriptions');
+
+    expect($view->state)->toBe(ResultState::Pending)->and($view->hotRefusal)->toBeNull()->and($view->hotUntil)->not->toBeNull()
+        ->and($subs)->toHaveCount(1)
+        ->and($subs[0])->toMatchArray(['block_version_id' => $w['version'], 'role' => 'primary', 'refresh_interval_seconds' => 60]);
 });
 
 it('serves the stored result fresh within two intervals, marks it Stale after, and never changes the data', function () {

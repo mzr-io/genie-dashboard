@@ -195,8 +195,9 @@ final class ViewBlockResult implements ViewedResults
 
         $interval = $config->refreshInterval;
 
-        // `live` has no interval of its own in the settings: the smallest the Workspace offers (Story 4.13 adds the push path).
-        if ($interval === 'live') {
+        // `live` has no interval of its own in the settings: the smallest the Workspace offers (Story 4.13 adds the push path). A version
+        // published with no interval chosen gets the same, so its Block loads instead of staying pending.
+        if ($interval === 'live' || $interval === null) {
             $interval = ($this->intervals->refreshIntervals() ?? [])[0] ?? null;
         }
 
