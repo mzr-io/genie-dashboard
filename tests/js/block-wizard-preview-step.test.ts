@@ -1,36 +1,36 @@
 // @vitest-environment happy-dom
-import { flushPromises, mount } from "@vue/test-utils";
-import type { VueWrapper } from "@vue/test-utils";
-import { createPinia, setActivePinia } from "pinia";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defineComponent, h, reactive } from "vue";
-import { setConnectionForTest } from "../../resources/js/composables/useConnection";
-import { resetAnnouncer } from "../../resources/js/lib/announce";
+import { flushPromises, mount } from '@vue/test-utils';
+import type { VueWrapper } from '@vue/test-utils';
+import { createPinia, setActivePinia } from 'pinia';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { defineComponent, h, reactive } from 'vue';
+import { setConnectionForTest } from '../../resources/js/composables/useConnection';
+import { resetAnnouncer } from '../../resources/js/lib/announce';
 import type {
     ApiChange,
     Blocker,
     ChecklistSlot,
-} from "../../resources/js/lib/blockMapping";
-import type { WizardDraft } from "../../resources/js/lib/blockWizard";
-import { createCatalogue } from "../../resources/js/lib/i18n";
+} from '../../resources/js/lib/blockMapping';
+import type { WizardDraft } from '../../resources/js/lib/blockWizard';
+import { createCatalogue } from '../../resources/js/lib/i18n';
 
 // Story 3.16: Step 4, Preview on every device and state, with warning acknowledgements.
 const page = reactive<{ url: string; props: Record<string, unknown> }>({
-    url: "/admin/blocks/create",
+    url: '/admin/blocks/create',
     props: {},
 });
 
 const visit = vi.fn();
 
-vi.mock("@inertiajs/vue3", () => ({
+vi.mock('@inertiajs/vue3', () => ({
     usePage: () => page,
     Head: defineComponent({ setup: () => () => null }),
     Link: defineComponent({
-        props: ["href"],
+        props: ['href'],
         setup:
             (props, { slots, attrs }) =>
             () =>
-                h("a", { ...attrs, href: props.href }, slots.default?.()),
+                h('a', { ...attrs, href: props.href }, slots.default?.()),
     }),
     router: {
         visit: (...args: unknown[]) => visit(...args),
@@ -39,34 +39,34 @@ vi.mock("@inertiajs/vue3", () => ({
 }));
 
 const { default: BlockWizard } =
-    await import("../../resources/js/pages/admin/BlockWizard.vue");
+    await import('../../resources/js/pages/admin/BlockWizard.vue');
 
-const BASE = "/api/v1/admin/blocks/drafts/d-1";
+const BASE = '/api/v1/admin/blocks/drafts/d-1';
 let storedAck: string[] = [];
 let stepNow = 4;
 let sourceNow: Record<string, string> | undefined;
-let typeNow = "kpi-card";
+let typeNow = 'kpi-card';
 
 function draft(): WizardDraft {
     return {
-        draft_id: "d-1",
-        block_id: "b-1",
-        name: "Revenue today",
+        draft_id: 'd-1',
+        block_id: 'b-1',
+        name: 'Revenue today',
         type: typeNow,
-        category: "General",
-        category_id: "c-general",
-        version: "1.0",
-        state: "draft",
+        category: 'General',
+        category_id: 'c-general',
+        version: '1.0',
+        state: 'draft',
         revision: 1,
         lock_epoch: 1,
         step: stepNow,
-        owner_membership_id: "m-1",
+        owner_membership_id: 'm-1',
         owner: null,
-        created_at: "2026-10-01T09:30:00Z",
-        updated_at: "2026-10-02T10:00:00Z",
+        created_at: '2026-10-01T09:30:00Z',
+        updated_at: '2026-10-02T10:00:00Z',
         config: {
             schema_version: 1,
-            description: "Daily revenue",
+            description: 'Daily revenue',
             ...(sourceNow ? { source: sourceNow } : {}),
         },
         ui_state: { acknowledged_warnings: storedAck, slot_statuses: {} },
@@ -76,9 +76,9 @@ function draft(): WizardDraft {
 function slot(over: Partial<ChecklistSlot> & { slot: string }): ChecklistSlot {
     return {
         label: over.slot,
-        group: "KPI",
+        group: 'KPI',
         required: false,
-        state: "optional_empty",
+        state: 'optional_empty',
         confidence: null,
         reason: null,
         suggestion: null,
@@ -91,33 +91,33 @@ function slot(over: Partial<ChecklistSlot> & { slot: string }): ChecklistSlot {
 
 const headline = (over: Partial<ChecklistSlot> = {}) =>
     slot({
-        slot: "headline_value",
-        label: "Headline value",
+        slot: 'headline_value',
+        label: 'Headline value',
         required: true,
-        state: "auto_medium",
-        confidence: "medium",
-        reason: "2 Values; picked the one not named previous_*",
-        path: "$.total",
-        display: "total",
-        example: "284680",
+        state: 'auto_medium',
+        confidence: 'medium',
+        reason: '2 Values; picked the one not named previous_*',
+        path: '$.total',
+        display: 'total',
+        example: '284680',
         ...over,
     });
 
 const note = (over: Partial<ChecklistSlot> = {}) =>
     slot({
-        slot: "secondary_note",
-        label: "Secondary note",
-        group: "META",
-        state: "auto_medium",
-        confidence: "medium",
-        reason: "The key says note",
-        path: "$.note",
-        display: "note",
+        slot: 'secondary_note',
+        label: 'Secondary note',
+        group: 'META',
+        state: 'auto_medium',
+        confidence: 'medium',
+        reason: 'The key says note',
+        path: '$.note',
+        display: 'note',
         ...over,
     });
 
 function checklist(slots: ChecklistSlot[], baseline: unknown[] = []) {
-    const groups = ["HEADER", "KPI", "META"]
+    const groups = ['HEADER', 'KPI', 'META']
         .map((group) => ({
             group,
             slots: slots.filter((s) => s.group === group),
@@ -126,26 +126,26 @@ function checklist(slots: ChecklistSlot[], baseline: unknown[] = []) {
     const states = slots.map((s) => s.state);
     const n = (...wanted: string[]) =>
         states.filter((s) => wanted.includes(s)).length;
-    const blockers: { slot: string; reason: Blocker["reason"] }[] =
+    const blockers: { slot: string; reason: Blocker['reason'] }[] =
         slots.flatMap((s) =>
-            s.state === "required_missing"
-                ? [{ slot: s.slot, reason: "required_missing" }]
-                : s.state === "auto_low"
-                  ? [{ slot: s.slot, reason: "unconfirmed_low" }]
-                  : s.state === "type_mismatch"
-                    ? [{ slot: s.slot, reason: "type_mismatch" }]
+            s.state === 'required_missing'
+                ? [{ slot: s.slot, reason: 'required_missing' }]
+                : s.state === 'auto_low'
+                  ? [{ slot: s.slot, reason: 'unconfirmed_low' }]
+                  : s.state === 'type_mismatch'
+                    ? [{ slot: s.slot, reason: 'type_mismatch' }]
                     : [],
         );
 
     return {
         groups,
         counts: {
-            auto_mapped: n("auto_high", "auto_medium", "auto_low"),
+            auto_mapped: n('auto_high', 'auto_medium', 'auto_low'),
             total: slots.length,
-            confirmed: n("auto_high", "confirmed", "overridden"),
-            needs_review: n("auto_medium", "auto_low"),
-            required_missing: n("required_missing"),
-            type_mismatch: n("type_mismatch"),
+            confirmed: n('auto_high', 'confirmed', 'overridden'),
+            needs_review: n('auto_medium', 'auto_low'),
+            required_missing: n('required_missing'),
+            type_mismatch: n('type_mismatch'),
         },
         blockers: [...blockers, ...extraBlockers],
         baseline,
@@ -164,11 +164,11 @@ const calls: Call[] = [];
 let revision = 1;
 let current: ChecklistSlot[] = [];
 let baseline: unknown[] = [];
-let sampleStatus = "ok";
+let sampleStatus = 'ok';
 let apiChanged: ApiChange[] = [];
 let roleFields: Record<string, unknown>[] = [];
 let fieldsReply: Reply = { status: 200, json: { data: { fields: [] } } };
-let extraBlockers: { slot: string; reason: Blocker["reason"] }[] = [];
+let extraBlockers: { slot: string; reason: Blocker['reason'] }[] = [];
 let checklistNull = false;
 let lockReply: () => Reply;
 let writeReply: ((call: Call) => Reply) | null = null;
@@ -183,7 +183,7 @@ const $ = (selector: string) => document.querySelector<HTMLElement>(selector);
 const $$ = (selector: string) =>
     Array.from(document.querySelectorAll<HTMLElement>(selector));
 const text = (selector: string) =>
-    $(selector)?.textContent?.replace(/\s+/g, " ").trim() ?? "";
+    $(selector)?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 
 async function settle(): Promise<void> {
     await flushPromises();
@@ -205,8 +205,8 @@ async function open(slots: ChecklistSlot[], extra: unknown[] = []) {
     baseline = extra;
     window.history.replaceState(
         {},
-        "",
-        "/admin/blocks/create?draft=d-1&step=4",
+        '',
+        '/admin/blocks/create?draft=d-1&step=4',
     );
     wrapper = mount(BlockWizard as never, {
         attachTo: document.body,
@@ -221,15 +221,15 @@ beforeEach(() => {
     page.props = {
         autosave: { debounce_ms: null },
         shell: {
-            area: "admin",
+            area: 'admin',
             items: [],
-            can: { "blocks.edit": true, "blocks.publish": true },
+            can: { 'blocks.edit': true, 'blocks.publish': true },
         },
     };
     setConnectionForTest(true);
     calls.length = 0;
     revision = 1;
-    sampleStatus = "ok";
+    sampleStatus = 'ok';
     writeReply = null;
     extraBlockers = [];
     apiChanged = [];
@@ -244,32 +244,32 @@ beforeEach(() => {
         status: 200,
         json: {
             data: {
-                draft_id: "d-1",
-                block_id: "b-1",
-                version_id: "d-1",
-                name: "Revenue today",
-                type: "kpi-card",
-                category: "Finance",
-                version: "1.0",
-                state: "published",
-                published_at: "2026-10-12T09:20:00Z",
+                draft_id: 'd-1',
+                block_id: 'b-1',
+                version_id: 'd-1',
+                name: 'Revenue today',
+                type: 'kpi-card',
+                category: 'Finance',
+                version: '1.0',
+                state: 'published',
+                published_at: '2026-10-12T09:20:00Z',
             },
         },
     });
     storedAck = [];
     stepNow = 4;
     sourceNow = undefined;
-    typeNow = "kpi-card";
+    typeNow = 'kpi-card';
     sessionStorage.clear();
     localStorage.clear();
-    Object.defineProperty(window, "innerWidth", {
+    Object.defineProperty(window, 'innerWidth', {
         value: 1280,
         configurable: true,
         writable: true,
     });
     lockReply = () => ({ status: 200, json: { data: { enabled: false } } });
     vi.stubGlobal(
-        "fetch",
+        'fetch',
         vi.fn(
             async (
                 url: string,
@@ -279,7 +279,7 @@ beforeEach(() => {
                     headers?: Record<string, string>;
                 },
             ) => {
-                const method = init?.method ?? "GET";
+                const method = init?.method ?? 'GET';
                 let reply: Reply;
 
                 if (/\/lock(\/|$)/.test(url)) {
@@ -294,14 +294,14 @@ beforeEach(() => {
 
                     calls.push(call);
 
-                    if (url === "/api/v1/admin/blocks/categories") {
+                    if (url === '/api/v1/admin/blocks/categories') {
                         reply = {
                             status: 200,
                             json: {
                                 data: [
                                     {
-                                        id: "c-general",
-                                        name: "General",
+                                        id: 'c-general',
+                                        name: 'General',
                                         archived: false,
                                     },
                                 ],
@@ -313,11 +313,11 @@ beforeEach(() => {
                             json: {
                                 data: {
                                     checklist:
-                                        sampleStatus === "ok" && !checklistNull
+                                        sampleStatus === 'ok' && !checklistNull
                                             ? checklist(current, baseline)
                                             : null,
                                     roles:
-                                        sampleStatus === "ok"
+                                        sampleStatus === 'ok'
                                             ? {
                                                   record_path: null,
                                                   record_path_display: null,
@@ -343,7 +343,7 @@ beforeEach(() => {
                         } else {
                             revision += 1;
 
-                            if (url.endsWith("/auto-map") && rerunSlots) {
+                            if (url.endsWith('/auto-map') && rerunSlots) {
                                 current = rerunSlots();
                             }
 
@@ -354,7 +354,7 @@ beforeEach(() => {
                             if (confirm) {
                                 current = current.map((s) =>
                                     s.slot === confirm[1]
-                                        ? { ...s, state: "confirmed" }
+                                        ? { ...s, state: 'confirmed' }
                                         : s,
                                 );
                             }
@@ -377,20 +377,20 @@ beforeEach(() => {
                         reply = { status: 200, json: { data: null } };
                     } else if (
                         url === `${BASE}/validation` &&
-                        method === "POST"
+                        method === 'POST'
                     ) {
                         reply = {
                             status: 202,
                             json: {
                                 data: {
-                                    operation_id: "o-1",
-                                    status: "queued",
-                                    expires_at: "2026-10-12T09:20:00Z",
+                                    operation_id: 'o-1',
+                                    status: 'queued',
+                                    expires_at: '2026-10-12T09:20:00Z',
                                     draft_revision: 9,
                                 },
                             },
                         };
-                    } else if (url === `${BASE}/publish` && method === "POST") {
+                    } else if (url === `${BASE}/publish` && method === 'POST') {
                         reply = publishReply();
                     } else if (url === `${BASE}/validation`) {
                         reply = {
@@ -401,22 +401,22 @@ beforeEach(() => {
                                     : null,
                             },
                         };
-                    } else if (url.startsWith("/api/v1/operations/")) {
+                    } else if (url.startsWith('/api/v1/operations/')) {
                         reply = {
                             status: 200,
                             json: {
                                 data: {
-                                    id: "o-1",
-                                    kind: "publish_validation",
-                                    status: "failed",
+                                    id: 'o-1',
+                                    kind: 'publish_validation',
+                                    status: 'failed',
                                     result: { ok: false, report_id: null },
-                                    expires_at: "2026-10-12T09:20:00Z",
+                                    expires_at: '2026-10-12T09:20:00Z',
                                 },
                             },
                         };
-                    } else if (url === BASE && method === "GET") {
+                    } else if (url === BASE && method === 'GET') {
                         reply = { status: 200, json: { data: draft() } };
-                    } else if (url === BASE && method === "PUT") {
+                    } else if (url === BASE && method === 'PUT') {
                         reply = {
                             status: 200,
                             json: {
@@ -449,45 +449,45 @@ afterEach(() => {
     vi.useRealTimers();
     wrapper?.unmount();
     wrapper = null;
-    document.body.innerHTML = "";
+    document.body.innerHTML = '';
     resetAnnouncer();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
 });
 
 const fmt = {
-    kind: "number",
+    kind: 'number',
     decimalPlaces: null,
     thousandsSeparator: true,
     currencyCode: null,
-    currencyDisplay: "symbol",
-    datePattern: "medium",
+    currencyDisplay: 'symbol',
+    datePattern: 'medium',
     unitsSuffix: null,
 };
 
 // What the engine answers: the payload the Shaper made, plus each slot's value and the revisions.
-function preview(over: Record<string, unknown> = {}, value = "284680") {
+function preview(over: Record<string, unknown> = {}, value = '284680') {
     return {
         payload: {
-            state: "normal",
-            title: "From the server",
+            state: 'normal',
+            title: 'From the server',
             subtitle: null,
             icon: null,
             footerAction: null,
-            kpiLabel: "Revenue",
+            kpiLabel: 'Revenue',
             headline: { available: true, value, format: fmt },
             comparison: null,
             comparisonLabel: null,
-            secondaryNote: "Updated daily",
+            secondaryNote: 'Updated daily',
             statusBadge: null,
             staleSince: null,
             errorMessage: null,
         },
         unavailable: {},
         slots: {
-            headline_value: { value, path: "$.total" },
-            kpi_label: { value: "Revenue", path: "$.label" },
-            secondary_note: { value: "Updated daily", path: "$.note" },
+            headline_value: { value, path: '$.total' },
+            kpi_label: { value: 'Revenue', path: '$.label' },
+            secondary_note: { value: 'Updated daily', path: '$.note' },
         },
         sample_revision: 1,
         draft_revision: revision,
@@ -498,80 +498,80 @@ function preview(over: Record<string, unknown> = {}, value = "284680") {
 
 const kpiLabel = (over: Partial<ChecklistSlot> = {}) =>
     slot({
-        slot: "kpi_label",
-        label: "KPI label",
+        slot: 'kpi_label',
+        label: 'KPI label',
         required: true,
-        group: "KPI",
-        state: "auto_high",
-        confidence: "high",
-        path: "$.label",
-        display: "label",
-        example: "Revenue",
+        group: 'KPI',
+        state: 'auto_high',
+        confidence: 'high',
+        path: '$.label',
+        display: 'label',
+        example: 'Revenue',
         ...over,
     });
 const mapped = () => [
-    headline({ state: "confirmed" }),
+    headline({ state: 'confirmed' }),
     kpiLabel(),
-    note({ state: "auto_high", confidence: "high" }),
+    note({ state: 'auto_high', confidence: 'high' }),
 ];
 const previews = () =>
-    calls.filter((c) => c.method === "POST" && c.url === `${BASE}/preview`);
+    calls.filter((c) => c.method === 'POST' && c.url === `${BASE}/preview`);
 const cleared = () =>
     note({
-        state: "optional_empty",
+        state: 'optional_empty',
         confidence: null,
-        reason: "Cleared by an admin.",
+        reason: 'Cleared by an admin.',
         path: null,
         display: null,
     });
-const warnings = () => $$("[data-test=warning]");
-const continueButton = () => $("[data-test=continue]")!;
+const warnings = () => $$('[data-test=warning]');
+const continueButton = () => $('[data-test=continue]')!;
 const putBody = () =>
-    calls.filter((c) => c.url === BASE && c.method === "PUT").at(-1)!.body!;
+    calls.filter((c) => c.url === BASE && c.method === 'PUT').at(-1)!.body!;
 
-describe("Step 4: the Block on every device", () => {
-    it("opens with Desktop, the full size Block, the 12-column grid and the Sample data label", async () => {
+describe('Step 4: the Block on every device', () => {
+    it('opens with Desktop, the full size Block, the 12-column grid and the Sample data label', async () => {
         await open(mapped());
 
-        expect($("[data-test=step-4]")).not.toBeNull();
-        expect($("[data-test=later-step]")).toBeNull();
-        expect($("[data-test=preview-column]")).toBeNull();
-        expect(text("[data-test=preview-sample-label]")).toBe("Sample data");
-        expect($("[data-test=preview-canvas]")!.dataset.device).toBe("desktop");
+        expect($('[data-test=step-4]')).not.toBeNull();
+        expect($('[data-test=later-step]')).toBeNull();
+        expect($('[data-test=preview-column]')).toBeNull();
+        expect(text('[data-test=preview-sample-label]')).toBe('Sample data');
+        expect($('[data-test=preview-canvas]')!.dataset.device).toBe('desktop');
         expect(
-            $("[data-test=block-full] [data-test=kpi-headline]"),
+            $('[data-test=block-full] [data-test=kpi-headline]'),
         ).not.toBeNull();
-        expect(text("[data-test=block-full] [data-test=kpi-headline]")).toBe(
-            "284,680",
+        expect(text('[data-test=block-full] [data-test=kpi-headline]')).toBe(
+            '284,680',
         );
 
-        const grid = $("[data-test=grid-canvas]")!;
+        const grid = $('[data-test=grid-canvas]')!;
 
-        expect(grid.dataset.columns).toBe("12");
-        expect(grid.dataset.gap).toBe("14");
-        expect(grid.style.gap).toBe("14px");
-        expect(grid.style.gridTemplateColumns).toContain("repeat(12");
+        expect(grid.dataset.columns).toBe('12');
+        expect(grid.dataset.gap).toBe('14');
+        expect(grid.style.gap).toBe('14px');
+        expect(grid.style.gridTemplateColumns).toContain('repeat(12');
         // The Block takes its configured width (3 columns by default).
-        expect($("[data-test=grid-block]")!.dataset.span).toBe("3");
+        expect($('[data-test=grid-block]')!.dataset.span).toBe('3');
         expect(
-            $("[data-test=grid-block] [data-test=kpi-headline]"),
+            $('[data-test=grid-block] [data-test=kpi-headline]'),
         ).not.toBeNull();
     });
 
     it("draws a Block of another type with that type's Renderer, full size and in the grid", async () => {
-        typeNow = "text-status";
+        typeNow = 'text-status';
         previewReply = () => ({
             status: 200,
             json: {
                 data: preview({
                     payload: {
-                        state: "normal",
-                        mode: "text",
+                        state: 'normal',
+                        mode: 'text',
                         title: null,
                         subtitle: null,
                         icon: null,
                         footerAction: null,
-                        text: "All systems normal",
+                        text: 'All systems normal',
                         band: null,
                         partial: false,
                         emptyDisplay: null,
@@ -584,105 +584,105 @@ describe("Step 4: the Block on every device", () => {
         await open(mapped());
         await settle();
 
-        expect(text("[data-test=block-full] [data-test=text-body]")).toBe(
-            "All systems normal",
+        expect(text('[data-test=block-full] [data-test=text-body]')).toBe(
+            'All systems normal',
         );
-        expect(text("[data-test=grid-block] [data-test=text-body]")).toBe(
-            "All systems normal",
+        expect(text('[data-test=grid-block] [data-test=text-body]')).toBe(
+            'All systems normal',
         );
-        expect($("[data-test=block-full] [data-test=kpi-headline]")).toBeNull();
+        expect($('[data-test=block-full] [data-test=kpi-headline]')).toBeNull();
     });
 
-    it("renders Mobile at mobile width without page scroll, the content scrolling inside the Block", async () => {
+    it('renders Mobile at mobile width without page scroll, the content scrolling inside the Block', async () => {
         await open(mapped());
 
-        const mobile = $$("[role=radio]").find(
-            (r) => r.textContent?.trim() === "Mobile",
+        const mobile = $$('[role=radio]').find(
+            (r) => r.textContent?.trim() === 'Mobile',
         )!;
 
         await click(mobile);
 
-        const canvas = $("[data-test=preview-canvas]")!;
+        const canvas = $('[data-test=preview-canvas]')!;
 
-        expect(canvas.dataset.device).toBe("mobile");
-        expect(canvas.style.width).toBe("375px");
-        expect(canvas.style.maxWidth).toBe("100%");
-        expect($("[data-test=grid-block]")!.dataset.span).toBe("12");
-        expect($("[data-test=block-full]")!.className).toContain(
-            "overflow-hidden",
+        expect(canvas.dataset.device).toBe('mobile');
+        expect(canvas.style.width).toBe('375px');
+        expect(canvas.style.maxWidth).toBe('100%');
+        expect($('[data-test=grid-block]')!.dataset.span).toBe('12');
+        expect($('[data-test=block-full]')!.className).toContain(
+            'overflow-hidden',
         );
-        expect($("[data-test=kpi-body]")!.className).toContain("overflow-auto");
-        expect($("[data-test=preview-region]")!.className).not.toContain(
-            "overflow-x",
+        expect($('[data-test=kpi-body]')!.className).toContain('overflow-auto');
+        expect($('[data-test=preview-region]')!.className).not.toContain(
+            'overflow-x',
         );
     });
 
-    it("shows each state from the Renderer, and Unavailable never shows $0", async () => {
+    it('shows each state from the Renderer, and Unavailable never shows $0', async () => {
         await open(mapped());
 
         const pick = async (label: string) =>
             click(
-                $$("[role=radio]").find(
+                $$('[role=radio]').find(
                     (r) => r.textContent?.trim() === label,
                 ) ?? null,
             );
 
-        await pick("Unavailable");
-        expect(text("[data-test=block-full] [data-test=kpi-unavailable]")).toBe(
+        await pick('Unavailable');
+        expect(text('[data-test=block-full] [data-test=kpi-unavailable]')).toBe(
             "Unavailable — this value can't be shown right now.",
         );
-        expect($("[data-test=block-full]")!.textContent).not.toContain("$0");
-        expect($("[data-test=block-full] [data-test=kpi-headline]")).toBeNull();
+        expect($('[data-test=block-full]')!.textContent).not.toContain('$0');
+        expect($('[data-test=block-full] [data-test=kpi-headline]')).toBeNull();
 
-        await pick("Loading");
+        await pick('Loading');
         expect(
-            $("[data-test=block-full] [data-test=kpi-loading]"),
+            $('[data-test=block-full] [data-test=kpi-loading]'),
         ).not.toBeNull();
 
-        await pick("Empty");
+        await pick('Empty');
         expect(
-            $("[data-test=block-full] [data-test=kpi-empty]"),
+            $('[data-test=block-full] [data-test=kpi-empty]'),
         ).not.toBeNull();
 
-        await pick("Stale");
+        await pick('Stale');
         expect(
-            $("[data-test=block-full] [data-test=kpi-stale]"),
+            $('[data-test=block-full] [data-test=kpi-stale]'),
         ).not.toBeNull();
 
-        await pick("Minimized");
-        expect($("[data-test=block-minimized]")).not.toBeNull();
-        expect($("[data-test=block-full] [data-test=kpi-card]")).toBeNull();
+        await pick('Minimized');
+        expect($('[data-test=block-minimized]')).not.toBeNull();
+        expect($('[data-test=block-full] [data-test=kpi-card]')).toBeNull();
 
-        await pick("Normal");
-        expect(text("[data-test=block-full] [data-test=kpi-headline]")).toBe(
-            "284,680",
+        await pick('Normal');
+        expect(text('[data-test=block-full] [data-test=kpi-headline]')).toBe(
+            '284,680',
         );
     });
 });
 
-describe("Step 4: warnings and acknowledgements", () => {
-    it("has no warnings and an enabled Continue when there is nothing to review", async () => {
+describe('Step 4: warnings and acknowledgements', () => {
+    it('has no warnings and an enabled Continue when there is nothing to review', async () => {
         await open(mapped());
 
-        expect($("[data-test=no-warnings]")).not.toBeNull();
+        expect($('[data-test=no-warnings]')).not.toBeNull();
         expect(warnings()).toHaveLength(0);
-        expect(continueButton().getAttribute("aria-disabled")).toBeNull();
+        expect(continueButton().getAttribute('aria-disabled')).toBeNull();
     });
 
-    it("lists a cleared optional slot and blocks Continue until it is acknowledged, then stores it", async () => {
-        await open([headline({ state: "confirmed" }), kpiLabel(), cleared()]);
+    it('lists a cleared optional slot and blocks Continue until it is acknowledged, then stores it', async () => {
+        await open([headline({ state: 'confirmed' }), kpiLabel(), cleared()]);
 
         expect(warnings()).toHaveLength(1);
-        expect(warnings()[0].dataset.kind).toBe("cleared_optional");
-        expect(continueButton().getAttribute("aria-disabled")).toBe("true");
-        expect(text("[data-test=continue-reason]")).toBe(
-            "Acknowledge 1 warning to continue.",
+        expect(warnings()[0].dataset.kind).toBe('cleared_optional');
+        expect(continueButton().getAttribute('aria-disabled')).toBe('true');
+        expect(text('[data-test=continue-reason]')).toBe(
+            'Acknowledge 1 warning to continue.',
         );
 
-        await click($("[data-test=warning-ack]"));
+        await click($('[data-test=warning-ack]'));
 
-        expect(continueButton().getAttribute("aria-disabled")).toBeNull();
-        expect($("[data-test=continue-reason]")).toBeNull();
+        expect(continueButton().getAttribute('aria-disabled')).toBeNull();
+        expect($('[data-test=continue-reason]')).toBeNull();
 
         await click(continueButton());
 
@@ -693,14 +693,14 @@ describe("Step 4: warnings and acknowledgements", () => {
         expect(body.ui_state.acknowledged_warnings[0]).toMatch(
             /^w:cleared_optional:secondary_note:/,
         );
-        expect($("[data-test=validate-step]")).not.toBeNull();
-        expect($("[data-test=later-step]")).toBeNull();
+        expect($('[data-test=validate-step]')).not.toBeNull();
+        expect($('[data-test=later-step]')).toBeNull();
     });
 
-    it("keeps the acknowledgement after a reload", async () => {
-        await open([headline({ state: "confirmed" }), kpiLabel(), cleared()]);
-        await click($("[data-test=warning-ack]"));
-        await click($("[data-test=save-draft]"));
+    it('keeps the acknowledgement after a reload', async () => {
+        await open([headline({ state: 'confirmed' }), kpiLabel(), cleared()]);
+        await click($('[data-test=warning-ack]'));
+        await click($('[data-test=save-draft]'));
 
         const saved = putBody().ui_state.acknowledged_warnings as string[];
 
@@ -708,43 +708,43 @@ describe("Step 4: warnings and acknowledgements", () => {
 
         wrapper!.unmount();
         wrapper = null;
-        document.body.innerHTML = "";
+        document.body.innerHTML = '';
         storedAck = saved;
 
-        await open([headline({ state: "confirmed" }), kpiLabel(), cleared()]);
+        await open([headline({ state: 'confirmed' }), kpiLabel(), cleared()]);
 
-        expect($("[data-test=warning-ack]")!.getAttribute("aria-checked")).toBe(
-            "true",
+        expect($('[data-test=warning-ack]')!.getAttribute('aria-checked')).toBe(
+            'true',
         );
-        expect(continueButton().getAttribute("aria-disabled")).toBeNull();
+        expect(continueButton().getAttribute('aria-disabled')).toBeNull();
     });
 
-    it("resets the acknowledgement of a warning that changed and drops one that is gone", async () => {
+    it('resets the acknowledgement of a warning that changed and drops one that is gone', async () => {
         storedAck = [
-            "w:cleared_optional:secondary_note:old",
-            "w:null_value:x:y",
+            'w:cleared_optional:secondary_note:old',
+            'w:null_value:x:y',
         ];
-        await open([headline({ state: "confirmed" }), kpiLabel(), cleared()]);
+        await open([headline({ state: 'confirmed' }), kpiLabel(), cleared()]);
 
-        expect($("[data-test=warning-ack]")!.getAttribute("aria-checked")).toBe(
-            "false",
+        expect($('[data-test=warning-ack]')!.getAttribute('aria-checked')).toBe(
+            'false',
         );
-        expect(continueButton().getAttribute("aria-disabled")).toBe("true");
+        expect(continueButton().getAttribute('aria-disabled')).toBe('true');
 
-        await click($("[data-test=save-draft]"));
+        await click($('[data-test=save-draft]'));
 
         expect(putBody().ui_state.acknowledged_warnings).toEqual([]);
     });
 
-    it("warns about a null in the sample for an optional slot", async () => {
+    it('warns about a null in the sample for an optional slot', async () => {
         previewReply = () => ({
             status: 200,
             json: {
                 data: preview({
                     slots: {
-                        headline_value: { value: "284680", path: "$.total" },
-                        kpi_label: { value: "Revenue", path: "$.label" },
-                        secondary_note: { value: null, path: "$.note" },
+                        headline_value: { value: '284680', path: '$.total' },
+                        kpi_label: { value: 'Revenue', path: '$.label' },
+                        secondary_note: { value: null, path: '$.note' },
                     },
                 }),
             },
@@ -752,53 +752,53 @@ describe("Step 4: warnings and acknowledgements", () => {
         await open(mapped());
 
         expect(warnings()).toHaveLength(1);
-        expect(warnings()[0].dataset.kind).toBe("null_value");
-        expect(continueButton().getAttribute("aria-disabled")).toBe("true");
+        expect(warnings()[0].dataset.kind).toBe('null_value');
+        expect(continueButton().getAttribute('aria-disabled')).toBe('true');
     });
 
-    it("refreshes the preview when the step is opened again after a mapping change", async () => {
+    it('refreshes the preview when the step is opened again after a mapping change', async () => {
         await open(mapped());
 
         const first = previews().length;
 
         previewReply = () => ({
             status: 200,
-            json: { data: preview({}, "999") },
+            json: { data: preview({}, '999') },
         });
-        await click($("[data-test=back]"));
-        await click($("[data-test=slots-continue]"));
+        await click($('[data-test=back]'));
+        await click($('[data-test=slots-continue]'));
 
         expect(previews().length).toBeGreaterThan(first);
-        expect(text("[data-test=block-full] [data-test=kpi-headline]")).toBe(
-            "999",
+        expect(text('[data-test=block-full] [data-test=kpi-headline]')).toBe(
+            '999',
         );
     });
 
-    it("blocks Continue with a reason when the preview cannot be built", async () => {
+    it('blocks Continue with a reason when the preview cannot be built', async () => {
         previewReply = () => ({
             status: 422,
-            json: { error: { code: "mapping.no_plan" } },
+            json: { error: { code: 'mapping.no_plan' } },
         });
         await open(mapped());
 
-        expect(continueButton().getAttribute("aria-disabled")).toBe("true");
-        expect(text("[data-test=continue-reason]")).toContain(
-            "preview could not be built",
+        expect(continueButton().getAttribute('aria-disabled')).toBe('true');
+        expect(text('[data-test=continue-reason]')).toContain(
+            'preview could not be built',
         );
     });
 
-    it("warns about a slot the preview reports unavailable and blocks Continue", async () => {
+    it('warns about a slot the preview reports unavailable and blocks Continue', async () => {
         previewReply = () => ({
             status: 200,
             json: {
                 data: preview({
                     slots: {
-                        headline_value: { value: "284680", path: "$.total" },
-                        kpi_label: { value: "Revenue", path: "$.label" },
+                        headline_value: { value: '284680', path: '$.total' },
+                        kpi_label: { value: 'Revenue', path: '$.label' },
                         secondary_note: {
                             value: null,
-                            path: "$.note",
-                            unavailable: "missing",
+                            path: '$.note',
+                            unavailable: 'missing',
                         },
                     },
                 }),
@@ -807,11 +807,11 @@ describe("Step 4: warnings and acknowledgements", () => {
         await open(mapped());
 
         expect(warnings()).toHaveLength(1);
-        expect(warnings()[0].dataset.kind).toBe("unavailable_value");
-        expect(continueButton().getAttribute("aria-disabled")).toBe("true");
+        expect(warnings()[0].dataset.kind).toBe('unavailable_value');
+        expect(continueButton().getAttribute('aria-disabled')).toBe('true');
     });
 
-    it("warns about a stale mapping and blocks Continue", async () => {
+    it('warns about a stale mapping and blocks Continue', async () => {
         previewReply = () => ({
             status: 200,
             json: { data: preview({ plan_stale: true }) },
@@ -819,186 +819,186 @@ describe("Step 4: warnings and acknowledgements", () => {
         await open(mapped());
 
         expect(warnings().map((w) => w.dataset.kind)).toContain(
-            "stale_mapping",
+            'stale_mapping',
         );
-        expect(continueButton().getAttribute("aria-disabled")).toBe("true");
+        expect(continueButton().getAttribute('aria-disabled')).toBe('true');
     });
 
-    it("disables the checkboxes when nothing can be changed", async () => {
-        await open([headline({ state: "confirmed" }), kpiLabel(), cleared()]);
+    it('disables the checkboxes when nothing can be changed', async () => {
+        await open([headline({ state: 'confirmed' }), kpiLabel(), cleared()]);
         setConnectionForTest(false);
         await settle();
 
-        const box = $("[data-test=warning-ack]")!;
+        const box = $('[data-test=warning-ack]')!;
 
-        expect(box.hasAttribute("disabled")).toBe(true);
+        expect(box.hasAttribute('disabled')).toBe(true);
         await click(box);
-        expect(box.getAttribute("aria-checked")).toBe("false");
-        expect($("[data-test=preview-readonly]")).not.toBeNull();
+        expect(box.getAttribute('aria-checked')).toBe('false');
+        expect($('[data-test=preview-readonly]')).not.toBeNull();
     });
 
-    it("sets the Tablet canvas to 768px", async () => {
+    it('sets the Tablet canvas to 768px', async () => {
         await open(mapped());
         await click(
-            $$("[role=radio]").find(
-                (r) => r.textContent?.trim() === "Tablet",
+            $$('[role=radio]').find(
+                (r) => r.textContent?.trim() === 'Tablet',
             ) ?? null,
         );
 
-        expect($("[data-test=preview-canvas]")!.style.width).toBe("768px");
+        expect($('[data-test=preview-canvas]')!.style.width).toBe('768px');
     });
 
-    it("settles and offers Retry when the mapping fails after the preview resolved", async () => {
+    it('settles and offers Retry when the mapping fails after the preview resolved', async () => {
         checklistNull = true;
         await open(mapped());
 
-        expect($("[data-test=retry-preview]")).not.toBeNull();
-        expect($("[data-test=preview-loading]")).toBeNull();
-        expect(text("[data-test=continue-reason]")).toContain(
-            "preview could not be built",
+        expect($('[data-test=retry-preview]')).not.toBeNull();
+        expect($('[data-test=preview-loading]')).toBeNull();
+        expect(text('[data-test=continue-reason]')).toContain(
+            'preview could not be built',
         );
     });
 });
 
-describe("Step 5: Validate in the wizard", () => {
+describe('Step 5: Validate in the wizard', () => {
     it("saves a dirty Draft first, then sends the page's lock claim and no dates, and never the data source", async () => {
         stepNow = 5;
-        sourceNow = { data_source_id: "s-1", endpoint_id: "e-1" };
-        await open([headline({ state: "confirmed" }), kpiLabel(), cleared()]);
-        await click($("[data-test=warning-ack]"));
+        sourceNow = { data_source_id: 's-1', endpoint_id: 'e-1' };
+        await open([headline({ state: 'confirmed' }), kpiLabel(), cleared()]);
+        await click($('[data-test=warning-ack]'));
         await click($('[data-step="5"] [data-test=step-button]'));
 
-        expect($("[data-test=validate-step]")).not.toBeNull();
+        expect($('[data-test=validate-step]')).not.toBeNull();
 
         calls.length = 0;
-        await click($("[data-test=validate]"));
+        await click($('[data-test=validate]'));
 
         const methods = calls
             .filter((c) => c.url === BASE || c.url === `${BASE}/validation`)
-            .map((c) => `${c.method} ${c.url.replace(BASE, "")}`);
+            .map((c) => `${c.method} ${c.url.replace(BASE, '')}`);
 
-        expect(methods.slice(0, 2)).toEqual(["PUT ", "POST /validation"]);
+        expect(methods.slice(0, 2)).toEqual(['PUT ', 'POST /validation']);
 
         const post = calls.find(
-            (c) => c.url === `${BASE}/validation` && c.method === "POST",
+            (c) => c.url === `${BASE}/validation` && c.method === 'POST',
         )!;
 
         expect(post.body).toMatchObject({ lock_epoch: 1 });
-        expect(post.body).not.toHaveProperty("range");
-        expect(post.body).not.toHaveProperty("period");
-        expect(post.body).not.toHaveProperty("data_source_id");
+        expect(post.body).not.toHaveProperty('range');
+        expect(post.body).not.toHaveProperty('period');
+        expect(post.body).not.toHaveProperty('data_source_id');
         // The Operation stored no report: the step says it could not check, and shows no result.
-        expect(text("[data-test=validate-problem]")).toContain(
-            "could not finish",
+        expect(text('[data-test=validate-problem]')).toContain(
+            'could not finish',
         );
-        expect($("[data-test=result-title]")).toBeNull();
+        expect($('[data-test=result-title]')).toBeNull();
     });
 });
 
-describe("Step 5: Publish in the wizard", () => {
+describe('Step 5: Publish in the wizard', () => {
     async function atStep5(): Promise<void> {
         stepNow = 5;
-        sourceNow = { data_source_id: "s-1", endpoint_id: "e-1" };
-        await open([headline({ state: "confirmed" }), kpiLabel(), cleared()]);
-        await click($("[data-test=warning-ack]"));
+        sourceNow = { data_source_id: 's-1', endpoint_id: 'e-1' };
+        await open([headline({ state: 'confirmed' }), kpiLabel(), cleared()]);
+        await click($('[data-test=warning-ack]'));
         // Saved, so the report below is for the revision the Draft is at.
-        await click($("[data-test=save-draft]"));
+        await click($('[data-test=save-draft]'));
         await click($('[data-step="5"] [data-test=step-button]'));
     }
 
     // A report that passed for the revision the Draft is at (the wizard saves first, which moves it to 9).
     const passed = (revision: number) => ({
-        id: "r-1",
-        status: "passed",
-        stored_status: "passed",
+        id: 'r-1',
+        status: 'passed',
+        stored_status: 'passed',
         reason: null,
         subject_revision: revision,
         draft_revision: revision,
         mismatches: [],
-        version: "1.0",
-        endpoint_id: "e-1",
+        version: '1.0',
+        endpoint_id: 'e-1',
         endpoint_revision: 1,
-        validated_at: "2026-10-12T09:14:00Z",
+        validated_at: '2026-10-12T09:14:00Z',
         can_publish: true,
     });
 
-    it("publishes, shows msg:publish-success and opens Published blocks with the new row named", async () => {
+    it('publishes, shows msg:publish-success and opens Published blocks with the new row named', async () => {
         validationReport = () => passed(savedRevision);
         await atStep5();
 
         expect(
-            $("[data-test=publish-step]")!.getAttribute("aria-disabled"),
+            $('[data-test=publish-step]')!.getAttribute('aria-disabled'),
         ).toBeNull();
 
         calls.length = 0;
-        await click($("[data-test=publish-step]"));
+        await click($('[data-test=publish-step]'));
 
         const post = calls.find((c) => c.url === `${BASE}/publish`)!;
-        const { useToasts } = await import("../../resources/js/stores/toasts");
+        const { useToasts } = await import('../../resources/js/stores/toasts');
 
-        expect(post.method).toBe("POST");
+        expect(post.method).toBe('POST');
         expect(post.body).toEqual({ lock_epoch: 1 });
         expect(visit).toHaveBeenCalledWith(
-            "/admin/blocks/published?published=b-1",
+            '/admin/blocks/published?published=b-1',
         );
         expect(useToasts().items.map((t) => t.message)).toContain(
-            "Revenue today v1.0 is live in the Block Library under Finance.",
+            'Revenue today v1.0 is live in the Block Library under Finance.',
         );
     });
 
-    it("words the success toast without a category when the block has none", async () => {
+    it('words the success toast without a category when the block has none', async () => {
         validationReport = () => passed(savedRevision);
         publishReply = () => ({
             status: 200,
             json: {
                 data: {
-                    draft_id: "d-1",
-                    block_id: "b-1",
-                    version_id: "d-1",
-                    name: "Revenue today",
-                    type: "kpi-card",
+                    draft_id: 'd-1',
+                    block_id: 'b-1',
+                    version_id: 'd-1',
+                    name: 'Revenue today',
+                    type: 'kpi-card',
                     category: null,
-                    version: "1.0",
-                    state: "published",
-                    published_at: "2026-10-12T09:20:00Z",
+                    version: '1.0',
+                    state: 'published',
+                    published_at: '2026-10-12T09:20:00Z',
                 },
             },
         });
         await atStep5();
-        await click($("[data-test=publish-step]"));
+        await click($('[data-test=publish-step]'));
 
-        const { useToasts } = await import("../../resources/js/stores/toasts");
+        const { useToasts } = await import('../../resources/js/stores/toasts');
 
         expect(useToasts().items.map((t) => t.message)).toContain(
-            "Revenue today v1.0 is live in the Block Library.",
+            'Revenue today v1.0 is live in the Block Library.',
         );
     });
 
-    it("is blocked with perm-publish for a member without blocks.publish, and Save draft still works", async () => {
+    it('is blocked with perm-publish for a member without blocks.publish, and Save draft still works', async () => {
         page.props = {
             autosave: { debounce_ms: null },
             shell: {
-                area: "admin",
+                area: 'admin',
                 items: [],
-                can: { "blocks.edit": true, "blocks.publish": false },
+                can: { 'blocks.edit': true, 'blocks.publish': false },
             },
         };
         validationReport = () => passed(savedRevision);
         await atStep5();
 
         expect(
-            $("[data-test=publish-step]")!.getAttribute("aria-disabled"),
-        ).toBe("true");
-        expect(text("[data-test=publish-denied]")).toBe(
+            $('[data-test=publish-step]')!.getAttribute('aria-disabled'),
+        ).toBe('true');
+        expect(text('[data-test=publish-denied]')).toBe(
             "You don't have permission to publish this block.",
         );
 
         calls.length = 0;
-        await click($("[data-test=publish-step]"));
+        await click($('[data-test=publish-step]'));
 
         expect(calls.some((c) => c.url === `${BASE}/publish`)).toBe(false);
         expect(
-            $("[data-test=save-draft-step]")!.getAttribute("aria-disabled"),
+            $('[data-test=save-draft-step]')!.getAttribute('aria-disabled'),
         ).toBeNull();
     });
 });

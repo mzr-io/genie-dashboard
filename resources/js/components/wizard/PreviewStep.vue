@@ -1,33 +1,33 @@
 <script setup lang="ts">
-import KpiRenderer from "@block-types/kpi-card/v1/Renderer.vue";
-import type { KpiCardPayload } from "@block-types/kpi-card/v1/payload";
-import { usePage } from "@inertiajs/vue3";
-import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
-import SegmentedControl from "@/components/SegmentedControl.vue";
-import BlockedReason from "@/components/BlockedReason.vue";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
-import FetchAsUserPanel from "@/components/wizard/FetchAsUserPanel.vue";
-import { announce } from "@/lib/announce";
-import { fetchMapping } from "@/lib/blockMapping";
-import type { ChecklistSlot } from "@/lib/blockMapping";
-import { createPreviewRunner, fetchPreview } from "@/lib/blockPreview";
-import { rendererFor } from "@/lib/blockRenderers";
-import type { PreviewProblem, PreviewResult } from "@/lib/blockPreview";
-import { previewWarnings } from "@/lib/blockPreviewWarnings";
-import type { FetchBody } from "@/lib/blockSample";
-import { asUserRef, asUserUsable, endAsUser } from "@/lib/blockUserSample";
-import type { AsUserState } from "@/lib/blockUserSample";
-import { WizardError } from "@/lib/blockWizard";
-import { expandKpiPayload } from "@/lib/textTemplate";
-import type { DisplayConfig } from "@/lib/blockWizard";
+import KpiRenderer from '@block-types/kpi-card/v1/Renderer.vue';
+import type { KpiCardPayload } from '@block-types/kpi-card/v1/payload';
+import { usePage } from '@inertiajs/vue3';
+import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from 'vue';
+import SegmentedControl from '@/components/SegmentedControl.vue';
+import BlockedReason from '@/components/BlockedReason.vue';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Button } from '@/components/ui/button';
+import FetchAsUserPanel from '@/components/wizard/FetchAsUserPanel.vue';
+import { announce } from '@/lib/announce';
+import { fetchMapping } from '@/lib/blockMapping';
+import type { ChecklistSlot } from '@/lib/blockMapping';
+import { createPreviewRunner, fetchPreview } from '@/lib/blockPreview';
+import { rendererFor } from '@/lib/blockRenderers';
+import type { PreviewProblem, PreviewResult } from '@/lib/blockPreview';
+import { previewWarnings } from '@/lib/blockPreviewWarnings';
+import type { FetchBody } from '@/lib/blockSample';
+import { asUserRef, asUserUsable, endAsUser } from '@/lib/blockUserSample';
+import type { AsUserState } from '@/lib/blockUserSample';
+import { WizardError } from '@/lib/blockWizard';
+import { expandKpiPayload } from '@/lib/textTemplate';
+import type { DisplayConfig } from '@/lib/blockWizard';
 import {
     blockAsUserLabels,
     blockPreviewLabels,
     blockPreviewStepLabels as labels,
     blockWizardLabels,
-} from "@/locales/labels";
+} from '@/locales/labels';
 
 // Step 4, Preview (Story 3.16): the Draft's payload from the preview endpoint, drawn by the production kpi-card Renderer (no second renderer)
 // full size and inside a 12-column, 14 px gap sample grid, on Desktop, Tablet and Mobile, in each state. The warnings come from the mapping
@@ -53,22 +53,22 @@ const props = withDefaults(
         // The Block Type being drawn: its own Renderer draws the Block.
         typeKey?: string;
     }>(),
-    { blocked: undefined, fetchReason: undefined, typeKey: "kpi-card" },
+    { blocked: undefined, fetchReason: undefined, typeKey: 'kpi-card' },
 );
 
 const emit = defineEmits<{
-    (e: "update:acknowledged", value: string[]): void;
+    (e: 'update:acknowledged', value: string[]): void;
     // Why Continue cannot leave this step yet, or undefined.
-    (e: "gate", reason: string | undefined): void;
-    (e: "auth-error", error: unknown): void;
+    (e: 'gate', reason: string | undefined): void;
+    (e: 'auth-error', error: unknown): void;
     // The fingerprints of the warnings now listed, or null while they are not known.
-    (e: "live", ids: string[] | null): void;
-    (e: "back"): void;
-    (e: "continue"): void;
+    (e: 'live', ids: string[] | null): void;
+    (e: 'back'): void;
+    (e: 'continue'): void;
 }>();
 
-const device = ref("desktop");
-const state = ref("normal");
+const device = ref('desktop');
+const state = ref('normal');
 const result = ref<PreviewResult | null>(null);
 const slots = ref<ChecklistSlot[] | null>(null);
 const problem = ref<PreviewProblem | null>(null);
@@ -84,9 +84,9 @@ const reasonId = useId();
 const GRID_COLUMNS = 12;
 const GRID_GAP = 14;
 const CANVAS: Record<string, string> = {
-    desktop: "100%",
-    tablet: "768px",
-    mobile: "375px",
+    desktop: '100%',
+    tablet: '768px',
+    mobile: '375px',
 };
 const HEIGHT_PX: Record<string, number> = {
     small: 180,
@@ -116,8 +116,8 @@ const runner = createPreviewRunner({
         result.value = null;
         previewPending.value = false;
 
-        if (next.kind === "session") {
-            emit("auth-error", new WizardError(next.status ?? 401));
+        if (next.kind === 'session') {
+            emit('auth-error', new WizardError(next.status ?? 401));
         }
     },
 });
@@ -158,7 +158,7 @@ async function loadMapping(): Promise<void> {
             error instanceof WizardError &&
             (error.status === 401 || error.status === 419)
         ) {
-            emit("auth-error", error);
+            emit('auth-error', error);
         }
     }
 }
@@ -223,17 +223,17 @@ const userRunner = createPreviewRunner({
         userPending.value = false;
 
         // Gone (expired, or not this Admin's any more): the shared sample is shown again, and the Admin is told.
-        if (next.kind === "as_user_ended") {
+        if (next.kind === 'as_user_ended') {
             endAsUser(props.asUser, true);
-            announce(blockAsUserLabels.ended, "polite");
-        } else if (next.kind === "as_user_mismatch") {
+            announce(blockAsUserLabels.ended, 'polite');
+        } else if (next.kind === 'as_user_mismatch') {
             endAsUser(props.asUser, false);
             props.asUser.refusal = blockAsUserLabels.mismatch;
-        } else if (next.kind === "as_user_denied") {
+        } else if (next.kind === 'as_user_denied') {
             props.asUser.using = false;
             props.asUser.refusal = blockAsUserLabels.denied;
-        } else if (next.kind === "session") {
-            emit("auth-error", new WizardError(next.status ?? 401));
+        } else if (next.kind === 'session') {
+            emit('auth-error', new WizardError(next.status ?? 401));
         }
     },
 });
@@ -275,7 +275,7 @@ const open = computed(
 // written on open: the page drops stale ids from what it saves, and a toggle writes only live ones.
 watch(
     [warnings, ready],
-    () => emit("live", ready.value ? warnings.value.map((w) => w.id) : null),
+    () => emit('live', ready.value ? warnings.value.map((w) => w.id) : null),
     { immediate: true },
 );
 
@@ -287,7 +287,7 @@ const gate = computed<string | undefined>(() => {
     return open.value > 0 ? labels.blockedUnresolved(open.value) : undefined;
 });
 
-watch(gate, (reason) => emit("gate", reason), { immediate: true });
+watch(gate, (reason) => emit('gate', reason), { immediate: true });
 
 // Why Continue cannot run: the page's own reason (read-only, offline, published) first, then the warnings.
 const continueReason = computed<string | undefined>(
@@ -308,11 +308,11 @@ function toggle(id: string, on: boolean): void {
         next.push(id);
     }
 
-    emit("update:acknowledged", next);
+    emit('update:acknowledged', next);
 
     const left = warnings.value.filter((w) => !next.includes(w.id)).length;
 
-    announce(labels.announceAcknowledged(left), "polite");
+    announce(labels.announceAcknowledged(left), 'polite');
 }
 
 // ---- The Block ----------------------------------------------------------------------------------------------------
@@ -325,10 +325,10 @@ const frame = computed(() => ({
     icon: null,
 }));
 
-const blank: Omit<KpiCardPayload, "state" | "title" | "subtitle" | "icon"> = {
+const blank: Omit<KpiCardPayload, 'state' | 'title' | 'subtitle' | 'icon'> = {
     footerAction: null,
     kpiLabel: null,
-    headline: { available: false, field: "headline_value" },
+    headline: { available: false, field: 'headline_value' },
     comparison: null,
     comparisonLabel: null,
     secondaryNote: null,
@@ -343,24 +343,24 @@ const payload = computed<KpiCardPayload>(() => {
     const base: KpiCardPayload =
         shown.value !== null
             ? { ...shown.value.payload, ...frame.value }
-            : { ...blank, state: "loading", ...frame.value };
+            : { ...blank, state: 'loading', ...frame.value };
 
     switch (state.value) {
-        case "loading":
-            return { ...base, state: "loading" };
-        case "empty":
-            return { ...base, state: "empty" };
-        case "stale":
+        case 'loading':
+            return { ...base, state: 'loading' };
+        case 'empty':
+            return { ...base, state: 'empty' };
+        case 'stale':
             return {
                 ...base,
-                state: "stale",
+                state: 'stale',
                 staleSince: new Date(Date.now() - 3_600_000).toISOString(),
             };
-        case "unavailable":
+        case 'unavailable':
             return {
                 ...base,
-                state: "unavailable",
-                headline: { available: false, field: "headline_value" },
+                state: 'unavailable',
+                headline: { available: false, field: 'headline_value' },
                 comparison: null,
                 statusBadge: null,
             };
@@ -368,7 +368,7 @@ const payload = computed<KpiCardPayload>(() => {
             // Normal, and Minimized when it is expanded again.
             return shown.value === null
                 ? base
-                : { ...base, state: "normal", staleSince: null };
+                : { ...base, state: 'normal', staleSince: null };
     }
 });
 
@@ -377,7 +377,8 @@ const page = usePage();
 const shownPayload = computed(() => {
     const user = (
         page.props.auth as
-            { user?: { name?: string; email?: string } } | undefined
+            | { user?: { name?: string; email?: string } }
+            | undefined
     )?.user;
 
     return expandKpiPayload(payload.value, {
@@ -388,32 +389,32 @@ const shownPayload = computed(() => {
 
 // The Draft's own Block Type's Renderer; KPI Card for a type with none.
 const Renderer = computed(() =>
-    props.typeKey === "kpi-card"
+    props.typeKey === 'kpi-card'
         ? KpiRenderer
         : (rendererFor(props.typeKey) ?? KpiRenderer),
 );
 
-const minimized = computed(() => state.value === "minimized");
-const heading = computed(() => frame.value.title ?? "");
+const minimized = computed(() => state.value === 'minimized');
+const heading = computed(() => frame.value.title ?? '');
 const deviceLabel = computed(
     () =>
         blockWizardLabels.deviceOptions.find(
             (option) => option.value === device.value,
-        )?.label ?? "",
+        )?.label ?? '',
 );
 const columns = computed(() =>
-    device.value === "mobile" || !Number.isFinite(props.display.width)
+    device.value === 'mobile' || !Number.isFinite(props.display.width)
         ? GRID_COLUMNS
         : Math.min(GRID_COLUMNS, Math.max(1, props.display.width)),
 );
 const heightPx = computed(() => HEIGHT_PX[props.display.height] ?? 180);
 const canvasStyle = computed(() => ({
     width: CANVAS[device.value],
-    maxWidth: "100%",
+    maxWidth: '100%',
 }));
 const cardStyle = computed(() => ({ height: `${heightPx.value}px` }));
 const gridStyle = computed(() => ({
-    display: "grid",
+    display: 'grid',
     gridTemplateColumns: `repeat(${GRID_COLUMNS}, minmax(0, 1fr))`,
     gap: `${GRID_GAP}px`,
 }));
@@ -433,15 +434,15 @@ const notice = computed<string | null>(() => {
     }
 
     switch (found.kind) {
-        case "throttled":
+        case 'throttled':
             return blockPreviewLabels.throttled(found.retryAfter ?? null);
-        case "guard":
+        case 'guard':
             return blockPreviewLabels.guard;
-        case "setting":
+        case 'setting':
             return blockPreviewLabels.setting(found.setting ?? null);
-        case "no_sample":
+        case 'no_sample':
             return blockPreviewLabels.noSample;
-        case "no_plan":
+        case 'no_plan':
             return blockPreviewLabels.failedEmpty;
         default:
             return blockPreviewLabels.failedEmpty;
